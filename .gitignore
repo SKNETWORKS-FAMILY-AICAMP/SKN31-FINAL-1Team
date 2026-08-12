@@ -4,6 +4,9 @@ dist
 node_modules
 *.tsbuildinfo
 
+# WorkPilot AI — AI가 생성한 결과물 파일(사용자 데이터, 커밋 대상 아님)
+workpilot-ai/server/output/
+
 # Logs
 /logs
 *.log
