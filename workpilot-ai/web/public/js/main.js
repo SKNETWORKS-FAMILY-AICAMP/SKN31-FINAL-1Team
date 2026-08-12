@@ -1,7 +1,7 @@
 import { api } from "./api.js";
 import { OfficeCanvas } from "./office/canvas.js";
 import { renderAlertPanel, renderDeliverablesPanel, renderMeetingPanel, renderPipelinePanel, renderRequestPanel, renderSimPanel, renderTaskPanel, } from "./ui/panels.js";
-import { fmtTime } from "./ui/format.js";
+import { escapeHtml, fmtTime } from "./ui/format.js";
 const requestPanelEl = document.getElementById("request-panel");
 const pipelinePanelEl = document.getElementById("pipeline-panel");
 const taskPanelEl = document.getElementById("task-panel");
@@ -42,6 +42,135 @@ function toast(msg) {
     toastEl.classList.add("toast--show");
     window.setTimeout(() => toastEl.classList.remove("toast--show"), 2500);
 }
+// ── 회의 요약 첨부파일 ────────────────────────────────────────────────
+// 프로젝트 상태와 무관한 순수 클라이언트 임시 상태라 ProjectState에는 두지 않는다.
+// #meeting-panel은 renderAll()마다 innerHTML로 통째로 교체되므로(2초 폴링 포함), 그 안의
+// 목록 div도 매번 새 노드로 바뀐다 — 그래서 목록은 이 배열을 기준으로 매 렌더링 직후 다시
+// 그려 넣는다(withPreservedInputs가 챙겨주는 텍스트 입력값과 달리 파일은 그렇게 복원할 수
+// 없기 때문).
+let pendingMeetingFiles = [];
+// <input type="file">은 renderMeetingPanel()이 만드는 HTML 문자열에 포함시키지 않고, 여기서
+// 딱 한 번만 만들어서 매 렌더링 후 #meeting-files-mount로 옮겨 붙인다(mountMeetingFilesInput).
+// 예전엔 패널 HTML 안에 <input>을 직접 넣었는데, OS 파일 선택창이 열려 있는 동안(사용자가
+// 폴더를 탐색하느라 몇 초 이상 걸리는 경우가 흔하다) 2초 폴링이 끼어들어 innerHTML을 통째로
+// 갈아치우면 선택창이 참조하던 input이 DOM에서 떨어져나갔다 — 그 상태에서 파일을 골라도
+// change 이벤트가 document로 버블링되지 않아 "파일을 선택했는데 아무 반응이 없는" 버그가
+// 있었다. 항상 같은 input 인스턴스를 유지하고 직접 리스너를 붙여두면, 그 인스턴스가 어느
+// 순간 잠깐 DOM 밖에 있었더라도(재부착 전) change 이벤트는 그대로 잡힌다.
+const meetingFilesInputEl = document.createElement("input");
+meetingFilesInputEl.type = "file";
+meetingFilesInputEl.id = "meeting-files";
+meetingFilesInputEl.className = "visually-hidden";
+meetingFilesInputEl.multiple = true;
+meetingFilesInputEl.accept = ".txt,.md,.markdown,.log,.csv,.pdf,.docx,audio/*";
+// 서버(meetingAttachments.ts)도 같은 25MB 상한을 두지만, 여기서 먼저 걸러야 사용자가 선택
+// 즉시 이유를 알 수 있고 base64 인코딩 + 업로드를 헛수고로 만들지 않는다.
+const MAX_ATTACHMENT_BYTES = 25 * 1024 * 1024; // 25MB
+meetingFilesInputEl.addEventListener("change", () => {
+    const rejected = [];
+    for (const f of Array.from(meetingFilesInputEl.files ?? [])) {
+        if (f.size > MAX_ATTACHMENT_BYTES) {
+            rejected.push(`${f.name} (${formatFileSize(f.size)})`);
+            continue;
+        }
+        const dup = pendingMeetingFiles.some((existing) => existing.name === f.name && existing.size === f.size && existing.lastModified === f.lastModified);
+        if (!dup)
+            pendingMeetingFiles.push(f);
+    }
+    meetingFilesInputEl.value = ""; // 같은 파일을 다시 선택할 수 있도록 초기화
+    syncMeetingFileList();
+    if (rejected.length > 0) {
+        toast(`25MB를 초과해 첨부할 수 없습니다: ${rejected.join(", ")}`);
+    }
+});
+function mountMeetingFilesInput() {
+    const mount = document.getElementById("meeting-files-mount");
+    if (mount && meetingFilesInputEl.parentElement !== mount) {
+        mount.appendChild(meetingFilesInputEl);
+    }
+}
+function formatFileSize(bytes) {
+    if (bytes < 1024)
+        return `${bytes}B`;
+    if (bytes < 1024 * 1024)
+        return `${(bytes / 1024).toFixed(1)}KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)}MB`;
+}
+function syncMeetingFileList() {
+    const listEl = document.getElementById("meeting-file-list");
+    if (!listEl)
+        return;
+    listEl.innerHTML = pendingMeetingFiles
+        .map((f, i) => `<span class="chip chip--file">📎 ${escapeHtml(f.name)} <span class="muted">(${formatFileSize(f.size)})</span> <button type="button" data-action="remove-meeting-file" data-index="${i}" class="chip__remove" aria-label="첨부 제거">✕</button></span>`)
+        .join("");
+}
+function readFileAsDataUrl(file) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = () => reject(reader.error ?? new Error(`${file.name}을(를) 읽지 못했습니다.`));
+        reader.readAsDataURL(file);
+    });
+}
+async function buildAttachmentPayloads(files) {
+    return Promise.all(files.map(async (f) => ({
+        name: f.name,
+        mimeType: f.type || "",
+        dataBase64: await readFileAsDataUrl(f),
+    })));
+}
+// ── 회의 요약 PDF 다운로드 ────────────────────────────────────────────
+// 서버에 PDF 생성 라이브러리(+ 한글 폰트 임베딩)를 새로 추가하는 대신, 브라우저 자체의
+// "인쇄 → PDF로 저장"을 그대로 활용한다 — 별도 의존성 없이 화면에 보이는 한글이 그대로
+// PDF에 반영되고, 사용자가 저장 위치/파일명을 직접 고를 수 있다는 것도 일반적인 파일
+// 다운로드와 동일하다.
+function buildMeetingNotePrintHtml(note, projectName) {
+    const listHtml = (items) => items.length ? `<ul>${items.map((i) => `<li>${escapeHtml(i)}</li>`).join("")}</ul>` : "<p class=\"empty\">-</p>";
+    const topicsHtml = note.topics.length
+        ? `<ul>${note.topics
+            .map((t) => `<li><strong>${escapeHtml(t.topic)}</strong> — ${escapeHtml(t.summary)}</li>`)
+            .join("")}</ul>`
+        : "<p class=\"empty\">-</p>";
+    const participantsHtml = note.participants.length
+        ? `<div class="chips">${note.participants.map((p) => `<span>${escapeHtml(p)}</span>`).join("")}</div>`
+        : "";
+    return `<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<title>회의 요약 - ${escapeHtml(projectName)}</title>
+<style>
+  body { font-family: "Malgun Gothic", "Apple SD Gothic Neo", "Noto Sans KR", sans-serif; color: #111; padding: 32px; max-width: 720px; margin: 0 auto; line-height: 1.6; }
+  h1 { font-size: 20px; margin: 0 0 2px; }
+  .meta { color: #666; font-size: 12px; margin-bottom: 18px; }
+  .tldr { background: #f2f2f6; border-left: 4px solid #333; padding: 12px 16px; margin-bottom: 18px; font-size: 14px; }
+  h2 { font-size: 14px; margin: 18px 0 6px; border-bottom: 1px solid #ccc; padding-bottom: 4px; }
+  ul { margin: 0; padding-left: 20px; }
+  li { margin-bottom: 4px; font-size: 13px; }
+  p.empty { color: #999; font-size: 13px; margin: 0; }
+  .chips span { display: inline-block; border: 1px solid #999; border-radius: 3px; padding: 2px 8px; margin: 0 6px 6px 0; font-size: 12px; }
+  .raw { white-space: pre-wrap; font-size: 12px; color: #444; background: #fafafa; border: 1px solid #ddd; padding: 12px; }
+  @media print { body { padding: 0; } }
+</style>
+</head>
+<body>
+  <h1>회의 요약</h1>
+  <div class="meta">${escapeHtml(projectName)} · ${fmtTime(note.date)}</div>
+  ${note.tldr ? `<div class="tldr">💬 ${escapeHtml(note.tldr)}</div>` : ""}
+  ${participantsHtml ? `<h2>참여자</h2>${participantsHtml}` : ""}
+  <h2>주제별 요약</h2>
+  ${topicsHtml}
+  <h2>결정 사항</h2>
+  ${listHtml(note.decisions)}
+  <h2>액션 아이템</h2>
+  ${listHtml(note.actionItems)}
+  <h2>리스크</h2>
+  ${listHtml(note.risks)}
+  <h2>원문</h2>
+  <div class="raw">${escapeHtml(note.rawText)}</div>
+</body>
+</html>`;
+}
 // innerHTML로 패널을 다시 그리면 그 안의 <textarea>/<select>도 통째로 새 노드로
 // 교체된다. 2초 폴링마다 renderAll()이 호출되므로, 사용자가 회의록을 붙여넣거나
 // 담당자를 고르는 도중에 poll이 끼어들면 입력값이 사라져 보이는 문제가 있었다.
@@ -78,12 +207,27 @@ function withPreservedInputs(fn) {
 function renderAll() {
     withPreservedInputs(() => {
         requestPanelEl.innerHTML = renderRequestPanel(currentState);
+        // 회의 요약은 업무 요청과 별개인 진입점이라 프로젝트가 없어도 항상 보여준다.
+        meetingPanelEl.innerHTML = renderMeetingPanel(currentState);
+        mountMeetingFilesInput(); // 유일한 <input type="file"> 인스턴스를 새로 그려진 mount point로 재부착
+        syncMeetingFileList(); // innerHTML 교체로 방금 비워진 첨부 목록을 pendingMeetingFiles 기준으로 다시 채운다.
         if (currentState) {
-            pipelinePanelEl.innerHTML = renderPipelinePanel(currentState);
-            taskPanelEl.innerHTML = renderTaskPanel(currentState);
-            alertPanelEl.innerHTML = renderAlertPanel(currentState);
-            meetingPanelEl.innerHTML = renderMeetingPanel(currentState);
-            deliverablesPanelEl.innerHTML = renderDeliverablesPanel(currentState);
+            // 업무 요청 없이 회의로만 시작한 프로젝트(requestText === "")는 파이프라인/WBS/
+            // 지연알림/결과물이 보여줄 실질적인 내용이 없어(회의 액션 아이템만 있는 상태) 굳이
+            // 노출하지 않는다 — 업무 요청을 실제로 넣은 프로젝트에서는 그대로 다 보여준다.
+            const hasRealRequest = currentState.project.requestText.trim() !== "";
+            if (hasRealRequest) {
+                pipelinePanelEl.innerHTML = renderPipelinePanel(currentState);
+                taskPanelEl.innerHTML = renderTaskPanel(currentState);
+                alertPanelEl.innerHTML = renderAlertPanel(currentState);
+                deliverablesPanelEl.innerHTML = renderDeliverablesPanel(currentState);
+            }
+            else {
+                pipelinePanelEl.innerHTML = "";
+                taskPanelEl.innerHTML = "";
+                alertPanelEl.innerHTML = "";
+                deliverablesPanelEl.innerHTML = "";
+            }
             simPanelEl.innerHTML = renderSimPanel(currentState);
             office.setState(currentState.members, currentState.tasks);
             clockDisplayEl.textContent = `⏱ ${fmtTime(currentState.now)}`;
@@ -92,7 +236,6 @@ function renderAll() {
             pipelinePanelEl.innerHTML = "";
             taskPanelEl.innerHTML = "";
             alertPanelEl.innerHTML = "";
-            meetingPanelEl.innerHTML = "";
             deliverablesPanelEl.innerHTML = "";
             simPanelEl.innerHTML = "";
             office.setState([], []);
@@ -216,6 +359,29 @@ document.body.addEventListener("click", (ev) => {
             .catch(() => toast("복사에 실패했습니다."));
         return;
     }
+    if (action === "remove-meeting-file") {
+        const idx = Number(btn.dataset.index);
+        pendingMeetingFiles.splice(idx, 1);
+        syncMeetingFileList();
+        return;
+    }
+    if (action === "download-meeting-pdf") {
+        const note = currentState?.meetingNotes.find((n) => n.id === btn.dataset.note);
+        if (!note)
+            return toast("요약 데이터를 찾을 수 없습니다.");
+        const printWindow = window.open("", "_blank", "width=800,height=1000");
+        if (!printWindow)
+            return toast("팝업이 차단되었습니다 — 브라우저에서 이 사이트의 팝업을 허용해주세요.");
+        printWindow.document.open();
+        printWindow.document.write(buildMeetingNotePrintHtml(note, currentState?.project.name ?? ""));
+        printWindow.document.close();
+        // onload 이후에 인쇄 대화상자를 띄워야 내용이 다 그려진 상태에서 열린다.
+        printWindow.onload = () => {
+            printWindow.focus();
+            printWindow.print();
+        };
+        return;
+    }
     if (action === "submit-request") {
         const ta = document.getElementById("request-text");
         const text = ta?.value.trim();
@@ -262,6 +428,33 @@ document.body.addEventListener("click", (ev) => {
             window.clearInterval(pollTimer);
         currentState = null;
         renderAll();
+        return;
+    }
+    if (action === "submit-meeting") {
+        const ta = document.getElementById("meeting-text");
+        const text = ta?.value.trim() ?? "";
+        const files = pendingMeetingFiles.slice();
+        if (!text && files.length === 0)
+            return toast("회의 내용을 입력하거나 파일을 첨부하세요.");
+        const existingProjectId = currentState?.project.id;
+        setButtonLoading(btn, true, files.length ? " 파일 처리 중..." : " 요약 중...");
+        guarded(async () => {
+            try {
+                const attachments = await buildAttachmentPayloads(files);
+                const result = await api.submitMeeting(existingProjectId, text, attachments);
+                setState(result);
+                if (!existingProjectId)
+                    startPolling(result.project.id); // 회의로 새 프로젝트가 만들어진 경우
+                toast(`회의 요약 완료 — 액션 아이템 ${result.newTasks.length}건이 신규 작업으로 생성됨.`);
+                if (ta)
+                    ta.value = "";
+                pendingMeetingFiles = [];
+                syncMeetingFileList();
+            }
+            finally {
+                setButtonLoading(btn, false, "");
+            }
+        });
         return;
     }
     if (!currentState)
@@ -316,19 +509,6 @@ document.body.addEventListener("click", (ev) => {
         guarded(async () => {
             await api.resolveAlert(btn.dataset.alert);
             setState(await api.getProject(projectId));
-        });
-    }
-    else if (action === "submit-meeting") {
-        const ta = document.getElementById("meeting-text");
-        const text = ta?.value.trim();
-        if (!text)
-            return toast("회의 내용을 입력하세요.");
-        guarded(async () => {
-            const result = await api.submitMeeting(projectId, text);
-            setState(result);
-            toast(`회의 요약 완료 — 액션 아이템 ${result.newTasks.length}건이 신규 작업으로 생성됨.`);
-            if (ta)
-                ta.value = "";
         });
     }
     else if (action === "advance") {

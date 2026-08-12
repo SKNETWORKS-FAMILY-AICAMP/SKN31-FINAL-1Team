@@ -241,19 +241,35 @@ export class ClaudeAIProvider implements AIProvider {
 
   async summarizeMeeting(rawText: string): Promise<MeetingSummary> {
     const result = await this.callJson<MeetingSummary>(
-      "당신은 회의록을 요약하는 어시스턴트입니다. 회의 내용에서 결정 사항(decisions), " +
-        "액션 아이템(actionItems, 후속 작업으로 바로 생성될 수 있도록 실행 가능한 문장으로), " +
-        "리스크/이슈(risks)를 뽑아내세요. 다른 텍스트 없이 JSON만 출력하세요: " +
-        `{"decisions": string[], "actionItems": string[], "risks": string[]}`,
-      rawText
+      "당신은 카카오톡 단체 채팅 요약 수준의 회의록 요약 어시스턴트입니다. 입력은 정리된 회의 메모일 " +
+        "수도, \"이름: 발언\" 형태의 채팅 로그일 수도 있습니다. 다음을 뽑아내세요: " +
+        "tldr(전체 내용을 한두 문장으로, 누가 무엇을 논의했는지 자연스럽게 요약), " +
+        "topics(논의된 화제별로 나눠 각각 {\"topic\": 주제명(짧게), \"summary\": 그 주제의 핵심 내용 한 문장}, " +
+        "최대 5개, 화제가 뚜렷이 안 나뉘면 1개만), participants(발언자로 식별되는 사람 이름 배열, " +
+        "형식이 없으면 빈 배열), decisions(결정 사항), actionItems(후속 작업으로 바로 생성될 수 있도록 " +
+        "실행 가능한 문장으로), risks(리스크/이슈). 다른 텍스트 없이 JSON만 출력하세요: " +
+        `{"tldr": string, "topics": [{"topic": string, "summary": string}], "participants": string[], ` +
+        `"decisions": string[], "actionItems": string[], "risks": string[]}`,
+      rawText,
+      1800
     );
     if (!result || !Array.isArray(result.decisions)) {
       return this.fallback.summarizeMeeting(rawText);
     }
+    const decisions = result.decisions ?? [];
+    const actionItems = result.actionItems ?? [];
+    const risks = result.risks ?? [];
     return {
-      decisions: result.decisions ?? [],
-      actionItems: result.actionItems ?? [],
-      risks: result.risks ?? [],
+      tldr: result.tldr || `결정 사항 ${decisions.length}건, 액션 아이템 ${actionItems.length}건이 포함된 회의입니다.`,
+      topics: Array.isArray(result.topics)
+        ? result.topics
+            .map((t) => ({ topic: String(t.topic ?? "").trim(), summary: String(t.summary ?? "").trim() }))
+            .filter((t) => t.topic)
+        : [],
+      participants: Array.isArray(result.participants) ? result.participants.map(String) : [],
+      decisions,
+      actionItems,
+      risks,
     };
   }
 }

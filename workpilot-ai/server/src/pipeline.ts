@@ -367,6 +367,23 @@ export async function detectDelaysForAllTasks(): Promise<DelayAlert[]> {
   return newAlerts;
 }
 
+/** 회의 요약은 업무 요청과 별개인 진입점이라, 프로젝트가 아직 없는 상태에서도 바로 쓸 수
+ * 있어야 한다 — 업무 요청 없이 회의록만 먼저 붙여넣으면 그 회의를 계기로 프로젝트를 하나
+ * 새로 만든다(요청 분석은 돌리지 않음 — 회의록은 요청 문장이 아니라서 억지로 매칭시키면
+ * 엉뚱한 기능 목록이 나온다). 이후 액션 아이템이 이 프로젝트의 첫 작업들이 된다. */
+export function createProjectFromMeeting(rawText: string, name?: string): Project {
+  const firstLine = rawText.trim().split(/\n+/)[0]?.trim() ?? "";
+  const project: Project = {
+    id: nextId("proj"),
+    name: name?.trim() || `회의: ${firstLine.slice(0, 20) || "새 프로젝트"}`,
+    stack: [],
+    createdAt: store.nowIso(),
+    requestText: "",
+  };
+  store.projects.set(project.id, project);
+  return project;
+}
+
 /** 7) 회의 요약 — 액션 아이템을 신규 Task로 만들고, 곧바로 추천/자동 승인까지 진행한다. */
 export async function submitMeeting(project: Project, rawText: string) {
   const summary = await ai.summarizeMeeting(rawText);
@@ -375,6 +392,9 @@ export async function submitMeeting(project: Project, rawText: string) {
     projectId: project.id,
     date: store.nowIso(),
     rawText,
+    tldr: summary.tldr,
+    topics: summary.topics,
+    participants: summary.participants,
     decisions: summary.decisions,
     actionItems: summary.actionItems,
     risks: summary.risks,

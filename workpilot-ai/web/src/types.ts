@@ -60,11 +60,27 @@ export interface DelayAlert {
   status: "open" | "acknowledged" | "resolved";
 }
 
+export interface MeetingTopicSummary {
+  topic: string;
+  summary: string;
+}
+
+/** 회의 요약에 첨부하는 파일 — 브라우저에서 base64로 인코딩해 그대로 JSON에 실어 보낸다
+ * (별도 업로드 엔드포인트/멀티파트 파서 없이 기존 JSON API를 재사용하기 위함). */
+export interface MeetingAttachmentPayload {
+  name: string;
+  mimeType: string;
+  dataBase64: string;
+}
+
 export interface MeetingNote {
   id: string;
   projectId: string;
   date: string;
   rawText: string;
+  tldr: string;
+  topics: MeetingTopicSummary[];
+  participants: string[];
   decisions: string[];
   actionItems: string[];
   risks: string[];

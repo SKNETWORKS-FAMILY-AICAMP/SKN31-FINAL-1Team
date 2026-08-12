@@ -115,9 +115,16 @@ export WORKPILOT_AI_PROVIDER=openai   # 둘 다 있을 때 OpenAI를 강제하�
 ## 실행 방법
 
 Node.js 18 이상만 있으면 됩니다. 소스를 고쳤다면 다시 빌드해야 합니다(둘 다 프로젝트 루트의
-TypeScript로 컴파일, 별도 `npm install` 불필요 — 루트 저장소의 `typescript`를 그대로 씁니다).
+TypeScript로 컴파일).
+
+회의 요약 첨부파일(pdf/docx) 텍스트 추출에 쓰는 `pdf-parse`/`mammoth`만 예외적으로 실제
+런타임 의존성입니다 — 최초 1회 `workpilot-ai/server`에서 `npm install`이 필요합니다. 이 둘이
+설치돼 있지 않아도 서버 자체는 정상 실행되고, 텍스트 입력/txt·md 첨부/음성 첨부는 그대로
+동작합니다 — pdf/docx 첨부를 실제로 올릴 때만 "처리 실패" 메시지로 안내됩니다.
 
 ```bash
+cd workpilot-ai/server && npm install   # pdf-parse/mammoth 설치 (최초 1회)
+cd ../..
 npx tsc -p workpilot-ai/server/tsconfig.json
 npx tsc -p workpilot-ai/web/tsconfig.json
 cd workpilot-ai/server
@@ -140,14 +147,18 @@ node dist/index.js
 4. 일부 작업은 일부러 예상보다 오래 걸리도록 설계돼 있어(0.7x~1.5x), 진행 중 예상 기한을 넘기면
    자동으로 지연 알림이 뜨고 캐릭터 위에 경고 말풍선이 표시됩니다. 더 빨리 보고 싶으면 가상 시계
    패널의 "빨리감기" 버튼으로 강제 전진할 수 있습니다.
-5. 회의 요약 패널에 텍스트 입력 → **요약 반영** → 액션 아이템이 신규 작업으로 자동 생성되고,
-   그 작업도 곧바로 추천/배정까지 자동으로 이어집니다.
+5. 회의 요약 패널은 업무 요청 없이도 바로 쓸 수 있습니다 — 텍스트를 입력하거나(형식 없는 메모,
+   "이름: 발언" 채팅 로그 둘 다 인식) **📎 파일 첨부**로 문서(txt/md/pdf/docx)나 음성 파일을 붙인
+   뒤 **요약 반영**을 누르면, TL;DR/주제별 요약/참여자와 함께 액션 아이템이 신규 작업으로 자동
+   생성되고 추천/배정까지 이어집니다. 첨부는 제출 전 목록에서 ✕로 뺄 수 있습니다. 음성 파일은
+   OpenAI Whisper API로 전사되므로 `OPENAI_API_KEY`가 있어야 하고(텍스트 요약에 Claude를 쓰는
+   중이어도 전사는 별도), pdf는 스캔 이미지가 아닌 텍스트 PDF만 추출됩니다.
 6. 수동 개입이 필요하면(재배정 등) 작업 카드의 담당자 드롭다운/승인/거절 버튼을 그대로 쓸 수 있습니다.
 
 ## 구조
 
 ```
-server/   Node.js + TypeScript 백엔드 (외부 런타임 의존성 없음, fetch만 사용)
+server/   Node.js + TypeScript 백엔드 (네트워크 호출은 fetch만 사용 — pdf-parse/mammoth만 예외)
   src/env.ts              server/.env 로더 (dotenv 없이 자체 구현, 다른 모든 import보다 먼저 실행)
   src/types.ts            도메인 타입 + AIProvider 인터페이스(전부 Promise 반환)
   src/aiProvider.ts        MockAIProvider(규칙 기반 폴백)
@@ -155,18 +166,22 @@ server/   Node.js + TypeScript 백엔드 (외부 런타임 의존성 없음, fet
   src/aiProviderOpenAI.ts  OpenAIProvider(OpenAI Chat Completions API, response_format=json_object)
   src/aiProviderFactory.ts WORKPILOT_AI_PROVIDER/키 유무로 claude·openai·mock 중 실제 사용할 프로바이더 선택
   src/llmJson.ts           LLM 응답에서 JSON을 관대하게 파싱하는 공용 유틸(코드펜스/설명문 대비)
+  src/meetingAttachments.ts 회의 요약 첨부파일 처리 — txt/md는 그대로, pdf/docx는 지연 로딩한
+                             pdf-parse/mammoth로, 음성은 OpenAI Whisper API로 전사
+  src/vendorTypes.d.ts    pdf-parse/mammoth용 최소 앰비언트 타입 선언(두 패키지 다 자체 타입 미제공)
   src/pipeline.ts          분해/추천/자동승인/진행/완료/지연감지/회의요약 — 실제 오케스트레이션 로직
   src/routes.ts            REST 라우트 (pipeline.ts를 얇게 감쌈)
   src/autopilot.ts         "지시 이외엔 전부 자동"의 핵심 — 백그라운드 틱으로 작업을 자동 착수/완료/지연감지
   src/scheduler.ts         일정 계산 (의존관계 기반 Critical Path 단순화 버전)
   src/store.ts             인메모리 스토어 (+ 가상 시계)
-  src/http.ts / httpServer.ts   프레임워크 없는 라우터 + 정적 파일 서빙
+  src/http.ts / httpServer.ts   프레임워크 없는 라우터 + 정적 파일 서빙(바디 30MB 상한 — 첨부파일 base64 고려)
 
 web/      브라우저 네이티브 ES 모듈 프런트엔드 (React/번들러 없음)
   src/office/sprites.ts   pixel-agents 실제 캐릭터 스프라이트 시트(char_0..5.png) 렌더링
   src/office/canvas.ts    오피스 캔버스: 좌석 배치, 상태 FSM, 말풍선
   src/ui/panels.ts        요청/파이프라인/작업(WBS+Gantt바)/알림/회의 패널 렌더링
   src/main.ts             이벤트 위임 + REST 폴링(2초) 기반 상태 갱신 + AI모드 배지/가상시계 표시
+                           + 회의 첨부파일 클라이언트 상태(선택/제거, base64 인코딩 후 업로드)
   public/assets/characters/  pixel-agents(webview-ui)에서 그대로 가져온 스프라이트 PNG
   public/                컴파일된 정적 산출물 (index.html, styles.css, js/)
 ```
@@ -181,6 +196,13 @@ web/      브라우저 네이티브 ES 모듈 프런트엔드 (React/번들러 �
   시뮬레이션으로 진행/완료가 결정됩니다 — Git/PR 연동이 들어오면 그 신호가 우선하도록 바꾸면 됩니다.
 - 재현성을 위해 데모용 `/api/simulate/advance`(가상 시계 수동 전진) 엔드포인트를 남겨뒀습니다 —
   실서비스에서는 제거하거나 관리자 전용으로 제한해야 합니다.
+- **회의 첨부파일**: pdf는 텍스트 레이어가 있는 문서만 추출됩니다(스캔 이미지 PDF는 OCR 없이는
+  텍스트를 못 뽑습니다). 음성 전사는 OpenAI Whisper API 전용이라 `OPENAI_API_KEY`가 없으면
+  실패 사유가 회의 요약에 리스크로 남고 텍스트/문서 부분만 요약됩니다. 음성 파일은 Whisper API
+  자체 상한인 **25MB**를 넘으면(서버가 늘릴 수 없는 값) 명확한 안내 메시지와 함께 실패
+  처리되고, 긴 녹음을 자동으로 나눠서 이어붙여 전사하는 기능은 아직 없습니다 — 파일을 짧게
+  잘라서 여러 번 첨부하거나 압축해서 올려야 합니다. 업로드는 base64로 JSON에 실어 보내는
+  방식이라(멀티파트 업로드 없음) 요청 바디 자체는 80MB가 상한입니다.
 
 ## 다음 단계 (기획안 로드맵 기준)
 

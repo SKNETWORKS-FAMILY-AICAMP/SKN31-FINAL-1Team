@@ -84,7 +84,12 @@ export function createServer(port: number) {
           body: undefined,
         };
         if (req.method === "POST") {
-          ctx.body = await readJsonBody(req).catch(() => ({}));
+          try {
+            ctx.body = await readJsonBody(req);
+          } catch (err) {
+            if (err instanceof HttpError) throw err; // 예: 413 첨부파일 용량 초과 — 그대로 전달
+            ctx.body = {}; // 그 외(JSON 파싱 실패 등)는 기존처럼 빈 바디로 흡수
+          }
         }
         await matched.handler(ctx);
         return;

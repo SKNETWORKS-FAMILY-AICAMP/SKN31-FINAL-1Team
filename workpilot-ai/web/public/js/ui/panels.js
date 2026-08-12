@@ -65,7 +65,7 @@ export function renderPipelinePanel(state) {
     const allDone = isAllDone(state);
     return `
     <div class="card">
-      <h2>2. 파이프라인 ${autopilotBadge(state)}</h2>
+      <h2>3. 파이프라인 ${autopilotBadge(state)}</h2>
       <p class="muted">
         ${allDone
         ? "모든 작업이 완료됐습니다 — 오토파일럿이 더 이상 할 일이 없습니다."
@@ -107,7 +107,7 @@ function renderGanttBar(t, bounds, nowIso) {
 }
 export function renderTaskPanel(state) {
     if (state.tasks.length === 0) {
-        return `<div class="card"><h2>3. 작업(WBS)</h2><p class="muted">아직 분해된 작업이 없습니다.</p></div>`;
+        return `<div class="card"><h2>4. 작업(WBS)</h2><p class="muted">아직 분해된 작업이 없습니다.</p></div>`;
     }
     const bounds = ganttBounds(state.tasks);
     const rows = state.tasks
@@ -129,7 +129,7 @@ export function renderTaskPanel(state) {
       </div>`;
     })
         .join("");
-    return `<div class="card"><h2>3. 작업(WBS)</h2><div class="task-list">${rows}</div></div>`;
+    return `<div class="card"><h2>4. 작업(WBS)</h2><div class="task-list">${rows}</div></div>`;
 }
 function renderDeliverable(t) {
     if (t.deliverable) {
@@ -213,7 +213,7 @@ function renderTaskActions(t, members) {
 export function renderAlertPanel(state) {
     const open = state.alerts.filter((a) => a.status !== "resolved");
     if (open.length === 0) {
-        return `<div class="card"><h2>4. 지연 알림</h2><p class="muted">현재 열린 지연 알림이 없습니다.</p></div>`;
+        return `<div class="card"><h2>5. 지연 알림</h2><p class="muted">현재 열린 지연 알림이 없습니다.</p></div>`;
     }
     const rows = open
         .map((a) => {
@@ -231,23 +231,64 @@ export function renderAlertPanel(state) {
       </div>`;
     })
         .join("");
-    return `<div class="card"><h2>4. 지연 알림</h2>${rows}</div>`;
+    return `<div class="card"><h2>5. 지연 알림</h2>${rows}</div>`;
 }
+/** 카카오톡 채팅 요약 카드처럼: 상단 TL;DR 한 줄 + 참여자 칩 + 주제별 요약, 그 아래 상세(결정/액션/리스크)는 접어둔다. */
+function renderMeetingNote(n) {
+    const participants = n.participants.length
+        ? `<div class="meeting-participants">${n.participants.map((p) => `<span class="chip">${escapeHtml(p)}</span>`).join("")}</div>`
+        : "";
+    const topics = n.topics.length
+        ? `<div class="meeting-topics">
+        ${n.topics
+            .map((t) => `<div class="meeting-topic"><span class="meeting-topic__label">${escapeHtml(t.topic)}</span> <span class="muted">${escapeHtml(t.summary)}</span></div>`)
+            .join("")}
+      </div>`
+        : "";
+    return `<div class="meeting-note">
+    <div class="meeting-note__head">
+      <span class="muted">${fmtTime(n.date)}</span>
+      ${participants}
+    </div>
+    ${n.tldr ? `<div class="meeting-tldr">💬 ${escapeHtml(n.tldr)}</div>` : ""}
+    ${topics}
+    <details class="meeting-detail">
+      <summary>결정·액션·리스크 상세</summary>
+      <div><span class="tag tag--ok">결정</span> ${n.decisions.map(escapeHtml).join(" / ") || "-"}</div>
+      <div><span class="tag tag--warn">액션</span> ${n.actionItems.map(escapeHtml).join(" / ") || "-"}</div>
+      <div><span class="tag tag--danger">리스크</span> ${n.risks.map(escapeHtml).join(" / ") || "-"}</div>
+    </details>
+    <button type="button" data-action="download-meeting-pdf" data-note="${n.id}" class="btn btn--ghost meeting-note__download">📄 PDF 다운로드</button>
+  </div>`;
+}
+// 업무 요청과는 별개인 진입점이라 프로젝트가 아직 없어도(state === null) 항상 렌더링해서
+// 앱을 켜자마자 회의 내용을 바로 붙여넣을 수 있게 한다 — 최초 제출 시 서버가 프로젝트를 만든다.
 export function renderMeetingPanel(state) {
-    const notes = state.meetingNotes
-        .slice()
-        .reverse()
-        .map((n) => `<div class="meeting-note">
-        <div class="muted">${fmtTime(n.date)}</div>
-        <div><span class="tag tag--ok">결정</span> ${n.decisions.map(escapeHtml).join(" / ") || "-"}</div>
-        <div><span class="tag tag--warn">액션</span> ${n.actionItems.map(escapeHtml).join(" / ") || "-"}</div>
-        <div><span class="tag tag--danger">리스크</span> ${n.risks.map(escapeHtml).join(" / ") || "-"}</div>
-      </div>`)
-        .join("");
+    const notes = state
+        ? state.meetingNotes
+            .slice()
+            .reverse()
+            .map(renderMeetingNote)
+            .join("")
+        : "";
     return `
     <div class="card">
-      <h2>5. 회의 요약</h2>
-      <textarea id="meeting-text" rows="3" placeholder="회의 내용을 붙여넣으세요 (한 줄 = 한 문장)"></textarea>
+      <h2>2. 회의 요약</h2>
+      <p class="muted">회의 메모나 "이름: 발언" 형식의 채팅 로그를 그대로 붙여넣어도 참여자/주제를 인식합니다.</p>
+      <textarea id="meeting-text" rows="4" placeholder="예)
+지연: API 명세 이번 주까지 확정하기로 했어요
+민수: 결제 연동은 다음 스프린트로 미루죠
+지연: 결제사 응답 지연이 리스크로 걱정되네요"></textarea>
+      <div class="meeting-attach">
+        <label for="meeting-files" class="btn btn--ghost">📎 파일 첨부</label>
+        <!-- 실제 <input type="file">은 main.ts가 딱 한 번 만들어서 여기(mount point)로 옮겨 붙인다.
+             2초 폴링마다 이 패널 전체가 innerHTML로 다시 그려지는데, 그때마다 input을 새로 만들면
+             OS 파일 선택창이 떠 있는 동안 그 창이 참조하던 input이 DOM에서 떨어져나가 change 이벤트가
+             씹히는 문제가 있었다 — 항상 같은 input 인스턴스를 재사용해서 이 문제를 없앤다. -->
+        <span id="meeting-files-mount"></span>
+        <span class="muted">문서(txt/md/pdf/docx)나 음성 파일을 첨부하면 내용을 읽거나 전사해서 함께 요약합니다. (파일당 25MB 이하)</span>
+      </div>
+      <div id="meeting-file-list" class="meeting-file-list"></div>
       <button data-action="submit-meeting" class="btn">요약 반영</button>
       ${notes}
     </div>`;

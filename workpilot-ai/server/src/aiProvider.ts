@@ -136,6 +136,95 @@ const FEATURE_RULES: FeatureRule[] = [
 
 const TEST_KEYWORDS = ["테스트", "test", "qa", "검증"];
 
+// ── 회의 요약 고도화 (카카오톡 채팅 요약 스타일) ─────────────────────
+// 정리된 회의록뿐 아니라 "이름: 발언" 형식의 채팅 로그도 그대로 붙여넣을 수 있게,
+// 화자를 인식해 참여자를 뽑아내고, 결정/액션/리스크 분류에 더해 도메인 키워드
+// 기반 주제별 요약(topics)과 TL;DR 한 줄 요약을 함께 만든다.
+
+// 콜론 앞 토큰이 화자 이름이 아니라 분류 라벨/메모 접두어일 때 오인하지 않도록 배제한다.
+const SPEAKER_EXCLUDE = new Set([
+  "결정", "확정", "채택", "액션", "todo", "할일", "담당", "이슈", "리스크",
+  "우려", "확인필요", "미결", "메모", "참고", "요약", "비고", "주제", "note",
+]);
+
+function splitSpeakerLine(line: string): { speaker: string | null; text: string } {
+  const m = line.match(/^([^\s:：][^:：]{0,14}?)\s*[:：]\s*(.+)$/);
+  if (!m) return { speaker: null, text: line };
+  const speaker = m[1].trim();
+  const text = m[2].trim();
+  if (!speaker || !text) return { speaker: null, text: line };
+  if (/[.?!]/.test(speaker)) return { speaker: null, text: line }; // 콜론을 포함한 문장 오인 방지
+  if (SPEAKER_EXCLUDE.has(speaker.replace(/\s+/g, "").toLowerCase())) return { speaker: null, text: line };
+  return { speaker, text };
+}
+
+interface ParsedMeetingLine {
+  speaker: string | null;
+  text: string;
+}
+
+function parseMeetingLines(rawText: string): ParsedMeetingLine[] {
+  return rawText
+    .split(/\n+/)
+    .map((l) => l.trim())
+    .filter(Boolean)
+    .filter((l) => !/^---\s*첨부:.*---$/.test(l)) // 첨부파일 구분선(meetingAttachments.ts)은 회의 내용이 아니므로 제외
+    .map((l) => l.replace(/^[-*·]\s*/, ""))
+    .map(splitSpeakerLine);
+}
+
+/** FEATURE_RULES의 도메인 키워드를 재사용해 발언을 주제별로 묶는다(최대 4개 + 기타). */
+function buildMeetingTopics(lines: ParsedMeetingLine[]): { topic: string; summary: string }[] {
+  const buckets = new Map<string, string[]>();
+  const misc: string[] = [];
+
+  for (const { text } of lines) {
+    const lower = text.toLowerCase();
+    const rule = FEATURE_RULES.find((r) => r.keywords.some((k) => lower.includes(k.toLowerCase())));
+    if (rule) {
+      const label = rule.keywords[0];
+      if (!buckets.has(label)) buckets.set(label, []);
+      buckets.get(label)!.push(text);
+    } else {
+      misc.push(text);
+    }
+  }
+
+  const topics = Array.from(buckets.entries())
+    .sort((a, b) => b[1].length - a[1].length)
+    .slice(0, 4)
+    .map(([topic, items]) => ({ topic, summary: uniq(items).slice(0, 3).join(" · ") }));
+
+  if (topics.length === 0 && misc.length > 0) {
+    topics.push({ topic: "전체 논의", summary: uniq(misc).slice(0, 3).join(" · ") });
+  } else if (misc.length > 0 && topics.length > 0) {
+    topics.push({ topic: "기타", summary: uniq(misc).slice(0, 3).join(" · ") });
+  }
+
+  return topics;
+}
+
+function buildMeetingTldr(
+  topics: { topic: string; summary: string }[],
+  decisions: string[],
+  actionItems: string[],
+  risks: string[],
+  participants: string[]
+): string {
+  const topicPart = topics.length
+    ? `${topics.map((t) => t.topic).join(", ")} 관련해 논의했습니다.`
+    : "전반적인 내용을 논의했습니다.";
+  const countParts: string[] = [];
+  if (decisions.length) countParts.push(`결정 사항 ${decisions.length}건`);
+  if (actionItems.length) countParts.push(`액션 아이템 ${actionItems.length}건`);
+  if (risks.length) countParts.push(`리스크 ${risks.length}건`);
+  const countPart = countParts.length ? ` ${countParts.join(", ")}이 확인됐습니다.` : "";
+  const whoPart = participants.length
+    ? `${participants.slice(0, 3).join(", ")}${participants.length > 3 ? " 외" : ""}이 `
+    : "";
+  return `${whoPart}${topicPart}${countPart}`;
+}
+
 function uniq<T>(arr: T[]): T[] {
   return Array.from(new Set(arr));
 }
@@ -551,26 +640,31 @@ export class MockAIProvider implements AIProvider {
   }
 
   async summarizeMeeting(rawText: string) {
-    const lines = rawText
-      .split(/\n+/)
-      .map((l) => l.trim())
-      .filter(Boolean);
+    const lines = parseMeetingLines(rawText);
 
     const decisions: string[] = [];
     const actionItems: string[] = [];
     const risks: string[] = [];
+    const participants: string[] = [];
+    const seenSpeakers = new Set<string>();
 
-    for (const line of lines) {
-      const stripped = line.replace(/^[-*·]\s*/, "");
-      if (/결정|확정|채택/.test(line)) decisions.push(stripped);
-      else if (/액션|todo|할 일|담당|진행할/i.test(line))
-        actionItems.push(stripped);
-      else if (/이슈|리스크|우려|확인 필요|미결/.test(line))
-        risks.push(stripped);
-      else decisions.push(stripped); // 분류 안 되면 결정 사항으로 폴백
+    for (const { speaker, text } of lines) {
+      if (speaker && !seenSpeakers.has(speaker)) {
+        seenSpeakers.add(speaker);
+        participants.push(speaker);
+      }
+      // 첨부파일 처리 실패 메시지(meetingAttachments.ts가 [대괄호]로 감싸서 붙임)는 항상 리스크로.
+      if (/^\[.*\]$/.test(text)) risks.push(text);
+      else if (/결정|확정|채택/.test(text)) decisions.push(text);
+      else if (/액션|todo|할 일|담당|진행할/i.test(text)) actionItems.push(text);
+      else if (/이슈|리스크|우려|확인 필요|미결/.test(text)) risks.push(text);
+      else decisions.push(text); // 분류 안 되면 결정 사항으로 폴백
     }
 
-    return { decisions, actionItems, risks };
+    const topics = buildMeetingTopics(lines);
+    const tldr = buildMeetingTldr(topics, decisions, actionItems, risks, participants);
+
+    return { tldr, topics, participants: participants.slice(0, 8), decisions, actionItems, risks };
   }
 
   // 규칙 기반이라 실제 코드를 "짤" 수는 없다 — 대신 무엇을 구현해야 하는지 정리한

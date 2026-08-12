@@ -84,11 +84,23 @@ export interface DelayAlert {
   status: "open" | "acknowledged" | "resolved";
 }
 
+/** 회의/채팅 로그에서 뽑아낸 주제 하나 — 카카오톡 채팅 요약처럼 여러 화제를 나눠서 보여준다. */
+export interface MeetingTopicSummary {
+  topic: string;
+  summary: string;
+}
+
 export interface MeetingNote {
   id: string;
   projectId: string;
   date: string;
   rawText: string;
+  /** 전체 내용을 한두 문장으로 압축한 요약 — 카카오톡 채팅 요약의 상단 한줄 요약에 해당. */
+  tldr: string;
+  /** 주제별로 나눈 요약(최대 5개 정도). 화제가 명확히 안 나뉘면 "전체 논의" 하나로 들어온다. */
+  topics: MeetingTopicSummary[];
+  /** "이름: 발언" 형식의 채팅 로그에서 인식된 참여자 이름. 형식이 없으면 빈 배열. */
+  participants: string[];
   decisions: string[];
   actionItems: string[];
   risks: string[];
@@ -133,6 +145,9 @@ export interface TaskDraft {
 }
 
 export interface MeetingSummary {
+  tldr: string;
+  topics: MeetingTopicSummary[];
+  participants: string[];
   decisions: string[];
   actionItems: string[];
   risks: string[];

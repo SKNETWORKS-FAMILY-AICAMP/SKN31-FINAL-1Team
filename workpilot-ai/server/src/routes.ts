@@ -2,6 +2,8 @@ import { seedMembers, store } from "./store.js";
 import { HttpError, readJsonBody, Router, sendJson } from "./http.js";
 import type { Ctx } from "./http.js";
 import type { Project } from "./types.js";
+import { buildAttachmentsBlock } from "./meetingAttachments.js";
+import type { MeetingAttachment } from "./meetingAttachments.js";
 import {
   ai,
   aiProviderName,
@@ -9,6 +11,7 @@ import {
   autoApproveAll,
   completeTask,
   continueProject,
+  createProjectFromMeeting,
   decomposeProject,
   detectDelaysForAllTasks,
   getProjectOr404,
@@ -136,11 +139,29 @@ export function buildRouter(): Router {
   });
 
   // 7) 회의 요약 (기획안 5.7) — 액션 아이템을 신규 Task로 자동 반영 + 추천/승인까지 자동 진행.
+  // projectId가 없으면(업무 요청 없이 회의 요약부터 쓰는 경우) 이 회의를 계기로 프로젝트를
+  // 새로 만든다 — 회의 요약은 업무 요청과 별개로 바로 쓸 수 있는 진입점이기 때문이다.
+  // 타이핑한 텍스트 없이 첨부파일만 올려도 되고, 반대로 첨부 없이 텍스트만 보내도 된다.
   r.post("/api/meetings", async (ctx) => {
-    const body = ctx.body as { projectId?: string; text?: string };
-    if (!body.projectId || !body.text) throw new HttpError(400, "projectId and text are required");
-    const project = getProjectOr404(body.projectId);
-    const { note, newTasks } = await submitMeeting(project, body.text);
+    const body = ctx.body as {
+      projectId?: string;
+      text?: string;
+      projectName?: string;
+      attachments?: MeetingAttachment[];
+    };
+    const typedText = (body.text ?? "").trim();
+    const attachments = Array.isArray(body.attachments) ? body.attachments : [];
+    if (!typedText && attachments.length === 0) {
+      throw new HttpError(400, "text or attachments are required");
+    }
+    const attachmentsBlock = await buildAttachmentsBlock(attachments);
+    const rawText = `${typedText}${attachmentsBlock}`.trim();
+    if (!rawText) throw new HttpError(400, "no content could be extracted from the attachments");
+
+    const project = body.projectId
+      ? getProjectOr404(body.projectId)
+      : createProjectFromMeeting(rawText, body.projectName);
+    const { note, newTasks } = await submitMeeting(project, rawText);
     sendJson(ctx.res, 201, { note, newTasks, ...projectStateResponse(project.id) });
   });
 
