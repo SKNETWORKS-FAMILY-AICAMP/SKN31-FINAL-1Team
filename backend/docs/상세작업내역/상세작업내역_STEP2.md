@@ -1,7 +1,7 @@
 # 단계별 상세 작업 내역 (Detailed Tasks)
 
 ### STEP 2: 사용자 인증 및 회원 관리 (Auth Module)
-* **작업일 : 2026-07-31**
+* **작업일 : 2026-08-24**
 
 * **커스텀 유저 모델(Custom User Model) 구현**
   * `AbstractUser` 상속받아 커스텀 유저 모델 정의 (이메일 기반 로그인 지원)
@@ -20,17 +20,24 @@
 
   * 산출물: `users/models.py`
 ---
-* **작업일 : 2026-08-03**
+* **작업일 : 2026-08-24**
 
 * **JWT 인증 & 사용자 관리 REST API 구현**
 
-  * `djangorestframework-simplejwt` 활용
-    - config/setting.py 파일 하단에 코드 추가
+  * config/setting.py 파일 하단에 코드 추가
     ```
-    # REST Framework 기본 설정 (추후 Swagger 및 JWT 세팅 시 활용)
     REST_FRAMEWORK = {
+    # 1. API 문서화 설정 (drf-spectacular)
+    'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
+    
+    # 2. 사용자 인증 설정 (Simple JWT)
     'DEFAULT_AUTHENTICATION_CLASSES': (
         'rest_framework_simplejwt.authentication.JWTAuthentication',
+    ),
+    
+    # (선택) 기본 접근 권한 설정 (예: 인증된 사용자만 접근 가능)
+    'DEFAULT_PERMISSION_CLASSES': (
+        'rest_framework.permissions.IsAuthenticated',
     ),
     }
     ```
