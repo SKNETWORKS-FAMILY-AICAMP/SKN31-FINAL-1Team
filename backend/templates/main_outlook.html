@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>개발부서 업무 대시보드 테스트</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 30px; background-color: #f4f6f9; }
+        .card { background: white; padding: 20px; margin-bottom: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        button { background-color: #007bff; color: white; border: none; padding: 10px 15px; border-radius: 4px; cursor: pointer; }
+        button:hover { background-color: #0056b3; }
+        pre { background: #eee; padding: 10px; border-radius: 4px; overflow-x: auto; }
+    </style>
+</head>
+<body>
+
+    <h2>🛠️ 개발부서 팀장 업무 대시보드 API 테스트</h2>
+
+    <!-- 1단계: 회의록 작성 및 검토 -->
+    <div class="card">
+        <h3>1. 회의록 검토 완료 (기획서 생성)</h3>
+        <p>회의록 ID: <input type="number" id="meetingId" value="1" style="width: 50px;"></p>
+        <button onclick="reviewMeeting()">1-1. 회의록 검토완료 (API 요청)</button>
+        <pre id="meetingResult">결과가 여기에 표시됩니다.</pre>
+    </div>
+
+    <!-- 2단계: 기획서 검토 및 업무 배분 -->
+    <div class="card">
+        <h3>2. 기획서 검토 완료 (업무 배분 생성)</h3>
+        <p>기획서 ID: <input type="number" id="specId" value="1" style="width: 50px;"></p>
+        <button onclick="reviewSpec()">2-1. 기획서 검토완료 (API 요청)</button>
+        <pre id="specResult">결과가 여기에 표시됩니다.</pre>
+    </div>
+
+    <!-- 3단계: 업무 배분 승인 및 알림 -->
+    <div class="card">
+        <h3>3. 업무 배분 승인 및 개별 사원 알림</h3>
+        <button onclick="approveTasks()">3-1. 팀장 승인 & 알림 전송 (API 요청)</button>
+        <pre id="taskResult">결과가 여기에 표시됩니다.</pre>
+    </div>
+
+    <script>
+        // Django 공식 CSRF 토큰 추출 함수
+        function getCookie(name) {
+            let cookieValue = null;
+            if (document.cookie && document.cookie !== '') {
+                const cookies = document.cookie.split(';');
+                for (let i = 0; i < cookies.length; i++) {
+                    const cookie = cookies[i].trim();
+                    if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                        cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                        break;
+                    }
+                }
+            }
+            return cookieValue;
+        }
+
+        // 1-1. 회의록 검토 완료 API 호출
+        async function reviewMeeting() {
+            const id = document.getElementById('meetingId').value;
+            const csrftoken = getCookie('csrftoken');
+
+            const res = await fetch(`/api/v1/meetings/${id}/review-complete/`, {
+                method: 'POST',
+                headers: { 
+                    'X-CSRFToken': csrftoken, 
+                    'Content-Type': 'application/json' 
+                },
+                credentials: 'same-origin' // 세션 쿠키 전달
+            });
+            const data = await res.json();
+            document.getElementById('meetingResult').innerText = JSON.stringify(data, null, 2);
+        }
+
+        // 2-1. 기획서 검토 완료 API 호출
+        async function reviewSpec() {
+            const id = document.getElementById('specId').value;
+            const csrftoken = getCookie('csrftoken');
+
+            const res = await fetch(`/api/v1/specs/${id}/review-complete/`, {
+                method: 'POST',
+                headers: { 
+                    'X-CSRFToken': csrftoken, 
+                    'Content-Type': 'application/json' 
+                },
+                credentials: 'same-origin'
+            });
+            const data = await res.json();
+            document.getElementById('specResult').innerText = JSON.stringify(data, null, 2);
+        }
+
+        // 3-1. 업무 배분 승인 API 호출
+        async function approveTasks() {
+            const csrftoken = getCookie('csrftoken');
+
+            const res = await fetch(`/api/v1/tasks/approve-all/`, {
+                method: 'POST',
+                headers: { 
+                    'X-CSRFToken': csrftoken, 
+                    'Content-Type': 'application/json' 
+                },
+                credentials: 'same-origin'
+            });
+            const data = await res.json();
+            document.getElementById('taskResult').innerText = JSON.stringify(data, null, 2);
+        }
+    </script>
+</body>
+</html>

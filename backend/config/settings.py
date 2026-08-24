@@ -42,7 +42,6 @@ INSTALLED_APPS = [
     'specs',
     'tasks',
     'drf_spectacular',
-    'corsheaders'
 ]
 
 MIDDLEWARE = [
@@ -53,7 +52,6 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
-    'corsheaders.middleware.CorsMiddleware',
 ]
 
 ROOT_URLCONF = 'config.urls'
@@ -123,22 +121,11 @@ USE_TZ = True
 
 STATIC_URL = 'static/'
 
-# Custom User Model 설정
 AUTH_USER_MODEL = 'users.User'
 
 REST_FRAMEWORK = {
-    # 1. API 문서화 설정 (drf-spectacular)
+    # DEFAULT_SCHEMA_CLASS를 drf-spectacular로 지정
     'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
-    
-    # 2. 사용자 인증 설정 (Simple JWT)
-    'DEFAULT_AUTHENTICATION_CLASSES': (
-        'rest_framework_simplejwt.authentication.JWTAuthentication',
-    ),
-    
-    # (선택) 기본 접근 권한 설정 (예: 인증된 사용자만 접근 가능)
-    'DEFAULT_PERMISSION_CLASSES': (
-        'rest_framework.permissions.IsAuthenticated',
-    ),
 }
 
 # Swagger UI에 표시될 기본 정보 설정
@@ -148,28 +135,3 @@ SPECTACULAR_SETTINGS = {
     'VERSION': '1.0.0',
     'SERVE_INCLUDE_SCHEMA': False,
 }
-
-# React, Vite 등 프론트엔드 개발 서버 주소 허용
-# 개발 모드에서 허용할 프론트엔드 도메인/포트 목록
-CORS_ALLOWED_ORIGINS = [
-"http://localhost:3000",   # React (Create React App, Next.js 등)
-"http://127.0.0.1:3000",
-"http://localhost:5173",   # Vite (React / Vue 등)
-"http://127.0.0.1:5173",
-"http://localhost:8080",   # Vue CLI 등
-]
-
-# 인증 정보(Cookie, Authorization 헤더 등)를 포함한 요청 허용
-CORS_ALLOW_CREDENTIALS = True
-
-CORS_ALLOW_HEADERS = [
-'accept',
-'accept-encoding',
-'authorization',
-'content-type',
-'dnt',
-'origin',
-'user-agent',
-'x-csrftoken',
-'x-requested-with',
-]

@@ -33,7 +33,6 @@ urlpatterns = [
     path('api/v1/', include('meetings.urls')),
     path('api/v1/', include('specs.urls')),
     path('api/v1/', include('tasks.urls')),
-    path('api/v1/auth/', include('users.urls')),
     
     # OpenAPI 스키마 파일 (json/yaml)
     path('api/v1/schema/', SpectacularAPIView.as_view(), name='schema'),
