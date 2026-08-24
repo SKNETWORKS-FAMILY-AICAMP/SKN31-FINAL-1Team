@@ -1,14 +1,33 @@
 # 단계별 상세 작업 내역 (Detailed Tasks)
 
 ### STEP 1: 초기 프로젝트 세팅 & 아키텍처 설정
-* **작업일 : 2026-07-31**
+* **작업일 : 2026-08-24**
 * **개발 환경 세팅**
-  * Python 가상환경(`venv`) 구성 및 필수 라이브러리 설치
+  * Python 가상환경(`venv`) 구성 및 라이브러리 설치
     ```
-    터미널에서 아래 코드를 순차적으로 실행
-    1) uv venv .venv --python=3.13
-    2) .venv\Scripts\activate
-    3) uv pip install -r requirements.txt
+    터미널을 관리자 권한으로 실행
+    1) wsl 설치 : wsl --install
+    2) wsl 버전 확인 : wsl -l -v
+    3) 우분투 접속 : wsl -d Ubuntu
+    4) 파이썬 가상환경 생성 도구 설치 :
+        `sudo apt update`  
+        `sudo apt install -y python3-venv python3-pip`
+    5) 프로젝트 생성(my-project) :
+        `mkdir ~/my-project
+    6) 생성한 프로젝트로 이동 :
+        `cd ~/my-project`
+    7) git clone :
+        `git clone https://github.com/SKNETWORKS-FAMILY-AICAMP/SKN31-FINAL-1Team.git`
+        `code .`
+    8) vscode 열리면 확장프로그램 python 설치
+    9) uv 패키지 매니저 설치  
+        `curl -Ls https://astral.sh/uv/install.sh | bash`  
+        `source ~/.bashrc`
+    10) 가상환경 설치 및 활성화  
+        `uv venv`  
+        `source .venv/bin/activate`
+    11) 필수라이브러리 설치
+        `uv pip install -r requirements.txt`
     ```
   * `django-admin startproject` 실행 및 App 단위 분리 (`users`, `chat`, `llm_core`)
 
@@ -16,8 +35,9 @@
     터미널에서 아래 코드를 순차적으로 실행
     1) django-admin startproject config .
     2) python manage.py startapp users
-    3) python manage.py startapp chat
-    4) python manage.py startapp llm_core 
+    3) python manage.py startapp meetings
+    4) python manage.py startapp specs
+    5) python manage.py startapp tasks
     ```
   * 앱을 만든 후에는 Django가 이 앱들을 인식할 수 있도록 config/settings.py 파일의 INSTALLED_APPS 목록에 등록
     ```
@@ -28,8 +48,9 @@
 
     # Local Apps (직접 만든 앱들)
     'users',
-    'chat',
-    'llm_core',
+    'meetings,
+    'specs',
+    'tasks',
     ```
   * 언어와 기준시 설정 : config/settings.py 파일
     ```
@@ -76,7 +97,7 @@
   * 산출물: `config/settings.py`, `.env.example`
 
 ---
-* **작업일 : 2026-08-03**
+* **작업일 : 2026-08-24**
 * **CORS & Security 설정**
   * `django-cors-headers` 설정으로 React 개발/운영 도메인 허용
   * CSRF 및 Security Middleware 점검
