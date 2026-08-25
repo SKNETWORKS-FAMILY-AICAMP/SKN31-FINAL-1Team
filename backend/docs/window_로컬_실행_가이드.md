@@ -7,29 +7,12 @@ uv venv .venv --python=3.13
 .venv\Scripts\activate
 uv pip install -r requirements.txt
 copy .env.example .env
+
+python -c "from django.core.management.utils import get_random_secret_key; print(get_random_secret_key())"
 ```
-2) env 파일 생성후 아래 내용 복사
+2) env 파일 생성후 값 채우기
 ```
-# 필수
 SECRET_KEY=change-me-to-a-long-random-string
-DEBUG=True
-
-# 배포 시 채웁니다 (콤마 구분)
-ALLOWED_HOSTS=localhost,127.0.0.1
-CORS_ALLOWED_ORIGINS=http://localhost:5173,http://127.0.0.1:5173
-CSRF_TRUSTED_ORIGINS = [
-    'http://localhost:5173',
-    'http://127.0.0.1:5173',
-    'http://localhost:8080',
-    'http://127.0.0.1:8080',
-    'http://localhost:8000',
-    'http://127.0.0.1:8000'
-]
-
-# DATABASE_URL=postgres://eden:PASSWORD@eden-db.xxxx.ap-northeast-2.rds.amazonaws.com:5432/eden
-DATABASE_URL=sqlite:///db.sqlite3
-
-# LLM
 OPENAI_API_KEY=<<본인 API key 입력>>
 ```
 3) DB 저장 `python manage.py migrate`
