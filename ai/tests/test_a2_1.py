@@ -12,15 +12,15 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from a2_1_requirement_draft.prompt_builder import build_system_prompt
-from a2_1_requirement_draft.schemas import PlanDocument, RequirementItem
+from requirement_draft.prompt_builder import build_system_prompt
+from requirement_draft.schemas import PlanDocument, RequirementItem
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
 
 @pytest.fixture
 def sample_plan() -> PlanDocument:
-    data = json.loads((FIXTURES / "sample_plan.json").read_text(encoding="utf-8"))
+    data = json.loads((FIXTURES / "sample_plan_test.json").read_text(encoding="utf-8"))
     return PlanDocument.model_validate(data)
 
 
