@@ -31,37 +31,54 @@ def normalize_password(value: str) -> str:
     return normalized
 
 
+# users/serializers.py
+
 class RegisterSerializer(serializers.ModelSerializer):
-    """회원가입 전용."""
+    """회원가입 전용 (user_id, username, password 모두 입력받음)"""
 
-    id = serializers.CharField(required=True, allow_blank=False, max_length=50)
-    username = serializers.CharField(required=True, allow_blank=False, max_length=50)
-
-    # write_only=True: 클라이언트 응답(JSON)에 비밀번호 노출을 방지함
+    # 💡 source='username'을 지정하면 응답 반환 시 User.username 속성 값을 읽어옵니다.
+    user_id = serializers.CharField(
+        source='username',
+        required=True,
+        allow_blank=False,
+        max_length=50
+    )
+    # DB의 first_name 속성으로 매핑하여 수신 및 반환
+    username = serializers.CharField(
+        source='first_name',
+        required=True,
+        allow_blank=False,
+        max_length=50
+    )
     password = serializers.CharField(write_only=True, min_length=8, max_length=255)
 
     class Meta:
         model = User
-        fields = ['id', 'username', 'password']
+        fields = ['user_id', 'username', 'password']
 
     def validate_password(self, value):
-        # 회원가입 시에도 normalize_password 함수 적용
         return normalize_password(value)
 
     def create(self, validated_data):
-        # create_user 메서드가 내부적으로 set_password()를 호출하여 해싱 저장함
+        # source 속성을 지정했으므로 validated_data 키가 'username', 'first_name'으로 자동 매핑됩니다.
         return User.objects.create_user(
-            id=validated_data['id'],
-            username=validated_data['username'],
+            username=validated_data['username'],      # user_id로 들어온 값
+            first_name=validated_data['first_name'],   # username으로 들어온 값
             password=validated_data['password'],
         )
 
 
 class UserSerializer(serializers.ModelSerializer):
-    """유저 정보 조회 전용."""
+    """유저 정보 조회 전용"""
+    
+    # DB의 username을 user_id라는 이름으로 읽어옴
+    user_id = serializers.CharField(source='username', read_only=True)
+    # DB의 first_name을 username이라는 이름으로 읽어옴
+    username = serializers.CharField(source='first_name', read_only=True)
+
     class Meta:
         model = User
-        fields = ['id', 'username', 'role', 'is_busy']
+        fields = ['id', 'user_id', 'username', 'role', 'is_busy'] # id: PK(숫자)
         read_only_fields = ['id']
 
 
