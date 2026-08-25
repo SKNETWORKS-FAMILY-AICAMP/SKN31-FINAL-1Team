@@ -20,6 +20,7 @@ urlpatterns = [
     path('api/v1/', include('meetings.urls')),
     path('api/v1/', include('specs.urls')),
     path('api/v1/', include('tasks.urls')),
+    path('api/v1/', include('users.urls')),
     
     # 4. OpenAPI 및 Swagger 문서 UI
     path('api/v1/schema/', SpectacularAPIView.as_view(), name='schema'),
