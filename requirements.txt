@@ -1,15 +1,14 @@
-
 # ===================================================================
-# SKN31-FINAL-1Team backend requirements.txt
+# SKN31-FINAL-1Team requirements.txt
 # Django + MySQL + AWS + Qdrant + OpenAI 기준
 # 팀 전체 동일 버전 유지 — 버전 임의 변경 금지, 변경 필요 시 PR로 논의
 # ===================================================================
  
 # ---- Web Framework ----
-Django==5.0.6
-djangorestframework==3.15.2          # REST API (Next.js 프론트와 JSON으로 통신)
-django-cors-headers==4.4.0           # Next.js(다른 origin)에서 API 호출 허용
-drf-spectacular==0.27.2              # OpenAPI/Swagger 문서 자동 생성 (프론트 팀 API 참고용)
+Django==6.0.7
+djangorestframework==3.18.0          # REST API (Next.js 프론트와 JSON으로 통신)
+django-cors-headers==4.9.0           # Next.js(다른 origin)에서 API 호출 허용
+drf-spectacular==0.30.0              # OpenAPI/Swagger 문서 자동 생성 (프론트 팀 API 참고용)
  
 # ---- Database ----
 mysqlclient==2.2.4                   # MySQL 연결 드라이버
@@ -17,7 +16,9 @@ mysqlclient==2.2.4                   # MySQL 연결 드라이버
 # PyMySQL==1.1.1
  
 # ---- 환경변수 관리 ----
+django-environ==0.14.0
 python-dotenv==1.2.3
+
 # ---- 비동기 작업 큐 / 캐시 ----
 celery==5.4.0
 redis==5.0.7
@@ -31,7 +32,7 @@ django-storages==1.14.4              # S3를 Django 파일 스토리지로 연�
 qdrant-client==1.10.1
  
 # ---- LLM / AI 파이프라인 ----
-openai==1.35.13
+openai==3.3.1
 langchain==0.2.11
 langchain-openai==0.1.17
 langgraph==0.1.16
@@ -102,7 +103,7 @@ yarl==1.24.5
 zstandard==0.25.0
  
 # ---- 인증 ----
-djangorestframework-simplejwt==5.3.1 # JWT 기반 로그인/세션
+djangorestframework-simplejwt==5.5.1 # JWT 기반 로그인/세션
  
 # ---- 운영 서버 ----
 gunicorn==22.0.0
