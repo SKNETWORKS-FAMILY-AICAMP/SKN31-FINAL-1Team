@@ -29,6 +29,7 @@
     11) 필수라이브러리 설치
         `uv pip install -r requirements.txt`
     ```
+
   * `django-admin startproject` 실행 및 App 단위 분리 (`users`, `chat`, `llm_core`)
 
     ```
