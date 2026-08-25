@@ -1,16 +1,15 @@
 # a2_2_task_generation/prompts/template.yaml
-# TODO(담당자2): 실제 few-shot 예시로 교체할 것
-
+# TODO(담당자): 실제 few-shot 예시로 교체할 것
 role: |
-  너는 승인된 요구사항정의서를 바탕으로 실행 가능한 세부 업무를 도출하는 어시스턴트다.
+  나는 주어진 요구사항정의서를 바탕으로 실행 가능한 팀 업무를 추출하는 어시스턴트다.
 
 constraints: |
   - 업무는 {min_tasks}개 이상 7개 이하로 생성하라. (min_tasks는 이번 프로젝트 참여인원 수)
-  - 요구사항정의서에 없는 업무를 임의로 추가하지 마라. 각 업무는 source_req_id로
-    어느 요구사항에서 파생됐는지 추적 가능해야 한다.
+  - 요구사항정의서에 없는 업무를 의도로 추가하지 마라. 각 업무는 source_req_id로
+    어느 요구사항에서 파생되는지 추적 가능해야 한다.
   - decomposition_principles(3원칙)를 모두 만족하지 못하면 더 잘게 쪼개라.
-  - difficulty_reason에는 왜 그 난이도인지 구체적인 근거를 적어라. "복잡함" 같은
-    추상적 표현 대신 어떤 요소 때문에 그런지 서술하라.
+  - difficulty_reason에는 왜 그 난이도인지 구체적인 근거를 써야 한다. "복잡함" 같은
+    추상적 표현 말고 어떤 요소 때문에 그런지 서술하라.
   - 출력은 JSON 외의 부가 설명을 포함하지 마라.
 
 few_shot_examples:
@@ -19,14 +18,47 @@ few_shot_examples:
       requirements:
         - id: "FR-01-001"
           name: "문서 업로드"
-          description: "예시 설명"
+          description: "사용자가 PDF, DOCX, XLSX 파일을 업로드할 수 있어야 한다."
     output:
       tasks:
         - task_id: "TASK-001"
-          title: "예시 업무명"
-          description: "예시 업무 설명"
+          epic_id: "EPIC-001"
+          epic_title: "문서 업로드 기능"
+          title: "파일 업로드 API 개발"
+          description: "multipart/form-data 방식의 파일 업로드 엔드포인트 구현"
           task_type: "development"
           estimated_hours: 8
           difficulty: "중"
-          difficulty_reason: "예시 근거"
+          difficulty_reason: "파일 스트리밍 처리와 S3 연동 로직이 포함되어 단순 CRUD보다 복잡도가 높음"
           source_req_id: "FR-01-001"
+          subtasks: []
+        - task_id: "TASK-002"
+          epic_id: "EPIC-001"
+          epic_title: "문서 업로드 기능"
+          title: "파일 형식 및 크기 유효성 검사"
+          description: "허용 MIME 타입(pdf/docx/xlsx) 및 10MB 크기 제한 검증 로직 구현"
+          task_type: "development"
+          estimated_hours: 4
+          difficulty: "하"
+          difficulty_reason: "명확한 조건(파일 형식 목록, 크기 상한)이 정의되어 있어 구현 범위가 한정적임"
+          source_req_id: "FR-01-001"
+          subtasks:
+            - subtask_id: "SUBTASK-002-1"
+              title: "허용 MIME 타입 상수 정의"
+              description: "pdf, docx, xlsx 허용 형식을 상수로 정의하고 단위 테스트 작성"
+              estimated_hours: 1
+            - subtask_id: "SUBTASK-002-2"
+              title: "파일 크기 초과 에러 처리"
+              description: "10MB 초과 시 400 Bad Request 응답 반환 로직 구현"
+              estimated_hours: 1
+        - task_id: "TASK-003"
+          epic_id: "EPIC-001"
+          epic_title: "문서 업로드 기능"
+          title: "업로드 기능 통합 테스트"
+          description: "정상 업로드, 형식 오류, 크기 초과 시나리오에 대한 통합 테스트 작성"
+          task_type: "testing"
+          estimated_hours: 4
+          difficulty: "하"
+          difficulty_reason: "시나리오가 명확하고 테스트 범위가 단일 엔드포인트로 한정됨"
+          source_req_id: "FR-01-001"
+          subtasks: []

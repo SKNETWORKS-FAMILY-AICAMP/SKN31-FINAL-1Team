@@ -50,6 +50,9 @@ def build_system_prompt(requirement_doc: Dict[str, Any], participant_count: int)
 {tt['decomposition_principles']}
 Depth: {tt['depth']}
 
+[계층/ID 규칙]
+{tt['hierarchy_rules']}
+
 [출력 예시]
 {_render_few_shots(t['few_shot_examples'])}
 

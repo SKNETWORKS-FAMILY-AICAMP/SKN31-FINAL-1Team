@@ -45,8 +45,8 @@ standard_categories:
     generation_mode: "baseline"
     trigger_hint: "로그인, 권한, 개인정보, 외부 API 키, 결제 언급 시 더 구체화"
     example:
-      name: "사용자 인증 및 접근 권한 제어"
-      description: "인증된 사용자만 시스템 기능에 접근할 수 있으며, 역할(관리자/일반 사용자 등)에 따라 기능 및 데이터 접근 권한을 다르게 제어해야 한다."
+      name: "비밀번호 암호화 정책"
+      description: "모든 패스워드는 SHA-256 이상으로 암호화해야 한다."
 
   - id: "reliability"
     name_kr: "신뢰성"

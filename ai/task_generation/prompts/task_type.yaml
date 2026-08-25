@@ -1,6 +1,5 @@
 # a2_2_task_generation/prompts/task_type.yaml
-# 업무유형 6종 초안 — 3차 멘토링 액션아이템 반영
-# TODO(담당자2): 팀 검토 후 확정할 것
+
 
 task_types:
   - id: "requirement_analysis"
@@ -17,9 +16,23 @@ task_types:
     name_kr: "문서화"
 
 decomposition_principles: |
-  각 업무는 아래 3원칙을 모두 만족해야 한다. 하나라도 아니면 더 쪼갤 것.
+  아래 3원칙은 최하위 노드(Task 또는 Subtask)에 적용된다. 하나라도 만족하지 못하면
+  Task를 더 쪼개 Subtask를 만들 것. 원칙을 이미 만족하면 Subtask는 만들지 않는다.
   1. 담당자 1인에게 배정 가능하다.
   2. 완료조건을 한 문장으로 표현할 수 있다.
   3. 산출물이 하나로 특정된다.
 
-depth: "2-depth (Epic -> Task). Sub-task는 두지 않는다."
+depth: |
+  3-depth 구조: Epic -> Task -> Subtask
+  - Epic: 요구사항(FR) 단위의 업무 묶음. source_req_id 1개당 Epic 1개.
+  - Task: FR-05-014의 업무 개수 기준(3개 이상 7개 이하, 참여인원 수 이상)이 적용되는
+    실제 카운트 대상. 프로젝트 전체 기준이며 Epic별로 별도 적용하지 않는다.
+  - Subtask: Task가 decomposition_principles를 만족하지 못할 때만 생성. 참여인원 수와
+    무관하며, Task 1개당 최대 5개까지만 허용한다.
+
+hierarchy_rules: |
+  - epic_id: "EPIC-{순번}" 형식 (예: EPIC-001). source_req_id 1개당 1개 생성.
+  - task_id: "TASK-{순번}" 형식 (예: TASK-001). 소속 Epic을 epic_id 필드로 명시.
+  - subtask_id: "SUBTASK-{task순번}-{하위순번}" 형식 (예: SUBTASK-001-1).
+  - 3원칙을 이미 만족하는 Task는 subtasks를 빈 리스트([])로 둔다.
+  - Epic은 별도 배열 없이 TaskItem 내 epic_id/epic_title 필드로 표현한다.
