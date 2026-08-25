@@ -1,0 +1,11 @@
+{
+  "project_id": "PJT-001",
+  "meeting_id": "MTG-2026-08-25-01",
+  "title": "AI 업무 협업 통합 에이전트",
+  "goal": "회의 내용을 자동으로 문서화하고 업무를 배분한다",
+  "requirements": [
+    {"req_id": "REQ-01", "content": "회의록을 AI가 분석해 주제·결정사항·액션아이템으로 구조화한다"},
+    {"req_id": "REQ-02", "content": "관리자만 직원 정보를 수정할 수 있고 일반 팀원은 조회만 가능하다"}
+  ],
+  "pipeline_stage": "기획서_검토대기"
+}

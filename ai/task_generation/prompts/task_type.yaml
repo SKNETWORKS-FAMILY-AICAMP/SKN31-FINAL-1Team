@@ -1,0 +1,25 @@
+# a2_2_task_generation/prompts/task_type.yaml
+# 업무유형 6종 초안 — 3차 멘토링 액션아이템 반영
+# TODO(담당자2): 팀 검토 후 확정할 것
+
+task_types:
+  - id: "requirement_analysis"
+    name_kr: "요구사항분석"
+  - id: "design"
+    name_kr: "설계"
+  - id: "development"
+    name_kr: "개발"
+  - id: "testing"
+    name_kr: "테스트"
+  - id: "deployment_ops"
+    name_kr: "배포운영"
+  - id: "documentation"
+    name_kr: "문서화"
+
+decomposition_principles: |
+  각 업무는 아래 3원칙을 모두 만족해야 한다. 하나라도 아니면 더 쪼갤 것.
+  1. 담당자 1인에게 배정 가능하다.
+  2. 완료조건을 한 문장으로 표현할 수 있다.
+  3. 산출물이 하나로 특정된다.
+
+depth: "2-depth (Epic -> Task). Sub-task는 두지 않는다."
