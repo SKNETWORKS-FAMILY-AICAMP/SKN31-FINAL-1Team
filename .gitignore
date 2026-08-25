@@ -21,3 +21,4 @@ data/raw/
 .terraform/
 *.tfstate
 *.tfstate.backup
+*:Zone.Identifier
