@@ -49,6 +49,8 @@
     * users/serializers.py 작성 (회원가입 및 유저 정보 직렬화):
       * 회원가입용 RegisterSerializer 작성 (비밀번호 해싱 처리)
       * 유저 정보 조회용 UserSerializer 작성
+      * 비밀번호 수정용 UserUpdateSerializer 작성
+      
     * users/views.py 작성 (회원가입, 내 정보 조회 뷰 구현):
     * users/urls.py 생성 및 작성 (인증 관련 라우팅 설정)
       * SimpleJWT 제공 뷰 연동 (TokenObtainPairView, TokenRefreshView)
@@ -58,7 +60,7 @@
       `path('api/v1/auth/', include('users.urls')),` 추가
   * 서버 연결 확인해보기
     * 터미널에서 `python manage.py runserver` 명령어를 실행
-    * 웹에서 `http://127.0.0.1:8000/api/v1/auth/register/` 접속해서 화면가입 API 화면 확인해보기
+    * 웹에서 `http://127.0.0.1:8000/api/v1/users/` 접속해서 화면가입 API 화면 확인해보기
     * DRF(Django REST Framework)의 Browsable API 기능 덕분에 브라우저 상에 JSON 데이터를 보낼 수 있는 폼(Form) 인터페이스가 나타납니다
 * **인가(Permission) 설정**
   * `AllowAny`: 회원가입, 로그인, 토큰 재발급 엔드포인트 적용

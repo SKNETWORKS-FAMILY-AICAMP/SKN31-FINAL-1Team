@@ -30,6 +30,7 @@ urlpatterns = [
     path('test-dashboard/', main_outlook, name='main-outlook'), # 웹 테스트 화면 URL
     
     # API 라우터 포함
+    path('api/v1/', include('users.urls')),
     path('api/v1/', include('meetings.urls')),
     path('api/v1/', include('specs.urls')),
     path('api/v1/', include('tasks.urls')),

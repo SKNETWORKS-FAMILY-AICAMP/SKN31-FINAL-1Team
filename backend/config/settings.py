@@ -9,21 +9,28 @@ https://docs.djangoproject.com/en/6.0/topics/settings/
 For the full list of settings and their values, see
 https://docs.djangoproject.com/en/6.0/ref/settings/
 """
-
+import os
+import environ
 from pathlib import Path
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
+# --- env 설정 추가 ---
+env = environ.Env(
+    DEBUG=(bool, False)
+)
+environ.Env.read_env(os.path.join(BASE_DIR, '.env'))
+# ----------------------
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/6.0/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-4rsnfv12hqy87i_336#dnj#@x5*8p^9avdhzcavh)pa3*@k#&^'
+SECRET_KEY = env('SECRET_KEY')
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = env('DEBUG', default=True)
 
 ALLOWED_HOSTS = []
 
@@ -37,11 +44,17 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    
+    # Third Party 패키지
+    'rest_framework',
+    'corsheaders',
+    'drf_spectacular',
+
+    # Local Apps (직접 만든 앱들)
     'users',
     'meetings',
     'specs',
     'tasks',
-    'drf_spectacular',
 ]
 
 MIDDLEWARE = [
@@ -77,11 +90,15 @@ WSGI_APPLICATION = 'config.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/6.0/ref/settings/#databases
 
+# DATABASES = {
+#     'default': {
+#         'ENGINE': 'django.db.backends.sqlite3',
+#         'NAME': BASE_DIR / 'db.sqlite3',
+#     }
+# }
+
 DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
-    }
+'default': env.db('DATABASE_URL')
 }
 
 
@@ -124,8 +141,18 @@ STATIC_URL = 'static/'
 AUTH_USER_MODEL = 'users.User'
 
 REST_FRAMEWORK = {
-    # DEFAULT_SCHEMA_CLASS를 drf-spectacular로 지정
-    'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
+# 1. API 문서화 설정 (drf-spectacular)
+'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
+
+# 2. 사용자 인증 설정 (Simple JWT)
+'DEFAULT_AUTHENTICATION_CLASSES': (
+    'rest_framework_simplejwt.authentication.JWTAuthentication',
+),
+
+# (선택) 기본 접근 권한 설정 (예: 인증된 사용자만 접근 가능)
+'DEFAULT_PERMISSION_CLASSES': (
+    'rest_framework.permissions.IsAuthenticated',
+),
 }
 
 # Swagger UI에 표시될 기본 정보 설정
@@ -135,3 +162,28 @@ SPECTACULAR_SETTINGS = {
     'VERSION': '1.0.0',
     'SERVE_INCLUDE_SCHEMA': False,
 }
+
+# React, Vite 등 프론트엔드 개발 서버 주소 허용
+# 개발 모드에서 허용할 프론트엔드 도메인/포트 목록
+CORS_ALLOWED_ORIGINS = [
+"http://localhost:3000",   # React (Create React App, Next.js 등)
+"http://127.0.0.1:3000",
+"http://localhost:5173",   # Vite (React / Vue 등)
+"http://127.0.0.1:5173",
+"http://localhost:8080",   # Vue CLI 등
+]
+
+# 인증 정보(Cookie, Authorization 헤더 등)를 포함한 요청 허용
+CORS_ALLOW_CREDENTIALS = True
+
+CORS_ALLOW_HEADERS = [
+'accept',
+'accept-encoding',
+'authorization',
+'content-type',
+'dnt',
+'origin',
+'user-agent',
+'x-csrftoken',
+'x-requested-with',
+]
