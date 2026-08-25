@@ -1,5 +1,7 @@
 <!DOCTYPE html>
+
 <html lang="ko">
+    
 <head>
     <meta charset="UTF-8">
     <title>개발부서 업무 대시보드 테스트</title>
@@ -14,6 +16,13 @@
 <body>
 
     <h2>🛠️ 개발부서 팀장 업무 대시보드 API 테스트</h2>
+    <!-- 검토 초기화 -->
+    <div class="card" style="background-color: #fff3cd; border: 1px solid #ffeeba;">
+        <h3>🔄 테스트 데이터 초기화</h3>
+        <p>회의록/기획서 상태를 초기화하고 사원들의 is_busy 상태를 False로 되돌립니다.</p>
+        <button onclick="resetData()" style="background-color: #dc3545;">데이터 전체 초기화</button>
+        <pre id="resetResult">초기화 상태가 여기에 표시됩니다.</pre>
+    </div>
 
     <!-- 1단계: 회의록 작성 및 검토 -->
     <div class="card">
@@ -39,71 +48,136 @@
     </div>
 
     <script>
-        // Django 공식 CSRF 토큰 추출 함수
-        function getCookie(name) {
-            let cookieValue = null;
-            if (document.cookie && document.cookie !== '') {
-                const cookies = document.cookie.split(';');
-                for (let i = 0; i < cookies.length; i++) {
-                    const cookie = cookies[i].trim();
-                    if (cookie.substring(0, name.length + 1) === (name + '=')) {
-                        cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
-                        break;
-                    }
+    // Django 공식 CSRF 토큰 추출 함수
+    function getCookie(name) {
+        let cookieValue = null;
+        if (document.cookie && document.cookie !== '') {
+            const cookies = document.cookie.split(';');
+            for (let i = 0; i < cookies.length; i++) {
+                const cookie = cookies[i].trim();
+                if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                    cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                    break;
                 }
             }
-            return cookieValue;
+        }
+        return cookieValue;
+    }
+
+    // 0. 테스트 데이터 전체 초기화 (수정됨)
+    async function resetData() {
+    const resetResult = document.getElementById('resetResult');
+    try {
+        const csrftoken = getCookie('csrftoken');
+        const res = await fetch('/api/v1/reset-test-data/', {
+            method: 'POST',
+            headers: { 
+                'X-CSRFToken': csrftoken || '', 
+                'Content-Type': 'application/json' 
+            },
+            credentials: 'same-origin'
+        });
+
+        if (!res.ok) {
+            const errorText = await res.text();
+            throw new Error(`HTTP ${res.status}: ${errorText}`);
         }
 
-        // 1-1. 회의록 검토 완료 API 호출
-        async function reviewMeeting() {
+        const data = await res.json();
+        resetResult.innerText = JSON.stringify(data, null, 2);
+
+        // ----------------------------------------------------
+        // 🛠️ 대시보드 화면 UI 및 입력창 초기화 로직 추가
+        // ----------------------------------------------------
+        document.getElementById('meetingId').value = "1";
+        document.getElementById('specId').value = "1";
+
+        document.getElementById('meetingResult').innerText = "결과가 여기에 표시됩니다.";
+        document.getElementById('specResult').innerText = "결과가 여기에 표시됩니다.";
+        document.getElementById('taskResult').innerText = "결과가 여기에 표시됩니다.";
+
+    } catch (err) {
+        console.error("초기화 에러:", err);
+        resetResult.innerText = `❌ 에러 발생:\n${err.message}`;
+    }
+}
+
+    // 1-1. 회의록 검토 완료 API 호출
+    async function reviewMeeting() {
+        const meetingResult = document.getElementById('meetingResult');
+        try {
             const id = document.getElementById('meetingId').value;
             const csrftoken = getCookie('csrftoken');
 
             const res = await fetch(`/api/v1/meetings/${id}/review-complete/`, {
                 method: 'POST',
                 headers: { 
-                    'X-CSRFToken': csrftoken, 
+                    'X-CSRFToken': csrftoken || '', 
                     'Content-Type': 'application/json' 
                 },
-                credentials: 'same-origin' // 세션 쿠키 전달
+                credentials: 'same-origin',
+                // 💡 만약 백엔드에서 reviewer 나 comment 등을 요구한다면 body에 추가해야 합니다.
+                body: JSON.stringify({
+                    // comment: "검토 완료함" 
+                })
             });
-            const data = await res.json();
-            document.getElementById('meetingResult').innerText = JSON.stringify(data, null, 2);
-        }
 
-        // 2-1. 기획서 검토 완료 API 호출
-        async function reviewSpec() {
+            const data = await res.json();
+            
+            if (!res.ok) {
+                // 400 에러 시 DRF가 보내주는 상세 검증 에러 출력
+                meetingResult.innerText = `❌ 요청 실패 (HTTP ${res.status}):\n` + JSON.stringify(data, null, 2);
+                return;
+            }
+
+            meetingResult.innerText = JSON.stringify(data, null, 2);
+        } catch (err) {
+            meetingResult.innerText = `❌ 에러 발생: ${err.message}`;
+        }
+    }
+
+    // 2-1. 기획서 검토 완료 API 호출
+    async function reviewSpec() {
+        const specResult = document.getElementById('specResult');
+        try {
             const id = document.getElementById('specId').value;
             const csrftoken = getCookie('csrftoken');
 
             const res = await fetch(`/api/v1/specs/${id}/review-complete/`, {
                 method: 'POST',
                 headers: { 
-                    'X-CSRFToken': csrftoken, 
+                    'X-CSRFToken': csrftoken || '', 
                     'Content-Type': 'application/json' 
                 },
                 credentials: 'same-origin'
             });
             const data = await res.json();
-            document.getElementById('specResult').innerText = JSON.stringify(data, null, 2);
+            specResult.innerText = JSON.stringify(data, null, 2);
+        } catch (err) {
+            specResult.innerText = `❌ 에러 발생: ${err.message}`;
         }
+    }
 
-        // 3-1. 업무 배분 승인 API 호출
-        async function approveTasks() {
+    // 3-1. 업무 배분 승인 API 호출
+    async function approveTasks() {
+        const taskResult = document.getElementById('taskResult');
+        try {
             const csrftoken = getCookie('csrftoken');
 
             const res = await fetch(`/api/v1/tasks/approve-all/`, {
                 method: 'POST',
                 headers: { 
-                    'X-CSRFToken': csrftoken, 
+                    'X-CSRFToken': csrftoken || '', 
                     'Content-Type': 'application/json' 
                 },
                 credentials: 'same-origin'
             });
             const data = await res.json();
-            document.getElementById('taskResult').innerText = JSON.stringify(data, null, 2);
+            taskResult.innerText = JSON.stringify(data, null, 2);
+        } catch (err) {
+            taskResult.innerText = `❌ 에러 발생: ${err.message}`;
         }
+    }
     </script>
 </body>
 </html>

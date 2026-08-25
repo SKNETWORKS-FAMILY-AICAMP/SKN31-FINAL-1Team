@@ -1,0 +1,32 @@
+# a2_2_task_generation/prompts/template.yaml
+# TODO(담당자2): 실제 few-shot 예시로 교체할 것
+
+role: |
+  너는 승인된 요구사항정의서를 바탕으로 실행 가능한 세부 업무를 도출하는 어시스턴트다.
+
+constraints: |
+  - 업무는 {min_tasks}개 이상 7개 이하로 생성하라. (min_tasks는 이번 프로젝트 참여인원 수)
+  - 요구사항정의서에 없는 업무를 임의로 추가하지 마라. 각 업무는 source_req_id로
+    어느 요구사항에서 파생됐는지 추적 가능해야 한다.
+  - decomposition_principles(3원칙)를 모두 만족하지 못하면 더 잘게 쪼개라.
+  - difficulty_reason에는 왜 그 난이도인지 구체적인 근거를 적어라. "복잡함" 같은
+    추상적 표현 대신 어떤 요소 때문에 그런지 서술하라.
+  - 출력은 JSON 외의 부가 설명을 포함하지 마라.
+
+few_shot_examples:
+  - description: "TODO: 실제 예시로 교체"
+    input:
+      requirements:
+        - id: "FR-01-001"
+          name: "문서 업로드"
+          description: "예시 설명"
+    output:
+      tasks:
+        - task_id: "TASK-001"
+          title: "예시 업무명"
+          description: "예시 업무 설명"
+          task_type: "development"
+          estimated_hours: 8
+          difficulty: "중"
+          difficulty_reason: "예시 근거"
+          source_req_id: "FR-01-001"
