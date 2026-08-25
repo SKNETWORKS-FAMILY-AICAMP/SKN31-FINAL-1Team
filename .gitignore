@@ -22,3 +22,5 @@ data/raw/
 *.tfstate
 *.tfstate.backup
 *:Zone.Identifier
+db.sqlite3
+*.sqlite3
