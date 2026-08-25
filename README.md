@@ -64,3 +64,7 @@
 
 4. 원격 브랜치 삭제
 `git push origin --delete <브랜치명>`
+
+## 3. requirement.txt lib 버전 동일하게 설치
+`uv venv`
+`uv pip install -r requirements.txt`
