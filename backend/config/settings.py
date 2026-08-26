@@ -51,10 +51,12 @@ INSTALLED_APPS = [
     'drf_spectacular',
 
     # Local Apps (직접 만든 앱들)
+    'common',
     'users',
     'meetings',
-    'specs',
     'tasks',
+    'projects',
+    'requirements',
 ]
 
 MIDDLEWARE = [
@@ -158,10 +160,16 @@ REST_FRAMEWORK = {
 
 # Swagger UI에 표시될 기본 정보 설정
 SPECTACULAR_SETTINGS = {
-    'TITLE': '개발부서 팀장 업무 대시보드 API Document',
-    'DESCRIPTION': '회의록 - 기획서 - 업무 배분 자동화 파이프라인 API 명세서입니다.',
+    'TITLE': '프로젝트 관리 시스템 API 명세서',
+    'DESCRIPTION': '회의록, 기획서, 요구사항 정의, 업무 배정 파이프라인 관리 API',
     'VERSION': '1.0.0',
     'SERVE_INCLUDE_SCHEMA': False,
+    # Swagger UI 최적화 설정
+    'SWAGGER_UI_SETTINGS': {
+        'deepLinking': True,
+        'persistAuthorization': True,  # 새로고침해도 인증 토큰 유지
+        'displayOperationId': True,
+    },
 }
 
 # React, Vite 등 프론트엔드 개발 서버 주소 허용

@@ -1,29 +1,30 @@
 # config/urls.py
+
 from django.contrib import admin
 from django.urls import path, include
 from drf_spectacular.views import (
-    SpectacularAPIView, 
-    SpectacularRedocView, 
-    SpectacularSwaggerView
+    SpectacularAPIView,
+    SpectacularRedocView,
+    SpectacularSwaggerView,
 )
-from config.views import main_outlook, reset_test_data
 
 urlpatterns = [
-    # 1. Django Admin
     path('admin/', admin.site.urls),
+
+    # OpenAPI 3.0 Schema 파일 (JSON/YAML)
+    path('api/schema/', SpectacularAPIView.as_view(), name='schema'),
     
-    # 2. 웹 테스트 화면 및 데이터 초기화 API
-    path('test-dashboard/', main_outlook, name='main-outlook'),
-    path('api/v1/reset-test-data/', reset_test_data, name='reset-data'),
+    # Swagger UI 문서
+    path('api/docs/swagger/', SpectacularSwaggerView.as_view(url_name='schema'), name='swagger-ui'),
     
-    # 3. 앱별 API 라우터 포함
-    path('api/v1/', include('meetings.urls')),
-    path('api/v1/', include('specs.urls')),
-    path('api/v1/', include('tasks.urls')),
-    path('api/v1/', include('users.urls')),
-    
-    # 4. OpenAPI 및 Swagger 문서 UI
-    path('api/v1/schema/', SpectacularAPIView.as_view(), name='schema'),
-    path('api/v1/swagger/', SpectacularSwaggerView.as_view(url_name='schema'), name='swagger-ui'),
-    path('api/v1/redoc/', SpectacularRedocView.as_view(url_name='schema'), name='redoc'),
+    # Redoc 문서
+    path('api/docs/redoc/', SpectacularRedocView.as_view(url_name='schema'), name='redoc'),
+
+    # 앱별 API 엔드포인트
+    path('api/common/', include('common.urls')),
+    path('api/users/', include('users.urls')),
+    path('api/projects/', include('projects.urls')),
+    path('api/meetings/', include('meetings.urls')),
+    path('api/requirements/', include('requirements.urls')),
+    path('api/tasks/', include('tasks.urls')),
 ]

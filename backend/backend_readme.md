@@ -205,9 +205,30 @@ flowchart TB
 4. **알림 전송 타겟팅 및 큐 활용 (Notification Queue)**
    * 최종 승인 이벤트 발생 시 개별 사원 ID 기반으로 알림(Slack / Email / Web Push)이 누락 없이 전송되도록 비동기 메시지 큐 구조를 적용합니다.
 ---
-
-## 5. 테이블 현황 (Mermaid ERD)
-
+## 5. App 구조 및 테이블 현황
+1) App 구조
+```text
+my_project/
+ ├── common/                <-- [App 1]공통 코드 (CommonCodeGroup, CommonCode)
+ ├── users/                 <-- [App 2]사용자 및 팀원 관리 (User, UserSkill, UserCertification)
+ │
+ ├── projects/              <-- [App 3]프로젝트 메인 & 파이프라인 통합 이력 관리
+ │    └── models.py         - Project (프로젝트)
+ │                          - PipelineHistory (파이프라인 전체 이력 로그)
+ │
+ ├── meetings/              <-- [App 4]회의록 & 기획서
+ │    └── models.py         - MeetingNote (회의록)
+ │                          - SpecDocument (기획서 / Proposal)
+ │
+ ├── requirements/          <-- [App 5]요구사항 정의서
+ │    └── models.py         - RequirementDefinition (요구사항 정의서)
+ │                          - RequirementItem (요구사항 상세 항목)
+ │
+ └── tasks/                 <-- [App 6]업무 자동 배정 및 진행
+      └── models.py         - TaskAssignment (배정된 업무)
+```
+---
+2. 테이블 현황
 ```mermaid
 erDiagram
     %% 1. User Entity (users app)
