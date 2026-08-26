@@ -1,21 +1,31 @@
 from django.shortcuts import render
-
 from django.db import transaction
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 
+from drf_spectacular.utils import extend_schema, extend_schema_view  # 추가된 부분
+
 from .models import TaskAssignment
 from .serializers import TaskAssignmentSerializer
 from .notifications import send_task_assignment_notification
 
 
+@extend_schema_view(
+    list=extend_schema(summary="업무 배정 목록 조회"),
+    create=extend_schema(summary="업무 배정 생성"),
+    retrieve=extend_schema(summary="업무 배정 상세 조회"),
+    update=extend_schema(summary="업무 배정 전체 수정"),
+    partial_update=extend_schema(summary="업무 배정 부분 수정"),
+    destroy=extend_schema(summary="업무 배정 삭제"),
+)
 class TaskAssignmentViewSet(viewsets.ModelViewSet):
     queryset = TaskAssignment.objects.all().order_by('-created_at')
     serializer_class = TaskAssignmentSerializer
     permission_classes = [IsAuthenticated]
 
+    @extend_schema(summary="승인 대기 업무 배정 목록 조회")
     @action(detail=False, methods=['get'], url_path='pending')
     def pending_assignments(self, request):
         """
@@ -25,6 +35,7 @@ class TaskAssignmentViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(pending_tasks, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
 
+    @extend_schema(summary="업무 배정 최종 승인 및 사원 알림 전송")
     @action(detail=False, methods=['post'], url_path='approve-all')
     def approve_and_notify(self, request):
         """

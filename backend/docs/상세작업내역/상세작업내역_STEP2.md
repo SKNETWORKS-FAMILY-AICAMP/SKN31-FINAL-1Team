@@ -43,7 +43,7 @@
     ```
     
   * Access Token (단기) & Refresh Token (장기) 발급 및 재발급 엔드포인트 구현
-  * 주요 엔드포인트: `/api/v1/auth/login/`, `/api/v1/auth/refresh/`
+  * 주요 엔드포인트: `/api/v1/users/access/`, `/api/v1/users/refresh/`
 
   * -> 실제 프론트엔드나 Postman에서 호출할 회원가입/로그인 뷰(View) 및 URL 연결
     * users/serializers.py 작성 (회원가입 및 유저 정보 직렬화):
@@ -54,8 +54,8 @@
     * users/views.py 작성 (회원가입, 내 정보 조회 뷰 구현):
     * users/urls.py 생성 및 작성 (인증 관련 라우팅 설정)
       * SimpleJWT 제공 뷰 연동 (TokenObtainPairView, TokenRefreshView)
-      * 회원가입 API endpoint (/api/v1/auth/register/)
-      * 내 정보 조회 API endpoint (/api/v1/auth/me/)
+      * 회원가입 API endpoint (/api/v1/users/register/)
+      * 내 정보 조회 API endpoint (/api/v1/users/me/)
     * config/urls.py 연결  
       `path('api/v1/auth/', include('users.urls')),` 추가
   * 서버 연결 확인해보기
@@ -64,7 +64,7 @@
     * DRF(Django REST Framework)의 Browsable API 기능 덕분에 브라우저 상에 JSON 데이터를 보낼 수 있는 폼(Form) 인터페이스가 나타납니다
 * **인가(Permission) 설정**
   * `AllowAny`: 회원가입, 로그인, 토큰 재발급 엔드포인트 적용
-  * `IsAuthenticated`: 내 정보 조회(`/api/v1/auth/me/`) API에 적용하여 비인가 접근 차단 -> 로그인된 유저만 챗봇 기능에 접근하도록 제한
+  * `IsAuthenticated`: 내 정보 조회(`/api/v1/users/me/`) API에 적용하여 비인가 접근 차단 -> 로그인된 유저만 챗봇 기능에 접근하도록 제한
 
   * **적용된 인가(Permission) 설정 내역**
     1) **로그인 불필요 (누구나 접근 가능 - `AllowAny`)**:

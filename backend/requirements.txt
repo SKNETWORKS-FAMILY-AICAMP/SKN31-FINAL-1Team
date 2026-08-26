@@ -18,3 +18,7 @@ openai==3.3.1
 
 # ---- JWT 기반 인증 ----
 djangorestframework-simplejwt==5.5.1
+
+# ---- Pandas ----
+et-xmlfile==2.0.0
+openpyxl==3.1.5
