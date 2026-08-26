@@ -1,91 +1,210 @@
-from django.shortcuts import render
-from django.db import transaction
-from rest_framework import status, viewsets
-from rest_framework.decorators import action
+#tasks/views.py
+from rest_framework import generics, status, permissions
 from rest_framework.response import Response
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.views import APIView
+from django.shortcuts import get_object_or_404
+from django.contrib.auth import get_user_model
+from drf_spectacular.utils import (
+    extend_schema,
+    extend_schema_view,
+    OpenApiParameter,
+    OpenApiTypes,
+    OpenApiResponse,
+)
 
-from drf_spectacular.utils import extend_schema, extend_schema_view  # 추가된 부분
+from tasks.models import TaskAssignment
+from tasks.serializers import (
+    TaskAssignmentSerializer,
+    TaskAssignmentCreateSerializer,
+    TaskStatusUpdateSerializer,
+)
+from requirements.models import RequirementItem
+from projects.models import PipelineHistory, Project
 
-from .models import TaskAssignment
-from .serializers import TaskAssignmentSerializer
-from .notifications import send_task_assignment_notification
+User = get_user_model()
 
 
 @extend_schema_view(
-    list=extend_schema(summary="업무 배정 목록 조회"),
-    create=extend_schema(summary="업무 배정 생성"),
-    retrieve=extend_schema(summary="업무 배정 상세 조회"),
-    update=extend_schema(summary="업무 배정 전체 수정"),
-    partial_update=extend_schema(summary="업무 배정 부분 수정"),
-    destroy=extend_schema(summary="업무 배정 삭제"),
+    get=extend_schema(
+        tags=['3단계 - 업무 배정'],
+        summary='배정 업무 목록 조회',
+        description='등록된 전체 배정 업무 목록을 조회합니다.',
+        responses={200: TaskAssignmentSerializer(many=True)}
+    ),
+    post=extend_schema(
+        tags=['3단계 - 업무 배정'],
+        summary='업무 수동 배정',
+        description='요구사항 항목에 대해 특정 개발자에게 업무를 수동으로 배정합니다.',
+        request=TaskAssignmentCreateSerializer,
+        responses={201: TaskAssignmentCreateSerializer}
+    )
 )
-class TaskAssignmentViewSet(viewsets.ModelViewSet):
-    queryset = TaskAssignment.objects.all().order_by('-created_at')
+class TaskAssignmentListCreateView(generics.ListCreateAPIView):
+    """
+    배정 업무 목록 조회 및 수동 생성 API
+    GET/POST /api/tasks/assignments/
+    """
+    queryset = TaskAssignment.objects.all()
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_serializer_class(self):
+        if self.request.method == 'POST':
+            return TaskAssignmentCreateSerializer
+        return TaskAssignmentSerializer
+
+
+@extend_schema_view(
+    get=extend_schema(
+        tags=['3단계 - 업무 배정'],
+        summary='배정 업무 상세 조회',
+        description='특정 배정 업무의 상세 정보를 조회합니다.',
+        responses={200: TaskAssignmentSerializer}
+    ),
+    put=extend_schema(
+        tags=['3단계 - 업무 배정'],
+        summary='배정 업무 전체 수정',
+        description='특정 배정 업무의 전체 정보를 수정합니다.',
+        responses={200: TaskAssignmentSerializer}
+    ),
+    patch=extend_schema(
+        tags=['3단계 - 업무 배정'],
+        summary='배정 업무 부분 수정',
+        description='특정 배정 업무의 일부 정보를 수정합니다.',
+        responses={200: TaskAssignmentSerializer}
+    ),
+    delete=extend_schema(
+        tags=['3단계 - 업무 배정'],
+        summary='배정 업무 삭제',
+        description='특정 배정 업무를 삭제합니다.',
+        responses={204: None}
+    )
+)
+class TaskAssignmentDetailView(generics.RetrieveUpdateDestroyAPIView):
+    """
+    배정 업무 상세 조회 / 수정 / 삭제 API
+    GET/PUT/PATCH/DELETE /api/tasks/assignments/{id}/
+    """
+    queryset = TaskAssignment.objects.all()
     serializer_class = TaskAssignmentSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [permissions.IsAuthenticated]
 
-    @extend_schema(summary="승인 대기 업무 배정 목록 조회")
-    @action(detail=False, methods=['get'], url_path='pending')
-    def pending_assignments(self, request):
-        """
-        승인 대기(PENDING_APPROVAL) 중인 업무 배정 목록 조회
-        """
-        pending_tasks = self.queryset.filter(status=TaskAssignment.Status.PENDING_APPROVAL)
-        serializer = self.get_serializer(pending_tasks, many=True)
-        return Response(serializer.data, status=status.HTTP_200_OK)
 
-    @extend_schema(summary="업무 배정 최종 승인 및 사원 알림 전송")
-    @action(detail=False, methods=['post'], url_path='approve-all')
-    def approve_and_notify(self, request):
-        """
-        3-1. 업무 배분 검토 (팀장 승인 버튼 > 개별 사원 알림 API)
-        - 선택된(또는 대기 중인) 업무 배분안을 최종 승인(APPROVED) 처리
-        - 배정된 사원들의 상태를 is_busy = True로 업데이트
-        - 각 사원에게 개별 알림 전송
-        """
-        # 요청 바디에서 승인할 task_ids 목록을 받거나, 전체 대기 항목을 승인 처리
-        task_ids = request.data.get('task_ids', [])
+class AutoTaskAssignView(APIView):
+    """
+    개발자 작업 상태(is_busy) 및 스킬 기반 업무 AI 자동 배정 API
+    POST /api/tasks/auto-assign/
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    @extend_schema(
+        tags=['3단계 - 업무 배정'],
+        summary='업무 AI 자동 배정',
+        description='요구사항 항목(`req_item_id`)을 확인하여 가용한 개발자(`is_busy=False`)에게 업무를 자동 배정합니다. 배정 시 해당 개발자의 `is_busy` 상태가 `True`로 변경되며, `project_id` 포함 시 `PipelineHistory` 타임라인 이력이 기록됩니다.',
+        responses={
+            201: OpenApiResponse(
+                description='업무 자동 배정 완료',
+                response=TaskAssignmentSerializer
+            ),
+            400: OpenApiResponse(description='가용한 유저가 없거나 요청 값이 잘못됨'),
+            404: OpenApiResponse(description='요구사항 항목 또는 프로젝트를 찾을 수 없음')
+        }
+    )
+    def post(self, request):
+        req_item_id = request.data.get('req_item_id')
+        project_id = request.data.get('project_id')
         
-        if task_ids:
-            tasks_to_approve = TaskAssignment.objects.filter(
-                id__in=task_ids, 
-                status=TaskAssignment.Status.PENDING_APPROVAL
-            )
+        req_item = get_object_or_404(RequirementItem, pk=req_item_id)
+
+        # 현재 작업 중이지 않은(is_busy=False) 개발자 선별
+        available_users = User.objects.filter(is_active=True, is_busy=False)
+        
+        if not available_users.exists():
+            # 가용한 개발자가 없을 경우 전체 유저 중 무작위/첫 번째 유저 매핑
+            assigned_user = User.objects.filter(is_active=True).first()
         else:
-            tasks_to_approve = TaskAssignment.objects.filter(
-                status=TaskAssignment.Status.PENDING_APPROVAL
-            )
+            assigned_user = available_users.first()
 
-        if not tasks_to_approve.exists():
-            return Response(
-                {"detail": "승인할 대기 상태의 업무가 없습니다."},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+        if not assigned_user:
+            return Response({"error": "배정할 수 있는 유저가 시스템에 존재하지 않습니다."}, status=status.HTTP_400_BAD_REQUEST)
 
-        approved_count = 0
-        
-        # 트랜잭션으로 상태 업데이트 및 알림 처리의 일관성 보장
-        with transaction.atomic():
-            for task in tasks_to_approve:
-                # 1. 업무 상태를 '승인 완료'로 변경
-                task.status = TaskAssignment.Status.APPROVED
-                task.save()
-
-                # 2. 담당 사원의 작업 상태를 작업 중(is_busy = True)으로 변경
-                assigned_user = task.assigned_user
-                assigned_user.is_busy = True
-                assigned_user.save()
-
-                # 3. 개별 사원에게 알림 전송
-                send_task_assignment_notification(task)
-                
-                approved_count += 1
-
-        return Response(
-            {
-                "message": f"총 {approved_count}건의 업무 배분이 최종 승인되었으며, 담당 사원들에게 알림이 발송되었습니다.",
-                "approved_count": approved_count
-            },
-            status=status.HTTP_200_OK
+        # 업무 생성
+        task = TaskAssignment.objects.create(
+            req_item=req_item,
+            assigned_user=assigned_user,
+            task_title=f"[{req_item.req_code}] {req_item.req_name} 개발",
+            task_description=req_item.description,
+            status=TaskAssignment.Status.PENDING_APPROVAL
         )
+
+        # 개발자 작업중 상태 업데이트
+        assigned_user.is_busy = True
+        assigned_user.save()
+
+        # 파이프라인 이력 로그 생성
+        if project_id:
+            project = get_object_or_404(Project, pk=project_id)
+            PipelineHistory.objects.create(
+                project=project,
+                requirement=req_item.req_def,
+                task=task,
+                step_type='TASK_ASSIGNED',
+                title=f"업무 자동 배정: {task.task_title}",
+                description=f"담당자: {assigned_user.username} 사원 (승인 대기)",
+                actor=request.user
+            )
+
+        return Response({
+            "message": "개발자에게 업무가 성공적으로 자동 배정되었습니다.",
+            "task": TaskAssignmentSerializer(task).data
+        }, status=status.HTTP_201_CREATED)
+
+
+class TaskStatusUpdateView(APIView):
+    """
+    업무 승인 및 상태 변경 API
+    PATCH /api/tasks/assignments/{id}/status/
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    @extend_schema(
+        tags=['3단계 - 업무 배정'],
+        summary='업무 승인 및 상태 변경',
+        description='배정된 업무의 진행 상태(`status`)를 변경합니다. 상태가 `COMPLETED`(완료)로 변경되면 담당 개발자의 `is_busy` 상태가 `False`로 해제되어 다음 업무를 배정받을 수 있게 됩니다.',
+        parameters=[
+            OpenApiParameter(
+                name='pk',
+                type=OpenApiTypes.INT,
+                location=OpenApiParameter.PATH,
+                description='상태를 변경할 배정 업무 ID'
+            )
+        ],
+        request=TaskStatusUpdateSerializer,
+        responses={
+            200: OpenApiResponse(
+                description='업무 상태 변경 완료',
+                response=TaskAssignmentSerializer
+            ),
+            400: OpenApiResponse(description='유효하지 않은 status 값'),
+            404: OpenApiResponse(description='존재하지 않는 배정 업무')
+        }
+    )
+    def patch(self, request, pk):
+        task = get_object_or_404(TaskAssignment, pk=pk)
+        new_status = request.data.get('status')
+
+        if new_status not in TaskAssignment.Status.values:
+            return Response({"error": "유효하지 않은 status 값입니다."}, status=status.HTTP_400_BAD_REQUEST)
+
+        task.status = new_status
+        task.save()
+
+        # 업무가 완료(COMPLETED)되면 개발자의 is_busy 해제
+        if new_status == TaskAssignment.Status.COMPLETED:
+            user = task.assigned_user
+            user.is_busy = False
+            user.save()
+
+        return Response({
+            "message": "업무 상태가 성공적으로 변경되었습니다.",
+            "task": TaskAssignmentSerializer(task).data
+        }, status=status.HTTP_200_OK)
