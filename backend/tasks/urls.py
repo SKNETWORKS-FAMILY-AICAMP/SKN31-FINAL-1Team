@@ -1,10 +1,14 @@
-from django.urls import path, include
-from rest_framework.routers import DefaultRouter
-from .views import TaskAssignmentViewSet
-
-router = DefaultRouter()
-router.register(r'tasks', TaskAssignmentViewSet, basename='task')
+from django.urls import path
+from tasks.views import (
+    TaskAssignmentListCreateView,
+    TaskAssignmentDetailView,
+    AutoTaskAssignView,
+    TaskStatusUpdateView,
+)
 
 urlpatterns = [
-    path('', include(router.urls)),
+    path('assignments/', TaskAssignmentListCreateView.as_view(), name='task-list'),
+    path('assignments/<int:pk>/', TaskAssignmentDetailView.as_view(), name='task-detail'),
+    path('auto-assign/', AutoTaskAssignView.as_view(), name='task-auto-assign'),
+    path('assignments/<int:pk>/status/', TaskStatusUpdateView.as_view(), name='task-status-update'),
 ]

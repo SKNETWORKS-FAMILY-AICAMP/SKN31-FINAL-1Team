@@ -1,54 +1,132 @@
-# 단계별 상세 작업 내역 (Detailed Tasks)
+### STEP 3: 공통코드(Common Code) 모듈 설계 및 DB 마이그레이션
+* **작업일 : 2026-08-26**
 
-### STEP 3: 대화 데이터 모델링 & REST API (Chat Data Module)
+* **`common` 앱 및 공통코드 모델 구현**
+  * `python manage.py startapp common` 실행 및 `config/settings.py`의 `INSTALLED_APPS`에 등록
+  * DB 담당자 스키마 설계에 맞춘 `common/models.py` 내 모델 작성
+  * 코드 관리와 데이터 확장의 용이성을 위해 CommonCodeGroup(공통 코드 그룹)과 CommonCode(상세 코드)의 2단계 구조로 구성
 
-* **작업일 : 2026-07-31**
-  * chat 앱의 대화방 & 메시지 데이터 모델 작성
-  * 챗봇 서비스에서 대화 기록을 관리할 데이터베이스 테이블 생성
+```python
+from django.db import models
 
-* **데이터 모델 설계 (ORM)**
-  * chat/models.py 파일에 대화방(ChatSession)과 메시지(ChatMessage) 2개의 모델을 정의
+class CommonCodeGroup(models.Model):
+    """
+    공통 코드 그룹 (대분류)
+    예: USER_ROLE(권한), REQ_PRIORITY(우선순위), TASK_STATUS(진행상태) 등
+    """
+    group_code = models.CharField(
+        max_length=50, 
+        primary_key=True, 
+        verbose_name="코드 그룹 ID"
+    )
+    group_name = models.CharField(
+        max_length=100, 
+        verbose_name="코드 그룹명"
+    )
+    description = models.TextField(
+        null=True, 
+        blank=True, 
+        verbose_name="설명"
+    )
+    is_active = models.BooleanField(
+        default=True, 
+        verbose_name="사용 여부"
+    )
+    created_at = models.DateTimeField(
+        auto_now_add=True, 
+        verbose_name="생성 일시"
+    )
 
-  * `ChatSession`: 유저 Foreign Key, 세션 제목, 생성/수정일자
-  * `ChatMessage`: 세션 Foreign Key, 역할(`user` / `assistant` / `system`), 메시지 본문, 생성일자
-  * 산출물: `chat/models.py`
+    class Meta:
+        db_table = "common_code_group"
+        verbose_name = "공통 코드 그룹"
+        verbose_name_plural = "공통 코드 그룹 목록"
 
-* **새로 만든 모델 DB에 적용하기**
-  * DB 마이그레이션 실행
-      ```
-      터미널에서 아래 코드를 순차적으로 실행 
-      1) python manage.py makemigrations
-      2) python manage.py migrate
-      ```
----
+    def __str__(self):
+        return f"[{self.group_code}] {self.group_name}"
 
-* **작업일 : 2026-08-03**
 
-* **대화 CRUD API 개발**
-  * chat 앱의 대화방 및 메시지 내역 CRUD API 구현과 Swagger 문서 반영
-  * 새 대화방 생성, 목록 조회, 방 제목 변경 및 삭제 API
+class CommonCode(models.Model):
+    """
+    공통 코드 상세 (중/소분류)
+    예: REQ_PRIORITY 하위 -> HIGH(상), MEDIUM(중), LOW(하)
+    """
+    code_id = models.CharField(
+        max_length=50, 
+        primary_key=True, 
+        verbose_name="코드 ID"
+    )
+    group = models.ForeignKey(
+        CommonCodeGroup, 
+        on_delete=models.CASCADE, 
+        related_name="codes", 
+        db_column="group_code", 
+        verbose_name="코드 그룹"
+    )
+    code_name = models.CharField(
+        max_length=100, 
+        verbose_name="코드명"
+    )
+    sort_order = models.IntegerField(
+        default=0, 
+        verbose_name="정렬 순서"
+    )
+    is_active = models.BooleanField(
+        default=True, 
+        verbose_name="사용 여부"
+    )
+    description = models.TextField(
+        null=True, 
+        blank=True, 
+        verbose_name="설명"
+    )
+    created_at = models.DateTimeField(
+        auto_now_add=True, 
+        verbose_name="생성 일시"
+    )
 
-    * 특정 대화방의 과거 메시지 페이징 조회 API 구현
-    * 주요 엔드포인트: `/api/v1/chat/rooms/`, `/api/v1/chat/rooms/{id}/messages/`
+    class Meta:
+        db_table = "common_code"
+        ordering = ["group", "sort_order"]
+        verbose_name = "공통 코드"
+        verbose_name_plural = "공통 코드 목록"
 
-  * chat/serializers.py 생성 및 작성
-  * chat/urls.py 생성 및 config/urls.py 연결
-    * chat/urls.py 생성 및 작성
-    * config/urls.py 파일을 열고 chat.urls 경로를 추가
-      ```
-      # Chat API
-      path('api/v1/chat/', include('chat.urls')),
-      ```
-  
-  * **새로 만든 모델 DB에 적용하기**
-  * DB 마이그레이션 실행
-      ```
-      터미널에서 아래 코드를 순차적으로 실행 
-      1) python manage.py makemigrations chat
-      2) python manage.py migrate
-      ```
+    def __str__(self):
+        return f"[{self.group_id}] {self.code_id} - {self.code_name}"
+```
 
-  * 웹 연결 확인해보기
-    * Swagger UI에 기존 /api/v1/auth/ 엔드포인트에 이어 /api/v1/chat/sessions/ 관련 대화방 CRUD API 목록이 자동으로 추가되었는지 확인
-    * 터미널에서 `python manage.py runserver` 명령어를 실행(서버 연결돼있으면 ctrl + c로 종료한다음 재시작.)
-    * 웹에서 `http://127.0.0.1:8000/api/v1/docs/` 접속 -> Chatbot Service API.yaml 파일 다운로드 됨.
+* **DB 마이그레이션**
+  * 마이그레이션 명령 실행:
+    ```bash
+    python manage.py makemigrations common
+    python manage.py migrate
+    ```
+
+* **엑셀 데이터 주입**
+  * Django의 Custom Management Command 방식을 구현
+  * 이 방식을 사용하면 python manage.py load_codes 명령어 한 줄로 엑셀 데이터 130건을 한 번에 DB에 파싱하여 반영할 수 있음
+  * common 하위 디렉토리 생성 후 seed_codes.py 파일 내 모델 작성
+    ```text
+      common/
+        ├── management/
+        │    ├── __init__.py
+        │    └── commands/
+        │         ├── __init__.py
+        │         └── seed_codes.py
+    ```
+  * 커스텀 명령어 실행
+    ```bash
+    python manage.py seed_codes
+    ```
+
+* **`project` 앱 및 모델 구현**
+  * `python manage.py startapp project` 실행 및 `config/settings.py`의 `INSTALLED_APPS`에 등록
+  * DB 담당자 스키마 설계에 맞춘 `project/models.py` 내 모델 작성
+  * 이 모델은 프로젝트 기본 정보(Project)와 프론트엔드 /history 페이지에 대응하는 파이프라인 전체 이력(PipelineHistory)을 관리
+
+* **`requirements` 앱 및 모델 구현**
+  * `python manage.py startapp requirements` 실행 및 `config/settings.py`의 `INSTALLED_APPS`에 등록
+  * DB 담당자 스키마 설계에 맞춘 `requirements/models.py` 내 모델 작성
+  * 이 모델은 파이프라인 2단계 산출물인 요구사항 정의서 헤더(RequirementDefinition) 및 세부 요구사항 항목(RequirementItem)을 정의
+
+* **모든 주요 앱(common, users, meetings, requirements, tasks, projects)의 Serializer 구축**
