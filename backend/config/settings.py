@@ -101,7 +101,14 @@ WSGI_APPLICATION = 'config.wsgi.application'
 # }
 
 DATABASES = {
-'default': env.db('DATABASE_URL')
+    'default': {
+        'ENGINE': 'django.db.backends.mysql',
+        'NAME': env.str('MYSQL_DB'),
+        'USER': env.str('MYSQL_USER'),
+        'PASSWORD': env.str('MYSQL_PASSWORD'),
+        'HOST': env.str('MYSQL_HOST'),
+        'PORT': env.int('MYSQL_PORT', default=3306),
+    }
 }
 
 # Password validation
