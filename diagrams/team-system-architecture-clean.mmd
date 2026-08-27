@@ -1,0 +1,62 @@
+flowchart LR
+  USER((사용자\n팀장 · 팀원))
+
+  subgraph FE[Frontend · Next.js / React]
+    UI[화면\n대시보드 · 문서 · 업무 · 승인]
+    CLIENT[API Client\nJWT · DTO · Error]
+    UI --> CLIENT
+  end
+
+  subgraph APP[Backend App · Django / DRF]
+    API[REST API Gateway\nSimpleJWT · OpenAPI]
+    MEETING[회의록]
+    PLAN[기획서]
+    REQUIREMENT[요구사항]
+    TASK[업무 생성]
+    ASSIGN[담당자 추천·승인]
+    API --> MEETING --> PLAN --> REQUIREMENT --> TASK --> ASSIGN
+  end
+
+  subgraph AITIER[Async & AI]
+    CELERY[Celery Worker]
+    LANGGRAPH[LangGraph\n문서 자동화 · RAG]
+    LLM[LLM Provider\nAnthropic / OpenAI]
+    CELERY --> LANGGRAPH --> LLM
+  end
+
+  subgraph DATA[Data Stores]
+    RDB[(MySQL / RDS\n업무 데이터)]
+    S3[(AWS S3\n원본 · 산출물)]
+    QDRANT[(Qdrant\nVector)]
+    REDIS[(Redis\nQueue · Cache)]
+  end
+
+  subgraph OPS[Operations]
+    GIT[GitHub · Actions]
+    DEPLOY[Docker · AWS]
+    OBS[LangSmith · Logs · Monitoring]
+    GIT --> DEPLOY --> OBS
+  end
+
+  USER -->|HTTPS| UI
+  CLIENT -->|REST JSON + Bearer JWT| API
+  API -.->|OpenAPI Schema| CLIENT
+  PLAN -.->|AI Job| CELERY
+  REQUIREMENT -.->|AI Job| CELERY
+  TASK -.->|AI Job| CELERY
+  CELERY <--> REDIS
+  LANGGRAPH --> RDB
+  LANGGRAPH --> S3
+  LANGGRAPH <--> QDRANT
+  ASSIGN --> RDB
+  OBS -.-> APP
+  OBS -.-> AITIER
+
+  classDef current fill:#ffffff,stroke:#64748b,stroke-width:1.5px,color:#172033;
+  classDef integration fill:#fffaf0,stroke:#d97706,stroke-width:1.8px,color:#172033;
+  classDef planned fill:#faf7ff,stroke:#7c3aed,stroke-width:1.5px,stroke-dasharray:6 4,color:#172033;
+  classDef data fill:#f0fdf4,stroke:#27864b,stroke-width:1.8px,color:#172033;
+  class USER,UI,API,MEETING,PLAN,TASK,ASSIGN current;
+  class CLIENT,REQUIREMENT integration;
+  class CELERY,LANGGRAPH,LLM,GIT,DEPLOY,OBS planned;
+  class RDB,S3,QDRANT,REDIS data;
