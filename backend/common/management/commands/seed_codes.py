@@ -15,7 +15,7 @@ class Command(BaseCommand):
             self.stderr.write(self.style.ERROR(f"파일을 찾을 수 없습니다: {excel_path}"))
             return
 
-        wb = openpyxl.load_workbook(excel_path)
+        wb = openpyxl.load_workbook(excel_path, data_only=True, read_only=True)
         if "초기 데이터(Seed)" not in wb.sheetnames:
             self.stderr.write(self.style.ERROR("'초기 데이터(Seed)' 시트가 엑셀에 존재하지 않습니다."))
             return
@@ -64,9 +64,9 @@ class Command(BaseCommand):
             # 2. CommonCode 생성 또는 업데이트
             code_id = str(sub_category).strip()
             code_obj, created_code = CommonCode.objects.update_or_create(
-                code_id=code_id,
-                group=group_obj,
+                code_id=code_id,  # UNIQUE/PK 조건 단독 사용
                 defaults={
+                    "group": group_obj,  # group을 defaults 내부로 이동
                     "code_name": str(code_name).strip(),
                     "is_active": True,
                 }
