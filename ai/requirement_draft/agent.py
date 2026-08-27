@@ -51,15 +51,12 @@ def verify_source_consistency(doc: RequirementDocument) -> List[str]:
 def generate_requirements(plan: PlanDocument, plan_id: str | None = None) -> RequirementDocumentOutput:
     client = get_client()
     messages = build_messages(plan)
-    system_content = messages[0]["content"]
-    user_messages = messages[1:]
 
     doc: RequirementDocument = client.chat.completions.create(
         model=DEFAULT_MODEL,
         max_tokens=DEFAULT_MAX_TOKENS,
         temperature=TEMPERATURE_STRUCTURED,
-        system=system_content,
-        messages=user_messages,
+        messages=messages,
         response_model=RequirementDocument,
         max_retries=MAX_RETRIES,
     )

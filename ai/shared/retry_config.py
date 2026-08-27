@@ -6,10 +6,10 @@ EX-LLM 계열 예외처리(타임아웃, 파싱 실패)에 대응하는 공통 �
 개별 에이전트가 다른 값이 필요하면 자기 agent.py에서 이 기본값을 덮어쓴다.
 """
 
-DEFAULT_MODEL = "claude-sonnet-4-6"
+DEFAULT_MODEL = "gpt-4o"
 DEFAULT_MAX_TOKENS = 8000
 
-# 구조화 생성(JSON 출력) 노드는 0.0, 자연어 답변 생성 노드는 0.2~0.3 권장
+# 구조화 생성(JSON 출력) 노드는 0.0, 자연어 답변 생성 노드는 0.3
 TEMPERATURE_STRUCTURED = 0.0
 TEMPERATURE_GENERATIVE = 0.3
 

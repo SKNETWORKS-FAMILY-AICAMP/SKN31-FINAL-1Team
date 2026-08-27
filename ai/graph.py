@@ -13,11 +13,13 @@ agent.py에 있고, 이 파일은 "누가 누구 다음에 오는지 / 반려되
 from langgraph.graph import END, StateGraph
 from langgraph.types import interrupt
 
-from a1_1_meeting_analysis.agent import meeting_analysis_node
-from a1_2_plan_draft.agent import plan_draft_node
-from a2_1_requirement_draft.agent import requirement_draft_node
-from a2_2_task_generation.agent import task_generation_node
-from a2_3_assignee_recommend.agent import assignee_recommend_node
+import shared.django_bootstrap  # noqa: F401  (Django 초기화 부작용 — backend 모델 import 전에 실행되어야 함)
+from meeting_analysis.agent import meeting_analysis_node
+from plan_draft.agent import plan_draft_node
+from plan_draft.review_sync import apply_plan_review_decision
+from requirement_draft.agent import requirement_draft_node
+from task_generation.agent import task_generation_node
+from assignee_recommend.agent import assignee_recommend_node
 from state import PipelineState
 
 
@@ -26,8 +28,21 @@ from state import PipelineState
 # ---------------------------------------------------------------------------
 
 def plan_review_gate(state: PipelineState) -> dict:
-    """A1-2가 만든 기획서를 PM이 승인/반려할 때까지 여기서 멈춘다."""
+    """A1-2가 만든 기획서를 PM이 승인/반려할 때까지 여기서 멈춘다.
+
+    interrupt()가 재개될 때 넘어오는 decision 형태:
+      승인: {"action": "승인", "reviewer_id": "<승인자 UUID>"}
+      반려: {"action": "반려", "reason": "<반려 사유>"}
+    """
     decision = interrupt({"plan": state["plan"], "question": "기획서 승인 또는 반려?"})
+
+    apply_plan_review_decision(
+        plan_id=state["plan_id"],
+        decision=decision["action"],
+        reviewer_id=decision.get("reviewer_id"),
+        reject_reason=decision.get("reason"),
+    )
+
     if decision["action"] == "반려":
         return {"plan_rejection_reason": decision.get("reason")}
     return {"plan_rejection_reason": None}
