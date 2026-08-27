@@ -1,0 +1,1790 @@
+[
+{
+    "model": "common.commoncodegroup",
+    "pk": "CERTIFICATION_CLOUD_DEVOPS",
+    "fields": {
+        "group_name": "CERTIFICATION - CLOUD_DEVOPS",
+        "description": "CERTIFICATION 대분류 하위 CLOUD_DEVOPS 그룹",
+        "is_active": true,
+        "created_at": "2026-08-26T08:37:28.690Z"
+    }
+},
+{
+    "model": "common.commoncodegroup",
+    "pk": "CERTIFICATION_DATABASE",
+    "fields": {
+        "group_name": "CERTIFICATION - DATABASE",
+        "description": "CERTIFICATION 대분류 하위 DATABASE 그룹",
+        "is_active": true,
+        "created_at": "2026-08-26T08:37:28.718Z"
+    }
+},
+{
+    "model": "common.commoncodegroup",
+    "pk": "CERTIFICATION_DATA_AI",
+    "fields": {
+        "group_name": "CERTIFICATION - DATA_AI",
+        "description": "CERTIFICATION 대분류 하위 DATA_AI 그룹",
+        "is_active": true,
+        "created_at": "2026-08-26T08:37:28.729Z"
+    }
+},
+{
+    "model": "common.commoncodegroup",
+    "pk": "CERTIFICATION_DESIGN",
+    "fields": {
+        "group_name": "CERTIFICATION - DESIGN",
+        "description": "CERTIFICATION 대분류 하위 DESIGN 그룹",
+        "is_active": true,
+        "created_at": "2026-08-26T08:37:28.741Z"
+    }
+},
+{
+    "model": "common.commoncodegroup",
+    "pk": "CERTIFICATION_LANGUAGE",
+    "fields": {
+        "group_name": "CERTIFICATION - LANGUAGE",
+        "description": "CERTIFICATION 대분류 하위 LANGUAGE 그룹",
+        "is_active": true,
+        "created_at": "2026-08-26T08:37:28.752Z"
+    }
+},
+{
+    "model": "common.commoncodegroup",
+    "pk": "CERTIFICATION_NETWORK",
+    "fields": {
+        "group_name": "CERTIFICATION - NETWORK",
+        "description": "CERTIFICATION 대분류 하위 NETWORK 그룹",
+        "is_active": true,
+        "created_at": "2026-08-26T08:37:28.759Z"
+    }
+},
+{
+    "model": "common.commoncodegroup",
+    "pk": "CERTIFICATION_OFFICE",
+    "fields": {
+        "group_name": "CERTIFICATION - OFFICE",
+        "description": "CERTIFICATION 대분류 하위 OFFICE 그룹",
+        "is_active": true,
+        "created_at": "2026-08-26T08:37:28.771Z"
+    }
+},
+{
+    "model": "common.commoncodegroup",
+    "pk": "CERTIFICATION_PM",
+    "fields": {
+        "group_name": "CERTIFICATION - PM",
+        "description": "CERTIFICATION 대분류 하위 PM 그룹",
+        "is_active": true,
+        "created_at": "2026-08-26T08:37:28.788Z"
+    }
+},
+{
+    "model": "common.commoncodegroup",
+    "pk": "CERTIFICATION_SECURITY",
+    "fields": {
+        "group_name": "CERTIFICATION - SECURITY",
+        "description": "CERTIFICATION 대분류 하위 SECURITY 그룹",
+        "is_active": true,
+        "created_at": "2026-08-26T08:37:28.796Z"
+    }
+},
+{
+    "model": "common.commoncodegroup",
+    "pk": "CERTIFICATION_SOFTWARE_DEV",
+    "fields": {
+        "group_name": "CERTIFICATION - SOFTWARE_DEV",
+        "description": "CERTIFICATION 대분류 하위 SOFTWARE_DEV 그룹",
+        "is_active": true,
+        "created_at": "2026-08-26T08:37:28.813Z"
+    }
+},
+{
+    "model": "common.commoncodegroup",
+    "pk": "HISTORY_ENTITY_TYPE",
+    "fields": {
+        "group_name": "HISTORY - ENTITY_TYPE",
+        "description": "HISTORY 대분류 하위 ENTITY_TYPE 그룹",
+        "is_active": true,
+        "created_at": "2026-08-26T08:37:28.378Z"
+    }
+},
+{
+    "model": "common.commoncodegroup",
+    "pk": "HISTORY_PIPELINE_NAME",
+    "fields": {
+        "group_name": "HISTORY - PIPELINE_NAME",
+        "description": "HISTORY 대분류 하위 PIPELINE_NAME 그룹",
+        "is_active": true,
+        "created_at": "2026-08-26T08:37:28.362Z"
+    }
+},
+{
+    "model": "common.commoncodegroup",
+    "pk": "HISTORY_STATUS",
+    "fields": {
+        "group_name": "HISTORY - STATUS",
+        "description": "HISTORY 대분류 하위 STATUS 그룹",
+        "is_active": true,
+        "created_at": "2026-08-26T08:37:28.343Z"
+    }
+},
+{
+    "model": "common.commoncodegroup",
+    "pk": "SKILL_API",
+    "fields": {
+        "group_name": "SKILL - API",
+        "description": "SKILL 대분류 하위 API 그룹",
+        "is_active": true,
+        "created_at": "2026-08-26T08:37:28.395Z"
+    }
+},
+{
+    "model": "common.commoncodegroup",
+    "pk": "SKILL_BACKEND",
+    "fields": {
+        "group_name": "SKILL - BACKEND",
+        "description": "SKILL 대분류 하위 BACKEND 그룹",
+        "is_active": true,
+        "created_at": "2026-08-26T08:37:28.407Z"
+    }
+},
+{
+    "model": "common.commoncodegroup",
+    "pk": "SKILL_CLOUD_DEVOPS",
+    "fields": {
+        "group_name": "SKILL - CLOUD_DEVOPS",
+        "description": "SKILL 대분류 하위 CLOUD_DEVOPS 그룹",
+        "is_active": true,
+        "created_at": "2026-08-26T08:37:28.444Z"
+    }
+},
+{
+    "model": "common.commoncodegroup",
+    "pk": "SKILL_DATABASE",
+    "fields": {
+        "group_name": "SKILL - DATABASE",
+        "description": "SKILL 대분류 하위 DATABASE 그룹",
+        "is_active": true,
+        "created_at": "2026-08-26T08:37:28.479Z"
+    }
+},
+{
+    "model": "common.commoncodegroup",
+    "pk": "SKILL_DATA_AI",
+    "fields": {
+        "group_name": "SKILL - DATA_AI",
+        "description": "SKILL 대분류 하위 DATA_AI 그룹",
+        "is_active": true,
+        "created_at": "2026-08-26T08:37:28.511Z"
+    }
+},
+{
+    "model": "common.commoncodegroup",
+    "pk": "SKILL_DESIGN",
+    "fields": {
+        "group_name": "SKILL - DESIGN",
+        "description": "SKILL 대분류 하위 DESIGN 그룹",
+        "is_active": true,
+        "created_at": "2026-08-26T08:37:28.532Z"
+    }
+},
+{
+    "model": "common.commoncodegroup",
+    "pk": "SKILL_FRONTEND",
+    "fields": {
+        "group_name": "SKILL - FRONTEND",
+        "description": "SKILL 대분류 하위 FRONTEND 그룹",
+        "is_active": true,
+        "created_at": "2026-08-26T08:37:28.562Z"
+    }
+},
+{
+    "model": "common.commoncodegroup",
+    "pk": "SKILL_LANGUAGE",
+    "fields": {
+        "group_name": "SKILL - LANGUAGE",
+        "description": "SKILL 대분류 하위 LANGUAGE 그룹",
+        "is_active": true,
+        "created_at": "2026-08-26T08:37:28.593Z"
+    }
+},
+{
+    "model": "common.commoncodegroup",
+    "pk": "SKILL_MOBILE",
+    "fields": {
+        "group_name": "SKILL - MOBILE",
+        "description": "SKILL 대분류 하위 MOBILE 그룹",
+        "is_active": true,
+        "created_at": "2026-08-26T08:37:28.631Z"
+    }
+},
+{
+    "model": "common.commoncodegroup",
+    "pk": "SKILL_PM",
+    "fields": {
+        "group_name": "SKILL - PM",
+        "description": "SKILL 대분류 하위 PM 그룹",
+        "is_active": true,
+        "created_at": "2026-08-26T08:37:28.650Z"
+    }
+},
+{
+    "model": "common.commoncodegroup",
+    "pk": "SKILL_TEST",
+    "fields": {
+        "group_name": "SKILL - TEST",
+        "description": "SKILL 대분류 하위 TEST 그룹",
+        "is_active": true,
+        "created_at": "2026-08-26T08:37:28.666Z"
+    }
+},
+{
+    "model": "common.commoncodegroup",
+    "pk": "SKILL_VCS",
+    "fields": {
+        "group_name": "SKILL - VCS",
+        "description": "SKILL 대분류 하위 VCS 그룹",
+        "is_active": true,
+        "created_at": "2026-08-26T08:37:28.683Z"
+    }
+},
+{
+    "model": "common.commoncodegroup",
+    "pk": "USER_DEPARTMENT",
+    "fields": {
+        "group_name": "USER - DEPARTMENT",
+        "description": "USER 대분류 하위 DEPARTMENT 그룹",
+        "is_active": true,
+        "created_at": "2026-08-26T08:37:28.198Z"
+    }
+},
+{
+    "model": "common.commoncodegroup",
+    "pk": "USER_JOB_ROLE",
+    "fields": {
+        "group_name": "USER - JOB_ROLE",
+        "description": "USER 대분류 하위 JOB_ROLE 그룹",
+        "is_active": true,
+        "created_at": "2026-08-26T08:37:28.235Z"
+    }
+},
+{
+    "model": "common.commoncodegroup",
+    "pk": "USER_POSITION",
+    "fields": {
+        "group_name": "USER - POSITION",
+        "description": "USER 대분류 하위 POSITION 그룹",
+        "is_active": true,
+        "created_at": "2026-08-26T08:37:28.272Z"
+    }
+},
+{
+    "model": "common.commoncodegroup",
+    "pk": "USER_ROLE",
+    "fields": {
+        "group_name": "USER - ROLE",
+        "description": "USER 대분류 하위 ROLE 그룹",
+        "is_active": true,
+        "created_at": "2026-08-26T08:37:28.306Z"
+    }
+},
+{
+    "model": "common.commoncodegroup",
+    "pk": "USER_STATUS",
+    "fields": {
+        "group_name": "USER - STATUS",
+        "description": "USER 대분류 하위 STATUS 그룹",
+        "is_active": true,
+        "created_at": "2026-08-26T08:37:28.322Z"
+    }
+},
+{
+    "model": "common.commoncode",
+    "pk": "ACTIVE",
+    "fields": {
+        "group": "USER_STATUS",
+        "code_name": "활성",
+        "sort_order": 0,
+        "is_active": true,
+        "description": null,
+        "created_at": "2026-08-26T08:37:28.325Z"
+    }
+},
+{
+    "model": "common.commoncode",
+    "pk": "ADMIN",
+    "fields": {
+        "group": "USER_ROLE",
+        "code_name": "관리자",
+        "sort_order": 0,
+        "is_active": true,
+        "description": null,
+        "created_at": "2026-08-26T08:37:28.318Z"
+    }
+},
+{
+    "model": "common.commoncode",
+    "pk": "ADSP",
+    "fields": {
+        "group": "CERTIFICATION_DATA_AI",
+        "code_name": "ADsP",
+        "sort_order": 0,
+        "is_active": true,
+        "description": null,
+        "created_at": "2026-08-26T08:37:28.733Z"
+    }
+},
+{
+    "model": "common.commoncode",
+    "pk": "AGILE",
+    "fields": {
+        "group": "SKILL_PM",
+        "code_name": "Agile",
+        "sort_order": 0,
+        "is_active": true,
+        "description": null,
+        "created_at": "2026-08-26T08:37:28.654Z"
+    }
+},
+{
+    "model": "common.commoncode",
+    "pk": "ANDROID",
+    "fields": {
+        "group": "SKILL_MOBILE",
+        "code_name": "Android",
+        "sort_order": 0,
+        "is_active": true,
+        "description": null,
+        "created_at": "2026-08-26T08:37:28.639Z"
+    }
+},
+{
+    "model": "common.commoncode",
+    "pk": "ANGULAR",
+    "fields": {
+        "group": "SKILL_FRONTEND",
+        "code_name": "Angular",
+        "sort_order": 0,
+        "is_active": true,
+        "description": null,
+        "created_at": "2026-08-26T08:37:28.578Z"
+    }
+},
+{
+    "model": "common.commoncode",
+    "pk": "ASSISTANT",
+    "fields": {
+        "group": "USER_POSITION",
+        "code_name": "주임",
+        "sort_order": 0,
+        "is_active": true,
+        "description": null,
+        "created_at": "2026-08-26T08:37:28.280Z"
+    }
+},
+{
+    "model": "common.commoncode",
+    "pk": "AWS",
+    "fields": {
+        "group": "SKILL_CLOUD_DEVOPS",
+        "code_name": "AWS",
+        "sort_order": 0,
+        "is_active": true,
+        "description": null,
+        "created_at": "2026-08-26T08:37:28.456Z"
+    }
+},
+{
+    "model": "common.commoncode",
+    "pk": "AWS_DEVELOPER_ASSOCIATE",
+    "fields": {
+        "group": "CERTIFICATION_CLOUD_DEVOPS",
+        "code_name": "AWS Developer Associate",
+        "sort_order": 0,
+        "is_active": true,
+        "description": null,
+        "created_at": "2026-08-26T08:37:28.699Z"
+    }
+},
+{
+    "model": "common.commoncode",
+    "pk": "AWS_SOLUTIONS_ARCHITECT",
+    "fields": {
+        "group": "CERTIFICATION_CLOUD_DEVOPS",
+        "code_name": "AWS Solutions Architect",
+        "sort_order": 0,
+        "is_active": true,
+        "description": null,
+        "created_at": "2026-08-26T08:37:28.694Z"
+    }
+},
+{
+    "model": "common.commoncode",
+    "pk": "AWS_SYSOPS_ADMINISTRATOR",
+    "fields": {
+        "group": "CERTIFICATION_CLOUD_DEVOPS",
+        "code_name": "AWS SysOps Administrator",
+        "sort_order": 0,
+        "is_active": true,
+        "description": null,
+        "created_at": "2026-08-26T08:37:28.703Z"
+    }
+},
+{
+    "model": "common.commoncode",
+    "pk": "AZURE",
+    "fields": {
+        "group": "SKILL_CLOUD_DEVOPS",
+        "code_name": "Azure",
+        "sort_order": 0,
+        "is_active": true,
+        "description": null,
+        "created_at": "2026-08-26T08:37:28.464Z"
+    }
+},
+{
+    "model": "common.commoncode",
+    "pk": "AZURE_FUNDAMENTALS",
+    "fields": {
+        "group": "CERTIFICATION_CLOUD_DEVOPS",
+        "code_name": "Azure Fundamentals",
+        "sort_order": 0,
+        "is_active": true,
+        "description": null,
+        "created_at": "2026-08-26T08:37:28.710Z"
+    }
+},
+{
+    "model": "common.commoncode",
+    "pk": "BACKEND",
+    "fields": {
+        "group": "USER_JOB_ROLE",
+        "code_name": "Backend",
+        "sort_order": 0,
+        "is_active": true,
+        "description": null,
+        "created_at": "2026-08-26T08:37:28.242Z"
+    }
+},
+{
+    "model": "common.commoncode",
+    "pk": "BIG_DATA_ANALYST_ENGINEER",
+    "fields": {
+        "group": "CERTIFICATION_DATA_AI",
+        "code_name": "빅데이터분석기사",
+        "sort_order": 0,
+        "is_active": true,
+        "description": null,
+        "created_at": "2026-08-26T08:37:28.737Z"
+    }
+},
+{
+    "model": "common.commoncode",
+    "pk": "CCNA",
+    "fields": {
+        "group": "CERTIFICATION_NETWORK",
+        "code_name": "CCNA",
+        "sort_order": 0,
+        "is_active": true,
+        "description": null,
+        "created_at": "2026-08-26T08:37:28.767Z"
+    }
+},
+{
+    "model": "common.commoncode",
+    "pk": "CISSP",
+    "fields": {
+        "group": "CERTIFICATION_SECURITY",
+        "code_name": "CISSP",
+        "sort_order": 0,
+        "is_active": true,
+        "description": null,
+        "created_at": "2026-08-26T08:37:28.810Z"
+    }
+},
+{
+    "model": "common.commoncode",
+    "pk": "CI_CD",
+    "fields": {
+        "group": "SKILL_CLOUD_DEVOPS",
+        "code_name": "CI/CD",
+        "sort_order": 0,
+        "is_active": true,
+        "description": null,
+        "created_at": "2026-08-26T08:37:28.472Z"
+    }
+},
+{
+    "model": "common.commoncode",
+    "pk": "COMPUTER_LITERACY_1",
+    "fields": {
+        "group": "CERTIFICATION_OFFICE",
+        "code_name": "컴퓨터활용능력 1급",
+        "sort_order": 0,
+        "is_active": true,
+        "description": null,
+        "created_at": "2026-08-26T08:37:28.774Z"
+    }
+},
+{
+    "model": "common.commoncode",
+    "pk": "COMPUTER_LITERACY_2",
+    "fields": {
+        "group": "CERTIFICATION_OFFICE",
+        "code_name": "컴퓨터활용능력 2급",
+        "sort_order": 0,
+        "is_active": true,
+        "description": null,
+        "created_at": "2026-08-26T08:37:28.780Z"
+    }
+},
+{
+    "model": "common.commoncode",
+    "pk": "CSHARP",
+    "fields": {
+        "group": "SKILL_LANGUAGE",
+        "code_name": "C#",
+        "sort_order": 0,
+        "is_active": true,
+        "description": null,
+        "created_at": "2026-08-26T08:37:28.627Z"
+    }
+},
+{
+    "model": "common.commoncode",
+    "pk": "CSS",
+    "fields": {
+        "group": "SKILL_FRONTEND",
+        "code_name": "CSS",
+        "sort_order": 0,
+        "is_active": true,
+        "description": null,
+        "created_at": "2026-08-26T08:37:28.585Z"
+    }
+},
+{
+    "model": "common.commoncode",
+    "pk": "CYPRESS",
+    "fields": {
+        "group": "SKILL_TEST",
+        "code_name": "Cypress",
+        "sort_order": 0,
+        "is_active": true,
+        "description": null,
+        "created_at": "2026-08-26T08:37:28.675Z"
+    }
+},
+{
+    "model": "common.commoncode",
+    "pk": "DATA_ANALYSIS",
+    "fields": {
+        "group": "SKILL_DATA_AI",
+        "code_name": "Data Analysis",
+        "sort_order": 0,
+        "is_active": true,
+        "description": null,
+        "created_at": "2026-08-26T08:37:28.515Z"
+    }
+},
+{
+    "model": "common.commoncode",
+    "pk": "DATA_ENGINEER",
+    "fields": {
+        "group": "USER_JOB_ROLE",
+        "code_name": "Data Engineer",
+        "sort_order": 0,
+        "is_active": true,
+        "description": null,
+        "created_at": "2026-08-26T08:37:28.268Z"
+    }
+},
+{
+    "model": "common.commoncode",
+    "pk": "DEPUTY_GENERAL_MANAGER",
+    "fields": {
+        "group": "USER_POSITION",
+        "code_name": "차장",
+        "sort_order": 0,
+        "is_active": true,
+        "description": null,
+        "created_at": "2026-08-26T08:37:28.292Z"
+    }
+},
+{
+    "model": "common.commoncode",
+    "pk": "DESIGN_SYSTEM",
+    "fields": {
+        "group": "SKILL_DESIGN",
+        "code_name": "Design System",
+        "sort_order": 0,
+        "is_active": true,
+        "description": null,
+        "created_at": "2026-08-26T08:37:28.558Z"
+    }
+},
+{
+    "model": "common.commoncode",
+    "pk": "DESIGN_TEAM",
+    "fields": {
+        "group": "USER_DEPARTMENT",
+        "code_name": "디자인팀",
+        "sort_order": 0,
+        "is_active": true,
+        "description": null,
+        "created_at": "2026-08-26T08:37:28.208Z"
+    }
+},
+{
+    "model": "common.commoncode",
+    "pk": "DEVOPS",
+    "fields": {
+        "group": "USER_JOB_ROLE",
+        "code_name": "DevOps",
+        "sort_order": 0,
+        "is_active": true,
+        "description": null,
+        "created_at": "2026-08-26T08:37:28.251Z"
+    }
+},
+{
+    "model": "common.commoncode",
+    "pk": "DEV_TEAM",
+    "fields": {
+        "group": "USER_DEPARTMENT",
+        "code_name": "개발팀",
+        "sort_order": 0,
+        "is_active": true,
+        "description": null,
+        "created_at": "2026-08-26T08:37:28.203Z"
+    }
+},
+{
+    "model": "common.commoncode",
+    "pk": "DIRECTOR",
+    "fields": {
+        "group": "USER_POSITION",
+        "code_name": "이사",
+        "sort_order": 0,
+        "is_active": true,
+        "description": null,
+        "created_at": "2026-08-26T08:37:28.301Z"
+    }
+},
+{
+    "model": "common.commoncode",
+    "pk": "DJANGO",
+    "fields": {
+        "group": "SKILL_BACKEND",
+        "code_name": "Django",
+        "sort_order": 0,
+        "is_active": true,
+        "description": null,
+        "created_at": "2026-08-26T08:37:28.422Z"
+    }
+},
+{
+    "model": "common.commoncode",
+    "pk": "DOCKER",
+    "fields": {
+        "group": "SKILL_CLOUD_DEVOPS",
+        "code_name": "Docker",
+        "sort_order": 0,
+        "is_active": true,
+        "description": null,
+        "created_at": "2026-08-26T08:37:28.448Z"
+    }
+},
+{
+    "model": "common.commoncode",
+    "pk": "DOTNET",
+    "fields": {
+        "group": "SKILL_BACKEND",
+        "code_name": ".NET",
+        "sort_order": 0,
+        "is_active": true,
+        "description": null,
+        "created_at": "2026-08-26T08:37:28.435Z"
+    }
+},
+{
+    "model": "common.commoncode",
+    "pk": "EMPLOYEE",
+    "fields": {
+        "group": "USER_ROLE",
+        "code_name": "직원",
+        "sort_order": 0,
+        "is_active": true,
+        "description": null,
+        "created_at": "2026-08-26T08:37:28.309Z"
+    }
+},
+{
+    "model": "common.commoncode",
+    "pk": "EXPRESS",
+    "fields": {
+        "group": "SKILL_BACKEND",
+        "code_name": "Express",
+        "sort_order": 0,
+        "is_active": true,
+        "description": null,
+        "created_at": "2026-08-26T08:37:28.415Z"
+    }
+},
+{
+    "model": "common.commoncode",
+    "pk": "FAILED",
+    "fields": {
+        "group": "HISTORY_STATUS",
+        "code_name": "실패",
+        "sort_order": 0,
+        "is_active": true,
+        "description": null,
+        "created_at": "2026-08-26T08:37:28.355Z"
+    }
+},
+{
+    "model": "common.commoncode",
+    "pk": "FASTAPI",
+    "fields": {
+        "group": "SKILL_BACKEND",
+        "code_name": "FastAPI",
+        "sort_order": 0,
+        "is_active": true,
+        "description": null,
+        "created_at": "2026-08-26T08:37:28.427Z"
+    }
+},
+{
+    "model": "common.commoncode",
+    "pk": "FIGMA",
+    "fields": {
+        "group": "SKILL_DESIGN",
+        "code_name": "Figma",
+        "sort_order": 0,
+        "is_active": true,
+        "description": null,
+        "created_at": "2026-08-26T08:37:28.535Z"
+    }
+},
+{
+    "model": "common.commoncode",
+    "pk": "FLUTTER",
+    "fields": {
+        "group": "SKILL_MOBILE",
+        "code_name": "Flutter",
+        "sort_order": 0,
+        "is_active": true,
+        "description": null,
+        "created_at": "2026-08-26T08:37:28.647Z"
+    }
+},
+{
+    "model": "common.commoncode",
+    "pk": "FRONTEND",
+    "fields": {
+        "group": "USER_JOB_ROLE",
+        "code_name": "Frontend",
+        "sort_order": 0,
+        "is_active": true,
+        "description": null,
+        "created_at": "2026-08-26T08:37:28.238Z"
+    }
+},
+{
+    "model": "common.commoncode",
+    "pk": "FULLSTACK",
+    "fields": {
+        "group": "USER_JOB_ROLE",
+        "code_name": "Full-stack",
+        "sort_order": 0,
+        "is_active": true,
+        "description": null,
+        "created_at": "2026-08-26T08:37:28.247Z"
+    }
+},
+{
+    "model": "common.commoncode",
+    "pk": "GCP",
+    "fields": {
+        "group": "SKILL_CLOUD_DEVOPS",
+        "code_name": "GCP",
+        "sort_order": 0,
+        "is_active": true,
+        "description": null,
+        "created_at": "2026-08-26T08:37:28.460Z"
+    }
+},
+{
+    "model": "common.commoncode",
+    "pk": "GCP_ASSOCIATE_CLOUD_ENGINEER",
+    "fields": {
+        "group": "CERTIFICATION_CLOUD_DEVOPS",
+        "code_name": "GCP Associate Cloud Engineer",
+        "sort_order": 0,
+        "is_active": true,
+        "description": null,
+        "created_at": "2026-08-26T08:37:28.707Z"
+    }
+},
+{
+    "model": "common.commoncode",
+    "pk": "GENERAL_MANAGER",
+    "fields": {
+        "group": "USER_POSITION",
+        "code_name": "부장",
+        "sort_order": 0,
+        "is_active": true,
+        "description": null,
+        "created_at": "2026-08-26T08:37:28.297Z"
+    }
+},
+{
+    "model": "common.commoncode",
+    "pk": "GIT",
+    "fields": {
+        "group": "SKILL_VCS",
+        "code_name": "Git",
+        "sort_order": 0,
+        "is_active": true,
+        "description": null,
+        "created_at": "2026-08-26T08:37:28.687Z"
+    }
+},
+{
+    "model": "common.commoncode",
+    "pk": "GO",
+    "fields": {
+        "group": "SKILL_LANGUAGE",
+        "code_name": "Go",
+        "sort_order": 0,
+        "is_active": true,
+        "description": null,
+        "created_at": "2026-08-26T08:37:28.616Z"
+    }
+},
+{
+    "model": "common.commoncode",
+    "pk": "GRAPHQL",
+    "fields": {
+        "group": "SKILL_API",
+        "code_name": "GraphQL",
+        "sort_order": 0,
+        "is_active": true,
+        "description": null,
+        "created_at": "2026-08-26T08:37:28.399Z"
+    }
+},
+{
+    "model": "common.commoncode",
+    "pk": "GTQ",
+    "fields": {
+        "group": "CERTIFICATION_DESIGN",
+        "code_name": "GTQ",
+        "sort_order": 0,
+        "is_active": true,
+        "description": null,
+        "created_at": "2026-08-26T08:37:28.745Z"
+    }
+},
+{
+    "model": "common.commoncode",
+    "pk": "GTQI",
+    "fields": {
+        "group": "CERTIFICATION_DESIGN",
+        "code_name": "GTQi",
+        "sort_order": 0,
+        "is_active": true,
+        "description": null,
+        "created_at": "2026-08-26T08:37:28.749Z"
+    }
+},
+{
+    "model": "common.commoncode",
+    "pk": "HR_TEAM",
+    "fields": {
+        "group": "USER_DEPARTMENT",
+        "code_name": "인사팀",
+        "sort_order": 0,
+        "is_active": true,
+        "description": null,
+        "created_at": "2026-08-26T08:37:28.227Z"
+    }
+},
+{
+    "model": "common.commoncode",
+    "pk": "HTML",
+    "fields": {
+        "group": "SKILL_FRONTEND",
+        "code_name": "HTML",
+        "sort_order": 0,
+        "is_active": true,
+        "description": null,
+        "created_at": "2026-08-26T08:37:28.582Z"
+    }
+},
+{
+    "model": "common.commoncode",
+    "pk": "ILLUSTRATOR",
+    "fields": {
+        "group": "SKILL_DESIGN",
+        "code_name": "Illustrator",
+        "sort_order": 0,
+        "is_active": true,
+        "description": null,
+        "created_at": "2026-08-26T08:37:28.543Z"
+    }
+},
+{
+    "model": "common.commoncode",
+    "pk": "INFO_PROCESSING_ENGINEER",
+    "fields": {
+        "group": "CERTIFICATION_SOFTWARE_DEV",
+        "code_name": "정보처리기사",
+        "sort_order": 0,
+        "is_active": true,
+        "description": null,
+        "created_at": "2026-08-26T08:37:28.817Z"
+    }
+},
+{
+    "model": "common.commoncode",
+    "pk": "INFO_PROCESSING_INDUSTRIAL_ENGINEER",
+    "fields": {
+        "group": "CERTIFICATION_SOFTWARE_DEV",
+        "code_name": "정보처리산업기사",
+        "sort_order": 0,
+        "is_active": true,
+        "description": null,
+        "created_at": "2026-08-26T08:37:28.822Z"
+    }
+},
+{
+    "model": "common.commoncode",
+    "pk": "INFO_SECURITY_ENGINEER",
+    "fields": {
+        "group": "CERTIFICATION_SECURITY",
+        "code_name": "정보보안기사",
+        "sort_order": 0,
+        "is_active": true,
+        "description": null,
+        "created_at": "2026-08-26T08:37:28.800Z"
+    }
+},
+{
+    "model": "common.commoncode",
+    "pk": "INFO_SECURITY_INDUSTRIAL_ENGINEER",
+    "fields": {
+        "group": "CERTIFICATION_SECURITY",
+        "code_name": "정보보안산업기사",
+        "sort_order": 0,
+        "is_active": true,
+        "description": null,
+        "created_at": "2026-08-26T08:37:28.805Z"
+    }
+},
+{
+    "model": "common.commoncode",
+    "pk": "IOS",
+    "fields": {
+        "group": "SKILL_MOBILE",
+        "code_name": "iOS",
+        "sort_order": 0,
+        "is_active": true,
+        "description": null,
+        "created_at": "2026-08-26T08:37:28.635Z"
+    }
+},
+{
+    "model": "common.commoncode",
+    "pk": "ITQ",
+    "fields": {
+        "group": "CERTIFICATION_OFFICE",
+        "code_name": "ITQ",
+        "sort_order": 0,
+        "is_active": true,
+        "description": null,
+        "created_at": "2026-08-26T08:37:28.784Z"
+    }
+},
+{
+    "model": "common.commoncode",
+    "pk": "JAVA",
+    "fields": {
+        "group": "SKILL_LANGUAGE",
+        "code_name": "Java",
+        "sort_order": 0,
+        "is_active": true,
+        "description": null,
+        "created_at": "2026-08-26T08:37:28.607Z"
+    }
+},
+{
+    "model": "common.commoncode",
+    "pk": "JAVASCRIPT",
+    "fields": {
+        "group": "SKILL_LANGUAGE",
+        "code_name": "JavaScript",
+        "sort_order": 0,
+        "is_active": true,
+        "description": null,
+        "created_at": "2026-08-26T08:37:28.600Z"
+    }
+},
+{
+    "model": "common.commoncode",
+    "pk": "JEST",
+    "fields": {
+        "group": "SKILL_TEST",
+        "code_name": "Jest",
+        "sort_order": 0,
+        "is_active": true,
+        "description": null,
+        "created_at": "2026-08-26T08:37:28.670Z"
+    }
+},
+{
+    "model": "common.commoncode",
+    "pk": "JIRA",
+    "fields": {
+        "group": "SKILL_PM",
+        "code_name": "Jira",
+        "sort_order": 0,
+        "is_active": true,
+        "description": null,
+        "created_at": "2026-08-26T08:37:28.662Z"
+    }
+},
+{
+    "model": "common.commoncode",
+    "pk": "KOTLIN",
+    "fields": {
+        "group": "SKILL_LANGUAGE",
+        "code_name": "Kotlin",
+        "sort_order": 0,
+        "is_active": true,
+        "description": null,
+        "created_at": "2026-08-26T08:37:28.611Z"
+    }
+},
+{
+    "model": "common.commoncode",
+    "pk": "KUBERNETES",
+    "fields": {
+        "group": "SKILL_CLOUD_DEVOPS",
+        "code_name": "Kubernetes",
+        "sort_order": 0,
+        "is_active": true,
+        "description": null,
+        "created_at": "2026-08-26T08:37:28.452Z"
+    }
+},
+{
+    "model": "common.commoncode",
+    "pk": "LEAVE",
+    "fields": {
+        "group": "USER_STATUS",
+        "code_name": "휴직",
+        "sort_order": 0,
+        "is_active": true,
+        "description": null,
+        "created_at": "2026-08-26T08:37:28.329Z"
+    }
+},
+{
+    "model": "common.commoncode",
+    "pk": "LINUX",
+    "fields": {
+        "group": "SKILL_CLOUD_DEVOPS",
+        "code_name": "Linux",
+        "sort_order": 0,
+        "is_active": true,
+        "description": null,
+        "created_at": "2026-08-26T08:37:28.475Z"
+    }
+},
+{
+    "model": "common.commoncode",
+    "pk": "LINUX_MASTER",
+    "fields": {
+        "group": "CERTIFICATION_CLOUD_DEVOPS",
+        "code_name": "리눅스마스터",
+        "sort_order": 0,
+        "is_active": true,
+        "description": null,
+        "created_at": "2026-08-26T08:37:28.715Z"
+    }
+},
+{
+    "model": "common.commoncode",
+    "pk": "LOCKED",
+    "fields": {
+        "group": "USER_STATUS",
+        "code_name": "잠금",
+        "sort_order": 0,
+        "is_active": true,
+        "description": null,
+        "created_at": "2026-08-26T08:37:28.339Z"
+    }
+},
+{
+    "model": "common.commoncode",
+    "pk": "MANAGER",
+    "fields": {
+        "group": "USER_POSITION",
+        "code_name": "과장",
+        "sort_order": 0,
+        "is_active": true,
+        "description": null,
+        "created_at": "2026-08-26T08:37:28.288Z"
+    }
+},
+{
+    "model": "common.commoncode",
+    "pk": "MARKETING_TEAM",
+    "fields": {
+        "group": "USER_DEPARTMENT",
+        "code_name": "마케팅팀",
+        "sort_order": 0,
+        "is_active": true,
+        "description": null,
+        "created_at": "2026-08-26T08:37:28.223Z"
+    }
+},
+{
+    "model": "common.commoncode",
+    "pk": "MEETING_NOTE",
+    "fields": {
+        "group": "HISTORY_ENTITY_TYPE",
+        "code_name": "회의록",
+        "sort_order": 0,
+        "is_active": true,
+        "description": null,
+        "created_at": "2026-08-26T08:37:28.382Z"
+    }
+},
+{
+    "model": "common.commoncode",
+    "pk": "MEETING_TO_PROPOSAL",
+    "fields": {
+        "group": "HISTORY_PIPELINE_NAME",
+        "code_name": "회의요약→기획서",
+        "sort_order": 0,
+        "is_active": true,
+        "description": null,
+        "created_at": "2026-08-26T08:37:28.367Z"
+    }
+},
+{
+    "model": "common.commoncode",
+    "pk": "MONGODB",
+    "fields": {
+        "group": "SKILL_DATABASE",
+        "code_name": "MongoDB",
+        "sort_order": 0,
+        "is_active": true,
+        "description": null,
+        "created_at": "2026-08-26T08:37:28.496Z"
+    }
+},
+{
+    "model": "common.commoncode",
+    "pk": "MYSQL",
+    "fields": {
+        "group": "SKILL_DATABASE",
+        "code_name": "MySQL",
+        "sort_order": 0,
+        "is_active": true,
+        "description": null,
+        "created_at": "2026-08-26T08:37:28.491Z"
+    }
+},
+{
+    "model": "common.commoncode",
+    "pk": "NESTJS",
+    "fields": {
+        "group": "SKILL_BACKEND",
+        "code_name": "NestJS",
+        "sort_order": 0,
+        "is_active": true,
+        "description": null,
+        "created_at": "2026-08-26T08:37:28.418Z"
+    }
+},
+{
+    "model": "common.commoncode",
+    "pk": "NETWORK_ADMINISTRATOR",
+    "fields": {
+        "group": "CERTIFICATION_NETWORK",
+        "code_name": "네트워크관리사",
+        "sort_order": 0,
+        "is_active": true,
+        "description": null,
+        "created_at": "2026-08-26T08:37:28.763Z"
+    }
+},
+{
+    "model": "common.commoncode",
+    "pk": "NEXTJS",
+    "fields": {
+        "group": "SKILL_FRONTEND",
+        "code_name": "Next.js",
+        "sort_order": 0,
+        "is_active": true,
+        "description": null,
+        "created_at": "2026-08-26T08:37:28.570Z"
+    }
+},
+{
+    "model": "common.commoncode",
+    "pk": "NODEJS",
+    "fields": {
+        "group": "SKILL_BACKEND",
+        "code_name": "Node.js",
+        "sort_order": 0,
+        "is_active": true,
+        "description": null,
+        "created_at": "2026-08-26T08:37:28.411Z"
+    }
+},
+{
+    "model": "common.commoncode",
+    "pk": "OCJP",
+    "fields": {
+        "group": "CERTIFICATION_LANGUAGE",
+        "code_name": "OCJP",
+        "sort_order": 0,
+        "is_active": true,
+        "description": null,
+        "created_at": "2026-08-26T08:37:28.756Z"
+    }
+},
+{
+    "model": "common.commoncode",
+    "pk": "PANDAS",
+    "fields": {
+        "group": "SKILL_DATA_AI",
+        "code_name": "Pandas",
+        "sort_order": 0,
+        "is_active": true,
+        "description": null,
+        "created_at": "2026-08-26T08:37:28.520Z"
+    }
+},
+{
+    "model": "common.commoncode",
+    "pk": "PARTIAL_FAILED",
+    "fields": {
+        "group": "HISTORY_STATUS",
+        "code_name": "부분실패",
+        "sort_order": 0,
+        "is_active": true,
+        "description": null,
+        "created_at": "2026-08-26T08:37:28.358Z"
+    }
+},
+{
+    "model": "common.commoncode",
+    "pk": "PHOTOSHOP",
+    "fields": {
+        "group": "SKILL_DESIGN",
+        "code_name": "Photoshop",
+        "sort_order": 0,
+        "is_active": true,
+        "description": null,
+        "created_at": "2026-08-26T08:37:28.547Z"
+    }
+},
+{
+    "model": "common.commoncode",
+    "pk": "PHP",
+    "fields": {
+        "group": "SKILL_LANGUAGE",
+        "code_name": "PHP",
+        "sort_order": 0,
+        "is_active": true,
+        "description": null,
+        "created_at": "2026-08-26T08:37:28.624Z"
+    }
+},
+{
+    "model": "common.commoncode",
+    "pk": "PLANNING_TEAM",
+    "fields": {
+        "group": "USER_DEPARTMENT",
+        "code_name": "기획팀",
+        "sort_order": 0,
+        "is_active": true,
+        "description": null,
+        "created_at": "2026-08-26T08:37:28.214Z"
+    }
+},
+{
+    "model": "common.commoncode",
+    "pk": "PMP",
+    "fields": {
+        "group": "CERTIFICATION_PM",
+        "code_name": "PMP",
+        "sort_order": 0,
+        "is_active": true,
+        "description": null,
+        "created_at": "2026-08-26T08:37:28.792Z"
+    }
+},
+{
+    "model": "common.commoncode",
+    "pk": "POSTGRESQL",
+    "fields": {
+        "group": "SKILL_DATABASE",
+        "code_name": "PostgreSQL",
+        "sort_order": 0,
+        "is_active": true,
+        "description": null,
+        "created_at": "2026-08-26T08:37:28.483Z"
+    }
+},
+{
+    "model": "common.commoncode",
+    "pk": "PRISMA",
+    "fields": {
+        "group": "SKILL_BACKEND",
+        "code_name": "Prisma",
+        "sort_order": 0,
+        "is_active": true,
+        "description": null,
+        "created_at": "2026-08-26T08:37:28.440Z"
+    }
+},
+{
+    "model": "common.commoncode",
+    "pk": "PROJECT_MANAGER",
+    "fields": {
+        "group": "USER_JOB_ROLE",
+        "code_name": "Project Manager",
+        "sort_order": 0,
+        "is_active": true,
+        "description": null,
+        "created_at": "2026-08-26T08:37:28.260Z"
+    }
+},
+{
+    "model": "common.commoncode",
+    "pk": "PROPOSAL",
+    "fields": {
+        "group": "HISTORY_ENTITY_TYPE",
+        "code_name": "기획서",
+        "sort_order": 0,
+        "is_active": true,
+        "description": null,
+        "created_at": "2026-08-26T08:37:28.387Z"
+    }
+},
+{
+    "model": "common.commoncode",
+    "pk": "PROPOSAL_TO_REQSPEC",
+    "fields": {
+        "group": "HISTORY_PIPELINE_NAME",
+        "code_name": "기획서→요구사항정의서",
+        "sort_order": 0,
+        "is_active": true,
+        "description": null,
+        "created_at": "2026-08-26T08:37:28.371Z"
+    }
+},
+{
+    "model": "common.commoncode",
+    "pk": "PROTOTYPING",
+    "fields": {
+        "group": "SKILL_DESIGN",
+        "code_name": "Prototyping",
+        "sort_order": 0,
+        "is_active": true,
+        "description": null,
+        "created_at": "2026-08-26T08:37:28.551Z"
+    }
+},
+{
+    "model": "common.commoncode",
+    "pk": "PYTHON",
+    "fields": {
+        "group": "SKILL_LANGUAGE",
+        "code_name": "Python",
+        "sort_order": 0,
+        "is_active": true,
+        "description": null,
+        "created_at": "2026-08-26T08:37:28.604Z"
+    }
+},
+{
+    "model": "common.commoncode",
+    "pk": "PYTORCH",
+    "fields": {
+        "group": "SKILL_DATA_AI",
+        "code_name": "PyTorch",
+        "sort_order": 0,
+        "is_active": true,
+        "description": null,
+        "created_at": "2026-08-26T08:37:28.527Z"
+    }
+},
+{
+    "model": "common.commoncode",
+    "pk": "QA_ENGINEER",
+    "fields": {
+        "group": "USER_JOB_ROLE",
+        "code_name": "QA Engineer",
+        "sort_order": 0,
+        "is_active": true,
+        "description": null,
+        "created_at": "2026-08-26T08:37:28.264Z"
+    }
+},
+{
+    "model": "common.commoncode",
+    "pk": "QA_TEAM",
+    "fields": {
+        "group": "USER_DEPARTMENT",
+        "code_name": "QA팀",
+        "sort_order": 0,
+        "is_active": true,
+        "description": null,
+        "created_at": "2026-08-26T08:37:28.219Z"
+    }
+},
+{
+    "model": "common.commoncode",
+    "pk": "REACT",
+    "fields": {
+        "group": "SKILL_FRONTEND",
+        "code_name": "React",
+        "sort_order": 0,
+        "is_active": true,
+        "description": null,
+        "created_at": "2026-08-26T08:37:28.566Z"
+    }
+},
+{
+    "model": "common.commoncode",
+    "pk": "REACT_NATIVE",
+    "fields": {
+        "group": "SKILL_MOBILE",
+        "code_name": "React Native",
+        "sort_order": 0,
+        "is_active": true,
+        "description": null,
+        "created_at": "2026-08-26T08:37:28.643Z"
+    }
+},
+{
+    "model": "common.commoncode",
+    "pk": "REDIS",
+    "fields": {
+        "group": "SKILL_DATABASE",
+        "code_name": "Redis",
+        "sort_order": 0,
+        "is_active": true,
+        "description": null,
+        "created_at": "2026-08-26T08:37:28.500Z"
+    }
+},
+{
+    "model": "common.commoncode",
+    "pk": "REQSPEC",
+    "fields": {
+        "group": "HISTORY_ENTITY_TYPE",
+        "code_name": "요구사항정의서",
+        "sort_order": 0,
+        "is_active": true,
+        "description": null,
+        "created_at": "2026-08-26T08:37:28.391Z"
+    }
+},
+{
+    "model": "common.commoncode",
+    "pk": "REQSPEC_TO_TASK",
+    "fields": {
+        "group": "HISTORY_PIPELINE_NAME",
+        "code_name": "요구사항정의서→업무(WBS)",
+        "sort_order": 0,
+        "is_active": true,
+        "description": null,
+        "created_at": "2026-08-26T08:37:28.374Z"
+    }
+},
+{
+    "model": "common.commoncode",
+    "pk": "RESIGNED",
+    "fields": {
+        "group": "USER_STATUS",
+        "code_name": "퇴사",
+        "sort_order": 0,
+        "is_active": true,
+        "description": null,
+        "created_at": "2026-08-26T08:37:28.334Z"
+    }
+},
+{
+    "model": "common.commoncode",
+    "pk": "REST_API",
+    "fields": {
+        "group": "SKILL_API",
+        "code_name": "REST API",
+        "sort_order": 0,
+        "is_active": true,
+        "description": null,
+        "created_at": "2026-08-26T08:37:28.404Z"
+    }
+},
+{
+    "model": "common.commoncode",
+    "pk": "RUNNING",
+    "fields": {
+        "group": "HISTORY_STATUS",
+        "code_name": "실행중",
+        "sort_order": 0,
+        "is_active": true,
+        "description": null,
+        "created_at": "2026-08-26T08:37:28.347Z"
+    }
+},
+{
+    "model": "common.commoncode",
+    "pk": "RUST",
+    "fields": {
+        "group": "SKILL_LANGUAGE",
+        "code_name": "Rust",
+        "sort_order": 0,
+        "is_active": true,
+        "description": null,
+        "created_at": "2026-08-26T08:37:28.619Z"
+    }
+},
+{
+    "model": "common.commoncode",
+    "pk": "SALES_TEAM",
+    "fields": {
+        "group": "USER_DEPARTMENT",
+        "code_name": "영업팀",
+        "sort_order": 0,
+        "is_active": true,
+        "description": null,
+        "created_at": "2026-08-26T08:37:28.231Z"
+    }
+},
+{
+    "model": "common.commoncode",
+    "pk": "SCRUM",
+    "fields": {
+        "group": "SKILL_PM",
+        "code_name": "Scrum",
+        "sort_order": 0,
+        "is_active": true,
+        "description": null,
+        "created_at": "2026-08-26T08:37:28.658Z"
+    }
+},
+{
+    "model": "common.commoncode",
+    "pk": "SELENIUM",
+    "fields": {
+        "group": "SKILL_TEST",
+        "code_name": "Selenium",
+        "sort_order": 0,
+        "is_active": true,
+        "description": null,
+        "created_at": "2026-08-26T08:37:28.679Z"
+    }
+},
+{
+    "model": "common.commoncode",
+    "pk": "SENIOR",
+    "fields": {
+        "group": "USER_POSITION",
+        "code_name": "대리",
+        "sort_order": 0,
+        "is_active": true,
+        "description": null,
+        "created_at": "2026-08-26T08:37:28.284Z"
+    }
+},
+{
+    "model": "common.commoncode",
+    "pk": "SKETCH",
+    "fields": {
+        "group": "SKILL_DESIGN",
+        "code_name": "Sketch",
+        "sort_order": 0,
+        "is_active": true,
+        "description": null,
+        "created_at": "2026-08-26T08:37:28.539Z"
+    }
+},
+{
+    "model": "common.commoncode",
+    "pk": "SPRING",
+    "fields": {
+        "group": "SKILL_BACKEND",
+        "code_name": "Spring",
+        "sort_order": 0,
+        "is_active": true,
+        "description": null,
+        "created_at": "2026-08-26T08:37:28.431Z"
+    }
+},
+{
+    "model": "common.commoncode",
+    "pk": "SQL",
+    "fields": {
+        "group": "SKILL_DATABASE",
+        "code_name": "SQL",
+        "sort_order": 0,
+        "is_active": true,
+        "description": null,
+        "created_at": "2026-08-26T08:37:28.508Z"
+    }
+},
+{
+    "model": "common.commoncode",
+    "pk": "SQLD",
+    "fields": {
+        "group": "CERTIFICATION_DATABASE",
+        "code_name": "SQLD",
+        "sort_order": 0,
+        "is_active": true,
+        "description": null,
+        "created_at": "2026-08-26T08:37:28.722Z"
+    }
+},
+{
+    "model": "common.commoncode",
+    "pk": "SQLP",
+    "fields": {
+        "group": "CERTIFICATION_DATABASE",
+        "code_name": "SQLP",
+        "sort_order": 0,
+        "is_active": true,
+        "description": null,
+        "created_at": "2026-08-26T08:37:28.726Z"
+    }
+},
+{
+    "model": "common.commoncode",
+    "pk": "STAFF",
+    "fields": {
+        "group": "USER_POSITION",
+        "code_name": "사원",
+        "sort_order": 0,
+        "is_active": true,
+        "description": null,
+        "created_at": "2026-08-26T08:37:28.275Z"
+    }
+},
+{
+    "model": "common.commoncode",
+    "pk": "SUCCESS",
+    "fields": {
+        "group": "HISTORY_STATUS",
+        "code_name": "성공",
+        "sort_order": 0,
+        "is_active": true,
+        "description": null,
+        "created_at": "2026-08-26T08:37:28.351Z"
+    }
+},
+{
+    "model": "common.commoncode",
+    "pk": "TAILWIND_CSS",
+    "fields": {
+        "group": "SKILL_FRONTEND",
+        "code_name": "Tailwind CSS",
+        "sort_order": 0,
+        "is_active": true,
+        "description": null,
+        "created_at": "2026-08-26T08:37:28.589Z"
+    }
+},
+{
+    "model": "common.commoncode",
+    "pk": "TEAM_LEAD",
+    "fields": {
+        "group": "USER_ROLE",
+        "code_name": "팀장",
+        "sort_order": 0,
+        "is_active": true,
+        "description": null,
+        "created_at": "2026-08-26T08:37:28.314Z"
+    }
+},
+{
+    "model": "common.commoncode",
+    "pk": "TENSORFLOW",
+    "fields": {
+        "group": "SKILL_DATA_AI",
+        "code_name": "TensorFlow",
+        "sort_order": 0,
+        "is_active": true,
+        "description": null,
+        "created_at": "2026-08-26T08:37:28.523Z"
+    }
+},
+{
+    "model": "common.commoncode",
+    "pk": "TERRAFORM",
+    "fields": {
+        "group": "SKILL_CLOUD_DEVOPS",
+        "code_name": "Terraform",
+        "sort_order": 0,
+        "is_active": true,
+        "description": null,
+        "created_at": "2026-08-26T08:37:28.467Z"
+    }
+},
+{
+    "model": "common.commoncode",
+    "pk": "TYPESCRIPT",
+    "fields": {
+        "group": "SKILL_LANGUAGE",
+        "code_name": "TypeScript",
+        "sort_order": 0,
+        "is_active": true,
+        "description": null,
+        "created_at": "2026-08-26T08:37:28.596Z"
+    }
+},
+{
+    "model": "common.commoncode",
+    "pk": "UIUX_DESIGNER",
+    "fields": {
+        "group": "USER_JOB_ROLE",
+        "code_name": "UI/UX Designer",
+        "sort_order": 0,
+        "is_active": true,
+        "description": null,
+        "created_at": "2026-08-26T08:37:28.255Z"
+    }
+},
+{
+    "model": "common.commoncode",
+    "pk": "UX_RESEARCH",
+    "fields": {
+        "group": "SKILL_DESIGN",
+        "code_name": "UX Research",
+        "sort_order": 0,
+        "is_active": true,
+        "description": null,
+        "created_at": "2026-08-26T08:37:28.555Z"
+    }
+},
+{
+    "model": "common.commoncode",
+    "pk": "VUE",
+    "fields": {
+        "group": "SKILL_FRONTEND",
+        "code_name": "Vue",
+        "sort_order": 0,
+        "is_active": true,
+        "description": null,
+        "created_at": "2026-08-26T08:37:28.574Z"
+    }
+}
+]

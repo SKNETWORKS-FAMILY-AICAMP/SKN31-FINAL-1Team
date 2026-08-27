@@ -10,75 +10,86 @@
 
 ---
 ### * 전체 아키텍처
-
 ```mermaid
 flowchart TB
-    subgraph Client ["Frontend (Client Tier)"]
-        ReactUI["React Single Page App<br/>(Swagger UI / Dashboard / Forms)"]
-    end
+  subgraph Client ["Frontend (Client Tier)"]
+      ReactUI["React Single Page App<br/>(Dashboard / Pipeline Forms)"]
+      SwaggerUI["Swagger UI / ReDoc<br/>(/api/docs/swagger/)"]
+  end
 
-    subgraph Backend ["Backend (Django / DRF Tier)"]
-        Router["DRF ViewSets & Routers"]
-        AuthModule["JWT Authentication"]
-        
-        subgraph BusinessLogic ["Core Application Logic"]
-            MeetingService["Meeting Note Module"]
-            SpecService["Spec Document Module"]
-            ReqService["Requirement Definition Module"]
-            TaskService["Task Assignment Module"]
-            NotificationService["Notification Module"]
-        end
-    end
+  subgraph Backend ["Backend (Django / DRF Tier)"]
+      Router["DRF ViewSets & Routers"]
+      AuthModule["JWT Authentication"]
+      DocsEngine["drf-spectacular<br/>(OpenAPI 3.0 Schema Engine)"]
+      
+      subgraph BusinessLogic ["Core Application Logic"]
+          MeetingService["1단계: Meeting Note Module"]
+          SpecService["1-2단계: Spec Document Module"]
+          ReqService["2단계: Requirement Definition Module"]
+          TaskService["3단계: AI Task Assignment Module"]
+          HistoryService["Pipeline History Logger"]
+          CommonService["Common Code & User Management"]
+      end
+  end
 
-    subgraph AI_Engine ["AI Agent Tier"]
-        LLM_Agent["LLM Processing Engine<br/>(Spec & Requirements Parser)"]
-    end
+  subgraph AI_Engine ["AI Agent Tier"]
+      LLM_Agent["LLM Processing Engine<br/>(Spec Parser & Req Extractor & Task Auto-Assign)"]
+  end
 
-    subgraph DataTier ["Data Tier"]
-        SQLiteDB[(SQLite Database)]
-    end
+  subgraph DataTier ["Data Tier"]
+      DB[(Relational DB<br/>SQLite / PostgreSQL)]
+  end
 
-    %% Interactions
-    ReactUI -->|"1. HTTP / REST API Calls<br/>(Bearer JWT Header)"| Router
-    Router --> AuthModule
-    AuthModule --> BusinessLogic
+  %% Interactions
+  ReactUI -->|"HTTP / REST API (JWT Header)"| Router
+  SwaggerUI -->|"OpenAPI Schema Fetch (/api/schema/)"| DocsEngine
+  DocsEngine -.-> Router
 
-    %% Pipeline Execution Steps
-    SpecService -->|"2. Generate Spec Request"| LLM_Agent
-    ReqService -->|"3. Generate Requirements Request"| LLM_Agent
-    LLM_Agent -->|"4. Structured Output Parsing"| DataTier
+  Router --> AuthModule
+  AuthModule --> BusinessLogic
 
-    MeetingService --> DataTier
-    SpecService --> DataTier
-    ReqService --> DataTier
-    TaskService --> DataTier
-    NotificationService --> DataTier
+  %% Multi-Stage AI Pipeline Execution Steps
+  MeetingService -->|"1. Raw Notes / Minutes"| SpecService
+  SpecService -->|"2. AI Spec Generation"| LLM_Agent
+  ReqService -->|"3. AI Requirement Extraction"| LLM_Agent
+  TaskService -->|"4. AI Auto-Assignment (is_busy Check)"| LLM_Agent
 
-    TaskService -.->|"5. Trigger Notifications"| NotificationService
-    
+  LLM_Agent -->|"5. Structured JSON Response"| BusinessLogic
+
+  %% Pipeline History Logging
+  SpecService -.->|"Log Event"| HistoryService
+  ReqService -.->|"Log Event"| HistoryService
+  TaskService -.->|"Log Event"| HistoryService
+
+  %% Data Persistence
+  MeetingService --> DB
+  SpecService --> DB
+  ReqService --> DB
+  TaskService --> DB
+  HistoryService --> DB
+  CommonService --> DB 
 ```
 
-### * 계층별 주요 역할
+### * 시스템 계층별 주요 역할 명세
 
-* **Frontend (React)**
-  * **API 연동 & JWT 처리**: REST API 호출 시 `Authorization: Bearer <token>` 헤더를 포함하여 요청을 전송합니다.
-  * **사용자 권한별 인터페이스 제공**: 일반 회원(`MEMBER`)과 팀장(`LEADER`) 권한에 맞춰 버튼 활성화 및 액션(검토 요청, 검토 완료, 최종 승인)을 제어합니다.
-  * **수동 조정 UI**: 팀장이 자동 배정된 업무의 담당자 이름을 클릭하면 팀원 목록(드롭다운)이 표시되고, 수동 변경 API를 호출할 수 있는 인터페이스를 제공합니다.
+### 1. Frontend (React)
+* **API 연동 & JWT 처리**: REST API 호출 시 `Authorization: Bearer <token>` 헤더를 포함하여 요청을 전송하며, Swagger UI(`http://127.0.0.1:8000/api/docs/swagger/`)를 통한 API 규격 확인 및 대화형 테스트를 지원합니다.
+* **사용자 권한별 인터페이스 제공**: 일반 회원(`MEMBER`)과 팀장(`LEADER`) 권한에 맞춰 버튼 활성화 및 주요 액션(검토 요청, 검토 완료, 최종 승인)을 제어합니다.
+* **수동 조정 UI**: AI가 자동 배정한 업무 담당자를 팀장이 직접 변경할 수 있는 수동 조정 인터페이스(개발자 목록 드롭다운)를 제공하고 변경 API를 호출합니다.
 
-* **Backend (Django REST Framework)**
-  * **ViewSets & Serializers**: 엔드포인트 라우팅, 요청 데이터 검증 및 `drf-spectacular` 기반 Swagger 문서화를 자동 생성합니다.
-  * **비즈니스 로직 및 트랜잭션 관리**: 파이프라인 단계별 상태 변경을 처리하며, `transaction.atomic()`을 적용해 LLM 연동, 데이터 저장, 알림 발송 간 일관성을 유지합니다.
-  * **권한 검증**: 요청자의 역할을 검증하여 팀장 전용 기능(`review-complete`, `approve-all`)에 대한 접근을 제어합니다.
+### 2. Backend (Django REST Framework)
+* **ViewSets & Serializers**: 엔드포인트 라우팅, 요청/응답 데이터 검증 및 `drf-spectacular` 기반 OpenAPI 3.0 스키마/Swagger UI 문서화를 제공합니다.
+* **비즈니스 로직 및 트랜잭션 관리**: 파이프라인 단계별 상태 변경을 처리하며, `transaction.atomic()`을 적용해 LLM 연동, 데이터 저장, `PipelineHistory` 타임라인 이력 기록 간의 데이터 일관성을 보장합니다.
+* **권한 검증 및 개발자 상태 관리**: 요청자 역할(팀장/팀원)을 검증하여 팀장 전용 기능 접근을 제어하고, 업무 배정 및 완료 시 개발자의 작업 가능 상태(`is_busy`)를 자동으로 갱신합니다.
 
-* **AI Agent Tier**
-  * **기획서 자동 생성 모듈**: 작성된 회의록(`MeetingNote`) 데이터를 분석하여 구조화된 기획서(`SpecDocument`) 본문 및 요약을 생성합니다.
-  * **요구사항 추출 모듈**: 검토 완료된 기획서를 파싱하여 기능/비기능 항목으로 분형화하고 개별 요구사항(`RequirementItem`) 객체로 생성합니다.
+### 3. AI Agent Tier
+* **기획서 자동 생성 모듈**: 회의록(`MeetingNote`) 데이터를 분석하여 구조화된 기획서(`SpecDocument`) 본문 및 요약을 자동 생성합니다.
+* **요구사항 추출 모듈**: 검토 완료된 기획서를 파싱하여 REQ 코드별 세부 요구사항 항목(`RequirementItem`)을 추출합니다.
+* **업무 자동 배정 모듈**: 요구사항 항목 분석 후, 가용 상태(`is_busy=False`)인 개발자의 스킬셋을 고려하여 업무(`TaskAssignment`)를 자동 추천 및 배정합니다.
 
-* **Data Tier (SQLite)**
-  * **데이터 영속성 관리**: 회의록, 기획서, 요구사항, 업무 배정, 회원 및 알림 데이터를 저장하고 관리합니다.
-  * **상태 흐름 보장**: `Status` 필드를 통해 각 엔티티의 진행 상태(`DRAFT` ➔ `PENDING_REVIEW` ➔ `REVIEWED` 및 `PENDING_APPROVAL` ➔ `APPROVED`)를 추적합니다.
-
----
+### 4. Data Tier (SQLite / PostgreSQL)
+* **데이터 영속성 관리**: 회의록, 기획서, 요구사항, 업무 배정, 사용자, 공통코드(`CommonCode`), 파이프라인 이력(`PipelineHistory`) 데이터를 저장하고 관리합니다.
+* **파이프라인 상태 흐름 보장**: `status` 필드를 통해 각 엔티티의 상태 변화(`DRAFT` → `PROCESSING` → `REVIEWED` 및 `PENDING_APPROVAL` → `APPROVED` → `COMPLETED`)를 정밀하게 추적합니다.
 
 ## 2. 백엔드 개발 단계별 진행
 
@@ -117,44 +128,49 @@ flowchart TB
   * `task_title`, `task_description`
   * `status` (`PENDING_APPROVAL`, `APPROVED`)
   * `created_at`
+---
+### 2단계: 핵심 API 파이프라인 개발 명세
 
-### 2단계: 핵심 API 파이프라인 개발
+### 1. API 파이프라인 흐름 표
 
 | 순서 | 주체 | 화면 동작 / 이벤트 | 호출 API | 주요 처리 내용 |
 | :--- | :--- | :--- | :--- | :--- |
-| **1** | Member, Leader | 회의록 작성 | `POST /api/v1/meetings/` | 회의록 DB 저장 |
-| **2** | Member, Leader | '기획서 생성' 버튼 클릭 | `POST /api/v1/specs/generate/` | LLM Agent 호출 ➔ `SpecDocument` 자동 생성 |
-| **3** | Member, Leader | 기획서 화면 확인/검토 | `GET /api/v1/specs/{id}/` | 생성된 기획서 데이터 조회 |
-| **4** | Member | '기획서 검토 요청' 버튼 클릭 | `PATCH /api/v1/specs/{id}/request-review/` | 기획서 상태를 `PENDING_REVIEW`로 변경 |
-| **5** | Member, Leader | 기획서 화면 확인/검토 | `GET /api/v1/specs/{id}/` | 검토 요청된 기획서 상세 조회 |
-| **6** | Leader | '기획서 검토완료' 버튼 클릭 | `POST /api/v1/specs/{id}/review-complete/` | 기획서 상태를 `REVIEWED`로 변경 |
-| **7** | Member, Leader | '요구사항정의서 생성' 버튼 클릭 | `POST /api/v1/requirements/generate/` | LLM Agent 호출 ➔ `RequirementDefinition` 및 `Item` 생성 |
+| **1** | Member, Leader | 회의록 작성 | `POST /api/v1/meetings/` | 회의록 DB 저장 (`DRAFT` 상태) |
+| **2** | Member, Leader | '기획서 생성' 버튼 클릭 | `POST /api/v1/meetings/{id}/specs/generate/` | LLM Agent 호출 ➔ `SpecDocument` 자동 생성 |
+| **3** | Member, Leader | 기획서 화면 확인/검토 | `GET /api/v1/meetings/specs/{id}/` | 생성된 기획서 데이터 조회 |
+| **4** | Member | '기획서 검토 요청' 버튼 클릭 | `PATCH /api/v1/meetings/specs/{id}/request-review/` | 기획서 상태를 `PENDING_REVIEW`로 변경 |
+| **5** | Member, Leader | 기획서 화면 확인/검토 | `GET /api/v1/meetings/specs/{id}/` | 검토 요청된 기획서 상세 조회 |
+| **6** | Leader | '기획서 검토완료' 버튼 클릭 | `POST /api/v1/meetings/specs/{id}/review-complete/` | 기획서 상태를 `REVIEWED`로 변경 |
+| **7** | Member, Leader | '요구사항정의서 생성' 버튼 클릭 | `POST /api/v1/requirements/extract/` | LLM Agent 호출 ➔ `RequirementDefinition` 및 `Item` 생성 |
 | **8** | Member, Leader | 요구사항정의서 화면 확인/검토 | `GET /api/v1/requirements/{id}/` | 추출된 기능/비기능 요구사항 목록 조회 |
 | **9** | Leader | '업무배분' 버튼 클릭 | `POST /api/v1/tasks/auto-assign/` | `RequirementItem` 기반으로 `PENDING_APPROVAL` 상태의 Task 자동 생성 |
-| **10** | Member, Leader | 업무 배정 목록 확인/검토 | `GET /api/v1/tasks/pending/` | 승인 대기 중인 업무 배정 목록 조회 |
-| **11** | Leader | 담당자 변경 (드롭다운) | `PATCH /api/v1/tasks/{id}/` | 특정 Task의 `assigned_user` 필드 수동 수정 |
-| **12** | Leader | '업무 배정 최종 승인' 버튼 클릭 | `POST /api/v1/tasks/approve-all/` | Task 상태 `APPROVED` 변경, 담당자 `is_busy=True` 업데이트 및 알림 발송 |
+| **10** | Member, Leader | 업무 배정 목록 확인/검토 | `GET /api/v1/tasks/assignments/?status=PENDING_APPROVAL` | 승인 대기 중인 업무 배정 목록 조회 |
+| **11** | Leader | 담당자 변경 (드롭다운) | `PATCH /api/v1/tasks/assignments/{id}/` | 특정 Task의 `assigned_user` 필드 수동 수정 |
+| **12** | Leader | '업무 배정 최종 승인' 버튼 클릭 | `POST /api/v1/tasks/approve-all/` | Task 상태 `APPROVED` 변경, 담당자 `is_busy=True` 업데이트 및 `PipelineHistory` 이력 생성 |
 
-### * 단계별 핵심 구현 포인트
+---
+
+### 2. 단계별 핵심 구현 포인트
 
 #### 1. 요구사항정의서 Agent 연동 (7번 단계)
-* **LLM 파싱**: 기획서(`SpecDocument`) 본문을 분석하여 개별 기능/비기능 요구사항(`RequirementItem`)으로 분형화합니다.
-* **독립 실행**: 기획서 검토 완료(`REVIEWED`) 후 팀장 또는 팀원이 직접 '요구사항정의서 생성' 버튼을 누를 때 별도 API로 구동됩니다.
+* **LLM 파싱**: 검토 완료(`REVIEWED`)된 기획서(`SpecDocument`) 본문을 파싱하여 개별 기능/비기능 요구사항(`RequirementItem`) 객체로 분형화 및 생성합니다.
+* **독립 실행**: 기획서 검토 완료 후 팀장 또는 팀원이 직접 '요구사항정의서 생성' 버튼을 누를 때 독립된 API로 구동됩니다.
 
 #### 2. 업무 자동 배분: 임시 상태 생성 (9번 단계)
 * `POST /api/v1/tasks/auto-assign/` 호출 시 생성되는 모든 `TaskAssignment` 레코드는 **`status = 'PENDING_APPROVAL'`** 상태로 DB에 저장됩니다.
-* 이 시점에는 **자동 승인이 이루어지지 않으며**, 담당 사원의 `is_busy` 상태를 변경하거나 알림을 전송하지 않습니다.
+* 이 시점에는 **자동 승인이 이루어지지 않으며**, 담당 사원의 `is_busy` 상태를 변경하거나 알림을 전송하지 않고 임시 배정 상태만 유지합니다.
 
 #### 3. 팀장의 담당자 수동 조정 권한 (11번 단계)
 * 프론트엔드에서 팀장은 승인 대기 중인 Task의 담당자 이름을 클릭하여 팀원 목록(드롭다운) 중 원하는 담당자로 변경할 수 있습니다.
-* 이때 백엔드는 `PATCH /api/v1/tasks/{task_id}/` 요청을 받아 `{ "assigned_user": user_id }` 필드만 부분 업데이트 처리합니다.
+* 백엔드는 `PATCH /api/v1/tasks/assignments/{id}/` 요청을 받아 `{ "assigned_user": user_id }` 필드만 부분 업데이트 처리합니다.
 
 #### 4. 최종 승인 및 상태 업데이트 (12번 단계)
 * 팀장이 '업무 배정 최종 승인' 버튼을 누르면 `POST /api/v1/tasks/approve-all/`이 실행됩니다.
-* **트랜잭션(`transaction.atomic`) 처리**:
+* **트랜잭션(`transaction.atomic`) 보장**:
   1. `PENDING_APPROVAL` 상태인 대상 Task들을 일괄 **`APPROVED`** 로 변경합니다.
-  2. 최종 할당된 담당 사원들의 **`is_busy = True`** 로 업데이트합니다.
-  3. 담당 사원들에게 개별 **알림(Notification)** 을 발송합니다.
+  2. 최종 할당된 담당 사원들의 상태를 **`is_busy = True`** 로 업데이트합니다.
+  3. `projects.PipelineHistory` 테이블에 업무 배정 완료 이력(`TASK_ASSIGNED`)을 기록합니다.
+  4. 담당 사원들에게 개별 **알림(Notification)** 을 발송합니다.
 
 ---
 
