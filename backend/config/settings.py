@@ -55,12 +55,9 @@ INSTALLED_APPS = [
     'users',
     'meetings',
     'tasks',
-<<<<<<< Updated upstream
     'projects',
     'requirements',
-=======
     'plans',
->>>>>>> Stashed changes
 ]
 
 MIDDLEWARE = [
