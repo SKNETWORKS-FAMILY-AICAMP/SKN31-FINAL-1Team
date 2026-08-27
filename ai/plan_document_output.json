@@ -1,0 +1,335 @@
+{
+  "schema_version": "1.1",
+  "head": {
+    "title": "",
+    "meeting_title": "AI 회의 분석 서비스 1차 기능 정의 회의",
+    "date": "2026. 8. 25.",
+    "participants": [
+      "정하늘",
+      "오세진",
+      "문가영"
+    ]
+  },
+  "sections": [
+    {
+      "no": 1,
+      "title": "프로젝트 개요",
+      "is_empty": false,
+      "empty_message": "",
+      "blocks": [
+        {
+          "kind": "field",
+          "label": "프로젝트명",
+          "text": ""
+        },
+        {
+          "kind": "field",
+          "label": "문서 작성 배경",
+          "text": "AI 회의 분석 서비스의 1차 개발 기능과 제외 범위를 결정한다."
+        },
+        {
+          "kind": "field",
+          "label": "프로젝트 배경",
+          "text": ""
+        }
+      ]
+    },
+    {
+      "no": 2,
+      "title": "문제 정의",
+      "is_empty": true,
+      "empty_message": "문제 정의에 해당하는 발언이 회의록에 없어 비워 두었습니다.",
+      "blocks": []
+    },
+    {
+      "no": 3,
+      "title": "프로젝트 목표",
+      "is_empty": true,
+      "empty_message": "목표에 해당하는 발언이 회의록에 없어 비워 두었습니다.",
+      "blocks": []
+    },
+    {
+      "no": 4,
+      "title": "대상 사용자",
+      "is_empty": false,
+      "empty_message": "",
+      "blocks": [
+        {
+          "kind": "table",
+          "heading": "",
+          "columns": [
+            "ID",
+            "유형",
+            "사용자 문제",
+            "주요 행동"
+          ],
+          "rows": [
+            [
+              "USER-001",
+              "사용자",
+              "—",
+              "회의록을 업로드한다 · 분석 결과를 확인한다 · 요구사항을 검토한다 · 승인 버튼을 눌러 기획서를 생성한다"
+            ],
+            [
+              "USER-002",
+              "관리자",
+              "—",
+              "—"
+            ]
+          ],
+          "badges": []
+        }
+      ]
+    },
+    {
+      "no": 5,
+      "title": "주요 기능",
+      "is_empty": false,
+      "empty_message": "",
+      "blocks": [
+        {
+          "kind": "list",
+          "heading": "",
+          "items": [
+            {
+              "prefix": "회의록 업로드 및 AI 분석",
+              "text": "사용자는 회의록 파일을 업로드하면 AI가 내용을 분석해서 요구사항을 정리한다."
+            },
+            {
+              "prefix": "프로젝트별 요구사항 확인",
+              "text": "관리자는 프로젝트별 요구사항을 확인할 수 있다."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "no": 6,
+      "title": "사용자 시나리오",
+      "is_empty": false,
+      "empty_message": "",
+      "blocks": [
+        {
+          "kind": "flow",
+          "heading": "SCN-001 · 사용자",
+          "steps": [
+            "회의록을 업로드한다",
+            "분석 결과를 확인한다",
+            "요구사항을 검토한다",
+            "승인 버튼을 눌러 기획서를 생성한다"
+          ],
+          "result": "기획서 생성"
+        }
+      ]
+    },
+    {
+      "no": 7,
+      "title": "기능 요구사항",
+      "is_empty": false,
+      "empty_message": "",
+      "blocks": [
+        {
+          "kind": "table",
+          "heading": "",
+          "columns": [
+            "ID",
+            "항목",
+            "내용",
+            "주체",
+            "입력 / 출력"
+          ],
+          "rows": [
+            [
+              "REQ-001",
+              "회의록 업로드 및 AI 분석",
+              "사용자는 회의록 파일을 업로드하면 AI가 내용을 분석해서 요구사항을 정리한다.",
+              "사용자",
+              "회의록 파일 → 정리된 요구사항"
+            ],
+            [
+              "REQ-002",
+              "프로젝트별 요구사항 확인",
+              "관리자는 프로젝트별 요구사항을 확인할 수 있다.",
+              "관리자",
+              "→ 프로젝트별 요구사항 목록"
+            ],
+            [
+              "REQ-003",
+              "요구사항 정보 관리",
+              "요구사항은 기능, 사용자, 우선순위 등의 정보로 관리할 수 있어야 한다.",
+              "사용자",
+              "기능, 사용자, 우선순위"
+            ],
+            [
+              "REQ-004",
+              "기획서 Markdown 다운로드",
+              "사용자는 기획서를 최종적으로 Markdown 파일로 다운로드할 수 있다.",
+              "사용자",
+              "→ Markdown 파일"
+            ]
+          ],
+          "badges": [
+            "핵심",
+            "핵심",
+            "",
+            ""
+          ]
+        }
+      ]
+    },
+    {
+      "no": 8,
+      "title": "비기능 요구사항",
+      "is_empty": false,
+      "empty_message": "",
+      "blocks": [
+        {
+          "kind": "table",
+          "heading": "",
+          "columns": [
+            "ID",
+            "항목",
+            "내용",
+            "주체"
+          ],
+          "rows": [
+            [
+              "REQ-007",
+              "파일 업로드 용량 제한",
+              "한 번에 업로드할 수 있는 회의록 파일은 최대 20MB로 제한한다.",
+              "사용자"
+            ]
+          ],
+          "badges": [
+            ""
+          ]
+        }
+      ]
+    },
+    {
+      "no": 9,
+      "title": "데이터 요구사항",
+      "is_empty": false,
+      "empty_message": "",
+      "blocks": [
+        {
+          "kind": "table",
+          "heading": "",
+          "columns": [
+            "ID",
+            "항목",
+            "내용",
+            "입력 / 출력"
+          ],
+          "rows": [
+            [
+              "REQ-005",
+              "회의록 원문 보관",
+              "회의록 원문은 회의별로 90일간 보관한다.",
+              "—"
+            ]
+          ],
+          "badges": [
+            ""
+          ]
+        }
+      ]
+    },
+    {
+      "no": 10,
+      "title": "기술 요구사항",
+      "is_empty": false,
+      "empty_message": "",
+      "blocks": [
+        {
+          "kind": "table",
+          "heading": "",
+          "columns": [
+            "ID",
+            "항목",
+            "내용"
+          ],
+          "rows": [
+            [
+              "REQ-006",
+              "백엔드 기술 스택",
+              "백엔드는 FastAPI와 LangGraph를 사용한다."
+            ]
+          ],
+          "badges": [
+            ""
+          ]
+        }
+      ]
+    },
+    {
+      "no": 11,
+      "title": "서비스 범위 및 제약사항",
+      "is_empty": false,
+      "empty_message": "",
+      "blocks": [
+        {
+          "kind": "list",
+          "heading": "범위 결정",
+          "items": [
+            {
+              "prefix": "사원별 업무 자동 배분 기능",
+              "text": "1차 범위에서 제외하고 다음 버전에서 다루기로 했다."
+            }
+          ]
+        },
+        {
+          "kind": "list",
+          "heading": "제약사항",
+          "items": [
+            {
+              "prefix": "",
+              "text": "한 번에 업로드할 수 있는 회의록 파일은 최대 20MB로 제한한다."
+            },
+            {
+              "prefix": "",
+              "text": "회의록 원문은 회의별로 90일간 보관한다."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "no": 12,
+      "title": "최종 결정사항",
+      "is_empty": false,
+      "empty_message": "",
+      "blocks": [
+        {
+          "kind": "table",
+          "heading": "",
+          "columns": [
+            "ID",
+            "구분",
+            "주제",
+            "결정 내용"
+          ],
+          "rows": [
+            [
+              "DEC-001",
+              "기능",
+              "로그인 방식",
+              "처음에는 Google 로그인만 지원한다."
+            ],
+            [
+              "DEC-002",
+              "기술",
+              "백엔드 기술 스택",
+              "FastAPI와 LangGraph를 사용한다."
+            ]
+          ],
+          "badges": []
+        },
+        {
+          "kind": "note",
+          "text": "범위와 관련된 결정은 11. 서비스 범위 및 제약사항에서 확인할 수 있습니다."
+        }
+      ]
+    }
+  ]
+}
