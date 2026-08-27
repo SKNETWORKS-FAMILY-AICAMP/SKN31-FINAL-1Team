@@ -1,106 +1,89 @@
-# users/serializers.py
+###############################################################
+# 사용자 프로필 조회 및 기술 스택(UserSkill), 자격증(UserCertification), 공통 코드 정보(CommonCode)를 깔끔하게 조합
+###############################################################
 
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
-from django.contrib.auth.password_validation import validate_password
+from users.models import UserSkill, UserCertification
+from common.models import CommonCode
+from drf_spectacular.utils import extend_schema_field
 
 User = get_user_model()
 
 
-def normalize_password(value: str) -> str:
+class CommonCodeSimpleSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = CommonCode
+        fields = ['code_id', 'code_name']
+
+
+class UserSkillSerializer(serializers.ModelSerializer):
+    skill_name = serializers.CharField(source='skill_code.code_name', read_only=True)
+
+    class Meta:
+        model = UserSkill
+        fields = ['skill_id', 'skill_code', 'skill_name', 'proficiency_level']
+
+
+class UserCertificationSerializer(serializers.ModelSerializer):
+    cert_name = serializers.CharField(source='cert_code.code_name', read_only=True)
+
+    class Meta:
+        model = UserCertification
+        fields = ['cert_id', 'cert_code', 'cert_name', 'acquired_date']
+
+
+class UserSimpleSerializer(serializers.ModelSerializer):
     """
-    비밀번호 정규화 및 검증 함수
-    - 앞뒤 공백 제거
-    - Django 기본 비밀번호 정책 검증 (길이, 유사성, 흔한 비밀번호 등)
+    타 앱(tasks, meetings 등)에서 담당자/작성자 참조용 간단 Serializer
     """
-    if not value:
-        raise serializers.ValidationError("비밀번호는 필수 입력 항목입니다.")
-    
-    # 1. 앞뒤 공백 제거 (필요에 따라 적용)
-    normalized = value.strip()
-    
-    if len(normalized) < 8:
-        raise serializers.ValidationError("비밀번호는 최소 8자 이상이어야 합니다.")
-        
-    # 2. Django 설정(settings.py)에 정의된 비밀번호 유효성 검사 규칙 적용
-    try:
-        validate_password(normalized)
-    except Exception as e:
-        raise serializers.ValidationError(list(e.messages))
-        
-    return normalized
-
-
-# users/serializers.py
-
-class RegisterSerializer(serializers.ModelSerializer):
-    """회원가입 전용 (user_id, username, password 모두 입력받음)"""
-
-    # 💡 source='username'을 지정하면 응답 반환 시 User.username 속성 값을 읽어옵니다.
-    user_id = serializers.CharField(
-        source='username',
-        required=True,
-        allow_blank=False,
-        max_length=50
-    )
-    # DB의 first_name 속성으로 매핑하여 수신 및 반환
-    username = serializers.CharField(
-        source='first_name',
-        required=True,
-        allow_blank=False,
-        max_length=50
-    )
-    password = serializers.CharField(write_only=True, min_length=8, max_length=255)
+    full_name = serializers.SerializerMethodField()
 
     class Meta:
         model = User
-        fields = ['user_id', 'username', 'password']
+        fields = ['id', 'username', 'full_name', 'emp_no']
 
-    def validate_password(self, value):
-        return normalize_password(value)
-
-    def create(self, validated_data):
-        # source 속성을 지정했으므로 validated_data 키가 'username', 'first_name'으로 자동 매핑됩니다.
-        return User.objects.create_user(
-            username=validated_data['username'],      # user_id로 들어온 값
-            first_name=validated_data['first_name'],   # username으로 들어온 값
-            password=validated_data['password'],
-        )
+    @extend_schema_field(serializers.CharField())
+    def get_full_name(self, obj):
+        name = f"{obj.last_name}{obj.first_name}".strip()
+        return name if name else obj.username
 
 
-class UserSerializer(serializers.ModelSerializer):
-    """유저 정보 조회 전용"""
+class UserDetailSerializer(serializers.ModelSerializer):
+    """
+    사용자 상세 프로필 및 보유 스택/자격증 포함 Serializer
+    """
+    dept_info = CommonCodeSimpleSerializer(source='dept_code', read_only=True)
+    job_role_info = CommonCodeSimpleSerializer(source='job_role_code', read_only=True)
+    position_info = CommonCodeSimpleSerializer(source='position_code', read_only=True)
+    role_info = CommonCodeSimpleSerializer(source='role_code', read_only=True)
+    status_info = CommonCodeSimpleSerializer(source='status_code', read_only=True)
     
-    # DB의 username을 user_id라는 이름으로 읽어옴
-    user_id = serializers.CharField(source='username', read_only=True)
-    # DB의 first_name을 username이라는 이름으로 읽어옴
-    username = serializers.CharField(source='first_name', read_only=True)
+    skills = UserSkillSerializer(many=True, read_only=True)
+    certifications = UserCertificationSerializer(many=True, read_only=True)
 
     class Meta:
         model = User
-        fields = ['id', 'user_id', 'username', 'role', 'is_busy'] # id: PK(숫자)
+        fields = [
+            'id',
+            'username',
+            'email',
+            'emp_no',
+            'phone',
+            'first_name',
+            'last_name',
+            'dept_code',
+            'dept_info',
+            'job_role_code',
+            'job_role_info',
+            'position_code',
+            'position_info',
+            'role_code',
+            'role_info',
+            'status_code',
+            'status_info',
+            'is_busy',
+            'skills',
+            'certifications',
+        ]
         read_only_fields = ['id']
-
-
-class UserUpdateSerializer(serializers.ModelSerializer):
-    """
-    본인 정보 수정. 현재는 비밀번호만 변경 전용.
-    """
-    password = serializers.CharField(write_only=True, required=True)
-
-    class Meta:
-        model = User
-        fields = ('password',)
-
-    def validate_password(self, value):
-        return normalize_password(value)
-
-    def update(self, instance, validated_data):
-        """
-        비밀번호 수정 시 평문으로 저장되지 않도록 set_password() 호출
-        """
-        password = validated_data.get('password')
-        if password:
-            instance.set_password(password)
-            instance.save()
-        return instance

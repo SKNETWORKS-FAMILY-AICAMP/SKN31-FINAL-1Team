@@ -1,49 +1,38 @@
-# 단계별 상세 작업 내역 (Detailed Tasks)
+### STEP 4: API View(비즈니스 로직) 및 URL 라우팅 구현
+* **작업일 : 2026-08-26**
 
-### STEP 4: LLM 파이프라인 구축 & 스트리밍 연동 (Core LLM Integration)
-* **작업일 : 2026-08-03**
-* 이 단계에서는 사용자가 메시지를 보냈을 때 OpenAI API(또나 LangChain 등)를 통해 답변을 생성하고, 이를 ChatMessage DB 모델에 저장 및 반환하는 핵심 비즈니스 로직을 구축합니다.
-
-* **LLM Client 모듈화**
-  * LangChain 또는 OpenAI SDK 기반의 LLM 서비스 클래스 캡슐화
-  * 이전 대화 맥락(Context)을 템플릿 프롬프트에 결합하는 로직 구현
-
-  1) LLM 호출 서비스 파일 생성 및 작성 (llm_core/services.py)
-      * 산출물: `llm_core/services.py`
-  2) chat/serializers.py에 메시지 요청용 Serializer 추가
-  3) chat/views.py에 LLM 메시지 전송 API 구현
-  4) chat/urls.py에 엔드포인트 연결
-
-  * 웹 연결 확인해보기
-  1) 파일을 모두 저장한 뒤 서버를 재시작합니다 (python manage.py runserver)
-  2) Swagger UI ([http://127.0.0.1:8000/api/v1/docs/](http://127.0.0.1:8000/api/v1/docs/))에 접속
-  3) /api/v1/auth/login/에서 로그인하여 발급받은 Access Token을 우측 상단 Authorize 버튼을 눌러 등록 (<토큰>).
-  4) POST /api/v1/chat/sessions/로 새 대화방을 생성 (id 확인)
-  5) POST /api/v1/chat/sessions/{session_id}/completion/ 엔드포인트에서 message 항목에 질문을 넣고 실행하여 GPT의 답변이 정상적으로 돌아오는지 확인
-  6) GET /api/v1/chat/sessions/ 엔드포인트에서 대화방 내역 확인
-  7) DELETE /api/v1/chat/sessions/{session_id}/ 엔드포인트에서 대화방 삭제
+* Django 기반 프로젝트 관리 시스템의 API 구현 순서와 전체 엔드포인트 구조를 정의.
 
 ---
-* **작업일 : 2026-08-04**
-* **실시간 스트리밍 API (SSE)**
-  * `StreamingHttpResponse`를 활용한 Server-Sent Events (SSE) 구현
-  * LLM 답변의 토큰 단위 스트리밍 응답을 React로 전달하고, 답변 완료 시 DB에 수신 메시지 저장
-  * 주요 엔드포인트: `/api/v1/chat/stream/` (`text/event-stream`)
 
-  * 백엔드 SSE 스트리밍 구현 4단계
-    * [1단계: 서비스 로직] llm_core/services.py파일내부에 Generator 함수 구현  
-  OpenAI 등 LLM API를 호출할 때 stream=True 옵션을 주고, 응답 조각(chunk)이 올 때마다 SSE 포맷에 맞춰 yield로 내보내는 제너레이터 함수를 만듭니다.
+## 1. API 구현 순서
 
-      * SSE 표준 데이터 포맷: data: <내용>\n\n
-      * 완료 신호: 스트림 종료 시 data: [DONE]\n\n을 내보내 프론트엔드가 수신 종료를 알 수 있게 합니다.
+파이프라인 흐름(`회의록` $\rightarrow$ `기획서` $\rightarrow$ `요구사항 정의` $\rightarrow$ `업무 배정` $\rightarrow$ `통합 이력`)에 맞추어 아래 순서대로 View 및 URL 라우팅을 구축합니다.
 
-    * [2단계: View 작성] chat/views.py 파일 내부에 ChatStreamView(APIView) 구현   
-    -> 일반적인 Response 대신 Django의 StreamingHttpResponse를 사용해야 응답 데이터를 한 번에 보내지 않고 실시간 흐름으로 응답할 수 있습니다.
-      * content_type='text/event-stream' 지정
-      * CORS 및 버퍼링 방지 헤더 설정 (Cache-Control: no-cache, X-Accel-Buffering: no 등)
+1. **`users` & `common` 앱**: 사용자 인증, 프로필 조회, 공통 코드 메타데이터 제공 (기반 레이어)
+2. **`projects` 앱**: 프로젝트 생성/조회 및 파이프라인 타임라인 이력 조회 (`/history`)
+3. **`meetings` 앱**: 1단계 산출물 (회의록 작성, AI 요약, 기획서 생성 및 검토)
+4. **`requirements` 앱**: 2단계 산출물 (기획서 기반 요구사항 정의서 및 세부 항목 추출)
+5. **`tasks` 앱**: 3단계 산출물 (요구사항 기반 개발 업무 자동/수동 배정 및 승인)
 
-    * [3단계: URL 연결] chat/urls.py 엔드포인트
-      * 프론트엔드 팀원이 접근할 수 있도록 API 경로를 추가합니다. (예: POST /api/v1/chat/stream/)
+---
 
-    * [4단계: 로컬 테스트] cURL / Postman 검증
-      * 웹 브라우저나 cURL 명령어, 또는 Postman을 통해 한 글자씩 쪼개져 실시간으로 들어오는지 직접 테스트합니다.
+## 2. 전체 API 엔드포인트 명세표
+
+| 앱 (App) | HTTP 메서드 | 엔드포인트 URL | 설명 | 주요 액션 및 비즈니스 로직 |
+|---|---|---|---|---|
+| **common** | `GET` | `/api/common/codes/` | 공통 코드 목록 조회 | 부서, 직급, 상태, 기술 스택 공통 코드 조회 |
+| **users** | `GET` | `/api/users/me/` | 내 정보 프로필 조회 | 현재 로그인된 사용자의 상세 프로필 및 보유 기술 반환 |
+| | `GET` | `/api/users/` | 사용자/개발자 목록 조회 | 업무 자동 배정 대상 유저 목록 조회 |
+| **projects** | `GET` / `POST` | `/api/projects/` | 프로젝트 목록 조회 및 생성 | 프로젝트 기본 정보 CRUD |
+| | `GET` | `/api/projects/{id}/history/` | 파이프라인 전체 이력 조회 | `/history` 페이지 타임라인 이력 로그 제공 |
+| **meetings** | `GET` / `POST` | `/api/meetings/notes/` | 회의록 목록 조회 및 신규 작성 | 1단계 파이프라인 시작점 |
+| | `POST` | `/api/meetings/notes/{id}/analyze/` | 회의록 AI 분석/요약 실행 | 회의록 텍스트 기반 핵심 요약 및 기획 초안 데이터 생성 |
+| | `GET` / `POST` | `/api/meetings/specs/` | 기획서 목록 조회 및 신규 생성 | 회의록 기반 기획서(SpecDocument) 생성 |
+| | `PATCH` | `/api/meetings/specs/{id}/review/` | 기획서 검토 및 승인 | 검토 상태 변경 및 `PipelineHistory` 로그 자동 기록 |
+| **requirements** | `GET` / `POST` | `/api/requirements/` | 요구사항 정의서 목록 및 생성 | 기획서 기반 2단계 요구사항 Header 생성 |
+| | `POST` | `/api/requirements/{id}/extract/` | AI 요구사항 항목 자동 추출 | 기획서 내용 분석 후 `RequirementItem` 목록 자동 생성 |
+| | `GET` / `POST` | `/api/requirements/items/` | 요구사항 세부 항목 CRUD | 개별 REQ 코드별 상세 명세 관리 |
+| **tasks** | `GET` / `POST` | `/api/tasks/assignments/` | 배정 업무 목록 및 생성 | 요구사항 항목 기반 업무 생성 |
+| | `POST` | `/api/tasks/auto-assign/` | 업무 AI 자동 배정 | 개발자 스킬셋/작업중 여부(`is_busy`) 분석 후 최적 매핑 |
+| | `PATCH` | `/api/tasks/assignments/{id}/status/` | 업무 승인 및 상태 변경 | 승인 처리 및 개발 진행 상태 업데이트 |
