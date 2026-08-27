@@ -100,17 +100,6 @@ WSGI_APPLICATION = 'config.wsgi.application'
 #     }
 # }
 
-# DATABASES = {
-#        'default': {
-#            'ENGINE': 'django.db.backends.mysql',  # PostgreSQL: django.db.backends.postgresql / MySQL: django.db.backends.mysql
-#            'NAME': 'heyzzabi',                 # RDS 데이터베이스 이름
-#            'USER': 'admin',                # RDS Master Username
-#            'PASSWORD': '1234qwer',            # RDS Master Password
-#            'HOST': 'skn31-mysql.c34u2se88oy3.ap-northeast-2.rds.amazonaws.com', # RDS 엔드포인트
-#            'PORT': '3306',                             # PostgreSQL: 5432 / MySQL: 3306
-#        }
-#    }
-
 DATABASES = {
 'default': env.db('DATABASE_URL')
 }
