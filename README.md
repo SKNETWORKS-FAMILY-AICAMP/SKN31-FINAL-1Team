@@ -34,7 +34,7 @@
 1. develop 최신 상태로 맞추기  
 `git checkout develop`  
 `git pull origin develop`  
-2. 오늘 할 작업 브랜치 만들기 (WBS 번호 사용)  
+2. 오늘 할 작업 브랜치 만들기 (WBS 번호 사용)  -1
 `git checkout -b <브랜치명>` : 예시) `git checkout -b feat/6-2-auth-api`  
 3. 수시로 커밋 진행  
 `git add .`  
