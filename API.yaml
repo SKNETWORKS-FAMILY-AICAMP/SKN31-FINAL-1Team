@@ -1068,9 +1068,8 @@ components:
           maxLength: 100
         sort_order:
           type: integer
-          maximum: 9223372036854775807
-          minimum: -9223372036854775808
-          format: int64
+          maximum: 2147483647
+          minimum: -2147483648
           title: 정렬 순서
         is_active:
           type: boolean
@@ -2073,9 +2072,8 @@ components:
           readOnly: true
         proficiency_level:
           type: integer
-          maximum: 9223372036854775807
-          minimum: -9223372036854775808
-          format: int64
+          maximum: 2147483647
+          minimum: -2147483648
           title: 숙련도 (1~5)
       required:
       - skill_code
