@@ -88,8 +88,11 @@ python -c "from django.core.management.utils import get_random_secret_key; print
 SECRET_KEY=<<본인 django API key 입력>>
 OPENAI_API_KEY=<<본인 API key 입력>>
 ```
-3) DB 저장 `python manage.py migrate`
-3-1) 테스트 계정 주입 `python manage.py loaddata seed_users.json`
-4) 서버 실행하기 `python manage.py runserver`
-5) 테스트 서버 실행하기(웹에서 아래 주소 접속)
-`http://127.0.0.1:8000/api/v1/swagger/`
+3) DB 저장  
+`python manage.py migrate`  
+3-1) 테스트 계정 주입   
+`python manage.py loaddata seed_users.json`
+4) 서버 실행하기   
+`python manage.py runserver`
+5) API swagger 서버 실행하기(웹에서 아래 주소 접속되는지 확인)
+`http://127.0.0.1:8000/api/docs/swagger/`
