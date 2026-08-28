@@ -15,9 +15,9 @@ load_dotenv()
 
 PROVIDER = os.getenv("LLM_PROVIDER", "openai")
 
-MODEL = {
+MODEL = os.getenv("LLM_MODEL") or {
     "anthropic": "claude-sonnet-4-5",
-    "openai": "gpt-4o-mini",
+    "openai": "gpt-4o",
 }[PROVIDER]
 
 MAX_TOKENS = 8000

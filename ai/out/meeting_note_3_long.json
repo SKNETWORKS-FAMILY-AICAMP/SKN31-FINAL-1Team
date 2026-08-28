@@ -1,0 +1,176 @@
+{
+  "project": {
+    "name": "리테일링크(RetailLink) — 소상공인 재고/발주 관리 서비스",
+    "background": "소상공인들이 재고 및 발주 관리를 효율적으로 할 수 있도록 지원하는 서비스",
+    "problem": "재고 임계치 설정의 비효율성과 발주서 양식의 다양성으로 인한 관리 어려움",
+    "goals": [
+      "재고 임계치 자동 계산 기능 제공",
+      "발주서 표준 양식 제공",
+      "권한 관리 기능 제공"
+    ],
+    "evidence": {
+      "quote": "리테일링크(RetailLink) — 소상공인 재고/발주 관리 서비스"
+    },
+    "evidence_status": "verified"
+  },
+  "users": [
+    {
+      "type": "소상공인",
+      "description": "재고 및 발주 관리를 필요로 하는 사용자",
+      "needs": [
+        "재고 임계치 자동 계산",
+        "발주서 표준 양식 제공",
+        "권한 관리 기능"
+      ],
+      "evidence": {
+        "quote": "소상공인 재고/발주 관리 서비스"
+      },
+      "evidence_status": "verified"
+    }
+  ],
+  "requirements": {
+    "functional": [
+      {
+        "content": "재고 임계치를 최근 4주 평균 일일 판매량과 거래처 리드타임으로 자동 계산한다.",
+        "priority": "high",
+        "evidence": {
+          "quote": "재고 임계치는 최근 4주 평균 일일 판매량 × 거래처 리드타임으로 자동 계산하며, 리드타임 미입력 시 기본 3일을 적용한다."
+        },
+        "evidence_status": "verified"
+      },
+      {
+        "content": "알림은 매일 오전 9시에 발주 필요 품목을 묶어 1일 1회 발송한다.",
+        "priority": "high",
+        "evidence": {
+          "quote": "알림은 매일 오전 9시에 발주 필요 품목을 묶어 1일 1회 발송한다."
+        },
+        "evidence_status": "verified"
+      },
+      {
+        "content": "발주서는 표준 양식 1종만 제공하며 PDF 다운로드와 링크 공유를 지원한다.",
+        "priority": "high",
+        "evidence": {
+          "quote": "발주서는 표준 양식 1종만 제공하며 PDF 다운로드와 링크 공유를 지원한다."
+        },
+        "evidence_status": "verified"
+      },
+      {
+        "content": "권한은 사장과 직원 2개 역할로 한정하며, 직원 계정에는 매입가, 마진, 매출 금액을 API 응답 단계에서 제외한다.",
+        "priority": "high",
+        "evidence": {
+          "quote": "권한은 사장과 직원 2개 역할로 한정한다. 직원 계정에는 매입가, 마진, 매출 금액을 API 응답 단계에서 제외하며, 직원은 입출고 등록·재고 조회·알림 확인만 가능하다."
+        },
+        "evidence_status": "verified"
+      }
+    ],
+    "non_functional": [
+      {
+        "content": "매입가 필드는 저장 암호화 대신 접근 권한 통제와 접근 로그 기록으로 보호한다.",
+        "priority": "medium",
+        "evidence": {
+          "quote": "매입가 필드는 저장 암호화 대신 접근 권한 통제와 접근 로그 기록으로 보호한다."
+        },
+        "evidence_status": "verified"
+      },
+      {
+        "content": "응답 3초 기준을 유지한다.",
+        "priority": "medium",
+        "evidence": {
+          "quote": "지난번에 정한 응답 3초 기준은 그대로 유지하기로 했습니다."
+        },
+        "evidence_status": "verified"
+      }
+    ],
+    "data": [
+      {
+        "content": "재고는 입출고 이력 테이블에 전부 기록하고 현재 재고는 스냅샷 컬럼으로 관리하며 이력과 대사한다.",
+        "priority": "high",
+        "evidence": {
+          "quote": "재고는 입출고 이력 테이블에 전부 기록하고 현재 재고는 스냅샷 컬럼으로 관리하며 이력과 대사한다."
+        },
+        "evidence_status": "verified"
+      },
+      {
+        "content": "바코드가 없는 상품에 대해 자체 상품 코드를 발급하는 기능을 포함한다.",
+        "priority": "medium",
+        "evidence": {
+          "quote": "바코드가 없는 상품에 대해 자체 상품 코드를 발급하는 기능을 포함한다."
+        },
+        "evidence_status": "verified"
+      }
+    ],
+    "technical": [
+      {
+        "content": "POS 연동은 A사만 유지하고 B사는 제휴 협의 후 2차 개발로 이관한다.",
+        "priority": "medium",
+        "evidence": {
+          "quote": "POS 연동은 A사만 유지하고 B사는 제휴 협의 후 2차 개발로 이관한다."
+        },
+        "evidence_status": "verified"
+      }
+    ]
+  },
+  "scenarios": [],
+  "decisions": [
+    {
+      "category": "feature",
+      "content": "재고 임계치를 자동 계산하는 기능을 포함한다.",
+      "rationale": "재고 관리의 효율성을 높이기 위해",
+      "evidence": {
+        "quote": "재고 임계치는 최근 4주 평균 일일 판매량 × 거래처 리드타임으로 자동 계산하며, 리드타임 미입력 시 기본 3일을 적용한다."
+      },
+      "evidence_status": "verified"
+    },
+    {
+      "category": "feature",
+      "content": "발주서 표준 양식을 제공한다.",
+      "rationale": "발주서 양식의 다양성 문제를 해결하기 위해",
+      "evidence": {
+        "quote": "발주서는 표준 양식 1종만 제공하며 PDF 다운로드와 링크 공유를 지원한다."
+      },
+      "evidence_status": "verified"
+    },
+    {
+      "category": "feature",
+      "content": "권한 관리 기능을 제공한다.",
+      "rationale": "사장과 직원의 역할을 구분하여 정보 접근을 제한하기 위해",
+      "evidence": {
+        "quote": "권한은 사장과 직원 2개 역할로 한정한다. 직원 계정에는 매입가, 마진, 매출 금액을 API 응답 단계에서 제외하며, 직원은 입출고 등록·재고 조회·알림 확인만 가능하다."
+      },
+      "evidence_status": "verified"
+    },
+    {
+      "category": "scope",
+      "content": "POS 연동은 A사만 유지하고 B사는 제휴 협의 후 2차 개발로 이관한다.",
+      "rationale": "B사와의 제휴 협의가 필요하여 일정에 포함할 수 없음",
+      "evidence": {
+        "quote": "POS 연동은 A사만 유지하고 B사는 제휴 협의 후 2차 개발로 이관한다."
+      },
+      "evidence_status": "verified"
+    },
+    {
+      "category": "scope",
+      "content": "거래처 관리 기능은 이름, 연락처, 리드타임만 관리하는 형태로 축소한다.",
+      "rationale": "일정 유지를 위해",
+      "evidence": {
+        "quote": "일정 유지를 위해 거래처 관리 기능은 이름, 연락처, 리드타임만 관리하는 형태로 축소하고 거래 이력 조회는 제외한다."
+      },
+      "evidence_status": "verified"
+    }
+  ],
+  "constraints": [
+    {
+      "type": "일정",
+      "content": "3개월 일정 유지",
+      "evidence": {
+        "quote": "그래도 3개월 일정은 유지하되, 거래처 관리 기능을 가장 단순한 형태로 축소하는 걸로 조정하자고 했습니다."
+      },
+      "evidence_status": "verified"
+    }
+  ],
+  "unresolved": [
+    "사용자 시나리오가 회의에서 구체적으로 언급되지 않았습니다."
+  ],
+  "meeting_id": "meeting_note_3_long",
+  "validation_notes": []
+}

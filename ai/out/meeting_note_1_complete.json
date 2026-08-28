@@ -1,23 +1,26 @@
 {
   "project": {
     "name": "리테일링크(RetailLink)",
-    "background": "소상공인들이 엑셀 또는 수기 장부로 재고를 관리하고 있어 발주 시점을 놓치거나 과재고가 발생하는 문제를 해결하기 위한 서비스 개발",
-    "problem": "발주 시점을 놓쳐 잘 팔리는 품목이 품절되고, 감으로 발주해 과재고가 쌓이는 문제",
+    "background": "사전 사용자 인터뷰 결과, 소상공인들이 엑셀 또는 수기 장부로 재고를 관리하고 있으며, 발주 시점 놓침과 과재고로 인한 손실 문제가 있음",
+    "problem": "발주 시점을 놓쳐 품절이 발생하고, 과재고로 인해 폐기 손실이 발생함",
     "goals": [
-      "MVP 출시 범위에 포함할 기능을 확정하고, 기획팀이 제안한 기능에 대해 개발팀이 구현 가능성과 방식을 검토하여 최종 결정한다.",
-      "기술 스택을 확정한다."
+      "MVP 출시 범위에 포함할 기능 확정",
+      "기획팀 제안 기능에 대한 개발팀의 구현 가능성 및 방식 검토",
+      "기술 스택 확정"
     ],
     "evidence": {
-      "quote": "MVP 출시 범위에 포함할 기능을 확정하고, 기획팀이 제안한 기능에 대해 개발팀이 구현 가능성과 방식을 검토하여 최종 결정한다."
+      "quote": "MVP 출시 범위에 포함할 기능을 확정하고, 기획팀이 제안한 기능에 대해 개발팀이 구현 가능성과 방식을 검토하여 최종 결정한다. 기술 스택도 이번 회의에서 확정한다."
     },
     "evidence_status": "verified"
   },
   "users": [
     {
       "type": "소상공인 사장",
-      "description": "매장 1~3개를 직접 운영하는 40~50대 사용자",
+      "description": "매장 1~3개를 직접 운영하며, 모바일 사용 비중이 높음",
       "needs": [
-        "모바일 사용 비중이 높고, 간편한 재고 관리 기능이 필요하다."
+        "재고 관리의 자동화",
+        "발주 시점 알림",
+        "모바일 우선 반응형 설계"
       ],
       "evidence": {
         "quote": "1차 타깃은 매장 1~3개를 직접 운영하는 소상공인 사장으로, 연령대는 40~50대이며 PC보다 모바일 사용 비중이 높다."
@@ -26,8 +29,10 @@
     },
     {
       "type": "매장 직원",
-      "description": "입출고 등록 정도만 수행하는 사용자",
-      "needs": [],
+      "description": "매장 파트타임 직원으로 입출고 등록 정도만 수행",
+      "needs": [
+        "간편한 입출고 등록"
+      ],
       "evidence": {
         "quote": "2차 사용자는 매장 파트타임 직원이며, 입출고 등록 정도만 수행한다."
       },
@@ -37,31 +42,63 @@
   "requirements": {
     "functional": [
       {
-        "content": "MVP 기능은 바코드 입출고 등록, 재고 임계치 알림, 발주서 자동 생성, 거래처 관리, 대시보드, 권한 관리 총 6개로 확정한다.",
+        "content": "바코드 입출고 등록 기능 제공",
         "priority": "high",
         "evidence": {
-          "quote": "MVP 기능은 바코드 입출고 등록, 재고 임계치 알림, 발주서 자동 생성, 거래처 관리, 대시보드, 권한 관리 총 6개로 확정한다."
+          "quote": "박서연이 제안한 MVP 기능은 총 6개다. ①바코드 입출고 등록 ②재고 임계치 알림 ③발주서 자동 생성 ④거래처 관리 ⑤대시보드 ⑥권한 관리."
         },
         "evidence_status": "verified"
       },
       {
-        "content": "바코드 스캔은 웹 카메라 API(BarcodeDetector) 방식으로 구현하며, iOS 사파리 대응을 위한 ZXing 폴백을 필수로 포함한다.",
+        "content": "재고 임계치 알림 기능 제공",
         "priority": "high",
         "evidence": {
-          "quote": "바코드 스캔은 웹 카메라 API(BarcodeDetector) 방식으로 구현하며, iOS 사파리 대응을 위한 ZXing 폴백을 필수로 포함한다."
+          "quote": "박서연이 제안한 MVP 기능은 총 6개다. ①바코드 입출고 등록 ②재고 임계치 알림 ③발주서 자동 생성 ④거래처 관리 ⑤대시보드 ⑥권한 관리."
         },
         "evidence_status": "verified"
       },
       {
-        "content": "매출 예측 기능은 MVP 범위에서 제외하고, 최근 4주 평균 판매량 기반 추천 수량 계산으로 대체한다.",
+        "content": "발주서 자동 생성 기능 제공",
         "priority": "high",
         "evidence": {
-          "quote": "매출 예측 기능은 MVP 범위에서 제외하고, 최근 4주 평균 판매량 기반 추천 수량 계산으로 대체한다."
+          "quote": "박서연이 제안한 MVP 기능은 총 6개다. ①바코드 입출고 등록 ②재고 임계치 알림 ③발주서 자동 생성 ④거래처 관리 ⑤대시보드 ⑥권한 관리."
         },
         "evidence_status": "verified"
       },
       {
-        "content": "POS 연동은 A사 API 1곳만 MVP에 포함하며, 나머지 벤더는 2차 개발로 이관한다.",
+        "content": "거래처 관리 기능 제공",
+        "priority": "high",
+        "evidence": {
+          "quote": "박서연이 제안한 MVP 기능은 총 6개다. ①바코드 입출고 등록 ②재고 임계치 알림 ③발주서 자동 생성 ④거래처 관리 ⑤대시보드 ⑥권한 관리."
+        },
+        "evidence_status": "verified"
+      },
+      {
+        "content": "대시보드 기능 제공",
+        "priority": "high",
+        "evidence": {
+          "quote": "박서연이 제안한 MVP 기능은 총 6개다. ①바코드 입출고 등록 ②재고 임계치 알림 ③발주서 자동 생성 ④거래처 관리 ⑤대시보드 ⑥권한 관리."
+        },
+        "evidence_status": "verified"
+      },
+      {
+        "content": "권한 관리 기능 제공",
+        "priority": "high",
+        "evidence": {
+          "quote": "박서연이 제안한 MVP 기능은 총 6개다. ①바코드 입출고 등록 ②재고 임계치 알림 ③발주서 자동 생성 ④거래처 관리 ⑤대시보드 ⑥권한 관리."
+        },
+        "evidence_status": "verified"
+      },
+      {
+        "content": "최근 4주 평균 판매량 기반 추천 수량 계산",
+        "priority": "medium",
+        "evidence": {
+          "quote": "최근 4주 평균 판매량 기반 추천 수량 계산으로 대체하기로 합의했다."
+        },
+        "evidence_status": "verified"
+      },
+      {
+        "content": "POS 연동 기능 제공",
         "priority": "high",
         "evidence": {
           "quote": "POS 연동은 A사 API 1곳만 MVP에 포함하며, 나머지 벤더는 2차 개발로 이관한다."
@@ -71,10 +108,42 @@
     ],
     "non_functional": [
       {
-        "content": "주요 화면 응답 3초 이내, 동시 접속 500명으로 한다.",
+        "content": "주요 화면 응답 3초 이내",
         "priority": "high",
         "evidence": {
-          "quote": "성능 기준은 주요 화면 응답 3초 이내, 동시 접속 500명으로 한다."
+          "quote": "주요 화면 응답 3초 이내를 기준으로 한다."
+        },
+        "evidence_status": "verified"
+      },
+      {
+        "content": "동시 접속 500명 처리",
+        "priority": "high",
+        "evidence": {
+          "quote": "동시 접속은 초기 목표 고객 수를 감안해 500명 처리로 설정했다."
+        },
+        "evidence_status": "verified"
+      },
+      {
+        "content": "모바일 우선 반응형 설계",
+        "priority": "high",
+        "evidence": {
+          "quote": "매장 내 모바일 사용 비중이 높으므로 모바일 우선 반응형으로 설계한다."
+        },
+        "evidence_status": "verified"
+      },
+      {
+        "content": "본문 폰트 16px 이상, 주요 버튼 터치 영역 44px 이상",
+        "priority": "high",
+        "evidence": {
+          "quote": "40~50대 사용자 비중을 고려해 본문 폰트 최소 16px, 주요 버튼 터치 영역 44px 이상을 적용해야 한다."
+        },
+        "evidence_status": "verified"
+      },
+      {
+        "content": "주요 액션 버튼 하단 배치",
+        "priority": "high",
+        "evidence": {
+          "quote": "한 손으로 조작하는 상황이 많으므로 주요 액션 버튼은 화면 하단에 배치한다."
         },
         "evidence_status": "verified"
       }
@@ -82,10 +151,34 @@
     "data": [],
     "technical": [
       {
-        "content": "기술 스택은 React + Spring Boot + MySQL + AWS로 확정하고 Next.js는 채택하지 않는다.",
+        "content": "프론트엔드 React",
         "priority": "high",
         "evidence": {
-          "quote": "기술 스택은 React + Spring Boot + MySQL + AWS로 확정하고 Next.js는 채택하지 않는다."
+          "quote": "프론트엔드 React, 백엔드 Spring Boot, DB MySQL, 인프라 AWS를 제안한다."
+        },
+        "evidence_status": "verified"
+      },
+      {
+        "content": "백엔드 Spring Boot",
+        "priority": "high",
+        "evidence": {
+          "quote": "프론트엔드 React, 백엔드 Spring Boot, DB MySQL, 인프라 AWS를 제안한다."
+        },
+        "evidence_status": "verified"
+      },
+      {
+        "content": "DB MySQL",
+        "priority": "high",
+        "evidence": {
+          "quote": "프론트엔드 React, 백엔드 Spring Boot, DB MySQL, 인프라 AWS를 제안한다."
+        },
+        "evidence_status": "verified"
+      },
+      {
+        "content": "인프라 AWS",
+        "priority": "high",
+        "evidence": {
+          "quote": "프론트엔드 React, 백엔드 Spring Boot, DB MySQL, 인프라 AWS를 제안한다."
         },
         "evidence_status": "verified"
       }
@@ -103,7 +196,7 @@
       "evidence_status": "verified"
     },
     {
-      "category": "feature",
+      "category": "tech",
       "content": "바코드 스캔은 웹 카메라 API(BarcodeDetector) 방식으로 구현하며, iOS 사파리 대응을 위한 ZXing 폴백을 필수로 포함한다.",
       "rationale": null,
       "evidence": {
@@ -137,29 +230,47 @@
         "quote": "기술 스택은 React + Spring Boot + MySQL + AWS로 확정하고 Next.js는 채택하지 않는다."
       },
       "evidence_status": "verified"
+    },
+    {
+      "category": "scope",
+      "content": "MVP 대상 사용자는 소상공인 사장과 매장 직원으로 한정하고, 프랜차이즈 본사 관리자는 제외한다.",
+      "rationale": null,
+      "evidence": {
+        "quote": "MVP 대상 사용자는 소상공인 사장과 매장 직원으로 한정하고, 프랜차이즈 본사 관리자는 제외한다."
+      },
+      "evidence_status": "verified"
+    },
+    {
+      "category": "scope",
+      "content": "기능 추가 요청은 기존 기능 제외를 전제로만 논의한다.",
+      "rationale": null,
+      "evidence": {
+        "quote": "기능 추가 요청은 기존 기능 제외를 전제로만 논의한다."
+      },
+      "evidence_status": "verified"
     }
   ],
   "constraints": [
     {
       "type": "인력",
-      "content": "투입 가능 인력은 백엔드 2명, 프론트엔드 1명, 디자인 1명으로 총 4명이다.",
+      "content": "투입 가능 인력은 백엔드 2명, 프론트엔드 1명, 디자인 1명으로 총 4명",
       "evidence": {
-        "quote": "투입 가능 인력은 백엔드 2명, 프론트엔드 1명, 디자인 1명으로 총 4명이다."
+        "quote": "투입 가능 인력은 백엔드 2명, 프론트엔드 1명, 디자인 1명으로 총 4명이며 개발 기간은 3개월이다."
       },
-      "evidence_status": "unverified"
+      "evidence_status": "verified"
     },
     {
       "type": "일정",
-      "content": "개발 기간은 3개월이다.",
+      "content": "개발 기간은 3개월",
       "evidence": {
-        "quote": "개발 기간은 3개월이다."
+        "quote": "투입 가능 인력은 백엔드 2명, 프론트엔드 1명, 디자인 1명으로 총 4명이며 개발 기간은 3개월이다."
       },
       "evidence_status": "verified"
     }
   ],
   "unresolved": [
-    "데이터 저장 방식이 논의되지 않았습니다.",
-    "비기능 요구사항(보안·사용성)이 구체적으로 언급되지 않았습니다."
+    "데이터 저장 및 연동 요구사항이 논의되지 않았습니다.",
+    "사용자 시나리오가 구체적으로 언급되지 않았습니다."
   ],
   "meeting_id": "meeting_note_1_complete",
   "validation_notes": []

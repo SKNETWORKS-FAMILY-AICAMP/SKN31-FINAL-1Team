@@ -1,150 +1,131 @@
 """
-plan_draft/schemas.py
+노드 ② 기획서 생성 스키마 — 7개 섹션.
 
-기획서 초안 화면의 출력 계약.
+## 섹션 구성
 
-입력은 meeting_analysis 가 만든 PlanDraft(구조화 JSON)이고,
-출력은 화면이 그대로 그릴 수 있는 12개 항목이다.
+| # | key         | 섹션            | 유형      | 생성 |
+|---|-------------|-----------------|-----------|------|
+| 1 | overview    | 프로젝트 개요   | narrative | LLM  |
+| 2 | problem     | 문제 정의       | narrative | LLM  |
+| 3 | users       | 대상 사용자     | narrative | LLM  |
+| 4 | features    | 주요 기능       | narrative | LLM  |
+| 5 | scenarios   | 사용자 시나리오 | narrative | LLM  |
+| 6 | tech_scope  | 기술 스택 및 제약사항 | list | 코드 |
+| 7 | decisions   | 최종 결정사항   | list      | 코드 |
 
-프론트엔드가 항목마다 다른 분기를 타지 않도록, 모든 내용을
-블록(block) 이라는 공통 형태로 감싼다. 화면은 kind 만 보고
-그리면 된다.
+## 12개에서 7개로 줄인 내역
+
+- 프로젝트 목표 → 삭제 (개요·문제 정의와 내용이 겹침)
+- 기능/비기능/데이터 요구사항 → 삭제 (실무 기획서에 상세 명세를 담지 않음)
+- 기술 요구사항 + 서비스 범위·제약 → 6번으로 통합
+
+## 스키마가 두 개인 이유
+
+PlanSections     : LLM이 생성하는 서술형 5개만
+PlanDocument     : 위 + 코드가 조립하는 2개 + 시스템 필드
+
+is_incomplete 같은 시스템 필드를 LLM 스키마에 넣으면
+모델이 "이것도 채워야 하나?" 하고 뭔가 써넣습니다.
+아예 보여주지 않는 게 안전합니다.
 """
 
-from __future__ import annotations
-
 from enum import Enum
-from typing import Literal, Union
+from typing import Optional
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, Field
 
-SCHEMA_VERSION = "1.1"
-
-
-class Strict(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+from shared.schemas_base import Evidence, ReviewStatus
 
 
-# --------------------------------------------------------------------------
-# 블록 — 화면이 그릴 수 있는 최소 단위
-# --------------------------------------------------------------------------
-class FieldBlock(Strict):
-    """소제목 + 본문 문단. 1번 프로젝트 개요에 쓴다."""
-
-    kind: Literal["field"] = "field"
-    label: str
-    text: str
+class SectionType(str, Enum):
+    NARRATIVE = "narrative"   # LLM 작문 — 반려 시 재생성이 의미 있음
+    LIST = "list"             # 코드 조립 — 재생성해도 같은 결과
 
 
-class ListItem(Strict):
-    """목록 한 줄. prefix 는 굵게 표시되는 앞머리."""
+# ─────────────────────────────────────────────────────────────
+# 섹션 정의 — 이 표가 노드 ②의 설계도입니다.
+# 프롬프트와 조립 코드 양쪽이 이걸 참조합니다.
+# ─────────────────────────────────────────────────────────────
+SECTION_SPEC = [
+    {"no": 1, "key": "overview",   "title": "프로젝트 개요",
+     "type": SectionType.NARRATIVE,
+     "source_fields": ["project.name", "project.background"]},
 
-    prefix: str = ""
-    text: str
+    {"no": 2, "key": "problem",    "title": "문제 정의",
+     "type": SectionType.NARRATIVE,
+     "source_fields": ["project.problem"]},
 
+    {"no": 3, "key": "users",      "title": "대상 사용자",
+     "type": SectionType.NARRATIVE,
+     "source_fields": ["users"]},
 
-class ListBlock(Strict):
-    """제목이 붙은 목록. 2번, 3번, 5번, 11번에 쓴다."""
+    {"no": 4, "key": "features",   "title": "주요 기능",
+     "type": SectionType.NARRATIVE,
+     "source_fields": ["requirements.functional", "decisions[feature]"]},
 
-    kind: Literal["list"] = "list"
-    heading: str = ""
-    items: list[ListItem] = Field(default_factory=list)
+    {"no": 5, "key": "scenarios",  "title": "사용자 시나리오",
+     "type": SectionType.NARRATIVE,
+     "source_fields": ["scenarios"]},
 
+    {"no": 6, "key": "tech_scope", "title": "기술 스택 및 제약사항",
+     "type": SectionType.LIST,
+     "source_fields": ["requirements.technical", "decisions[tech]", "constraints"]},
 
-class TableBlock(Strict):
-    """표. 4번, 7~10번, 12번에 쓴다. rows 는 columns 와 길이가 같다."""
+    {"no": 7, "key": "decisions",  "title": "최종 결정사항",
+     "type": SectionType.LIST,
+     "source_fields": ["decisions"]},
+]
 
-    kind: Literal["table"] = "table"
-    heading: str = ""
-    columns: list[str]
-    rows: list[list[str]] = Field(default_factory=list)
-    # 행마다 붙는 배지. 없으면 빈 문자열. 예: "핵심"
-    badges: list[str] = Field(default_factory=list)
-
-
-class FlowBlock(Strict):
-    """단계 흐름 + 결과. 6번 사용자 시나리오에 쓴다."""
-
-    kind: Literal["flow"] = "flow"
-    heading: str = ""
-    steps: list[str] = Field(default_factory=list)
-    result: str = ""
-
-
-class NoteBlock(Strict):
-    """섹션 하단 안내 문구. 12번의 11장 참조 안내에 쓴다."""
-
-    kind: Literal["note"] = "note"
-    text: str
+NARRATIVE_KEYS = [s["key"] for s in SECTION_SPEC if s["type"] == SectionType.NARRATIVE]
+LIST_KEYS = [s["key"] for s in SECTION_SPEC if s["type"] == SectionType.LIST]
 
 
-Block = Union[FieldBlock, ListBlock, TableBlock, FlowBlock, NoteBlock]
+class NarrativeSection(BaseModel):
+    """LLM이 생성하는 서술형 섹션."""
+    key: str
+    content_html: str = Field(
+        ...,
+        description="원본이 비어 있으면 빈 문자열(''). 추론해서 채우지 말 것.",
+    )
+    evidence: list[Evidence] = Field(default_factory=list)
 
 
-# --------------------------------------------------------------------------
-# 섹션과 문서
-# --------------------------------------------------------------------------
-class SectionNo(int, Enum):
-    OVERVIEW = 1
-    PROBLEMS = 2
-    GOALS = 3
-    USERS = 4
-    CORE_FEATURES = 5
-    SCENARIOS = 6
-    FUNCTIONAL = 7
-    NON_FUNCTIONAL = 8
-    DATA = 9
-    TECHNICAL = 10
-    SCOPE = 11
-    DECISIONS = 12
+class PlanSections(BaseModel):
+    """LLM 응답 형태. Instructor의 response_model로 씁니다."""
+    sections: list[NarrativeSection] = Field(..., min_length=1)
 
 
-class Section(Strict):
-    """기획서 한 항목.
+class Review(BaseModel):
+    state: ReviewStatus = ReviewStatus.PENDING
+    comment: Optional[str] = None
+    reject_type: Optional[str] = None   # 사실 오류 / 내용 부족 / 표현 문제 / 회의록 자체 문제
 
-    is_empty 가 True 여도 섹션은 사라지지 않는다. 회의에서 논의되지
-    않았다는 사실 자체가 사용자가 봐야 할 정보이기 때문이다.
-    이때 화면은 blocks 대신 empty_message 를 표시한다.
-    """
 
+class PlanSection(BaseModel):
+    """저장·전달용 최종 섹션 형태."""
     no: int
+    key: str
     title: str
-    is_empty: bool = False
-    empty_message: str = ""
-    blocks: list[Block] = Field(default_factory=list)
+    section_type: SectionType
+    content_html: str
+
+    # 같은 내용의 태그 없는 배열.
+    # 화면은 content_html, 하류 노드(③)는 items를 씁니다.
+    # 서술형 섹션(문단)은 쪼갤 항목이 없어 빈 배열입니다.
+    items: list[str] = Field(default_factory=list)
+
+    source_fields: list[str] = Field(default_factory=list)
+    evidence: list[Evidence] = Field(default_factory=list)
+
+    # 아래 세 필드는 코드가 채웁니다. LLM이 건드리지 않습니다.
+    is_incomplete: bool = False
+    edited_by_pm: bool = False
+    review: Review = Field(default_factory=Review)
 
 
-class DocumentHead(Strict):
-    """문서 머리. 제목과 출처 회의 정보."""
-
-    title: str
-    meeting_title: str
-    date: str
-    participants: list[str] = Field(default_factory=list)
-
-
-class TocEntry(Strict):
-    no: int
-    title: str
-    is_empty: bool
-
-
-class PlanDocument(Strict):
-    """화면이 받는 최종 형태.
-
-    evidence 는 이 구조에 포함되지 않는다. 근거는 검토·반려 판단과
-    디버깅용이며 기획서 본문에 노출하지 않기로 정했다.
-    """
-
-    schema_version: Literal["1.1"] = SCHEMA_VERSION
-    head: DocumentHead
-    sections: list[Section]
-
-    @property
-    def toc(self) -> list[TocEntry]:
-        return [
-            TocEntry(no=s.no, title=s.title, is_empty=s.is_empty) for s in self.sections
-        ]
-
-    def section(self, no: int) -> Section:
-        return next(s for s in self.sections if s.no == no)
+class PlanDocument(BaseModel):
+    proposal_id: str
+    meeting_id: str
+    status: str = "draft"          # draft | in_review | approved | rejected
+    sections: list[PlanSection]
+    unresolved: list[str] = Field(default_factory=list)
