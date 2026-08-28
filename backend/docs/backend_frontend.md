@@ -30,3 +30,6 @@
 `http://localhost:3000`
 
 ## 2. 백엔드 서버 실행
+* 새로운 터미널에서 실행
+1. cd backend
+2. python manage.py runserver
