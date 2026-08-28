@@ -28,3 +28,5 @@
 `npm run dev`
 8. 웹 실행
 `http://localhost:3000`
+
+## 2. 백엔드 서버 실행
