@@ -1,0 +1,22 @@
+[
+{
+  "model": "users.user",
+  "pk": 1,
+  "fields": {
+    "password": "pbkdf2_sha256$1200000$XypWPpHuCXVrYk4fyhDGs8$3br4wQdWcrM3K2xNOrHYPqIs5UioIT9hSj5oVRdMJoA=",
+    "last_login": null,
+    "is_superuser": true,
+    "username": "admin",
+    "first_name": "",
+    "last_name": "",
+    "email": "a@gmail.com",
+    "is_staff": true,
+    "is_active": true,
+    "date_joined": "2026-08-25T06:08:20.044Z",
+    "role": "MEMBER",
+    "is_busy": false,
+    "groups": [],
+    "user_permissions": []
+  }
+}
+]

@@ -10,7 +10,7 @@ from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 
 from meetings.models import MeetingNote
-from specs.models import SpecDocument
+# from specs.models import SpecDocument
 from tasks.models import TaskAssignment
 
 User = get_user_model()

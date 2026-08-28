@@ -1,4 +1,4 @@
-# 작업환경 설정
+# WSL 작업환경 설정
 
 ## 1. 우분투 설치
 1. 터미널을 관리자 권한으로 실행
@@ -34,7 +34,7 @@
 1. develop 최신 상태로 맞추기  
 `git checkout develop`  
 `git pull origin develop`  
-2. 오늘 할 작업 브랜치 만들기 (WBS 번호 사용)  
+2. 오늘 할 작업 브랜치 만들기 (WBS 번호 사용)  -1
 `git checkout -b <브랜치명>` : 예시) `git checkout -b feat/6-2-auth-api`  
 3. 수시로 커밋 진행  
 `git add .`  
@@ -65,6 +65,34 @@
 4. 원격 브랜치 삭제
 `git push origin --delete <브랜치명>`
 
-## 3. requirement.txt lib 버전 동일하게 설치
-`uv venv`
-`uv pip install -r requirements.txt`
+---
+---
+
+# 로컬환경 실행방법
+## 백엔드 — Windows (PowerShell)
+
+1) 터미널에서 다음 명령어 순차적으로 실행
+```powershell
+cd backend
+uv venv .venv --python=3.13
+.venv\Scripts\activate
+uv pip install -r requirements.txt
+copy .env.example .env
+```
+1-1) 아래 코드 실행하여 django secret key 생성한 후 복사하여 env에 붙여넣기
+```
+python -c "from django.core.management.utils import get_random_secret_key; print(get_random_secret_key())"
+```
+2) env 파일 내 key 값 채우기
+```
+SECRET_KEY=<<본인 django API key 입력>>
+OPENAI_API_KEY=<<본인 API key 입력>>
+```
+3) DB 저장  
+`python manage.py migrate`  
+3-1) 테스트 계정 주입   
+`python manage.py loaddata seed_users.json`
+4) 서버 실행하기   
+`python manage.py runserver`
+5) API swagger 서버 실행하기(웹에서 아래 주소 접속되는지 확인)
+`http://127.0.0.1:8000/api/docs/swagger/`
