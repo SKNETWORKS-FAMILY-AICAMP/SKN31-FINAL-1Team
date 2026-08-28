@@ -1,0 +1,196 @@
+{
+  "proposal_id": "P-meeting_note_2_vague",
+  "meeting_id": "meeting_note_2_vague",
+  "status": "draft",
+  "sections": [
+    {
+      "no": 1,
+      "key": "overview",
+      "title": "프로젝트 개요",
+      "section_type": "narrative",
+      "content_html": "<p>리테일링크 프로젝트는 기능 관련 논의 및 정리를 목표로 합니다. 이 프로젝트는 다양한 기능을 체계적으로 정리하고 구현하는 것을 목적으로 합니다.</p>",
+      "items": [],
+      "source_fields": [
+        "project.name",
+        "project.background"
+      ],
+      "evidence": [
+        {
+          "quote": "기능 관련 논의 및 정리"
+        }
+      ],
+      "is_incomplete": false,
+      "edited_by_pm": false,
+      "review": {
+        "state": "pending",
+        "comment": null,
+        "reject_type": null
+      }
+    },
+    {
+      "no": 2,
+      "key": "problem",
+      "title": "문제 정의",
+      "section_type": "narrative",
+      "content_html": "<p>기능 관련 논의 및 정리가 필요합니다.</p>",
+      "items": [],
+      "source_fields": [
+        "project.problem"
+      ],
+      "evidence": [
+        {
+          "quote": "기능 관련 논의 및 정리"
+        }
+      ],
+      "is_incomplete": false,
+      "edited_by_pm": false,
+      "review": {
+        "state": "pending",
+        "comment": null,
+        "reject_type": null
+      }
+    },
+    {
+      "no": 3,
+      "key": "users",
+      "title": "대상 사용자",
+      "section_type": "narrative",
+      "content_html": "",
+      "items": [],
+      "source_fields": [
+        "users"
+      ],
+      "evidence": [],
+      "is_incomplete": true,
+      "edited_by_pm": false,
+      "review": {
+        "state": "pending",
+        "comment": null,
+        "reject_type": null
+      }
+    },
+    {
+      "no": 4,
+      "key": "features",
+      "title": "주요 기능",
+      "section_type": "narrative",
+      "content_html": "<ul><li>발주서 기본 양식 1개로 시작</li><li>대시보드에 재고 현황, 알림 목록 포함</li></ul>",
+      "items": [],
+      "source_fields": [
+        "requirements.functional",
+        "decisions[feature]"
+      ],
+      "evidence": [
+        {
+          "quote": "발주서 양식은 거래처마다 다를 수 있다고 함. 일단 기본 양식 하나 만들고 나중에 늘리는 쪽으로 얘기됨."
+        },
+        {
+          "quote": "대시보드에 뭘 넣을지 얘기했는데 이것저것 나왔음. 재고 현황이랑 알림 목록은 확실히 넣기로 함."
+        }
+      ],
+      "is_incomplete": false,
+      "edited_by_pm": false,
+      "review": {
+        "state": "pending",
+        "comment": null,
+        "reject_type": null
+      }
+    },
+    {
+      "no": 5,
+      "key": "scenarios",
+      "title": "사용자 시나리오",
+      "section_type": "narrative",
+      "content_html": "",
+      "items": [],
+      "source_fields": [
+        "scenarios"
+      ],
+      "evidence": [],
+      "is_incomplete": true,
+      "edited_by_pm": false,
+      "review": {
+        "state": "pending",
+        "comment": null,
+        "reject_type": null
+      }
+    },
+    {
+      "no": 6,
+      "key": "tech_scope",
+      "title": "기술 및 제약사항",
+      "section_type": "list",
+      "content_html": "<p><strong>성능·보안 요구</strong></p><ul><li>속도는 너무 느리지 않게 해달라고 요청함.</li></ul><p><strong>제약사항</strong></p><ul><li>[일정] 개발 쪽에서 일정이 빠듯함</li><li>알림 기준은 보류</li></ul>",
+      "items": [
+        "속도는 너무 느리지 않게 해달라고 요청함.",
+        "[일정] 개발 쪽에서 일정이 빠듯함",
+        "알림 기준은 보류"
+      ],
+      "source_fields": [
+        "requirements.technical",
+        "requirements.non_functional",
+        "requirements.data",
+        "decisions[tech]",
+        "constraints",
+        "decisions[scope]"
+      ],
+      "evidence": [
+        {
+          "quote": "속도는 너무 느리지 않게 해달라고 요청함."
+        },
+        {
+          "quote": "개발 쪽에서 일정이 빠듯하다는 얘기를 계속 함. 지금 인원으로는 어렵다는 뉘앙스였음."
+        },
+        {
+          "quote": "알림 기준은 보류"
+        }
+      ],
+      "is_incomplete": false,
+      "edited_by_pm": false,
+      "review": {
+        "state": "pending",
+        "comment": null,
+        "reject_type": null
+      }
+    },
+    {
+      "no": 7,
+      "key": "decisions",
+      "title": "최종 결정사항",
+      "section_type": "list",
+      "content_html": "<ul><li>[기능] 발주서 기본 양식 1개로 시작</li><li>[기능] 대시보드에 재고 현황, 알림 목록 포함</li><li>[범위] 알림 기준은 보류</li></ul>",
+      "items": [
+        "[기능] 발주서 기본 양식 1개로 시작",
+        "[기능] 대시보드에 재고 현황, 알림 목록 포함",
+        "[범위] 알림 기준은 보류"
+      ],
+      "source_fields": [
+        "decisions"
+      ],
+      "evidence": [
+        {
+          "quote": "발주서 기본 양식 1개로 시작"
+        },
+        {
+          "quote": "대시보드에 재고 현황, 알림 목록 포함"
+        },
+        {
+          "quote": "알림 기준은 보류"
+        }
+      ],
+      "is_incomplete": false,
+      "edited_by_pm": false,
+      "review": {
+        "state": "pending",
+        "comment": null,
+        "reject_type": null
+      }
+    }
+  ],
+  "unresolved": [
+    "사용자 유형 및 요구사항이 논의되지 않았습니다.",
+    "데이터 저장 및 연동 요구사항이 논의되지 않았습니다.",
+    "기술 스택 및 환경이 논의되지 않았습니다.",
+    "서버 관련 내용이 명확하지 않습니다."
+  ]
+}
