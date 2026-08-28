@@ -8,7 +8,7 @@
       "key": "overview",
       "title": "프로젝트 개요",
       "section_type": "narrative",
-      "content_html": "<p>리테일링크(RetailLink)는 소상공인들이 엑셀이나 수기 장부로 재고를 관리하는 문제를 해결하기 위해 개발되었습니다. 발주 시점을 놓치거나 과재고로 인한 손실을 줄이는 것이 목표입니다.</p>",
+      "content_html": "<p><strong>리테일링크(RetailLink)</strong>는 소상공인들이 엑셀이나 수기 장부로 재고를 관리하는 문제를 해결하기 위해 개발되었습니다. 발주 시점을 놓치거나 과재고로 인한 손실을 줄이는 것이 목표입니다.</p>",
       "items": [],
       "source_fields": [
         "project.name",

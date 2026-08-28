@@ -33,6 +33,11 @@ def _ul(lines: list[str]) -> str:
     return "<ul>" + "".join(f"<li>{escape(t)}</li>" for t in lines) + "</ul>"
 
 
+def _norm(text: str) -> str:
+    """중복 판정용 정규화. 공백만 제거해 표현 차이를 흡수합니다."""
+    return "".join(text.split())
+
+
 def _ev(items: list[dict]) -> list[Evidence]:
     out = []
     for i in items:
@@ -61,50 +66,56 @@ def build_tech_scope(structured: dict) -> PlanSection:
     items: list[str] = []
     evidence: list[Evidence] = []
 
-    # ── 기술 스택 ────────────────────────────────────────────
-    # technical 요구사항 + tech 결정. 내용이 같으면 한 번만 넣습니다.
-    tech = reqs.get("technical", [])
-    
-    # seen = {t.get("content", "") for t in tech}
-    # for d in decisions:
-    #     if d.get("category") == "tech" and d.get("content") not in seen:
-    #         tech.append(d)
+    # 한 섹션 안에서 같은 문장이 두 번 나오지 않게 추적합니다.
+    #
+    # 구조화 단계에서 같은 내용이 여러 분류에 들어가는 경우가 있습니다.
+    # 예를 들어 "POS 연동은 A사만 유지한다"가 requirements.technical과
+    # decisions[scope]에 모두 잡히면, 기술 스택과 제약사항에 같은 문장이
+    # 두 번 나와 PM 눈에 이상하게 보입니다.
+    #
+    # 먼저 나온 소제목에 남기고 이후 소제목에서는 건너뜁니다.
+    # (섹션 간 중복은 건드리지 않습니다. 6번과 7번은 관점이 달라
+    #  같은 결정이 양쪽에 나오는 것이 의도된 동작입니다.)
+    seen_lines: set[str] = set()
 
-    if tech:
-        lines = [t["content"] for t in tech]
-        parts.append("<p><strong>기술 스택</strong></p>" + _ul(lines))
-        items += lines
-        evidence += _ev(tech)
+    def add(title: str, sources: list[dict], render) -> None:
+        """소제목 하나를 조립합니다. 이미 나온 문장은 제외합니다."""
+        lines, used = [], []
+        for s in sources:
+            text = render(s)
+            key = _norm(text)
+            if not key or key in seen_lines:
+                continue
+            seen_lines.add(key)
+            lines.append(text)
+            used.append(s)
+
+        if not lines:
+            return
+        parts.append(f"<p><strong>{title}</strong></p>" + _ul(lines))
+        items.extend(lines)
+        evidence.extend(_ev(used))
+
+    # ── 기술 스택 ────────────────────────────────────────────
+    # requirements.technical만 사용합니다.
+    # decisions[tech]는 넣지 않습니다 — 같은 내용이 표현만 달라 중복되고,
+    # 어차피 7번 최종 결정사항에 전부 들어갑니다.
+    add("기술 스택", reqs.get("technical", []), lambda s: s["content"])
 
     # ── 성능·보안 요구 ───────────────────────────────────────
-    nonfunc = reqs.get("non_functional", [])
-    if nonfunc:
-        lines = [n["content"] for n in nonfunc]
-        parts.append("<p><strong>성능·보안 요구</strong></p>" + _ul(lines))
-        items += lines
-        evidence += _ev(nonfunc)
+    add("성능·보안 요구", reqs.get("non_functional", []), lambda s: s["content"])
 
     # ── 데이터 요구 ──────────────────────────────────────────
-    data_reqs = reqs.get("data", [])
-    if data_reqs:
-        lines = [d["content"] for d in data_reqs]
-        parts.append("<p><strong>데이터 요구</strong></p>" + _ul(lines))
-        items += lines
-        evidence += _ev(data_reqs)
+    add("데이터 요구", reqs.get("data", []), lambda s: s["content"])
 
     # ── 제약사항 ─────────────────────────────────────────────
     # constraints는 type이 있고(일정/인력 등), scope 결정은 없습니다.
     scope: list[dict] = list(structured.get("constraints", []))
     scope += [d for d in decisions if d.get("category") == "scope"]
-
-    if scope:
-        lines = [
-            (f"[{s['type']}] {s['content']}" if s.get("type") else s["content"])
-            for s in scope
-        ]
-        parts.append("<p><strong>제약사항</strong></p>" + _ul(lines))
-        items += lines
-        evidence += _ev(scope)
+    add(
+        "제약사항", scope,
+        lambda s: f"[{s['type']}] {s['content']}" if s.get("type") else s["content"],
+    )
 
     return PlanSection(
         no=6, key="tech_scope", title="기술 및 제약사항",
