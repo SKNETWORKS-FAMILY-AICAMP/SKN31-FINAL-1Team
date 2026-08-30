@@ -153,6 +153,9 @@ def regenerate_section(
         items=[],
         source_fields=spec["source_fields"],
         evidence=gen.evidence if gen else [],
+        # 반려 사유 중 원본 정보가 없어 못 채운 부분.
+        # 작성자에게 그대로 보여주어 "왜 안 바뀌었는지"를 알립니다.
+        needs_input=gen.needs_input if gen else "",
         is_incomplete=not content.strip(),
     )
 

@@ -8,7 +8,7 @@
       "key": "overview",
       "title": "프로젝트 개요",
       "section_type": "narrative",
-      "content_html": "<p><strong>리테일링크(RetailLink)</strong>는 소상공인들이 엑셀이나 수기 장부로 재고를 관리하는 문제를 해결하기 위해 개발되었습니다. 발주 시점을 놓치거나 과재고로 인한 손실을 줄이는 것이 목표입니다.</p>",
+      "content_html": "<p>리테일링크(RetailLink)는 소상공인들이 엑셀이나 수기 장부로 재고를 관리하는 문제를 해결하기 위해 개발되었습니다. 발주 시점을 놓치거나 과재고로 인한 손실을 줄이는 것이 목표입니다.</p>",
       "items": [],
       "source_fields": [
         "project.name",
@@ -19,6 +19,7 @@
           "quote": "사전 사용자 인터뷰 결과, 소상공인들이 엑셀 또는 수기 장부로 재고를 관리하고 있으며, 발주 시점 놓침과 과재고로 인한 손실 문제가 있음"
         }
       ],
+      "needs_input": "",
       "is_incomplete": false,
       "edited_by_pm": false,
       "review": {
@@ -32,7 +33,7 @@
       "key": "problem",
       "title": "문제 정의",
       "section_type": "narrative",
-      "content_html": "<p>발주 시점을 놓쳐 품절이 발생하고, 과재고로 인해 폐기 손실이 발생함</p>",
+      "content_html": "<p>발주 시점을 놓쳐 품절이 발생하고, 과재고로 인해 폐기 손실이 발생합니다.</p>",
       "items": [],
       "source_fields": [
         "project.problem"
@@ -42,6 +43,7 @@
           "quote": "발주 시점을 놓쳐 품절이 발생하고, 과재고로 인해 폐기 손실이 발생함"
         }
       ],
+      "needs_input": "",
       "is_incomplete": false,
       "edited_by_pm": false,
       "review": {
@@ -68,6 +70,7 @@
           "quote": "2차 사용자는 매장 파트타임 직원이며, 입출고 등록 정도만 수행한다."
         }
       ],
+      "needs_input": "",
       "is_incomplete": false,
       "edited_by_pm": false,
       "review": {
@@ -81,7 +84,7 @@
       "key": "features",
       "title": "주요 기능",
       "section_type": "narrative",
-      "content_html": "<ul><li>바코드 입출고 등록</li><li>재고 임계치 알림</li><li>발주서 자동 생성</li><li>거래처 관리</li><li>대시보드 제공</li><li>권한 관리</li></ul>",
+      "content_html": "<ul><li>바코드 입출고 등록</li><li>재고 임계치 알림</li><li>발주서 자동 생성</li><li>거래처 관리</li><li>대시보드 제공</li><li>권한 관리</li><li>POS 연동</li></ul>",
       "items": [],
       "source_fields": [
         "requirements.functional",
@@ -92,9 +95,10 @@
           "quote": "박서연이 제안한 MVP 기능은 총 6개다. ①바코드 입출고 등록 ②재고 임계치 알림 ③발주서 자동 생성 ④거래처 관리 ⑤대시보드 ⑥권한 관리."
         },
         {
-          "quote": "MVP 기능은 바코드 입출고 등록, 재고 임계치 알림, 발주서 자동 생성, 거래처 관리, 대시보드, 권한 관리 총 6개로 확정한다."
+          "quote": "POS 연동은 A사 API 1곳만 MVP에 포함하며, 나머지 벤더는 2차 개발로 이관한다."
         }
       ],
+      "needs_input": "",
       "is_incomplete": false,
       "edited_by_pm": false,
       "review": {
@@ -114,6 +118,7 @@
         "scenarios"
       ],
       "evidence": [],
+      "needs_input": "",
       "is_incomplete": true,
       "edited_by_pm": false,
       "review": {
@@ -200,6 +205,7 @@
           "quote": "기능 추가 요청은 기존 기능 제외를 전제로만 논의한다."
         }
       ],
+      "needs_input": "",
       "is_incomplete": false,
       "edited_by_pm": false,
       "review": {
@@ -249,6 +255,7 @@
           "quote": "기능 추가 요청은 기존 기능 제외를 전제로만 논의한다."
         }
       ],
+      "needs_input": "",
       "is_incomplete": false,
       "edited_by_pm": false,
       "review": {

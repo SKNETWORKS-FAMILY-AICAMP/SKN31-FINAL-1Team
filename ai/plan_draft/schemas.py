@@ -89,6 +89,19 @@ class NarrativeSection(BaseModel):
     )
     evidence: list[Evidence] = Field(default_factory=list)
 
+    # 반려 사유를 다 반영하지 못했을 때 그 이유를 적습니다.
+    #
+    # 재생성을 요청받았는데 원본에 정보가 없으면 지어내는 대신
+    # "무엇이 없어서 못 채웠는지"를 여기 적게 합니다.
+    # 이게 없으면 작성자는 반려했는데 결과가 그대로인 이유를 알 수 없습니다.
+    needs_input: str = Field(
+        default="",
+        description=(
+            "반려 사유 중 원본 정보가 없어 반영하지 못한 부분. "
+            "전부 반영했으면 빈 문자열."
+        ),
+    )
+
 
 class PlanSections(BaseModel):
     """LLM 응답 형태. Instructor의 response_model로 씁니다."""
@@ -116,6 +129,9 @@ class PlanSection(BaseModel):
 
     source_fields: list[str] = Field(default_factory=list)
     evidence: list[Evidence] = Field(default_factory=list)
+
+    # 반려 사유 중 반영하지 못한 부분 (재생성 시에만 채워짐)
+    needs_input: str = ""
 
     # 아래 세 필드는 코드가 채웁니다. LLM이 건드리지 않습니다.
     is_incomplete: bool = False
