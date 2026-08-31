@@ -2391,7 +2391,7 @@
       "is_superuser": false,
       "username": "demo10",
       "first_name": "연우",
-      "last_name": "소",
+      "last_name": "김",
       "email": "demo10@demo.io",
       "is_staff": false,
       "is_active": true,
@@ -2406,6 +2406,6 @@
       "status_code": null,
       "groups": [],
       "user_permissions": []
-    }
+    } 
   }
 ]
