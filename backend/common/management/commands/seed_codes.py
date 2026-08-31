@@ -9,7 +9,7 @@ class Command(BaseCommand):
     help = "DB_명세서.xlsx의 초기 데이터(Seed) 시트 데이터를 DB에 자동 주입합니다."
 
     def handle(self, *args, **options):
-        excel_path = os.path.join(settings.BASE_DIR, "DB_table.xlsx")
+        excel_path = os.path.join(settings.BASE_DIR, "DB_front_back.xlsx")
 
         if not os.path.exists(excel_path):
             self.stderr.write(self.style.ERROR(f"파일을 찾을 수 없습니다: {excel_path}"))
