@@ -1,4 +1,4 @@
-import { stripLeadingNumber, type ProposalDoc } from "@/lib/documentTemplates";
+import type { ProposalDoc } from "@/lib/documentTemplates";
 
 // FR-05-009: 기획서는 PPTX 형식으로 다운로드 가능해야 함
 // ProposalDoc은 documentTemplates.ts에 정의된 단일 기획서 스키마이므로, AI가 채운 내용이든
@@ -31,44 +31,10 @@ export async function exportProposalPptx(doc: ProposalDoc, title: string) {
   addSectionSlide("1. 프로젝트 개요", doc.projectOverview);
   addSectionSlide("2. 문제 정의", doc.problemDefinition);
   addSectionSlide("3. 대상 사용자", doc.target);
-
-  const featureSlide = pptx.addSlide();
-  featureSlide.addText("4. 주요 기능", { x: 0.5, y: 0.4, w: 9, h: 0.6, fontSize: 24, bold: true, color: ACCENT });
-  // pptxgenjs의 rich-text 배열: 기능명은 글머리 기호(bullet)로, 설명은 한 단계 들여쓰기(indentLevel)해서
-  // "기능명 - 설명" 구조가 한눈에 보이도록 구성한다.
-  const PRIORITY_COLOR: Record<string, string> = { 필수: "DC2626", 권장: "2563EB", 선택: "94A3B8" };
-  const featureBullets = (doc.features || []).flatMap(f => ([
-    {
-      text: `${f.name}  [${f.priority ?? "권장"}]`,
-      options: { bold: true, fontSize: 14, color: PRIORITY_COLOR[f.priority ?? "권장"] ?? TITLE_COLOR, bullet: true, breakLine: true },
-    },
-    { text: f.description, options: { fontSize: 11, color: "64748B", indentLevel: 1, breakLine: true } },
-  ]));
-  featureSlide.addText(featureBullets.length ? featureBullets : [{ text: "-" }], { x: 0.5, y: 1.2, w: 9, h: 4, valign: "top" });
-
-  // 저장된 문자열엔 번호가 없으므로(화면의 <ol>이 번호를 매기는 것과 동일한 이유로 여기서도
-  // stripLeadingNumber로 혹시 남아있을 옛 번호를 벗겨낸 뒤) 슬라이드에서 직접 번호를 매긴다.
-  if (doc.userScenario?.length) {
-    const scenarioSlide = pptx.addSlide();
-    scenarioSlide.addText("5. 사용자 시나리오", { x: 0.5, y: 0.4, w: 9, h: 0.6, fontSize: 24, bold: true, color: ACCENT });
-    const scenarioBullets = doc.userScenario.map((step, i) => ({
-      text: `${i + 1}. ${stripLeadingNumber(step)}`,
-      options: { fontSize: 13, color: TITLE_COLOR, breakLine: true, paraSpaceAfter: 6 },
-    }));
-    scenarioSlide.addText(scenarioBullets, { x: 0.5, y: 1.2, w: 9, h: 4, valign: "top" });
-  }
-
+  addSectionSlide("4. 주요 기능", doc.features);
+  addSectionSlide("5. 사용자 시나리오", doc.userScenario);
   addSectionSlide("6. 기술 스택 및 제약사항", doc.techStackConstraints);
-
-  if (doc.finalDecisions?.length) {
-    const decisionSlide = pptx.addSlide();
-    decisionSlide.addText("7. 최종 결정사항", { x: 0.5, y: 0.4, w: 9, h: 0.6, fontSize: 24, bold: true, color: ACCENT });
-    const decisionBullets = doc.finalDecisions.map(d => ({
-      text: d,
-      options: { fontSize: 13, color: TITLE_COLOR, bullet: true, breakLine: true, paraSpaceAfter: 6 },
-    }));
-    decisionSlide.addText(decisionBullets, { x: 0.5, y: 1.2, w: 9, h: 4, valign: "top" });
-  }
+  addSectionSlide("7. 최종 결정사항", doc.finalDecisions);
 
   await pptx.writeFile({ fileName: `${title}_기획서.pptx` });
 }

@@ -61,11 +61,23 @@ class SpecDocument(models.Model):
     )
     
     title = models.CharField(max_length=200, verbose_name="기획서 제목")
-    overview = models.TextField(null=True, blank=True, verbose_name="프로젝트 개요")
-    background = models.TextField(null=True, blank=True, verbose_name="추진 배경")
-    target_scope = models.TextField(null=True, blank=True, verbose_name="개발 및 추진 범위")
-    key_features = models.TextField(null=True, blank=True, verbose_name="주요 기능 요약")
-    
+
+    # 2026-08-31: 기획서 화면을 "1.프로젝트개요~7.최종결정사항" 7개 섹션으로 재설계하면서 추가.
+    # 팀 결정: 7개 섹션 전부 자유 텍스트(한 덩어리)로 관리 — 4/5/7번(주요기능/시나리오/결정사항)도
+    # 카드·리스트로 행 단위 저장하지 않고 줄바꿈으로 구분된 하나의 텍스트로 둔다.
+    overview = models.TextField(null=True, blank=True, verbose_name="1. 프로젝트 개요")
+    problem_definition = models.TextField(null=True, blank=True, verbose_name="2. 문제 정의")
+    target_users = models.TextField(null=True, blank=True, verbose_name="3. 대상 사용자")
+    key_features = models.TextField(null=True, blank=True, verbose_name="4. 주요 기능")
+    user_scenarios = models.TextField(null=True, blank=True, verbose_name="5. 사용자 시나리오")
+    tech_stack = models.TextField(null=True, blank=True, verbose_name="6. 기술 스택 및 제약사항")
+    final_decisions = models.TextField(null=True, blank=True, verbose_name="7. 최종 결정사항")
+
+    # background/target_scope: 이 7섹션 템플릿 이전에 쓰이던 필드 — 새 화면에서는 안 쓰지만
+    # 기존 데이터 호환을 위해 그대로 남겨둔다.
+    background = models.TextField(null=True, blank=True, verbose_name="추진 배경 (구 필드, 미사용)")
+    target_scope = models.TextField(null=True, blank=True, verbose_name="개발 및 추진 범위 (구 필드, 미사용)")
+
     status_code = models.ForeignKey(
         CommonCode,
         on_delete=models.SET_NULL,
