@@ -49,10 +49,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       } catch {
         // apiFetch는 네트워크 오류와 401/403을 구분하지 않고 둘 다 throw하므로, 여기서 바로
         // 로그아웃 처리한다 — 일시적 네트워크 오류로 오탐하더라도 재로그인만 하면 되니 안전한 쪽.
+        // 토큰 자체(쿠키)는 서버가 관리하므로 여기선 화면 상태만 정리한다.
         setUser(null);
         localStorage.removeItem("hz_session");
-        localStorage.removeItem("access_token");
-        localStorage.removeItem("refresh_token");
         window.location.href = "/login";
       }
     };
@@ -61,32 +60,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [user]);
 
   const login = async (email: string, password: string) => {
-    // 명세서 규격: POST /api/users/login/ — Request Body { username, password },
-    // Response Body { message, user: { id, username, full_name, emp_no }, access, refresh }.
-    // apiFetch가 API_BASE_URL(.env.local의 NEXT_PUBLIC_API_BASE_URL)을 붙여 Django로 직접
-    // 보낸다 — 예전엔 상대경로("/api/users/login/")로 호출해서 실제로는 프론트 자신의 Next.js
-    // 서버로 요청이 갔고(존재하지 않는 경로라 404), credentials:"include"로 세션 쿠키를
-    // 기대했지만 백엔드는 JWT만 인증으로 인정해 그 쿠키는 이후 어떤 요청에서도 쓰이지 않았다.
+    // 2026-08-31: 토큰을 localStorage 대신 HttpOnly 쿠키로 옮기면서, 로그인(쓰기 요청) 전에
+    // csrftoken 쿠키를 먼저 확보해야 한다 — Django의 CSRF 검증은 X-CSRFToken 헤더 값이
+    // csrftoken 쿠키 값과 일치하는지 보는데, 첫 로그인 시도 시점엔 그 쿠키가 아직 없다.
+    await apiFetch("/api/users/csrf/");
+
     type LoginResponse = {
       message: string;
       user: { id: number | string; username: string; full_name: string; emp_no: string | null };
-      access: string;
-      refresh: string;
     };
-    let data: LoginResponse;
     try {
-      data = await apiFetch<LoginResponse>("/api/users/login/", {
+      await apiFetch<LoginResponse>("/api/users/login/", {
         method: "POST",
         body: JSON.stringify({ username: email, password }),
       });
     } catch (err: any) {
       throw new Error(err.message || "로그인에 실패했습니다.");
     }
-
-    // JWT는 apiFetch가 매 요청마다 localStorage의 access_token을 읽어 Authorization 헤더에
-    // 붙이므로, 이후 모든 API 호출이 인증되려면 이 저장이 먼저 끝나야 한다.
-    localStorage.setItem("access_token", data.access);
-    localStorage.setItem("refresh_token", data.refresh);
+    // access/refresh 토큰은 이제 서버가 Set-Cookie로 내려준다 — 여기서 직접 저장할 게 없다.
 
     // 로그인 응답(UserSimpleSerializer)에는 role 정보가 없다 — 화면의 PM/MEMBER 분기에 필요한
     // role_code는 GET /api/users/me/ (UserDetailSerializer)에만 있어서 한 번 더 불러온다.
@@ -98,30 +89,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const logout = () => {
-    const refreshToken = localStorage.getItem("refresh_token");
-    // apiFetch는 호출 시점에 localStorage의 access_token을 동기적으로 읽어 Authorization
-    // 헤더에 넣으므로, 아래에서 토큰을 지우기 전에 먼저 호출해야 한다(순서를 바꾸면 이 요청
-    // 자체가 인증 없이 나가 401을 받는다). 응답은 기다릴 필요 없다 — 실패해도 로그아웃 자체는
-    // 진행돼야 하고, 클라이언트가 토큰을 이미 버리므로 사실상 로그아웃된 것과 같다.
-    apiFetch("/api/users/logout/", {
-      method: "POST",
-      body: JSON.stringify({ refresh: refreshToken }),
-    }).catch(() => {});
+    // 쿠키(access/refresh)는 HttpOnly라 프론트가 직접 지울 수 없다 — 서버가 응답에서
+    // Set-Cookie로 만료시켜야 한다(users/views.py LogoutView의 clear_auth_cookies).
+    apiFetch("/api/users/logout/", { method: "POST" }).catch(() => {});
 
     setUser(null);
     localStorage.removeItem("hz_session");
-    localStorage.removeItem("access_token");
-    localStorage.removeItem("refresh_token");
     window.location.href = "/login";
   };
 
   // DEV ONLY — 재로그인 없이 다른 팀원 계정으로 세션을 바꿔본다.
-  // 2026-08-31: Django는 세션 쿠키가 아니라 JWT라 heyzzabi2의 "서버 세션 쿠키 바꿔치기"
-  // 방식이 그대로 안 통한다 — 대신 PM 전용 신규 엔드포인트(/api/users/{id}/impersonate/,
-  // settings.DEBUG=True인 로컬 환경에서만 동작)로 대상 계정의 JWT를 새로 발급받아
-  // localStorage의 access/refresh를 그걸로 바꿔치기한다. 원래 PM 토큰은 돌아올 때 다시
-  // 쓸 수 있게 별도 키(dev_original_*)에 보관해두므로, "복귀"는 서버 호출 없이 그 토큰을
-  // 되돌리기만 하면 된다.
+  // 2026-08-31: 토큰이 HttpOnly 쿠키로 바뀌면서 "프론트 JS가 원래 PM 토큰을 보관해뒀다가
+  // 되돌린다"는 방식이 아예 불가능해졌다(JS가 쿠키 값을 읽을 수 없으므로) — 대신 서버가
+  // 원래 토큰을 dev_original_* 쿠키에 보관해두고, 복귀는 전용 엔드포인트
+  // (POST /api/users/dev-stop-impersonate/)가 그걸 읽어 되돌린다.
   const devToggleRole = async () => {
     if (!user) return;
 
@@ -135,20 +116,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           console.error("dev-impersonate: 전환할 일반 유저 계정이 없습니다.");
           return;
         }
-        const target = nonPm[0];
-
-        const data = await apiFetch<{ access: string; refresh: string }>(`/api/users/${target.id}/impersonate/`, {
-          method: "POST",
-        });
-
-        // 복귀할 때 되돌릴 수 있도록 지금(PM) 토큰을 별도 키에 보관해둔다.
-        const currentAccess = localStorage.getItem("access_token");
-        const currentRefresh = localStorage.getItem("refresh_token");
-        if (currentAccess) localStorage.setItem("dev_original_access_token", currentAccess);
-        if (currentRefresh) localStorage.setItem("dev_original_refresh_token", currentRefresh);
-
-        localStorage.setItem("access_token", data.access);
-        localStorage.setItem("refresh_token", data.refresh);
+        await apiFetch(`/api/users/${nonPm[0].id}/impersonate/`, { method: "POST" });
 
         const profile = await apiFetch<any>("/api/users/me/");
         const preview = toUser(profile);
@@ -160,18 +128,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return;
     }
 
-    // 일반유저 → PM 복귀: 보관해둔 원래 PM 토큰을 그대로 되돌린다(서버 호출 불필요).
-    const originalAccess = localStorage.getItem("dev_original_access_token");
-    const originalRefresh = localStorage.getItem("dev_original_refresh_token");
-    if (!originalAccess) {
-      console.error("dev-stop-impersonate: 되돌아갈 PM 토큰이 없습니다.");
-      return;
-    }
     try {
-      localStorage.setItem("access_token", originalAccess);
-      if (originalRefresh) localStorage.setItem("refresh_token", originalRefresh);
-      localStorage.removeItem("dev_original_access_token");
-      localStorage.removeItem("dev_original_refresh_token");
+      await apiFetch("/api/users/dev-stop-impersonate/", { method: "POST" });
 
       const profile = await apiFetch<any>("/api/users/me/");
       const pmUser = toUser(profile);

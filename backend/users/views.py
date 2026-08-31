@@ -1,10 +1,15 @@
 #users/views.py
 
+from django.conf import settings
+from django.middleware.csrf import get_token
 from django.utils import timezone
+from django.utils.decorators import method_decorator
+from django.views.decorators.csrf import ensure_csrf_cookie
 from rest_framework import generics, permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken
+from rest_framework_simplejwt.exceptions import TokenError
 from django.contrib.auth import get_user_model
 from drf_spectacular.utils import extend_schema, OpenApiParameter, OpenApiTypes
 
@@ -17,9 +22,31 @@ from users.serializers import (
     LoginResponseSerializer,
 )
 from users.permissions import IsAdminUserOnly
+from users.jwt_cookies import set_auth_cookies, clear_auth_cookies, REFRESH_COOKIE, REFRESH_COOKIE_PATH
 from common.models import CommonCode
 
 User = get_user_model()
+
+
+class CsrfCookieView(APIView):
+    """
+    CSRF 쿠키 발급용 — 로그인 화면 진입 시 프론트가 한 번 불러서 csrftoken 쿠키를 미리
+    받아둔다. HttpOnly 쿠키(access/refresh)로 인증을 옮기면서 CSRF 검증이 다시 필요해졌는데,
+    Django의 csrftoken 쿠키는 이렇게 명시적으로 한 번 "발급을 트리거"해야 내려온다
+    (@ensure_csrf_cookie 없이는 요청이 CSRF 토큰을 안 쓰면 쿠키 자체가 안 생김).
+    GET /api/users/csrf/
+    """
+    permission_classes = [permissions.AllowAny]
+
+    @method_decorator(ensure_csrf_cookie)
+    @extend_schema(
+        tags=['0단계 - 사용자 관리'],
+        summary='CSRF 쿠키 발급',
+        description='csrftoken 쿠키를 발급합니다. 로그인 등 쓰기 요청 전에 먼저 호출해야 합니다.',
+        responses={200: OpenApiTypes.OBJECT}
+    )
+    def get(self, request):
+        return Response({"detail": "csrf cookie set"})
 
 
 class LoginView(APIView):
@@ -32,7 +59,7 @@ class LoginView(APIView):
     @extend_schema(
         tags=['0단계 - 사용자 관리'],
         summary='사용자 로그인',
-        description='아이디와 비밀번호를 검증하여 세션 로그인을 처리합니다.',
+        description='아이디와 비밀번호를 검증하고, access/refresh JWT를 HttpOnly 쿠키로 내려줍니다.',
         request=LoginRequestSerializer,
         responses={
             200: LoginResponseSerializer,
@@ -43,19 +70,21 @@ class LoginView(APIView):
         serializer = LoginRequestSerializer(data=request.data)
         if serializer.is_valid():
             user = serializer.validated_data['user']
-            # REST_FRAMEWORK.DEFAULT_AUTHENTICATION_CLASSES가 JWTAuthentication만 등록돼
-            # 있어서(config/settings.py), 여기서 Django 세션으로 로그인시켜도 그 세션 쿠키는
-            # 이후 어떤 API 요청에서도 인증으로 인정되지 않았다(모든 후속 요청이 401) — 실제로
-            # 로그인 응답은 200이 오지만 그 다음부터 전부 막히는 게 이 버그의 증상이었다.
-            # 토큰을 실제로 발급해서 반환하도록 고친다.
             refresh = RefreshToken.for_user(user)
 
-            return Response({
+            response = Response({
                 "message": "로그인 성공",
                 "user": UserSimpleSerializer(user).data,
-                "access": str(refresh.access_token),
-                "refresh": str(refresh),
             }, status=status.HTTP_200_OK)
+            # 2026-08-31: localStorage 대신 HttpOnly 쿠키로 토큰을 내려준다 — localStorage는
+            # XSS 한 방이면 JS가 그대로 읽어갈 수 있지만, HttpOnly 쿠키는 JS가 아예 접근할 수
+            # 없다. 응답 본문에는 더 이상 access/refresh를 담지 않는다(담으면 결국 프론트가
+            # 어딘가에 저장해야 하고, 그게 localStorage면 의미가 없어진다).
+            set_auth_cookies(response, str(refresh.access_token), str(refresh))
+            # 로그인 직후 바로 쓰기 요청(예: 다음 화면의 POST)이 CSRF 토큰을 요구하므로,
+            # 이 시점에 csrftoken 쿠키도 같이 보장해준다.
+            get_token(request)
+            return response
 
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
@@ -70,20 +99,49 @@ class LogoutView(APIView):
     @extend_schema(
         tags=['0단계 - 사용자 관리'],
         summary='사용자 로그아웃',
-        description='현재 로그인된 세션을 종료합니다. 요청 바디에 refresh 토큰을 함께 보내면'
-                    ' 그 토큰을 블랙리스트 처리(재사용 방지)합니다 — 블랙리스트 앱이 아직'
-                    ' 설치되지 않았다면 조용히 건너뜁니다(클라이언트가 토큰을 버리는 것만으로도'
-                    ' 사실상 로그아웃되므로 로그아웃 자체를 막을 이유는 아님).',
+        description='refresh 토큰 쿠키를 블랙리스트 처리하고, access/refresh 쿠키를 지웁니다.',
         responses={200: OpenApiTypes.OBJECT}
     )
     def post(self, request):
-        refresh_token = request.data.get("refresh")
+        refresh_token = request.COOKIES.get(REFRESH_COOKIE)
         if refresh_token:
             try:
                 RefreshToken(refresh_token).blacklist()
             except Exception:
                 pass
-        return Response({"message": "로그아웃되었습니다."}, status=status.HTTP_200_OK)
+        response = Response({"message": "로그아웃되었습니다."}, status=status.HTTP_200_OK)
+        clear_auth_cookies(response)
+        # DEV 계정전환 중이었다면 그 흔적도 같이 지운다.
+        response.delete_cookie('dev_original_access_token', path='/')
+        response.delete_cookie('dev_original_refresh_token', path=REFRESH_COOKIE_PATH)
+        return response
+
+
+class CookieTokenRefreshView(APIView):
+    """
+    access 토큰 재발급 API — refresh 토큰을 쿠키에서 읽는다(요청 바디 불필요).
+    POST /api/users/token-refresh/
+    """
+    permission_classes = [permissions.AllowAny]
+
+    @extend_schema(
+        tags=['0단계 - 사용자 관리'],
+        summary='access 토큰 재발급',
+        description='refresh_token 쿠키로 새 access 토큰을 발급해 쿠키로 내려줍니다.',
+        responses={200: OpenApiTypes.OBJECT, 401: OpenApiTypes.OBJECT}
+    )
+    def post(self, request):
+        refresh_token = request.COOKIES.get(REFRESH_COOKIE)
+        if not refresh_token:
+            return Response({"detail": "refresh 토큰이 없습니다."}, status=status.HTTP_401_UNAUTHORIZED)
+        try:
+            refresh = RefreshToken(refresh_token)
+        except TokenError as e:
+            return Response({"detail": str(e)}, status=status.HTTP_401_UNAUTHORIZED)
+
+        response = Response({"detail": "재발급 완료"}, status=status.HTTP_200_OK)
+        set_auth_cookies(response, str(refresh.access_token))
+        return response
 
 
 class CurrentUserProfileView(APIView):
@@ -257,10 +315,11 @@ class UserImpersonateView(APIView):
     DEV 전용 — 다른 계정으로 재로그인 없이 세션을 바꿔보는 기능 (PM 전용)
     POST /api/users/<id>/impersonate/
 
-    프론트의 DevRoleToggle이 쓰는 API. heyzzabi2 시절엔 서버 세션(HttpOnly 쿠키)을 통째로
-    바꾸는 방식이었지만, 이 백엔드는 JWT라 세션이란 게 없다 — 대신 대상 계정의 JWT를 그냥
-    새로 발급해서 내려주고, 프론트가 자기 localStorage의 access/refresh를 그걸로 바꿔치기한다
-    (원래 PM 토큰은 프론트가 따로 보관해뒀다가 복귀 시 그냥 되돌리므로 "복귀" API는 따로 없다).
+    프론트의 DevRoleToggle이 쓰는 API. 2026-08-31에 토큰 저장 위치를 localStorage에서
+    HttpOnly 쿠키로 옮기면서, "프론트 JS가 원래 PM 토큰을 변수에 보관해뒀다가 복귀 시
+    되돌린다"는 예전 방식이 아예 불가능해졌다(HttpOnly라 JS가 값을 읽을 수 없으므로) —
+    대신 서버가 원래 access/refresh 쿠키 값을 dev_original_* 쿠키(이것도 HttpOnly)로
+    복사해두고, 복귀는 UserStopImpersonateView가 그 쿠키를 읽어 되돌리는 방식으로 바꿨다.
 
     settings.DEBUG가 False인 배포(운영)에서는 비밀번호 없이 다른 계정 토큰을 발급하는 게
     되면 안 되므로 항상 403 — 로컬 개발 환경에서만 켜진다.
@@ -270,21 +329,66 @@ class UserImpersonateView(APIView):
     @extend_schema(
         tags=['0단계 - 사용자 관리'],
         summary='[DEV] 다른 계정으로 세션 미리보기 (PM 전용, DEBUG 환경 한정)',
-        description='재로그인 없이 대상 계정의 JWT를 발급받아 그 계정처럼 API를 호출해볼 수 있게 합니다. '
+        description='재로그인 없이 대상 계정의 JWT를 발급받아 쿠키로 바꿔치기합니다. '
                     '운영 배포(DEBUG=False)에서는 항상 403을 반환합니다.',
         responses={200: OpenApiTypes.OBJECT, 403: OpenApiTypes.OBJECT, 404: OpenApiTypes.OBJECT}
     )
     def post(self, request, id):
-        from django.conf import settings
         if not settings.DEBUG:
             return Response({"error": "이 기능은 개발 환경에서만 사용할 수 있습니다."}, status=status.HTTP_403_FORBIDDEN)
         try:
             target = User.objects.get(pk=id, is_active=True)
         except User.DoesNotExist:
             return Response({"error": "존재하지 않는 사용자입니다."}, status=status.HTTP_404_NOT_FOUND)
+
         refresh = RefreshToken.for_user(target)
-        return Response({
-            "access": str(refresh.access_token),
-            "refresh": str(refresh),
-            "user": UserSimpleSerializer(target).data,
-        }, status=status.HTTP_200_OK)
+        response = Response({"user": UserSimpleSerializer(target).data}, status=status.HTTP_200_OK)
+
+        # 이미 다른 계정으로 전환 중인 상태에서 또 전환하면(연쇄 전환) dev_original_*을
+        # 덮어쓰면 안 된다 — 처음 저장된 "진짜 PM" 토큰이 없어져 버리기 때문. 없을 때만 저장.
+        current_access = request.COOKIES.get('access_token')
+        current_refresh = request.COOKIES.get('refresh_token')
+        if current_access and not request.COOKIES.get('dev_original_access_token'):
+            response.set_cookie('dev_original_access_token', current_access, httponly=True,
+                                 secure=not settings.DEBUG, samesite='Lax', path='/')
+        if current_refresh and not request.COOKIES.get('dev_original_refresh_token'):
+            response.set_cookie('dev_original_refresh_token', current_refresh, httponly=True,
+                                 secure=not settings.DEBUG, samesite='Lax', path=REFRESH_COOKIE_PATH)
+
+        set_auth_cookies(response, str(refresh.access_token), str(refresh))
+        return response
+
+
+class UserStopImpersonateView(APIView):
+    """
+    DEV 전용 — impersonate로 바꿔치기했던 세션을 원래 계정(PM)으로 되돌린다.
+    POST /api/users/dev-stop-impersonate/
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    @extend_schema(
+        tags=['0단계 - 사용자 관리'],
+        summary='[DEV] 원래 계정으로 복귀',
+        description='dev_original_* 쿠키에 저장해둔 원래 access/refresh 토큰으로 되돌립니다.',
+        responses={200: OpenApiTypes.OBJECT, 400: OpenApiTypes.OBJECT}
+    )
+    def post(self, request):
+        original_access = request.COOKIES.get('dev_original_access_token')
+        original_refresh = request.COOKIES.get('dev_original_refresh_token')
+        if not original_access:
+            return Response({"error": "되돌아갈 계정 정보가 없습니다."}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            user_id = RefreshToken(original_refresh).payload.get('user_id') if original_refresh else None
+            original_user = User.objects.get(pk=user_id) if user_id else None
+        except (TokenError, User.DoesNotExist):
+            original_user = None
+
+        response = Response(
+            {"user": UserSimpleSerializer(original_user).data if original_user else None},
+            status=status.HTTP_200_OK,
+        )
+        set_auth_cookies(response, original_access, original_refresh)
+        response.delete_cookie('dev_original_access_token', path='/')
+        response.delete_cookie('dev_original_refresh_token', path=REFRESH_COOKIE_PATH)
+        return response
