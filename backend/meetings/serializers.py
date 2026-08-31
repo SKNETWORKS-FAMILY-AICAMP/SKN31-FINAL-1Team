@@ -59,6 +59,17 @@ class SpecDocumentSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ['id', 'spec_id', 'created_at', 'updated_at']
 
+    def create(self, validated_data):
+        # status_code를 안 보내고 만들면(직접 작성) 항상 초안(DRAFT)에서 시작해야, 아직
+        # 검토요청도 안 한 문서가 곧장 검토중/승인 상태로 잘못 보이는 일이 없다.
+        # code_id는 CommonCode 전체에서 전역 유일해 REQSPEC_STATUS와 안 겹치도록 PROPOSAL_
+        # 접두사로 시드했다(meetings/migrations/0005 참고) — views.py의 _proposal_status()와 동일 규칙.
+        if not validated_data.get('status_code'):
+            validated_data['status_code'] = CommonCode.objects.filter(
+                group_id='PROPOSAL_STATUS', code_id='PROPOSAL_DRAFT'
+            ).first()
+        return super().create(validated_data)
+
 
 class MeetingNoteSerializer(serializers.ModelSerializer):
     """
@@ -76,6 +87,7 @@ class MeetingNoteSerializer(serializers.ModelSerializer):
         fields = [
             'id',             # source='pk' 매핑
             'meeting_id',     # 실제 모델 PK 필드
+            'project',
             'title',
             'content',
             'summary_content',
@@ -98,4 +110,4 @@ class MeetingNoteCreateSerializer(serializers.ModelSerializer):
     """
     class Meta:
         model = MeetingNote
-        fields = ['title', 'content', 'meeting_date', 'attendees']
+        fields = ['project', 'title', 'content', 'meeting_date', 'attendees']

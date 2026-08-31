@@ -14,6 +14,19 @@ class MeetingNote(models.Model):
         REVIEWED = 'REVIEWED', '검토 완료'
 
     meeting_id = models.AutoField(primary_key=True, verbose_name="회의록 ID")
+
+    # 2026-08-31: documents 화면을 Django 기준으로 재배선하면서 추가. 회의록이 어느 프로젝트
+    # 소속인지 알 방법이 전혀 없어서(PipelineHistory.project가 필수인데 연결할 방법이 없었음)
+    # 프론트의 "프로젝트별 문서 목록" 화면을 그대로 옮길 수가 없었다 — null 허용은 기존 데이터 호환용.
+    project = models.ForeignKey(
+        'projects.Project',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="meeting_notes",
+        verbose_name="소속 프로젝트"
+    )
+
     title = models.CharField(max_length=200, verbose_name="회의 제목")
     content = models.TextField(verbose_name="회의록 원문/내용")
     summary_content = models.TextField(null=True, blank=True, verbose_name="AI 핵심 요약")
