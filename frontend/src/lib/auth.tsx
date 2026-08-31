@@ -115,58 +115,70 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     window.location.href = "/login";
   };
 
-  // DEV ONLY — 재로그인 없이 실제 서버 세션(HttpOnly 쿠키) 자체를 다른 팀원 계정으로 바꾼다.
-  // 2026-08-27 이전에는 localStorage(hz_session)만 바꾸는 화면 라벨용 미리보기였는데, 그러면
-  // "일반유저가 만든 회의록은 PM이 대신 생성 못 한다" 같은 서버 권한 규칙을 이 토글로는 빠르게
-  // 테스트할 수 없었다(실제 로그인 계정이 PM이면 서버는 계속 PM으로 취급) — 로그아웃/재로그인
-  // 없이도 진짜로 다른 계정처럼 API를 호출할 수 있어야 한다는 요청으로 서버 라우트
-  // (dev-impersonate/dev-stop-impersonate)를 거치도록 바꿨다. 두 라우트 모두 PM 권한 +
-  // NODE_ENV(개발 환경)를 서버에서 강제하므로, 이 토글은 프로덕션에서는 아예 동작하지 않는다.
+  // DEV ONLY — 재로그인 없이 다른 팀원 계정으로 세션을 바꿔본다.
+  // 2026-08-31: Django는 세션 쿠키가 아니라 JWT라 heyzzabi2의 "서버 세션 쿠키 바꿔치기"
+  // 방식이 그대로 안 통한다 — 대신 PM 전용 신규 엔드포인트(/api/users/{id}/impersonate/,
+  // settings.DEBUG=True인 로컬 환경에서만 동작)로 대상 계정의 JWT를 새로 발급받아
+  // localStorage의 access/refresh를 그걸로 바꿔치기한다. 원래 PM 토큰은 돌아올 때 다시
+  // 쓸 수 있게 별도 키(dev_original_*)에 보관해두므로, "복귀"는 서버 호출 없이 그 토큰을
+  // 되돌리기만 하면 된다.
   const devToggleRole = async () => {
     if (!user) return;
 
     if (user.role === "PM") {
       try {
-        const res = await fetch("/api/users");
-        const json = await res.json();
-        const employees = (json.data ?? [])
-          .filter((u: any) => u.role === "EMPLOYEE")
-          .sort((a: any, b: any) => a.email.localeCompare(b.email));
-        if (employees.length === 0) return;
-
-        const impRes = await fetch("/api/auth/dev-impersonate", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ targetUserId: employees[0].id }),
-        });
-        if (!impRes.ok) {
-          const data = await impRes.json().catch(() => null);
-          console.error("dev-impersonate failed:", data?.error);
+        const employees = await apiFetch<any[]>("/api/users/");
+        const nonPm = employees
+          .filter((u: any) => !(u.role_info?.code_id === "ADMIN" || u.is_staff))
+          .sort((a: any, b: any) => (a.username || "").localeCompare(b.username || ""));
+        if (nonPm.length === 0) {
+          console.error("dev-impersonate: 전환할 일반 유저 계정이 없습니다.");
           return;
         }
-        const data = await impRes.json();
-        const preview: User = { id: data.id, email: data.email, name: data.name, role: data.role, isFirstLogin: false };
+        const target = nonPm[0];
+
+        const data = await apiFetch<{ access: string; refresh: string }>(`/api/users/${target.id}/impersonate/`, {
+          method: "POST",
+        });
+
+        // 복귀할 때 되돌릴 수 있도록 지금(PM) 토큰을 별도 키에 보관해둔다.
+        const currentAccess = localStorage.getItem("access_token");
+        const currentRefresh = localStorage.getItem("refresh_token");
+        if (currentAccess) localStorage.setItem("dev_original_access_token", currentAccess);
+        if (currentRefresh) localStorage.setItem("dev_original_refresh_token", currentRefresh);
+
+        localStorage.setItem("access_token", data.access);
+        localStorage.setItem("refresh_token", data.refresh);
+
+        const profile = await apiFetch<any>("/api/users/me/");
+        const preview = toUser(profile);
         setUser(preview);
         localStorage.setItem("hz_session", JSON.stringify(preview));
       } catch (err) {
-        console.error(err);
+        console.error("dev-impersonate failed:", err);
       }
       return;
     }
 
+    // 일반유저 → PM 복귀: 보관해둔 원래 PM 토큰을 그대로 되돌린다(서버 호출 불필요).
+    const originalAccess = localStorage.getItem("dev_original_access_token");
+    const originalRefresh = localStorage.getItem("dev_original_refresh_token");
+    if (!originalAccess) {
+      console.error("dev-stop-impersonate: 되돌아갈 PM 토큰이 없습니다.");
+      return;
+    }
     try {
-      const res = await fetch("/api/auth/dev-stop-impersonate", { method: "POST" });
-      if (!res.ok) {
-        const data = await res.json().catch(() => null);
-        console.error("dev-stop-impersonate failed:", data?.error);
-        return;
-      }
-      const data = await res.json();
-      const pmUser: User = { id: data.id, email: data.email, name: data.name, role: data.role, isFirstLogin: false };
+      localStorage.setItem("access_token", originalAccess);
+      if (originalRefresh) localStorage.setItem("refresh_token", originalRefresh);
+      localStorage.removeItem("dev_original_access_token");
+      localStorage.removeItem("dev_original_refresh_token");
+
+      const profile = await apiFetch<any>("/api/users/me/");
+      const pmUser = toUser(profile);
       setUser(pmUser);
       localStorage.setItem("hz_session", JSON.stringify(pmUser));
     } catch (err) {
-      console.error(err);
+      console.error("dev-stop-impersonate failed:", err);
     }
   };
 

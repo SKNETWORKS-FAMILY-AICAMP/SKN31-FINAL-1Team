@@ -6,6 +6,7 @@ from .views import (
     UserListView,
     UserManageView,
     UserPasswordResetView,
+    UserImpersonateView,
 )
 
 urlpatterns = [
@@ -15,4 +16,5 @@ urlpatterns = [
     path('logout/', LogoutView.as_view(), name='logout'),
     path('<int:pk>/', UserManageView.as_view(), name='user-manage'),
     path('<int:id>/password-reset/', UserPasswordResetView.as_view(), name='user-password-reset'),
+    path('<int:id>/impersonate/', UserImpersonateView.as_view(), name='user-impersonate'),
 ]

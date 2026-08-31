@@ -250,3 +250,41 @@ class UserPasswordResetView(APIView):
         user.set_password('1111')
         user.save()
         return Response({"message": "비밀번호가 초기화되었습니다."}, status=status.HTTP_200_OK)
+
+
+class UserImpersonateView(APIView):
+    """
+    DEV 전용 — 다른 계정으로 재로그인 없이 세션을 바꿔보는 기능 (PM 전용)
+    POST /api/users/<id>/impersonate/
+
+    프론트의 DevRoleToggle이 쓰는 API. heyzzabi2 시절엔 서버 세션(HttpOnly 쿠키)을 통째로
+    바꾸는 방식이었지만, 이 백엔드는 JWT라 세션이란 게 없다 — 대신 대상 계정의 JWT를 그냥
+    새로 발급해서 내려주고, 프론트가 자기 localStorage의 access/refresh를 그걸로 바꿔치기한다
+    (원래 PM 토큰은 프론트가 따로 보관해뒀다가 복귀 시 그냥 되돌리므로 "복귀" API는 따로 없다).
+
+    settings.DEBUG가 False인 배포(운영)에서는 비밀번호 없이 다른 계정 토큰을 발급하는 게
+    되면 안 되므로 항상 403 — 로컬 개발 환경에서만 켜진다.
+    """
+    permission_classes = [IsAdminUserOnly]
+
+    @extend_schema(
+        tags=['0단계 - 사용자 관리'],
+        summary='[DEV] 다른 계정으로 세션 미리보기 (PM 전용, DEBUG 환경 한정)',
+        description='재로그인 없이 대상 계정의 JWT를 발급받아 그 계정처럼 API를 호출해볼 수 있게 합니다. '
+                    '운영 배포(DEBUG=False)에서는 항상 403을 반환합니다.',
+        responses={200: OpenApiTypes.OBJECT, 403: OpenApiTypes.OBJECT, 404: OpenApiTypes.OBJECT}
+    )
+    def post(self, request, id):
+        from django.conf import settings
+        if not settings.DEBUG:
+            return Response({"error": "이 기능은 개발 환경에서만 사용할 수 있습니다."}, status=status.HTTP_403_FORBIDDEN)
+        try:
+            target = User.objects.get(pk=id, is_active=True)
+        except User.DoesNotExist:
+            return Response({"error": "존재하지 않는 사용자입니다."}, status=status.HTTP_404_NOT_FOUND)
+        refresh = RefreshToken.for_user(target)
+        return Response({
+            "access": str(refresh.access_token),
+            "refresh": str(refresh),
+            "user": UserSimpleSerializer(target).data,
+        }, status=status.HTTP_200_OK)
