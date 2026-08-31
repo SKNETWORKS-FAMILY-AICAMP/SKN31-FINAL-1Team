@@ -211,6 +211,13 @@ const handlePasswordReset = async (id: string, name: string) => {
     if (res.ok) {
       setMembers(prev => prev.map(m => m.id === id ? { ...m, role } : m));
       showToast("역할이 변경되었습니다.");
+    } else {
+      // 예전엔 실패해도 아무 알림이 없었다 — select의 value가 member.role에 그대로 묶여있어
+      // 상태가 안 바뀌었는데도 드롭다운은 방금 고른 값으로 남아있어, PM이 "바뀐 줄" 착각하는
+      // 문제가 있었다(전체 점검에서 발견). 실패를 알리면 드롭다운이 실제 값(member.role)으로
+      // 다시 그려진다.
+      const data = await res.json().catch(() => ({}));
+      showToast(data.error || "역할 변경 실패", "error");
     }
   };
 
@@ -220,12 +227,14 @@ const handlePasswordReset = async (id: string, name: string) => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ status }),
     });
-    const data = await res.json();
+    const data = await res.json().catch(() => ({}));
     if (res.ok && data.success) {
       // 퇴사로 바꾸면 서버가 퇴사일을 자동으로 채워 응답하므로(반대로 되돌리면 지워서 응답하므로)
       // status만 낙관적으로 반영하면 안 되고 서버가 돌려준 resignDate도 함께 반영해야 한다.
       setMembers(prev => prev.map(m => m.id === id ? { ...m, status: data.data.status, resignDate: data.data.resignDate } : m));
       showToast("계정 상태가 변경되었습니다.");
+    } else {
+      showToast(data.error || "계정 상태 변경 실패", "error");
     }
   };
 
@@ -419,9 +428,11 @@ const handlePasswordReset = async (id: string, name: string) => {
                             member.role === "PM" ? "text-emerald-400 border-emerald-400/30" : "text-muted-foreground border-border"
                           )}
                         >
+                          {/* "게스트"는 서버(/api/users/[id]/role)가 실제로 받아주는 값이 아니라
+                              고르면 항상 실패했다 — 시스템에 존재하지 않는 죽은 옵션이라 제거한다
+                              (전체 점검에서 발견). */}
                           <option value="PM">PM</option>
                           <option value="EMPLOYEE">일반 멤버</option>
-                          <option value="GUEST">게스트</option>
                         </select>
                       ) : (
                         <span className={cn(
@@ -551,12 +562,12 @@ const handlePasswordReset = async (id: string, name: string) => {
         </div>
       </div>
 
-      {/* Role Legend */}
-      <div className="grid md:grid-cols-3 gap-4 mt-8">
+      {/* Role Legend — "게스트"는 실제 시스템에 존재하지 않는 역할이라 제거했다(위 역할 드롭다운과
+          같은 이유, 전체 점검에서 발견) — 실제 지원되는 두 역할만 보여준다. */}
+      <div className="grid md:grid-cols-2 gap-4 mt-8">
         {[
           { role: "PM", color: "border-t-emerald-500", textColor: "text-emerald-500", perms: ["프로젝트 생성/삭제", "직원 추가 및 역할 변경", "비밀번호 초기화", "승인 및 반려 처리"] },
           { role: "일반 멤버", color: "border-t-primary", textColor: "text-primary", perms: ["할 일 생성 및 수정", "칸반 보드 상태 변경", "검토 요청", "본인 프로필 수정"] },
-          { role: "게스트", color: "border-t-muted-foreground", textColor: "text-muted-foreground", perms: ["읽기 전용 열람", "코멘트 작성", "수정/생성 불가"] },
         ].map(item => (
           <div key={item.role} className={cn("glass p-5 rounded-xl border border-border border-t-4", item.color)}>
             <h4 className={cn("font-bold mb-3", item.textColor)}>{item.role}</h4>

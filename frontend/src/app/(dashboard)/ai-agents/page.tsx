@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
+import { useAuth } from "@/lib/auth";
 
 interface ReportSummary {
   id: string;
@@ -20,6 +21,8 @@ interface ReportSummary {
 }
 
 export default function AIAgentsPage() {
+  const { user } = useAuth();
+  const isPM = user?.role === "PM";
   const [projects, setProjects] = useState<any[]>([]);
   const [selectedProject, setSelectedProject] = useState("");
 
@@ -403,13 +406,18 @@ export default function AIAgentsPage() {
                     onClick={() => setSelectedReportId(r.id)}
                     className="relative w-full text-left p-4 rounded-2xl bg-zinc-50/50 hover:bg-zinc-50 transition-all cursor-pointer group shadow-sm border border-zinc-150"
                   >
-                    <button
-                      onClick={e => handleDeleteReport(r.id, e)}
-                      className="absolute top-3.5 right-3.5 p-1.5 text-zinc-400 hover:text-red-500 rounded-lg hover:bg-red-500/10 opacity-0 group-hover:opacity-100 transition-all"
-                      title="보고서 삭제"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
+                    {/* 리서치 보고서는 전사 공유 자료라 작성자 구분이 없다 — 삭제는 PM만 할 수
+                        있게 서버에서 막아뒀으므로(전체 점검에서 발견된 문제), 일반유저에게는
+                        눌러도 실패할 버튼을 아예 보여주지 않는다. */}
+                    {isPM && (
+                      <button
+                        onClick={e => handleDeleteReport(r.id, e)}
+                        className="absolute top-3.5 right-3.5 p-1.5 text-zinc-400 hover:text-red-500 rounded-lg hover:bg-red-500/10 opacity-0 group-hover:opacity-100 transition-all"
+                        title="보고서 삭제"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    )}
                     <div className="flex items-center gap-1.5 mb-1.5 text-[10px] font-bold text-zinc-500">
                       {r.degraded && <span className="bg-amber-500/10 text-amber-600 px-1.5 py-0.5 rounded">근거 부족</span>}
                       <span>{r.sourceCount}개 자료 분석</span>

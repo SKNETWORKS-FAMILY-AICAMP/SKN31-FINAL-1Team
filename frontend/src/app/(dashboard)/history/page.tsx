@@ -434,7 +434,9 @@ function HistoryDetailModal({ item, project, onClose }: { item: ActivityItem; pr
           )}
 
           <div className="flex-1 overflow-y-auto p-5">
-            <div id="print-area" className="border border-border rounded-xl overflow-hidden bg-black/5 dark:bg-black/20">
+            {/* 요구사항정의서 표는 폭이 넓어(min-w-[1500px]) overflow-hidden이면 잘려 보이기만
+                하고 스크롤할 방법이 없었다 — 가로 스크롤이 가능하도록 auto로 둔다. */}
+            <div id="print-area" className="border border-border rounded-xl overflow-auto doc-scroll bg-black/5 dark:bg-black/20">
               {parsedProposal ? (
                 <ProposalTemplate doc={parsedProposal} title={doc.title} dateLabel={dateLabel} />
               ) : parsedReqSpec ? (

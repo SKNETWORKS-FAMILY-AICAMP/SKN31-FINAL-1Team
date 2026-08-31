@@ -135,13 +135,19 @@ function SortableTask({ task, members, onAssign, onClick, isPM, onApprove, onRej
         {task.progress > 0 && <span className="font-medium text-primary">{task.progress}%</span>}
       </div>
 
+      {/* 업무 배분(담당자 지정 + 승인요청)은 PM 고유 권한 — 예전엔 이 버튼에 권한 체크가 없어서
+          일반유저도 아무 미배정 업무나 골라 담당자를 지정해 배분승인대기로 넘길 수 있었다(실제 버그). */}
       {task.status === "BACKLOG" && (
-        <button
-          onClick={(e) => { e.stopPropagation(); onRequestAssignment(task); }}
-          className="w-full mt-3 flex items-center justify-center gap-1.5 py-1.5 rounded-md bg-primary/10 text-primary hover:bg-primary/20 text-xs font-semibold transition-colors"
-        >
-          <UserPlus className="w-3.5 h-3.5" /> 배분 승인 요청
-        </button>
+        isPM ? (
+          <button
+            onClick={(e) => { e.stopPropagation(); onRequestAssignment(task); }}
+            className="w-full mt-3 flex items-center justify-center gap-1.5 py-1.5 rounded-md bg-primary/10 text-primary hover:bg-primary/20 text-xs font-semibold transition-colors"
+          >
+            <UserPlus className="w-3.5 h-3.5" /> 배분 승인 요청
+          </button>
+        ) : (
+          <p className="w-full mt-3 py-1.5 text-center text-xs text-muted-foreground">배분 이전입니다</p>
+        )
       )}
 
       {showApprovalActions && (
