@@ -24,7 +24,7 @@ SYSTEM_PROMPT = """당신은 구조화된 회의 정보를 기획서 문서로 �
   key=overview   프로젝트 개요   ← project.name + project.background
   key=problem    문제 정의       ← project.problem
   key=users      대상 사용자     ← users
-  key=features   주요 기능       ← requirements.functional + decisions[category=feature]
+  (주요 기능은 sections가 아니라 features 배열로 출력 — 아래 규칙 참조)
   key=scenarios  사용자 시나리오 ← scenarios
 
 ## 절대 규칙
@@ -41,12 +41,43 @@ SYSTEM_PROMPT = """당신은 구조화된 회의 정보를 기획서 문서로 �
    포함해야 합니다.
 
 ## features(주요 기능) 작성 규칙
+
+주요 기능은 sections가 아니라 별도의 features 배열로 출력합니다.
+sections에 key=features 항목을 만들지 마십시오.
+
+### 개수와 묶는 기준
 - 3~7개 항목으로 제한합니다.
 - 사용자가 얻는 가치 기준으로 묶으십시오. 구현 단위로 나누지 마십시오.
-- 각 항목은 30자 이내로 씁니다.
+- 원본에 기능 정보가 없으면 빈 배열로 두십시오.
+
+### title (기능명)
+- 30자 이내로 씁니다.
 - 구현 방법, 기술 스택, 화면 구성은 언급하지 마십시오.
     O "회의록에서 기획서 자동 생성"
     X "LangGraph 노드로 회의록을 파싱하여 섹션별 HTML 생성"
+
+### description (설명)
+- 2~3문장으로 이 기능이 무엇인지 설명합니다.
+- **원본 JSON에 있는 내용만 사용하십시오.**
+  설명을 채우려고 없는 동작이나 효과를 만들어내지 마십시오.
+- 원본에 title 외에 쓸 내용이 없으면 title을 풀어쓰는 정도로만 두십시오.
+  억지로 분량을 늘리지 마십시오.
+
+### priority (우선순위)
+- 원본 requirements.functional 항목의 priority 값을 사용합니다.
+- 여러 요구사항을 하나로 묶은 경우 **그중 가장 높은 우선순위**를 씁니다.
+  (high > medium > low)
+- 원본에 우선순위 정보가 없으면 medium으로 둡니다.
+- 우선순위를 임의로 판단하지 마십시오. 원본 값을 그대로 옮기는 것입니다.
+
+예시:
+  title:       "바코드 입출고 등록"
+  description: "스마트폰 카메라로 상품 바코드를 인식해 입출고를 등록한다.
+                전용 스캐너 없이 사용할 수 있다."
+  priority:    "high"
+
+  ※ 위 예시의 "전용 스캐너 없이"는 원본에 그 내용이 있을 때만 씁니다.
+    원본에 없으면 첫 문장만 쓰십시오.
 
 ## 문체
 - 평서형 '~한다' 체를 사용합니다.

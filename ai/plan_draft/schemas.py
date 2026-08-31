@@ -34,7 +34,7 @@ from typing import Optional
 
 from pydantic import BaseModel, Field
 
-from shared.schemas_base import Evidence, ReviewStatus
+from shared.schemas_base import Evidence, Priority, ReviewStatus
 
 
 class SectionType(str, Enum):
@@ -80,6 +80,30 @@ NARRATIVE_KEYS = [s["key"] for s in SECTION_SPEC if s["type"] == SectionType.NAR
 LIST_KEYS = [s["key"] for s in SECTION_SPEC if s["type"] == SectionType.LIST]
 
 
+class Feature(BaseModel):
+    """
+    4번 주요 기능의 항목 하나.
+
+    프론트 수정 화면이 항목 단위로 편집하는 구조라
+    HTML 덩어리가 아니라 배열로 담습니다.
+    """
+    title: str = Field(..., max_length=40, description="기능명. 30자 내외.")
+    description: str = Field(
+        ...,
+        description="이 기능이 무엇인지 2~3문장. 원본에 없는 내용을 추가하지 말 것.",
+    )
+    # 화면에는 표시하지 않지만 데이터로는 전달합니다.
+    #
+    # 노드 ③(요구사항정의서)의 RequirementItem에 우선순위 컬럼이 있는데,
+    # 기획서에 이 값이 없으면 하류에서 근거 없이 매기게 됩니다.
+    # 구조화 JSON의 requirements.functional[].priority가 원본이며,
+    # 여러 요구사항을 묶은 항목은 그중 가장 높은 값을 씁니다.
+    priority: Priority = Field(
+        default=Priority.MEDIUM,
+        description="묶인 요구사항 중 가장 높은 우선순위. 원본에 없으면 medium.",
+    )
+
+
 class NarrativeSection(BaseModel):
     """LLM이 생성하는 서술형 섹션."""
     key: str
@@ -107,6 +131,14 @@ class PlanSections(BaseModel):
     """LLM 응답 형태. Instructor의 response_model로 씁니다."""
     sections: list[NarrativeSection] = Field(..., min_length=1)
 
+    # 4번 주요 기능만 별도 배열로 받습니다.
+    # sections 안에 HTML로 넣으면 프론트가 항목별로 편집할 수 없습니다.
+    features: list[Feature] = Field(
+        default_factory=list,
+        min_length=0, max_length=7,
+        description="주요 기능 3~7개. 원본에 기능 정보가 없으면 빈 배열.",
+    )
+
 
 class Review(BaseModel):
     state: ReviewStatus = ReviewStatus.PENDING
@@ -129,6 +161,10 @@ class PlanSection(BaseModel):
 
     source_fields: list[str] = Field(default_factory=list)
     evidence: list[Evidence] = Field(default_factory=list)
+
+    # 4번 주요 기능 전용. 다른 섹션은 빈 배열입니다.
+    # 프론트가 항목 단위로 편집하고, 노드 ③이 파싱 없이 사용합니다.
+    features: list[Feature] = Field(default_factory=list)
 
     # 반려 사유 중 반영하지 못한 부분 (재생성 시에만 채워짐)
     needs_input: str = ""

@@ -30,4 +30,4 @@ TEMPERATURE = 0
 # Instructor의 자동 재시도 횟수.
 # 검증에 실패하면 Instructor가 오류 메시지를 붙여 알아서 다시 부릅니다.
 # 2회를 넘기면 같은 실패가 반복될 가능성이 높고 비용만 듭니다.
-MAX_RETRIES = 2
+MAX_RETRIES = 3

@@ -14,6 +14,7 @@ list_builder의 조립 규칙을 손볼 때 여기서 회귀를 잡으세요.
 
 import pytest
 
+
 from plan_draft.list_builder import build_decisions, build_tech_scope
 from plan_draft.schemas import SectionType
 

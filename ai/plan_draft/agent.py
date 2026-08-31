@@ -7,6 +7,7 @@
   [4] is_incomplete 판정    코드
   [5] unresolved 전달       코드
 """
+from html import escape
 
 from shared.llm_client import get_client
 from shared.retry_config import MAX_RETRIES, MAX_TOKENS, MODEL, PROVIDER, TEMPERATURE
@@ -39,6 +40,7 @@ def _call(system: str, messages: list[dict], response_model):
         temperature=TEMPERATURE,
     )
     if PROVIDER == "anthropic":
+        # 
         return client.messages.create(
             system=system, max_tokens=MAX_TOKENS, messages=messages, **common
         )
@@ -88,6 +90,30 @@ def run(structured: dict, proposal_id: str) -> PlanDocument:
     for spec in SECTION_SPEC:
         if spec["type"] == SectionType.LIST:
             sections.append(list_sections[spec["key"]])
+            continue
+
+        # ── 4번 주요 기능은 features 배열로 별도 처리 ───────
+        # 프론트가 항목 단위로 편집·삭제하므로 HTML 덩어리로 두면
+        # 항목 하나만 고칠 수 없습니다.
+        if spec["key"] == "features":
+            feats = result.features
+            # 읽기 모드용 HTML도 함께 만듭니다.
+            # 편집은 features를, 표시는 content_html을 씁니다.
+            content = "".join(
+                f"<p><strong>{escape(f.title)}</strong></p>"
+                f"<p>{escape(f.description)}</p>"
+                for f in feats
+            )
+            sections.append(PlanSection(
+                no=spec["no"], key=spec["key"], title=spec["title"],
+                section_type=spec["type"],
+                content_html=content,
+                features=feats,
+                items=[f.title for f in feats],
+                source_fields=spec["source_fields"],
+                evidence=[],
+                is_incomplete=not feats,
+            ))
             continue
 
         gen = by_key.get(spec["key"])

@@ -8,7 +8,7 @@
       "key": "overview",
       "title": "프로젝트 개요",
       "section_type": "narrative",
-      "content_html": "<p>리테일링크 프로젝트는 기능 관련 논의 및 정리를 목표로 합니다. 이 프로젝트는 다양한 기능을 체계적으로 정리하고 구현하는 것을 목적으로 합니다.</p>",
+      "content_html": "<p><strong>리테일링크</strong> 프로젝트는 기능 관련 논의 및 정리를 목표로 하고 있습니다.</p>",
       "items": [],
       "source_fields": [
         "project.name",
@@ -19,6 +19,8 @@
           "quote": "기능 관련 논의 및 정리"
         }
       ],
+      "features": [],
+      "needs_input": "",
       "is_incomplete": false,
       "edited_by_pm": false,
       "review": {
@@ -42,6 +44,8 @@
           "quote": "기능 관련 논의 및 정리"
         }
       ],
+      "features": [],
+      "needs_input": "",
       "is_incomplete": false,
       "edited_by_pm": false,
       "review": {
@@ -61,6 +65,8 @@
         "users"
       ],
       "evidence": [],
+      "features": [],
+      "needs_input": "",
       "is_incomplete": true,
       "edited_by_pm": false,
       "review": {
@@ -74,20 +80,29 @@
       "key": "features",
       "title": "주요 기능",
       "section_type": "narrative",
-      "content_html": "<ul><li>발주서 기본 양식 1개로 시작</li><li>대시보드에 재고 현황, 알림 목록 포함</li></ul>",
-      "items": [],
+      "content_html": "<p><strong>발주서 기본 양식 제공</strong></p><p>발주서 기본 양식을 하나 제공하여 시작합니다. 이후 필요에 따라 양식을 추가할 수 있습니다.</p><p><strong>대시보드에 재고 현황 및 알림 목록 포함</strong></p><p>대시보드에 재고 현황과 알림 목록을 포함하여 사용자에게 필요한 정보를 제공합니다.</p>",
+      "items": [
+        "발주서 기본 양식 제공",
+        "대시보드에 재고 현황 및 알림 목록 포함"
+      ],
       "source_fields": [
         "requirements.functional",
         "decisions[feature]"
       ],
-      "evidence": [
+      "evidence": [],
+      "features": [
         {
-          "quote": "발주서 양식은 거래처마다 다를 수 있다고 함. 일단 기본 양식 하나 만들고 나중에 늘리는 쪽으로 얘기됨."
+          "title": "발주서 기본 양식 제공",
+          "description": "발주서 기본 양식을 하나 제공하여 시작합니다. 이후 필요에 따라 양식을 추가할 수 있습니다.",
+          "priority": "medium"
         },
         {
-          "quote": "대시보드에 뭘 넣을지 얘기했는데 이것저것 나왔음. 재고 현황이랑 알림 목록은 확실히 넣기로 함."
+          "title": "대시보드에 재고 현황 및 알림 목록 포함",
+          "description": "대시보드에 재고 현황과 알림 목록을 포함하여 사용자에게 필요한 정보를 제공합니다.",
+          "priority": "medium"
         }
       ],
+      "needs_input": "",
       "is_incomplete": false,
       "edited_by_pm": false,
       "review": {
@@ -107,6 +122,8 @@
         "scenarios"
       ],
       "evidence": [],
+      "features": [],
+      "needs_input": "",
       "is_incomplete": true,
       "edited_by_pm": false,
       "review": {
@@ -145,6 +162,8 @@
           "quote": "알림 기준은 보류"
         }
       ],
+      "features": [],
+      "needs_input": "",
       "is_incomplete": false,
       "edited_by_pm": false,
       "review": {
@@ -178,6 +197,8 @@
           "quote": "알림 기준은 보류"
         }
       ],
+      "features": [],
+      "needs_input": "",
       "is_incomplete": false,
       "edited_by_pm": false,
       "review": {
