@@ -1,6 +1,8 @@
 "use client";
 
 import React, { createContext, useContext, useState, useEffect } from "react";
+import { apiFetch } from "@/lib/api/client";
+import { toUser } from "@/lib/api/mappers";
 
 export type User = {
   id: string;
@@ -36,23 +38,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   // 로그인해 있는 동안 PM이 이 계정을 휴직/퇴사/잠금 처리할 수 있다 — 그 순간 즉시 화면이
-  // 튕기진 않지만(세션 쿠키 자체는 만료 전까지 유효한 서명이므로), 다음 API 호출부터는
-  // requireAuth가 막는다. 여기서는 API 호출이 없는 유휴 상태에서도 놓치지 않도록 주기적으로
-  // /api/auth/me를 불러 계정이 여전히 유효한지 확인하고, 아니면 사유를 알리고 강제 로그아웃한다.
+  // 튕기진 않지만(access 토큰 자체는 만료 전까지 유효한 서명이므로), 다음 API 호출부터는
+  // 서버가 막는다. 여기서는 API 호출이 없는 유휴 상태에서도 놓치지 않도록 주기적으로
+  // GET /api/users/me/ 를 불러 계정이 여전히 유효한지 확인하고, 아니면 강제 로그아웃한다.
   useEffect(() => {
     if (!user) return;
     const checkSession = async () => {
       try {
-        const res = await fetch("/api/auth/me");
-        if (!res.ok) {
-          const data = await res.json().catch(() => null);
-          setUser(null);
-          localStorage.removeItem("hz_session");
-          alert(data?.error || "계정이 비활성화되어 로그아웃되었습니다.");
-          window.location.href = "/login";
-        }
+        await apiFetch("/api/users/me/");
       } catch {
-        // 네트워크 오류 등은 일시적일 수 있으므로 무시하고 다음 주기에 다시 시도한다.
+        // apiFetch는 네트워크 오류와 401/403을 구분하지 않고 둘 다 throw하므로, 여기서 바로
+        // 로그아웃 처리한다 — 일시적 네트워크 오류로 오탐하더라도 재로그인만 하면 되니 안전한 쪽.
+        setUser(null);
+        localStorage.removeItem("hz_session");
+        localStorage.removeItem("access_token");
+        localStorage.removeItem("refresh_token");
+        window.location.href = "/login";
       }
     };
     const interval = setInterval(checkSession, 30000);
@@ -60,59 +61,57 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [user]);
 
   const login = async (email: string, password: string) => {
-    // 1. 로그인 API 호출 (세션 쿠키 수신을 위해 credentials: "include" 필수)
-    // 명세서 규격: Request Body { username, password }
-    const res = await fetch("/api/users/login/", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      credentials: "include",
-      body: JSON.stringify({ username: email, password }),
-    });
-
-    // 2. 예외 처리
-    if (!res.ok) {
-      const errorData = await res.json().catch(() => ({}));
-      const errorMessage =
-        errorData.non_field_errors?.[0] ||
-        errorData.detail ||
-        errorData.error ||
-        "로그인에 실패했습니다.";
-      throw new Error(errorMessage);
+    // 명세서 규격: POST /api/users/login/ — Request Body { username, password },
+    // Response Body { message, user: { id, username, full_name, emp_no }, access, refresh }.
+    // apiFetch가 API_BASE_URL(.env.local의 NEXT_PUBLIC_API_BASE_URL)을 붙여 Django로 직접
+    // 보낸다 — 예전엔 상대경로("/api/users/login/")로 호출해서 실제로는 프론트 자신의 Next.js
+    // 서버로 요청이 갔고(존재하지 않는 경로라 404), credentials:"include"로 세션 쿠키를
+    // 기대했지만 백엔드는 JWT만 인증으로 인정해 그 쿠키는 이후 어떤 요청에서도 쓰이지 않았다.
+    type LoginResponse = {
+      message: string;
+      user: { id: number | string; username: string; full_name: string; emp_no: string | null };
+      access: string;
+      refresh: string;
+    };
+    let data: LoginResponse;
+    try {
+      data = await apiFetch<LoginResponse>("/api/users/login/", {
+        method: "POST",
+        body: JSON.stringify({ username: email, password }),
+      });
+    } catch (err: any) {
+      throw new Error(err.message || "로그인에 실패했습니다.");
     }
 
-    // 3. 백엔드 응답 데이터 구조 처리
-    // 명세서 규격: Response Body { message: string, user: { id, username, full_name, emp_no } }
-    const data: {
-      message: string;
-      user: {
-        id: number | string;
-        username: string;
-        full_name: string;
-        emp_no: string | null;
-      };
-    } = await res.json();
+    // JWT는 apiFetch가 매 요청마다 localStorage의 access_token을 읽어 Authorization 헤더에
+    // 붙이므로, 이후 모든 API 호출이 인증되려면 이 저장이 먼저 끝나야 한다.
+    localStorage.setItem("access_token", data.access);
+    localStorage.setItem("refresh_token", data.refresh);
 
-    // 4. Client Schema(User 타입)에 맞게 데이터 매핑
-    const mappedUser: User = {
-      id: String(data.user.id),
-      email: data.user.username,
-      name: data.user.full_name,
-      role: "MEMBER", // 백엔드 기본 역할 매핑 (필요 시 로직 확장 가능)
-      isFirstLogin: false,
-    };
+    // 로그인 응답(UserSimpleSerializer)에는 role 정보가 없다 — 화면의 PM/MEMBER 분기에 필요한
+    // role_code는 GET /api/users/me/ (UserDetailSerializer)에만 있어서 한 번 더 불러온다.
+    const profile = await apiFetch<any>("/api/users/me/");
+    const mappedUser = toUser(profile);
 
     setUser(mappedUser);
     localStorage.setItem("hz_session", JSON.stringify(mappedUser));
   };
 
   const logout = () => {
+    const refreshToken = localStorage.getItem("refresh_token");
+    // apiFetch는 호출 시점에 localStorage의 access_token을 동기적으로 읽어 Authorization
+    // 헤더에 넣으므로, 아래에서 토큰을 지우기 전에 먼저 호출해야 한다(순서를 바꾸면 이 요청
+    // 자체가 인증 없이 나가 401을 받는다). 응답은 기다릴 필요 없다 — 실패해도 로그아웃 자체는
+    // 진행돼야 하고, 클라이언트가 토큰을 이미 버리므로 사실상 로그아웃된 것과 같다.
+    apiFetch("/api/users/logout/", {
+      method: "POST",
+      body: JSON.stringify({ refresh: refreshToken }),
+    }).catch(() => {});
+
     setUser(null);
     localStorage.removeItem("hz_session");
-    // 서버가 실제 권한 판단에 쓰는 HttpOnly 세션 쿠키도 지운다 — 응답을 기다릴 필요는 없다
-    // (실패해도 로그아웃 자체는 진행돼야 하고, 어차피 곧 로그인 페이지로 이동한다).
-    fetch("/api/auth/logout", { method: "POST" }).catch(() => {});
+    localStorage.removeItem("access_token");
+    localStorage.removeItem("refresh_token");
     window.location.href = "/login";
   };
 

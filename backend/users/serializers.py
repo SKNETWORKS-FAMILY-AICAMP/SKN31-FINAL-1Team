@@ -122,3 +122,5 @@ class LoginResponseSerializer(serializers.Serializer):
     """
     message = serializers.CharField(default="로그인 성공")
     user = UserSimpleSerializer()
+    access = serializers.CharField(help_text="JWT Access Token — 이후 요청의 Authorization: Bearer 헤더에 사용")
+    refresh = serializers.CharField(help_text="JWT Refresh Token — access 토큰 재발급 및 로그아웃 시 블랙리스트 처리에 사용")

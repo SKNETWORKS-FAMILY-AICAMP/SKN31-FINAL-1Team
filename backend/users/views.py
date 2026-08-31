@@ -3,7 +3,8 @@
 from rest_framework import generics, permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from django.contrib.auth import get_user_model, login, logout
+from rest_framework_simplejwt.tokens import RefreshToken
+from django.contrib.auth import get_user_model
 from drf_spectacular.utils import extend_schema, OpenApiParameter, OpenApiTypes
 
 from users.serializers import (
@@ -37,13 +38,20 @@ class LoginView(APIView):
         serializer = LoginRequestSerializer(data=request.data)
         if serializer.is_valid():
             user = serializer.validated_data['user']
-            login(request, user)  # Django 세션 로그인 처리
-            
+            # REST_FRAMEWORK.DEFAULT_AUTHENTICATION_CLASSES가 JWTAuthentication만 등록돼
+            # 있어서(config/settings.py), 여기서 Django 세션으로 로그인시켜도 그 세션 쿠키는
+            # 이후 어떤 API 요청에서도 인증으로 인정되지 않았다(모든 후속 요청이 401) — 실제로
+            # 로그인 응답은 200이 오지만 그 다음부터 전부 막히는 게 이 버그의 증상이었다.
+            # 토큰을 실제로 발급해서 반환하도록 고친다.
+            refresh = RefreshToken.for_user(user)
+
             return Response({
                 "message": "로그인 성공",
-                "user": UserSimpleSerializer(user).data
+                "user": UserSimpleSerializer(user).data,
+                "access": str(refresh.access_token),
+                "refresh": str(refresh),
             }, status=status.HTTP_200_OK)
-            
+
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
@@ -57,11 +65,19 @@ class LogoutView(APIView):
     @extend_schema(
         tags=['0단계 - 사용자 관리'],
         summary='사용자 로그아웃',
-        description='현재 로그인된 세션을 종료합니다.',
+        description='현재 로그인된 세션을 종료합니다. 요청 바디에 refresh 토큰을 함께 보내면'
+                    ' 그 토큰을 블랙리스트 처리(재사용 방지)합니다 — 블랙리스트 앱이 아직'
+                    ' 설치되지 않았다면 조용히 건너뜁니다(클라이언트가 토큰을 버리는 것만으로도'
+                    ' 사실상 로그아웃되므로 로그아웃 자체를 막을 이유는 아님).',
         responses={200: OpenApiTypes.OBJECT}
     )
     def post(self, request):
-        logout(request)  # Django 세션 로그아웃
+        refresh_token = request.data.get("refresh")
+        if refresh_token:
+            try:
+                RefreshToken(refresh_token).blacklist()
+            except Exception:
+                pass
         return Response({"message": "로그아웃되었습니다."}, status=status.HTTP_200_OK)
 
 
