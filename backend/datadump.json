@@ -2180,7 +2180,8 @@
       "role_code": "ADMIN",
       "status_code": "ACTIVE",
       "groups": [],
-      "user_permissions": []
+      "user_permissions": [],
+      "past_projects": "포인트/쿠폰 엔진, 영상 스트리밍 서비스"
     }
   },
   {
@@ -2205,7 +2206,8 @@
       "role_code": "EMPLOYEE",
       "status_code": "ACTIVE",
       "groups": [],
-      "user_permissions": []
+      "user_permissions": [],
+      "past_projects": "Kubernetes 마이그레이션, 추천 엔진 v2, 고객 CRM 고도화"
     }
   },
   {
@@ -2230,7 +2232,8 @@
       "role_code": "EMPLOYEE",
       "status_code": "ACTIVE",
       "groups": [],
-      "user_permissions": []
+      "user_permissions": [],
+      "past_projects": "실시간 채팅 서비스, 결제 게이트웨이 연동, 관리자 대시보드 개편"
     }
   },
   {
@@ -2255,7 +2258,8 @@
       "role_code": "EMPLOYEE",
       "status_code": "ACTIVE",
       "groups": [],
-      "user_permissions": []
+      "user_permissions": [],
+      "past_projects": "관리자 대시보드 개편, Kubernetes 마이그레이션"
     }
   },
   {
@@ -2280,7 +2284,8 @@
       "role_code": "EMPLOYEE",
       "status_code": "ACTIVE",
       "groups": [],
-      "user_permissions": []
+      "user_permissions": [],
+      "past_projects": "마케팅 자동화 플랫폼, 추천 엔진 v2"
     }
   },
   {
@@ -2305,7 +2310,8 @@
       "role_code": "EMPLOYEE",
       "status_code": "LEAVE",
       "groups": [],
-      "user_permissions": []
+      "user_permissions": [],
+      "past_projects": "포인트/쿠폰 엔진, 검색 인프라 개편, 추천 엔진 v2, 전자결재 시스템"
     }
   },
   {
@@ -2330,7 +2336,8 @@
       "role_code": "EMPLOYEE",
       "status_code": "ACTIVE",
       "groups": [],
-      "user_permissions": []
+      "user_permissions": [],
+      "past_projects": "실시간 알림 시스템, 레거시 API 현대화"
     }
   },
   {
@@ -2355,7 +2362,8 @@
       "role_code": "EMPLOYEE",
       "status_code": "ACTIVE",
       "groups": [],
-      "user_permissions": []
+      "user_permissions": [],
+      "past_projects": "사내 협업 포털, 영상 스트리밍 서비스, 보안 감사 로그 시스템, 재고관리 최적화"
     }
   },
   {
@@ -2380,7 +2388,8 @@
       "role_code": "EMPLOYEE",
       "status_code": "ACTIVE",
       "groups": [],
-      "user_permissions": []
+      "user_permissions": [],
+      "past_projects": "모바일 앱 리뉴얼, 관리자 대시보드 개편"
     }
   },
   {
@@ -2405,7 +2414,8 @@
       "role_code": "EMPLOYEE",
       "status_code": "ACTIVE",
       "groups": [],
-      "user_permissions": []
+      "user_permissions": [],
+      "past_projects": "검색 인프라 개편, 챗봇 상담 자동화"
     }
   },
   {
@@ -2430,7 +2440,8 @@
       "status_code": "LEAVE",
       "is_busy": false,
       "groups": [],
-      "user_permissions": []
+      "user_permissions": [],
+      "past_projects": "포인트/쿠폰 엔진, 실시간 채팅 서비스, 고객 CRM 고도화, 매출 리포트 BI"
     }
   },
   {
@@ -2455,7 +2466,8 @@
       "status_code": "ACTIVE",
       "is_busy": true,
       "groups": [],
-      "user_permissions": []
+      "user_permissions": [],
+      "past_projects": "전자결재 시스템, 매출 리포트 BI"
     }
   },
   {
@@ -2480,7 +2492,8 @@
       "status_code": "ACTIVE",
       "is_busy": false,
       "groups": [],
-      "user_permissions": []
+      "user_permissions": [],
+      "past_projects": "전자결재 시스템, 매출 리포트 BI"
     }
   },
   {
@@ -2505,7 +2518,8 @@
       "status_code": "ACTIVE",
       "is_busy": false,
       "groups": [],
-      "user_permissions": []
+      "user_permissions": [],
+      "past_projects": "추천 엔진 v2, 관리자 대시보드 개편"
     }
   },
   {
@@ -2530,7 +2544,8 @@
       "status_code": "ACTIVE",
       "is_busy": true,
       "groups": [],
-      "user_permissions": []
+      "user_permissions": [],
+      "past_projects": "영상 스트리밍 서비스, 포인트/쿠폰 엔진, 챗봇 상담 자동화"
     }
   },
   {
@@ -2555,7 +2570,8 @@
       "status_code": "ACTIVE",
       "is_busy": false,
       "groups": [],
-      "user_permissions": []
+      "user_permissions": [],
+      "past_projects": "사내 협업 포털, 관리자 대시보드 개편, 매출 리포트 BI"
     }
   },
   {
@@ -2580,7 +2596,8 @@
       "status_code": "LEAVE",
       "is_busy": false,
       "groups": [],
-      "user_permissions": []
+      "user_permissions": [],
+      "past_projects": "결제 게이트웨이 연동, 포인트/쿠폰 엔진"
     }
   },
   {
@@ -2605,7 +2622,8 @@
       "status_code": "ACTIVE",
       "is_busy": true,
       "groups": [],
-      "user_permissions": []
+      "user_permissions": [],
+      "past_projects": "AI 문서요약 파이프라인, 물류 트래킹 시스템, Kubernetes 마이그레이션, 전자결재 시스템"
     }
   },
   {
@@ -2630,7 +2648,8 @@
       "status_code": "ACTIVE",
       "is_busy": false,
       "groups": [],
-      "user_permissions": []
+      "user_permissions": [],
+      "past_projects": "IoT 센서 모니터링, 물류 트래킹 시스템"
     }
   },
   {
@@ -2655,7 +2674,8 @@
       "status_code": "ACTIVE",
       "is_busy": false,
       "groups": [],
-      "user_permissions": []
+      "user_permissions": [],
+      "past_projects": "마케팅 자동화 플랫폼, 데이터 웨어하우스 구축, 물류 트래킹 시스템"
     }
   },
   {
@@ -2680,7 +2700,8 @@
       "status_code": "ACTIVE",
       "is_busy": true,
       "groups": [],
-      "user_permissions": []
+      "user_permissions": [],
+      "past_projects": "고객 CRM 고도화, 마케팅 자동화 플랫폼, 검색 인프라 개편, IoT 센서 모니터링"
     }
   },
   {
@@ -2705,7 +2726,8 @@
       "status_code": "ACTIVE",
       "is_busy": false,
       "groups": [],
-      "user_permissions": []
+      "user_permissions": [],
+      "past_projects": "사내 협업 포털, 온보딩 자동화, 추천 엔진 v2, SSO 인증 통합"
     }
   },
   {
@@ -2730,7 +2752,8 @@
       "status_code": "LEAVE",
       "is_busy": false,
       "groups": [],
-      "user_permissions": []
+      "user_permissions": [],
+      "past_projects": "보안 감사 로그 시스템, 마케팅 자동화 플랫폼, 사내 협업 포털, Kubernetes 마이그레이션"
     }
   },
   {
@@ -2755,7 +2778,8 @@
       "status_code": "ACTIVE",
       "is_busy": true,
       "groups": [],
-      "user_permissions": []
+      "user_permissions": [],
+      "past_projects": "실시간 알림 시스템, 전자결재 시스템, IoT 센서 모니터링"
     }
   },
   {
@@ -2780,7 +2804,8 @@
       "status_code": "ACTIVE",
       "is_busy": false,
       "groups": [],
-      "user_permissions": []
+      "user_permissions": [],
+      "past_projects": "데이터 웨어하우스 구축, Kubernetes 마이그레이션, 매출 리포트 BI, 물류 트래킹 시스템"
     }
   },
   {
@@ -2805,7 +2830,8 @@
       "status_code": "ACTIVE",
       "is_busy": false,
       "groups": [],
-      "user_permissions": []
+      "user_permissions": [],
+      "past_projects": "결제 게이트웨이 연동, 데이터 웨어하우스 구축"
     }
   },
   {
@@ -2830,7 +2856,8 @@
       "status_code": "ACTIVE",
       "is_busy": true,
       "groups": [],
-      "user_permissions": []
+      "user_permissions": [],
+      "past_projects": "실시간 채팅 서비스, 실시간 알림 시스템, 매출 리포트 BI, 마케팅 자동화 플랫폼"
     }
   },
   {
@@ -2855,7 +2882,8 @@
       "status_code": "ACTIVE",
       "is_busy": false,
       "groups": [],
-      "user_permissions": []
+      "user_permissions": [],
+      "past_projects": "사내 협업 포털, 마케팅 자동화 플랫폼"
     }
   },
   {
@@ -2880,7 +2908,8 @@
       "status_code": "LEAVE",
       "is_busy": false,
       "groups": [],
-      "user_permissions": []
+      "user_permissions": [],
+      "past_projects": "데이터 웨어하우스 구축, 영상 스트리밍 서비스, 모바일 앱 리뉴얼, 관리자 대시보드 개편"
     }
   },
   {
@@ -2905,7 +2934,8 @@
       "status_code": "ACTIVE",
       "is_busy": true,
       "groups": [],
-      "user_permissions": []
+      "user_permissions": [],
+      "past_projects": "챗봇 상담 자동화, 레거시 API 현대화, 실시간 알림 시스템, 재고관리 최적화"
     }
   },
   {
@@ -2930,7 +2960,8 @@
       "status_code": "ACTIVE",
       "is_busy": false,
       "groups": [],
-      "user_permissions": []
+      "user_permissions": [],
+      "past_projects": "결제 게이트웨이 연동, 검색 인프라 개편"
     }
   },
   {
@@ -2955,7 +2986,8 @@
       "status_code": "ACTIVE",
       "is_busy": false,
       "groups": [],
-      "user_permissions": []
+      "user_permissions": [],
+      "past_projects": "레거시 API 현대화, IoT 센서 모니터링"
     }
   },
   {
@@ -2980,7 +3012,8 @@
       "status_code": "ACTIVE",
       "is_busy": true,
       "groups": [],
-      "user_permissions": []
+      "user_permissions": [],
+      "past_projects": "IoT 센서 모니터링, 전자결재 시스템, 관리자 대시보드 개편, AI 문서요약 파이프라인"
     }
   },
   {
@@ -3005,7 +3038,8 @@
       "status_code": "ACTIVE",
       "is_busy": false,
       "groups": [],
-      "user_permissions": []
+      "user_permissions": [],
+      "past_projects": "사내 협업 포털, IoT 센서 모니터링, 결제 게이트웨이 연동, Kubernetes 마이그레이션"
     }
   },
   {
@@ -3030,7 +3064,8 @@
       "status_code": "LEAVE",
       "is_busy": false,
       "groups": [],
-      "user_permissions": []
+      "user_permissions": [],
+      "past_projects": "고객 CRM 고도화, 사내 협업 포털, 관리자 대시보드 개편"
     }
   },
   {
@@ -3055,7 +3090,8 @@
       "status_code": "ACTIVE",
       "is_busy": true,
       "groups": [],
-      "user_permissions": []
+      "user_permissions": [],
+      "past_projects": "관리자 대시보드 개편, 재고관리 최적화, 모바일 앱 리뉴얼"
     }
   },
   {
@@ -3080,7 +3116,8 @@
       "status_code": "ACTIVE",
       "is_busy": false,
       "groups": [],
-      "user_permissions": []
+      "user_permissions": [],
+      "past_projects": "온보딩 자동화, 챗봇 상담 자동화, 실시간 채팅 서비스"
     }
   },
   {
@@ -3105,7 +3142,8 @@
       "status_code": "ACTIVE",
       "is_busy": false,
       "groups": [],
-      "user_permissions": []
+      "user_permissions": [],
+      "past_projects": "매출 리포트 BI, 실시간 알림 시스템"
     }
   },
   {
@@ -3130,7 +3168,8 @@
       "status_code": "ACTIVE",
       "is_busy": true,
       "groups": [],
-      "user_permissions": []
+      "user_permissions": [],
+      "past_projects": "마케팅 자동화 플랫폼, 챗봇 상담 자동화"
     }
   },
   {
@@ -3155,7 +3194,8 @@
       "status_code": "ACTIVE",
       "is_busy": false,
       "groups": [],
-      "user_permissions": []
+      "user_permissions": [],
+      "past_projects": "포인트/쿠폰 엔진, 영상 스트리밍 서비스, 고객 CRM 고도화, 모바일 앱 리뉴얼"
     }
   },
   {
@@ -3180,7 +3220,8 @@
       "status_code": "LEAVE",
       "is_busy": false,
       "groups": [],
-      "user_permissions": []
+      "user_permissions": [],
+      "past_projects": "물류 트래킹 시스템, 모바일 앱 리뉴얼, 추천 엔진 v2, 실시간 채팅 서비스"
     }
   },
   {
@@ -3205,7 +3246,8 @@
       "status_code": "ACTIVE",
       "is_busy": true,
       "groups": [],
-      "user_permissions": []
+      "user_permissions": [],
+      "past_projects": "레거시 API 현대화, 데이터 웨어하우스 구축"
     }
   },
   {
@@ -3230,7 +3272,8 @@
       "status_code": "ACTIVE",
       "is_busy": false,
       "groups": [],
-      "user_permissions": []
+      "user_permissions": [],
+      "past_projects": "IoT 센서 모니터링, 마케팅 자동화 플랫폼, 재고관리 최적화, 모바일 앱 리뉴얼"
     }
   },
   {
@@ -3255,7 +3298,8 @@
       "status_code": "ACTIVE",
       "is_busy": false,
       "groups": [],
-      "user_permissions": []
+      "user_permissions": [],
+      "past_projects": "IoT 센서 모니터링, Kubernetes 마이그레이션"
     }
   },
   {
@@ -3280,7 +3324,8 @@
       "status_code": "ACTIVE",
       "is_busy": true,
       "groups": [],
-      "user_permissions": []
+      "user_permissions": [],
+      "past_projects": "추천 엔진 v2, 검색 인프라 개편"
     }
   },
   {
@@ -3305,7 +3350,8 @@
       "status_code": "ACTIVE",
       "is_busy": false,
       "groups": [],
-      "user_permissions": []
+      "user_permissions": [],
+      "past_projects": "사내 협업 포털, 결제 게이트웨이 연동"
     }
   },
   {
@@ -3330,7 +3376,8 @@
       "status_code": "LEAVE",
       "is_busy": false,
       "groups": [],
-      "user_permissions": []
+      "user_permissions": [],
+      "past_projects": "온보딩 자동화, 마케팅 자동화 플랫폼, 관리자 대시보드 개편"
     }
   },
   {
@@ -3355,7 +3402,8 @@
       "status_code": "ACTIVE",
       "is_busy": true,
       "groups": [],
-      "user_permissions": []
+      "user_permissions": [],
+      "past_projects": "보안 감사 로그 시스템, 전자결재 시스템"
     }
   },
   {
@@ -3380,7 +3428,8 @@
       "status_code": "ACTIVE",
       "is_busy": false,
       "groups": [],
-      "user_permissions": []
+      "user_permissions": [],
+      "past_projects": "재고관리 최적화, 사내 협업 포털, 관리자 대시보드 개편"
     }
   },
   {
@@ -3405,7 +3454,8 @@
       "status_code": "ACTIVE",
       "is_busy": false,
       "groups": [],
-      "user_permissions": []
+      "user_permissions": [],
+      "past_projects": "챗봇 상담 자동화, 물류 트래킹 시스템"
     }
   },
   {
@@ -3430,7 +3480,8 @@
       "status_code": "ACTIVE",
       "is_busy": true,
       "groups": [],
-      "user_permissions": []
+      "user_permissions": [],
+      "past_projects": "재고관리 최적화, 추천 엔진 v2, 포인트/쿠폰 엔진"
     }
   },
   {
@@ -3455,7 +3506,8 @@
       "status_code": "ACTIVE",
       "is_busy": false,
       "groups": [],
-      "user_permissions": []
+      "user_permissions": [],
+      "past_projects": "사내 협업 포털, 관리자 대시보드 개편, 실시간 알림 시스템"
     }
   },
   {
@@ -3480,7 +3532,8 @@
       "status_code": "LEAVE",
       "is_busy": false,
       "groups": [],
-      "user_permissions": []
+      "user_permissions": [],
+      "past_projects": "Kubernetes 마이그레이션, IoT 센서 모니터링, 실시간 채팅 서비스"
     }
   },
   {
@@ -3505,7 +3558,8 @@
       "status_code": "ACTIVE",
       "is_busy": true,
       "groups": [],
-      "user_permissions": []
+      "user_permissions": [],
+      "past_projects": "데이터 웨어하우스 구축, 검색 인프라 개편, 고객 CRM 고도화"
     }
   },
   {
@@ -3530,7 +3584,8 @@
       "status_code": "ACTIVE",
       "is_busy": false,
       "groups": [],
-      "user_permissions": []
+      "user_permissions": [],
+      "past_projects": "Kubernetes 마이그레이션, 재고관리 최적화, 물류 트래킹 시스템"
     }
   },
   {
@@ -3555,7 +3610,8 @@
       "status_code": "ACTIVE",
       "is_busy": false,
       "groups": [],
-      "user_permissions": []
+      "user_permissions": [],
+      "past_projects": "재고관리 최적화, 관리자 대시보드 개편"
     }
   },
   {
@@ -3580,7 +3636,8 @@
       "status_code": "ACTIVE",
       "is_busy": true,
       "groups": [],
-      "user_permissions": []
+      "user_permissions": [],
+      "past_projects": "재고관리 최적화, AI 문서요약 파이프라인, 실시간 채팅 서비스"
     }
   },
   {
@@ -3605,7 +3662,8 @@
       "status_code": "ACTIVE",
       "is_busy": false,
       "groups": [],
-      "user_permissions": []
+      "user_permissions": [],
+      "past_projects": "재고관리 최적화, 전자결재 시스템, 챗봇 상담 자동화, 고객 CRM 고도화"
     }
   },
   {
@@ -3630,7 +3688,8 @@
       "status_code": "LEAVE",
       "is_busy": false,
       "groups": [],
-      "user_permissions": []
+      "user_permissions": [],
+      "past_projects": "전자결재 시스템, 모바일 앱 리뉴얼, Kubernetes 마이그레이션"
     }
   },
   {
@@ -3655,7 +3714,8 @@
       "status_code": "ACTIVE",
       "is_busy": true,
       "groups": [],
-      "user_permissions": []
+      "user_permissions": [],
+      "past_projects": "관리자 대시보드 개편, 실시간 채팅 서비스"
     }
   },
   {
@@ -3680,7 +3740,8 @@
       "status_code": "ACTIVE",
       "is_busy": false,
       "groups": [],
-      "user_permissions": []
+      "user_permissions": [],
+      "past_projects": "Kubernetes 마이그레이션, 포인트/쿠폰 엔진"
     }
   },
   {
@@ -3705,7 +3766,8 @@
       "status_code": "ACTIVE",
       "is_busy": false,
       "groups": [],
-      "user_permissions": []
+      "user_permissions": [],
+      "past_projects": "온보딩 자동화, 실시간 채팅 서비스, 모바일 앱 리뉴얼"
     }
   },
   {
@@ -3730,7 +3792,8 @@
       "status_code": "ACTIVE",
       "is_busy": true,
       "groups": [],
-      "user_permissions": []
+      "user_permissions": [],
+      "past_projects": "매출 리포트 BI, 전자결재 시스템, 사내 협업 포털"
     }
   },
   {
@@ -3755,7 +3818,8 @@
       "status_code": "ACTIVE",
       "is_busy": false,
       "groups": [],
-      "user_permissions": []
+      "user_permissions": [],
+      "past_projects": "실시간 알림 시스템, 재고관리 최적화"
     }
   },
   {
@@ -3780,7 +3844,8 @@
       "status_code": "LEAVE",
       "is_busy": false,
       "groups": [],
-      "user_permissions": []
+      "user_permissions": [],
+      "past_projects": "AI 문서요약 파이프라인, 모바일 앱 리뉴얼, Kubernetes 마이그레이션"
     }
   },
   {
@@ -3805,7 +3870,8 @@
       "status_code": "ACTIVE",
       "is_busy": true,
       "groups": [],
-      "user_permissions": []
+      "user_permissions": [],
+      "past_projects": "검색 인프라 개편, 포인트/쿠폰 엔진, 영상 스트리밍 서비스"
     }
   },
   {
@@ -3830,7 +3896,8 @@
       "status_code": "ACTIVE",
       "is_busy": false,
       "groups": [],
-      "user_permissions": []
+      "user_permissions": [],
+      "past_projects": "모바일 앱 리뉴얼, AI 문서요약 파이프라인, 전자결재 시스템"
     }
   },
   {
@@ -3855,7 +3922,8 @@
       "status_code": "ACTIVE",
       "is_busy": false,
       "groups": [],
-      "user_permissions": []
+      "user_permissions": [],
+      "past_projects": "AI 문서요약 파이프라인, 물류 트래킹 시스템, 고객 CRM 고도화"
     }
   },
   {
@@ -3880,7 +3948,8 @@
       "status_code": "ACTIVE",
       "is_busy": true,
       "groups": [],
-      "user_permissions": []
+      "user_permissions": [],
+      "past_projects": "데이터 웨어하우스 구축, 포인트/쿠폰 엔진, 전자결재 시스템"
     }
   },
   {
@@ -3905,7 +3974,8 @@
       "status_code": "ACTIVE",
       "is_busy": false,
       "groups": [],
-      "user_permissions": []
+      "user_permissions": [],
+      "past_projects": "마케팅 자동화 플랫폼, 재고관리 최적화, 관리자 대시보드 개편, 실시간 채팅 서비스"
     }
   },
   {
@@ -3930,7 +4000,8 @@
       "status_code": "LEAVE",
       "is_busy": false,
       "groups": [],
-      "user_permissions": []
+      "user_permissions": [],
+      "past_projects": "고객 CRM 고도화, 챗봇 상담 자동화"
     }
   },
   {
@@ -3955,7 +4026,8 @@
       "status_code": "ACTIVE",
       "is_busy": true,
       "groups": [],
-      "user_permissions": []
+      "user_permissions": [],
+      "past_projects": "실시간 알림 시스템, Kubernetes 마이그레이션, 물류 트래킹 시스템"
     }
   },
   {
@@ -3980,7 +4052,8 @@
       "status_code": "ACTIVE",
       "is_busy": false,
       "groups": [],
-      "user_permissions": []
+      "user_permissions": [],
+      "past_projects": "마케팅 자동화 플랫폼, 챗봇 상담 자동화"
     }
   },
   {
@@ -4005,7 +4078,8 @@
       "status_code": "ACTIVE",
       "is_busy": false,
       "groups": [],
-      "user_permissions": []
+      "user_permissions": [],
+      "past_projects": "영상 스트리밍 서비스, 결제 게이트웨이 연동"
     }
   },
   {
@@ -4030,7 +4104,8 @@
       "status_code": "ACTIVE",
       "is_busy": true,
       "groups": [],
-      "user_permissions": []
+      "user_permissions": [],
+      "past_projects": "챗봇 상담 자동화, 매출 리포트 BI, 전자결재 시스템, 보안 감사 로그 시스템"
     }
   },
   {
@@ -4055,7 +4130,8 @@
       "status_code": "ACTIVE",
       "is_busy": false,
       "groups": [],
-      "user_permissions": []
+      "user_permissions": [],
+      "past_projects": "고객 CRM 고도화, 사내 협업 포털, 전자결재 시스템, 마케팅 자동화 플랫폼"
     }
   },
   {
@@ -4080,7 +4156,8 @@
       "status_code": "LEAVE",
       "is_busy": false,
       "groups": [],
-      "user_permissions": []
+      "user_permissions": [],
+      "past_projects": "모바일 앱 리뉴얼, 데이터 웨어하우스 구축, Kubernetes 마이그레이션"
     }
   },
   {
@@ -4105,7 +4182,8 @@
       "status_code": "ACTIVE",
       "is_busy": true,
       "groups": [],
-      "user_permissions": []
+      "user_permissions": [],
+      "past_projects": "실시간 채팅 서비스, 마케팅 자동화 플랫폼, 포인트/쿠폰 엔진"
     }
   },
   {
@@ -4130,7 +4208,8 @@
       "status_code": "ACTIVE",
       "is_busy": false,
       "groups": [],
-      "user_permissions": []
+      "user_permissions": [],
+      "past_projects": "검색 인프라 개편, 보안 감사 로그 시스템"
     }
   },
   {
@@ -4155,7 +4234,8 @@
       "status_code": "ACTIVE",
       "is_busy": false,
       "groups": [],
-      "user_permissions": []
+      "user_permissions": [],
+      "past_projects": "결제 게이트웨이 연동, 모바일 앱 리뉴얼, 관리자 대시보드 개편, 챗봇 상담 자동화"
     }
   },
   {
@@ -4180,7 +4260,8 @@
       "status_code": "ACTIVE",
       "is_busy": true,
       "groups": [],
-      "user_permissions": []
+      "user_permissions": [],
+      "past_projects": "Kubernetes 마이그레이션, IoT 센서 모니터링"
     }
   },
   {
@@ -4205,7 +4286,8 @@
       "status_code": "ACTIVE",
       "is_busy": false,
       "groups": [],
-      "user_permissions": []
+      "user_permissions": [],
+      "past_projects": "데이터 웨어하우스 구축, SSO 인증 통합"
     }
   },
   {
@@ -4230,7 +4312,8 @@
       "status_code": "LEAVE",
       "is_busy": false,
       "groups": [],
-      "user_permissions": []
+      "user_permissions": [],
+      "past_projects": "챗봇 상담 자동화, SSO 인증 통합"
     }
   },
   {
@@ -4255,7 +4338,8 @@
       "status_code": "ACTIVE",
       "is_busy": true,
       "groups": [],
-      "user_permissions": []
+      "user_permissions": [],
+      "past_projects": "결제 게이트웨이 연동, 고객 CRM 고도화"
     }
   },
   {
@@ -4280,7 +4364,8 @@
       "status_code": "ACTIVE",
       "is_busy": false,
       "groups": [],
-      "user_permissions": []
+      "user_permissions": [],
+      "past_projects": "온보딩 자동화, 매출 리포트 BI, 영상 스트리밍 서비스, 마케팅 자동화 플랫폼"
     }
   },
   {
@@ -4305,7 +4390,8 @@
       "status_code": "ACTIVE",
       "is_busy": false,
       "groups": [],
-      "user_permissions": []
+      "user_permissions": [],
+      "past_projects": "온보딩 자동화, IoT 센서 모니터링"
     }
   },
   {
@@ -4330,7 +4416,8 @@
       "status_code": "ACTIVE",
       "is_busy": true,
       "groups": [],
-      "user_permissions": []
+      "user_permissions": [],
+      "past_projects": "데이터 웨어하우스 구축, 추천 엔진 v2, 모바일 앱 리뉴얼, 포인트/쿠폰 엔진"
     }
   },
   {
@@ -4355,7 +4442,8 @@
       "status_code": "ACTIVE",
       "is_busy": false,
       "groups": [],
-      "user_permissions": []
+      "user_permissions": [],
+      "past_projects": "마케팅 자동화 플랫폼, 물류 트래킹 시스템, 전자결재 시스템"
     }
   },
   {
@@ -4380,7 +4468,8 @@
       "status_code": "LEAVE",
       "is_busy": false,
       "groups": [],
-      "user_permissions": []
+      "user_permissions": [],
+      "past_projects": "전자결재 시스템, 물류 트래킹 시스템, 실시간 알림 시스템, 온보딩 자동화"
     }
   },
   {
@@ -4405,7 +4494,8 @@
       "status_code": "ACTIVE",
       "is_busy": true,
       "groups": [],
-      "user_permissions": []
+      "user_permissions": [],
+      "past_projects": "챗봇 상담 자동화, 영상 스트리밍 서비스, AI 문서요약 파이프라인"
     }
   },
   {
@@ -4430,7 +4520,8 @@
       "status_code": "ACTIVE",
       "is_busy": false,
       "groups": [],
-      "user_permissions": []
+      "user_permissions": [],
+      "past_projects": "재고관리 최적화, IoT 센서 모니터링"
     }
   },
   {
@@ -4455,7 +4546,8 @@
       "status_code": "ACTIVE",
       "is_busy": false,
       "groups": [],
-      "user_permissions": []
+      "user_permissions": [],
+      "past_projects": "실시간 채팅 서비스, 모바일 앱 리뉴얼"
     }
   },
   {
@@ -4480,7 +4572,8 @@
       "status_code": "ACTIVE",
       "is_busy": true,
       "groups": [],
-      "user_permissions": []
+      "user_permissions": [],
+      "past_projects": "AI 문서요약 파이프라인, 전자결재 시스템, 매출 리포트 BI, 챗봇 상담 자동화"
     }
   },
   {
@@ -4505,7 +4598,8 @@
       "status_code": "ACTIVE",
       "is_busy": false,
       "groups": [],
-      "user_permissions": []
+      "user_permissions": [],
+      "past_projects": "마케팅 자동화 플랫폼, 영상 스트리밍 서비스"
     }
   },
   {
@@ -4530,7 +4624,8 @@
       "status_code": "LEAVE",
       "is_busy": false,
       "groups": [],
-      "user_permissions": []
+      "user_permissions": [],
+      "past_projects": "실시간 채팅 서비스, AI 문서요약 파이프라인, 챗봇 상담 자동화, 추천 엔진 v2"
     }
   },
   {
@@ -4555,7 +4650,8 @@
       "status_code": "ACTIVE",
       "is_busy": true,
       "groups": [],
-      "user_permissions": []
+      "user_permissions": [],
+      "past_projects": "온보딩 자동화, 보안 감사 로그 시스템"
     }
   },
   {
@@ -4580,7 +4676,8 @@
       "status_code": "ACTIVE",
       "is_busy": false,
       "groups": [],
-      "user_permissions": []
+      "user_permissions": [],
+      "past_projects": "추천 엔진 v2, IoT 센서 모니터링"
     }
   },
   {
@@ -4605,7 +4702,8 @@
       "status_code": "ACTIVE",
       "is_busy": false,
       "groups": [],
-      "user_permissions": []
+      "user_permissions": [],
+      "past_projects": "IoT 센서 모니터링, 재고관리 최적화"
     }
   },
   {
@@ -4630,7 +4728,8 @@
       "status_code": "ACTIVE",
       "is_busy": true,
       "groups": [],
-      "user_permissions": []
+      "user_permissions": [],
+      "past_projects": "매출 리포트 BI, 온보딩 자동화, 데이터 웨어하우스 구축, 챗봇 상담 자동화"
     }
   },
   {
@@ -4655,7 +4754,8 @@
       "status_code": "ACTIVE",
       "is_busy": false,
       "groups": [],
-      "user_permissions": []
+      "user_permissions": [],
+      "past_projects": "IoT 센서 모니터링, 데이터 웨어하우스 구축, 모바일 앱 리뉴얼"
     }
   },
   {
@@ -4699,7 +4799,18 @@
         "demo01"
       ],
       "cert_code": "SQLP",
-      "acquired_date": "2022-02-16"
+      "acquired_date": "2021-08-01"
+    }
+  },
+  {
+    "model": "users.usercertification",
+    "pk": 8002,
+    "fields": {
+      "user": [
+        "demo01"
+      ],
+      "cert_code": "INFO_PROCESSING_INDUSTRIAL_ENGINEER",
+      "acquired_date": "2024-07-20"
     }
   },
   {
@@ -4737,24 +4848,35 @@
   },
   {
     "model": "users.usercertification",
-    "pk": 8002,
-    "fields": {
-      "user": [
-        "demo02"
-      ],
-      "cert_code": "INFO_PROCESSING_INDUSTRIAL_ENGINEER",
-      "acquired_date": "2025-11-06"
-    }
-  },
-  {
-    "model": "users.usercertification",
     "pk": 8003,
     "fields": {
       "user": [
         "demo02"
       ],
+      "cert_code": "INFO_PROCESSING_INDUSTRIAL_ENGINEER",
+      "acquired_date": "2022-07-21"
+    }
+  },
+  {
+    "model": "users.usercertification",
+    "pk": 8004,
+    "fields": {
+      "user": [
+        "demo02"
+      ],
       "cert_code": "INFO_PROCESSING_ENGINEER",
-      "acquired_date": "2024-11-13"
+      "acquired_date": "2024-12-28"
+    }
+  },
+  {
+    "model": "users.usercertification",
+    "pk": 8005,
+    "fields": {
+      "user": [
+        "demo02"
+      ],
+      "cert_code": "COMPUTER_LITERACY_1",
+      "acquired_date": "2025-06-18"
     }
   },
   {
@@ -4792,24 +4914,35 @@
   },
   {
     "model": "users.usercertification",
-    "pk": 8004,
+    "pk": 8006,
     "fields": {
       "user": [
         "demo03"
       ],
       "cert_code": "INFO_PROCESSING_ENGINEER",
-      "acquired_date": "2024-05-18"
+      "acquired_date": "2023-09-08"
     }
   },
   {
     "model": "users.usercertification",
-    "pk": 8005,
+    "pk": 8007,
     "fields": {
       "user": [
         "demo03"
       ],
       "cert_code": "GCP_ASSOCIATE_CLOUD_ENGINEER",
-      "acquired_date": "2022-04-23"
+      "acquired_date": "2022-12-16"
+    }
+  },
+  {
+    "model": "users.usercertification",
+    "pk": 8008,
+    "fields": {
+      "user": [
+        "demo03"
+      ],
+      "cert_code": "AWS_SOLUTIONS_ARCHITECT",
+      "acquired_date": "2025-09-16"
     }
   },
   {
@@ -4843,6 +4976,17 @@
       ],
       "skill_code": "POSTGRESQL",
       "proficiency_level": 2
+    }
+  },
+  {
+    "model": "users.usercertification",
+    "pk": 8009,
+    "fields": {
+      "user": [
+        "demo04"
+      ],
+      "cert_code": "ADSP",
+      "acquired_date": "2024-09-10"
     }
   },
   {
@@ -4902,13 +5046,24 @@
   },
   {
     "model": "users.usercertification",
-    "pk": 8006,
+    "pk": 8010,
     "fields": {
       "user": [
         "demo05"
       ],
       "cert_code": "AZURE_FUNDAMENTALS",
-      "acquired_date": "2024-09-04"
+      "acquired_date": "2025-02-19"
+    }
+  },
+  {
+    "model": "users.usercertification",
+    "pk": 8011,
+    "fields": {
+      "user": [
+        "demo05"
+      ],
+      "cert_code": "NETWORK_ADMINISTRATOR",
+      "acquired_date": "2022-01-24"
     }
   },
   {
@@ -4968,13 +5123,24 @@
   },
   {
     "model": "users.usercertification",
-    "pk": 8007,
+    "pk": 8012,
     "fields": {
       "user": [
         "demo06"
       ],
       "cert_code": "ITQ",
-      "acquired_date": "2022-12-28"
+      "acquired_date": "2024-09-18"
+    }
+  },
+  {
+    "model": "users.usercertification",
+    "pk": 8013,
+    "fields": {
+      "user": [
+        "demo06"
+      ],
+      "cert_code": "PMP",
+      "acquired_date": "2021-04-19"
     }
   },
   {
@@ -5022,6 +5188,17 @@
     }
   },
   {
+    "model": "users.usercertification",
+    "pk": 8014,
+    "fields": {
+      "user": [
+        "demo07"
+      ],
+      "cert_code": "INFO_PROCESSING_ENGINEER",
+      "acquired_date": "2024-07-03"
+    }
+  },
+  {
     "model": "users.userskill",
     "pk": 5027,
     "fields": {
@@ -5052,6 +5229,17 @@
       ],
       "skill_code": "ILLUSTRATOR",
       "proficiency_level": 2
+    }
+  },
+  {
+    "model": "users.usercertification",
+    "pk": 8015,
+    "fields": {
+      "user": [
+        "demo08"
+      ],
+      "cert_code": "GTQI",
+      "acquired_date": "2025-04-13"
     }
   },
   {
@@ -5100,24 +5288,35 @@
   },
   {
     "model": "users.usercertification",
-    "pk": 8008,
+    "pk": 8016,
     "fields": {
       "user": [
         "demo09"
       ],
       "cert_code": "INFO_PROCESSING_ENGINEER",
-      "acquired_date": "2025-10-23"
+      "acquired_date": "2025-12-02"
     }
   },
   {
     "model": "users.usercertification",
-    "pk": 8009,
+    "pk": 8017,
     "fields": {
       "user": [
         "demo09"
       ],
-      "cert_code": "INFO_PROCESSING_INDUSTRIAL_ENGINEER",
-      "acquired_date": "2021-12-13"
+      "cert_code": "SQLD",
+      "acquired_date": "2024-03-23"
+    }
+  },
+  {
+    "model": "users.usercertification",
+    "pk": 8018,
+    "fields": {
+      "user": [
+        "demo09"
+      ],
+      "cert_code": "SQLP",
+      "acquired_date": "2024-12-14"
     }
   },
   {
@@ -5176,6 +5375,17 @@
     }
   },
   {
+    "model": "users.usercertification",
+    "pk": 8019,
+    "fields": {
+      "user": [
+        "demo10"
+      ],
+      "cert_code": "ITQ",
+      "acquired_date": "2024-06-03"
+    }
+  },
+  {
     "model": "users.userskill",
     "pk": 5039,
     "fields": {
@@ -5217,6 +5427,17 @@
       ],
       "skill_code": "LINUX",
       "proficiency_level": 3
+    }
+  },
+  {
+    "model": "users.usercertification",
+    "pk": 8020,
+    "fields": {
+      "user": [
+        "demo11"
+      ],
+      "cert_code": "SQLP",
+      "acquired_date": "2023-03-03"
     }
   },
   {
@@ -5265,13 +5486,24 @@
   },
   {
     "model": "users.usercertification",
-    "pk": 8010,
+    "pk": 8021,
     "fields": {
       "user": [
         "demo12"
       ],
       "cert_code": "GCP_ASSOCIATE_CLOUD_ENGINEER",
       "acquired_date": "2024-12-28"
+    }
+  },
+  {
+    "model": "users.usercertification",
+    "pk": 8022,
+    "fields": {
+      "user": [
+        "demo12"
+      ],
+      "cert_code": "LINUX_MASTER",
+      "acquired_date": "2025-04-18"
     }
   },
   {
@@ -5319,6 +5551,17 @@
     }
   },
   {
+    "model": "users.usercertification",
+    "pk": 8023,
+    "fields": {
+      "user": [
+        "demo13"
+      ],
+      "cert_code": "COMPUTER_LITERACY_1",
+      "acquired_date": "2023-01-14"
+    }
+  },
+  {
     "model": "users.userskill",
     "pk": 5051,
     "fields": {
@@ -5353,13 +5596,24 @@
   },
   {
     "model": "users.usercertification",
-    "pk": 8011,
+    "pk": 8024,
     "fields": {
       "user": [
         "demo14"
       ],
       "cert_code": "INFO_PROCESSING_ENGINEER",
-      "acquired_date": "2024-05-15"
+      "acquired_date": "2023-08-22"
+    }
+  },
+  {
+    "model": "users.usercertification",
+    "pk": 8025,
+    "fields": {
+      "user": [
+        "demo14"
+      ],
+      "cert_code": "INFO_SECURITY_ENGINEER",
+      "acquired_date": "2024-07-25"
     }
   },
   {
@@ -5393,6 +5647,17 @@
       ],
       "skill_code": "GIT",
       "proficiency_level": 2
+    }
+  },
+  {
+    "model": "users.usercertification",
+    "pk": 8026,
+    "fields": {
+      "user": [
+        "demo15"
+      ],
+      "cert_code": "GTQI",
+      "acquired_date": "2023-04-04"
     }
   },
   {
@@ -5441,7 +5706,7 @@
   },
   {
     "model": "users.usercertification",
-    "pk": 8012,
+    "pk": 8027,
     "fields": {
       "user": [
         "demo16"
@@ -5452,13 +5717,24 @@
   },
   {
     "model": "users.usercertification",
-    "pk": 8013,
+    "pk": 8028,
     "fields": {
       "user": [
         "demo16"
       ],
-      "cert_code": "INFO_PROCESSING_ENGINEER",
+      "cert_code": "INFO_PROCESSING_INDUSTRIAL_ENGINEER",
       "acquired_date": "2023-06-22"
+    }
+  },
+  {
+    "model": "users.usercertification",
+    "pk": 8029,
+    "fields": {
+      "user": [
+        "demo16"
+      ],
+      "cert_code": "OCJP",
+      "acquired_date": "2022-12-20"
     }
   },
   {
@@ -5518,24 +5794,35 @@
   },
   {
     "model": "users.usercertification",
-    "pk": 8014,
+    "pk": 8030,
     "fields": {
       "user": [
         "demo17"
       ],
       "cert_code": "COMPUTER_LITERACY_2",
-      "acquired_date": "2025-06-21"
+      "acquired_date": "2023-11-28"
     }
   },
   {
     "model": "users.usercertification",
-    "pk": 8015,
+    "pk": 8031,
     "fields": {
       "user": [
         "demo17"
       ],
       "cert_code": "COMPUTER_LITERACY_1",
       "acquired_date": "2024-03-18"
+    }
+  },
+  {
+    "model": "users.usercertification",
+    "pk": 8032,
+    "fields": {
+      "user": [
+        "demo17"
+      ],
+      "cert_code": "ITQ",
+      "acquired_date": "2021-03-27"
     }
   },
   {
@@ -5573,13 +5860,24 @@
   },
   {
     "model": "users.usercertification",
-    "pk": 8016,
+    "pk": 8033,
     "fields": {
       "user": [
         "demo18"
       ],
       "cert_code": "LINUX_MASTER",
-      "acquired_date": "2022-08-10"
+      "acquired_date": "2024-05-15"
+    }
+  },
+  {
+    "model": "users.usercertification",
+    "pk": 8034,
+    "fields": {
+      "user": [
+        "demo18"
+      ],
+      "cert_code": "INFO_PROCESSING_INDUSTRIAL_ENGINEER",
+      "acquired_date": "2023-04-09"
     }
   },
   {
@@ -5638,6 +5936,17 @@
     }
   },
   {
+    "model": "users.usercertification",
+    "pk": 8035,
+    "fields": {
+      "user": [
+        "demo19"
+      ],
+      "cert_code": "SQLD",
+      "acquired_date": "2024-06-09"
+    }
+  },
+  {
     "model": "users.userskill",
     "pk": 5074,
     "fields": {
@@ -5693,6 +6002,17 @@
     }
   },
   {
+    "model": "users.usercertification",
+    "pk": 8036,
+    "fields": {
+      "user": [
+        "demo20"
+      ],
+      "cert_code": "AWS_SYSOPS_ADMINISTRATOR",
+      "acquired_date": "2023-08-19"
+    }
+  },
+  {
     "model": "users.userskill",
     "pk": 5079,
     "fields": {
@@ -5727,24 +6047,35 @@
   },
   {
     "model": "users.usercertification",
-    "pk": 8017,
+    "pk": 8037,
     "fields": {
       "user": [
         "demo21"
       ],
       "cert_code": "COMPUTER_LITERACY_1",
-      "acquired_date": "2025-04-26"
+      "acquired_date": "2021-01-12"
     }
   },
   {
     "model": "users.usercertification",
-    "pk": 8018,
+    "pk": 8038,
     "fields": {
       "user": [
         "demo21"
       ],
       "cert_code": "COMPUTER_LITERACY_2",
-      "acquired_date": "2021-01-12"
+      "acquired_date": "2025-07-03"
+    }
+  },
+  {
+    "model": "users.usercertification",
+    "pk": 8039,
+    "fields": {
+      "user": [
+        "demo21"
+      ],
+      "cert_code": "PMP",
+      "acquired_date": "2022-04-08"
     }
   },
   {
@@ -5782,24 +6113,35 @@
   },
   {
     "model": "users.usercertification",
-    "pk": 8019,
+    "pk": 8040,
     "fields": {
       "user": [
         "demo22"
       ],
       "cert_code": "CISSP",
-      "acquired_date": "2022-05-02"
+      "acquired_date": "2023-01-11"
     }
   },
   {
     "model": "users.usercertification",
-    "pk": 8020,
+    "pk": 8041,
     "fields": {
       "user": [
         "demo22"
       ],
       "cert_code": "INFO_PROCESSING_ENGINEER",
-      "acquired_date": "2023-10-06"
+      "acquired_date": "2025-03-18"
+    }
+  },
+  {
+    "model": "users.usercertification",
+    "pk": 8042,
+    "fields": {
+      "user": [
+        "demo22"
+      ],
+      "cert_code": "INFO_SECURITY_ENGINEER",
+      "acquired_date": "2024-12-02"
     }
   },
   {
@@ -5848,13 +6190,24 @@
   },
   {
     "model": "users.usercertification",
-    "pk": 8021,
+    "pk": 8043,
     "fields": {
       "user": [
         "demo23"
       ],
       "cert_code": "COMPUTER_LITERACY_2",
-      "acquired_date": "2021-04-20"
+      "acquired_date": "2022-10-15"
+    }
+  },
+  {
+    "model": "users.usercertification",
+    "pk": 8044,
+    "fields": {
+      "user": [
+        "demo23"
+      ],
+      "cert_code": "GTQ",
+      "acquired_date": "2021-02-03"
     }
   },
   {
@@ -5914,24 +6267,35 @@
   },
   {
     "model": "users.usercertification",
-    "pk": 8022,
+    "pk": 8045,
     "fields": {
       "user": [
         "demo24"
       ],
       "cert_code": "INFO_PROCESSING_ENGINEER",
-      "acquired_date": "2024-12-21"
+      "acquired_date": "2021-01-17"
     }
   },
   {
     "model": "users.usercertification",
-    "pk": 8023,
+    "pk": 8046,
+    "fields": {
+      "user": [
+        "demo24"
+      ],
+      "cert_code": "SQLP",
+      "acquired_date": "2022-08-24"
+    }
+  },
+  {
+    "model": "users.usercertification",
+    "pk": 8047,
     "fields": {
       "user": [
         "demo24"
       ],
       "cert_code": "INFO_PROCESSING_INDUSTRIAL_ENGINEER",
-      "acquired_date": "2021-01-17"
+      "acquired_date": "2024-11-10"
     }
   },
   {
@@ -5980,13 +6344,24 @@
   },
   {
     "model": "users.usercertification",
-    "pk": 8024,
+    "pk": 8048,
     "fields": {
       "user": [
         "demo25"
       ],
       "cert_code": "ITQ",
-      "acquired_date": "2024-02-19"
+      "acquired_date": "2021-10-28"
+    }
+  },
+  {
+    "model": "users.usercertification",
+    "pk": 8049,
+    "fields": {
+      "user": [
+        "demo25"
+      ],
+      "cert_code": "COMPUTER_LITERACY_2",
+      "acquired_date": "2021-10-22"
     }
   },
   {
@@ -6046,7 +6421,7 @@
   },
   {
     "model": "users.usercertification",
-    "pk": 8025,
+    "pk": 8050,
     "fields": {
       "user": [
         "demo26"
@@ -6057,13 +6432,24 @@
   },
   {
     "model": "users.usercertification",
-    "pk": 8026,
+    "pk": 8051,
     "fields": {
       "user": [
         "demo26"
       ],
       "cert_code": "INFO_PROCESSING_INDUSTRIAL_ENGINEER",
       "acquired_date": "2022-12-28"
+    }
+  },
+  {
+    "model": "users.usercertification",
+    "pk": 8052,
+    "fields": {
+      "user": [
+        "demo26"
+      ],
+      "cert_code": "AZURE_FUNDAMENTALS",
+      "acquired_date": "2021-11-28"
     }
   },
   {
@@ -6123,13 +6509,24 @@
   },
   {
     "model": "users.usercertification",
-    "pk": 8027,
+    "pk": 8053,
     "fields": {
       "user": [
         "demo27"
       ],
       "cert_code": "SQLP",
-      "acquired_date": "2022-04-08"
+      "acquired_date": "2022-04-16"
+    }
+  },
+  {
+    "model": "users.usercertification",
+    "pk": 8054,
+    "fields": {
+      "user": [
+        "demo27"
+      ],
+      "cert_code": "ADSP",
+      "acquired_date": "2021-12-21"
     }
   },
   {
@@ -6167,24 +6564,35 @@
   },
   {
     "model": "users.usercertification",
-    "pk": 8028,
+    "pk": 8055,
     "fields": {
       "user": [
         "demo28"
       ],
       "cert_code": "NETWORK_ADMINISTRATOR",
-      "acquired_date": "2024-04-07"
+      "acquired_date": "2022-04-05"
     }
   },
   {
     "model": "users.usercertification",
-    "pk": 8029,
+    "pk": 8056,
     "fields": {
       "user": [
         "demo28"
       ],
       "cert_code": "CCNA",
-      "acquired_date": "2022-07-06"
+      "acquired_date": "2024-03-27"
+    }
+  },
+  {
+    "model": "users.usercertification",
+    "pk": 8057,
+    "fields": {
+      "user": [
+        "demo28"
+      ],
+      "cert_code": "AZURE_FUNDAMENTALS",
+      "acquired_date": "2022-10-07"
     }
   },
   {
@@ -6244,13 +6652,24 @@
   },
   {
     "model": "users.usercertification",
-    "pk": 8030,
+    "pk": 8058,
     "fields": {
       "user": [
         "demo29"
       ],
       "cert_code": "COMPUTER_LITERACY_1",
-      "acquired_date": "2023-02-16"
+      "acquired_date": "2021-08-11"
+    }
+  },
+  {
+    "model": "users.usercertification",
+    "pk": 8059,
+    "fields": {
+      "user": [
+        "demo29"
+      ],
+      "cert_code": "ITQ",
+      "acquired_date": "2025-09-14"
     }
   },
   {
@@ -6310,24 +6729,35 @@
   },
   {
     "model": "users.usercertification",
-    "pk": 8031,
+    "pk": 8060,
     "fields": {
       "user": [
         "demo30"
       ],
       "cert_code": "INFO_PROCESSING_INDUSTRIAL_ENGINEER",
-      "acquired_date": "2024-01-17"
+      "acquired_date": "2021-09-08"
     }
   },
   {
     "model": "users.usercertification",
-    "pk": 8032,
+    "pk": 8061,
     "fields": {
       "user": [
         "demo30"
       ],
       "cert_code": "INFO_PROCESSING_ENGINEER",
-      "acquired_date": "2022-01-03"
+      "acquired_date": "2021-02-06"
+    }
+  },
+  {
+    "model": "users.usercertification",
+    "pk": 8062,
+    "fields": {
+      "user": [
+        "demo30"
+      ],
+      "cert_code": "INFO_SECURITY_INDUSTRIAL_ENGINEER",
+      "acquired_date": "2025-09-13"
     }
   },
   {
@@ -6361,6 +6791,17 @@
       ],
       "skill_code": "UX_RESEARCH",
       "proficiency_level": 3
+    }
+  },
+  {
+    "model": "users.usercertification",
+    "pk": 8063,
+    "fields": {
+      "user": [
+        "demo31"
+      ],
+      "cert_code": "ITQ",
+      "acquired_date": "2022-12-25"
     }
   },
   {
@@ -6398,24 +6839,35 @@
   },
   {
     "model": "users.usercertification",
-    "pk": 8033,
+    "pk": 8064,
     "fields": {
       "user": [
         "demo32"
       ],
       "cert_code": "INFO_PROCESSING_ENGINEER",
-      "acquired_date": "2023-09-11"
+      "acquired_date": "2025-06-27"
     }
   },
   {
     "model": "users.usercertification",
-    "pk": 8034,
+    "pk": 8065,
     "fields": {
       "user": [
         "demo32"
       ],
-      "cert_code": "SQLP",
+      "cert_code": "OCJP",
       "acquired_date": "2021-09-23"
+    }
+  },
+  {
+    "model": "users.usercertification",
+    "pk": 8066,
+    "fields": {
+      "user": [
+        "demo32"
+      ],
+      "cert_code": "INFO_PROCESSING_INDUSTRIAL_ENGINEER",
+      "acquired_date": "2024-06-20"
     }
   },
   {
@@ -6475,24 +6927,35 @@
   },
   {
     "model": "users.usercertification",
-    "pk": 8035,
+    "pk": 8067,
     "fields": {
       "user": [
         "demo33"
       ],
       "cert_code": "INFO_PROCESSING_ENGINEER",
-      "acquired_date": "2024-05-17"
+      "acquired_date": "2023-09-16"
     }
   },
   {
     "model": "users.usercertification",
-    "pk": 8036,
+    "pk": 8068,
     "fields": {
       "user": [
         "demo33"
       ],
       "cert_code": "COMPUTER_LITERACY_1",
-      "acquired_date": "2024-01-24"
+      "acquired_date": "2021-12-20"
+    }
+  },
+  {
+    "model": "users.usercertification",
+    "pk": 8069,
+    "fields": {
+      "user": [
+        "demo33"
+      ],
+      "cert_code": "INFO_PROCESSING_INDUSTRIAL_ENGINEER",
+      "acquired_date": "2024-05-11"
     }
   },
   {
@@ -6548,6 +7011,17 @@
       ],
       "skill_code": "REACT",
       "proficiency_level": 4
+    }
+  },
+  {
+    "model": "users.usercertification",
+    "pk": 8070,
+    "fields": {
+      "user": [
+        "demo34"
+      ],
+      "cert_code": "AWS_DEVELOPER_ASSOCIATE",
+      "acquired_date": "2021-05-12"
     }
   },
   {
@@ -6607,24 +7081,35 @@
   },
   {
     "model": "users.usercertification",
-    "pk": 8037,
+    "pk": 8071,
     "fields": {
       "user": [
         "demo35"
       ],
       "cert_code": "ADSP",
-      "acquired_date": "2021-09-01"
+      "acquired_date": "2025-01-04"
     }
   },
   {
     "model": "users.usercertification",
-    "pk": 8038,
+    "pk": 8072,
     "fields": {
       "user": [
         "demo35"
       ],
       "cert_code": "BIG_DATA_ANALYST_ENGINEER",
-      "acquired_date": "2021-12-16"
+      "acquired_date": "2024-06-24"
+    }
+  },
+  {
+    "model": "users.usercertification",
+    "pk": 8073,
+    "fields": {
+      "user": [
+        "demo35"
+      ],
+      "cert_code": "SQLP",
+      "acquired_date": "2021-06-22"
     }
   },
   {
@@ -6673,24 +7158,35 @@
   },
   {
     "model": "users.usercertification",
-    "pk": 8039,
+    "pk": 8074,
     "fields": {
       "user": [
         "demo36"
       ],
       "cert_code": "CCNA",
-      "acquired_date": "2025-05-18"
+      "acquired_date": "2023-09-03"
     }
   },
   {
     "model": "users.usercertification",
-    "pk": 8040,
+    "pk": 8075,
     "fields": {
       "user": [
         "demo36"
       ],
       "cert_code": "AWS_SYSOPS_ADMINISTRATOR",
-      "acquired_date": "2021-10-14"
+      "acquired_date": "2025-07-27"
+    }
+  },
+  {
+    "model": "users.usercertification",
+    "pk": 8076,
+    "fields": {
+      "user": [
+        "demo36"
+      ],
+      "cert_code": "GCP_ASSOCIATE_CLOUD_ENGINEER",
+      "acquired_date": "2024-07-12"
     }
   },
   {
@@ -6750,24 +7246,35 @@
   },
   {
     "model": "users.usercertification",
-    "pk": 8041,
+    "pk": 8077,
     "fields": {
       "user": [
         "demo37"
       ],
       "cert_code": "ITQ",
-      "acquired_date": "2022-01-03"
+      "acquired_date": "2021-02-14"
     }
   },
   {
     "model": "users.usercertification",
-    "pk": 8042,
+    "pk": 8078,
     "fields": {
       "user": [
         "demo37"
       ],
       "cert_code": "COMPUTER_LITERACY_1",
-      "acquired_date": "2024-02-18"
+      "acquired_date": "2021-09-10"
+    }
+  },
+  {
+    "model": "users.usercertification",
+    "pk": 8079,
+    "fields": {
+      "user": [
+        "demo37"
+      ],
+      "cert_code": "PMP",
+      "acquired_date": "2023-11-23"
     }
   },
   {
@@ -6827,13 +7334,24 @@
   },
   {
     "model": "users.usercertification",
-    "pk": 8043,
+    "pk": 8080,
     "fields": {
       "user": [
         "demo38"
       ],
       "cert_code": "CISSP",
-      "acquired_date": "2023-10-24"
+      "acquired_date": "2025-12-10"
+    }
+  },
+  {
+    "model": "users.usercertification",
+    "pk": 8081,
+    "fields": {
+      "user": [
+        "demo38"
+      ],
+      "cert_code": "INFO_SECURITY_INDUSTRIAL_ENGINEER",
+      "acquired_date": "2024-10-13"
     }
   },
   {
@@ -6871,7 +7389,7 @@
   },
   {
     "model": "users.usercertification",
-    "pk": 8044,
+    "pk": 8082,
     "fields": {
       "user": [
         "demo39"
@@ -6882,13 +7400,24 @@
   },
   {
     "model": "users.usercertification",
-    "pk": 8045,
+    "pk": 8083,
     "fields": {
       "user": [
         "demo39"
       ],
       "cert_code": "GTQ",
       "acquired_date": "2022-01-10"
+    }
+  },
+  {
+    "model": "users.usercertification",
+    "pk": 8084,
+    "fields": {
+      "user": [
+        "demo39"
+      ],
+      "cert_code": "COMPUTER_LITERACY_1",
+      "acquired_date": "2021-06-01"
     }
   },
   {
@@ -6937,13 +7466,24 @@
   },
   {
     "model": "users.usercertification",
-    "pk": 8046,
+    "pk": 8085,
     "fields": {
       "user": [
         "demo40"
       ],
       "cert_code": "SQLP",
-      "acquired_date": "2021-09-24"
+      "acquired_date": "2025-12-05"
+    }
+  },
+  {
+    "model": "users.usercertification",
+    "pk": 8086,
+    "fields": {
+      "user": [
+        "demo40"
+      ],
+      "cert_code": "INFO_PROCESSING_ENGINEER",
+      "acquired_date": "2021-11-07"
     }
   },
   {
@@ -6988,6 +7528,17 @@
       ],
       "skill_code": "VUE",
       "proficiency_level": 2
+    }
+  },
+  {
+    "model": "users.usercertification",
+    "pk": 8087,
+    "fields": {
+      "user": [
+        "demo41"
+      ],
+      "cert_code": "INFO_PROCESSING_ENGINEER",
+      "acquired_date": "2024-03-05"
     }
   },
   {
@@ -7046,6 +7597,17 @@
     }
   },
   {
+    "model": "users.usercertification",
+    "pk": 8088,
+    "fields": {
+      "user": [
+        "demo42"
+      ],
+      "cert_code": "AWS_SOLUTIONS_ARCHITECT",
+      "acquired_date": "2022-09-20"
+    }
+  },
+  {
     "model": "users.userskill",
     "pk": 5172,
     "fields": {
@@ -7080,13 +7642,24 @@
   },
   {
     "model": "users.usercertification",
-    "pk": 8047,
+    "pk": 8089,
     "fields": {
       "user": [
         "demo43"
       ],
       "cert_code": "SQLP",
-      "acquired_date": "2025-01-17"
+      "acquired_date": "2021-09-14"
+    }
+  },
+  {
+    "model": "users.usercertification",
+    "pk": 8090,
+    "fields": {
+      "user": [
+        "demo43"
+      ],
+      "cert_code": "SQLD",
+      "acquired_date": "2025-06-20"
     }
   },
   {
@@ -7131,6 +7704,17 @@
       ],
       "skill_code": "CI_CD",
       "proficiency_level": 2
+    }
+  },
+  {
+    "model": "users.usercertification",
+    "pk": 8091,
+    "fields": {
+      "user": [
+        "demo44"
+      ],
+      "cert_code": "AWS_SOLUTIONS_ARCHITECT",
+      "acquired_date": "2025-01-04"
     }
   },
   {
@@ -7179,13 +7763,24 @@
   },
   {
     "model": "users.usercertification",
-    "pk": 8048,
+    "pk": 8092,
     "fields": {
       "user": [
         "demo45"
       ],
       "cert_code": "PMP",
-      "acquired_date": "2021-05-26"
+      "acquired_date": "2023-02-10"
+    }
+  },
+  {
+    "model": "users.usercertification",
+    "pk": 8093,
+    "fields": {
+      "user": [
+        "demo45"
+      ],
+      "cert_code": "ITQ",
+      "acquired_date": "2021-10-03"
     }
   },
   {
@@ -7219,6 +7814,17 @@
       ],
       "skill_code": "PYTHON",
       "proficiency_level": 2
+    }
+  },
+  {
+    "model": "users.usercertification",
+    "pk": 8094,
+    "fields": {
+      "user": [
+        "demo46"
+      ],
+      "cert_code": "INFO_PROCESSING_ENGINEER",
+      "acquired_date": "2023-11-27"
     }
   },
   {
@@ -7267,7 +7873,7 @@
   },
   {
     "model": "users.usercertification",
-    "pk": 8049,
+    "pk": 8095,
     "fields": {
       "user": [
         "demo47"
@@ -7278,13 +7884,24 @@
   },
   {
     "model": "users.usercertification",
-    "pk": 8050,
+    "pk": 8096,
     "fields": {
       "user": [
         "demo47"
       ],
       "cert_code": "COMPUTER_LITERACY_2",
       "acquired_date": "2023-08-24"
+    }
+  },
+  {
+    "model": "users.usercertification",
+    "pk": 8097,
+    "fields": {
+      "user": [
+        "demo47"
+      ],
+      "cert_code": "COMPUTER_LITERACY_1",
+      "acquired_date": "2025-01-27"
     }
   },
   {
@@ -7344,24 +7961,35 @@
   },
   {
     "model": "users.usercertification",
-    "pk": 8051,
+    "pk": 8098,
     "fields": {
       "user": [
         "demo48"
       ],
       "cert_code": "INFO_PROCESSING_INDUSTRIAL_ENGINEER",
-      "acquired_date": "2025-09-28"
+      "acquired_date": "2025-09-05"
     }
   },
   {
     "model": "users.usercertification",
-    "pk": 8052,
+    "pk": 8099,
     "fields": {
       "user": [
         "demo48"
       ],
-      "cert_code": "INFO_PROCESSING_ENGINEER",
-      "acquired_date": "2025-03-16"
+      "cert_code": "OCJP",
+      "acquired_date": "2024-04-01"
+    }
+  },
+  {
+    "model": "users.usercertification",
+    "pk": 8100,
+    "fields": {
+      "user": [
+        "demo48"
+      ],
+      "cert_code": "SQLD",
+      "acquired_date": "2021-07-03"
     }
   },
   {
@@ -7399,24 +8027,35 @@
   },
   {
     "model": "users.usercertification",
-    "pk": 8053,
+    "pk": 8101,
     "fields": {
       "user": [
         "demo49"
       ],
       "cert_code": "COMPUTER_LITERACY_1",
-      "acquired_date": "2024-12-02"
+      "acquired_date": "2021-11-18"
     }
   },
   {
     "model": "users.usercertification",
-    "pk": 8054,
+    "pk": 8102,
     "fields": {
       "user": [
         "demo49"
       ],
       "cert_code": "INFO_PROCESSING_INDUSTRIAL_ENGINEER",
-      "acquired_date": "2025-09-08"
+      "acquired_date": "2025-04-28"
+    }
+  },
+  {
+    "model": "users.usercertification",
+    "pk": 8103,
+    "fields": {
+      "user": [
+        "demo49"
+      ],
+      "cert_code": "COMPUTER_LITERACY_2",
+      "acquired_date": "2025-05-19"
     }
   },
   {
@@ -7464,6 +8103,17 @@
     }
   },
   {
+    "model": "users.usercertification",
+    "pk": 8104,
+    "fields": {
+      "user": [
+        "demo50"
+      ],
+      "cert_code": "INFO_PROCESSING_INDUSTRIAL_ENGINEER",
+      "acquired_date": "2022-06-27"
+    }
+  },
+  {
     "model": "users.userskill",
     "pk": 5202,
     "fields": {
@@ -7498,13 +8148,24 @@
   },
   {
     "model": "users.usercertification",
-    "pk": 8055,
+    "pk": 8105,
     "fields": {
       "user": [
         "demo51"
       ],
       "cert_code": "SQLP",
       "acquired_date": "2025-09-21"
+    }
+  },
+  {
+    "model": "users.usercertification",
+    "pk": 8106,
+    "fields": {
+      "user": [
+        "demo51"
+      ],
+      "cert_code": "SQLD",
+      "acquired_date": "2023-10-22"
     }
   },
   {
@@ -7553,13 +8214,24 @@
   },
   {
     "model": "users.usercertification",
-    "pk": 8056,
+    "pk": 8107,
     "fields": {
       "user": [
         "demo52"
       ],
       "cert_code": "AWS_SYSOPS_ADMINISTRATOR",
-      "acquired_date": "2023-08-21"
+      "acquired_date": "2024-11-01"
+    }
+  },
+  {
+    "model": "users.usercertification",
+    "pk": 8108,
+    "fields": {
+      "user": [
+        "demo52"
+      ],
+      "cert_code": "NETWORK_ADMINISTRATOR",
+      "acquired_date": "2021-09-13"
     }
   },
   {
@@ -7619,24 +8291,35 @@
   },
   {
     "model": "users.usercertification",
-    "pk": 8057,
+    "pk": 8109,
     "fields": {
       "user": [
         "demo53"
       ],
       "cert_code": "COMPUTER_LITERACY_1",
-      "acquired_date": "2021-03-02"
+      "acquired_date": "2022-01-12"
     }
   },
   {
     "model": "users.usercertification",
-    "pk": 8058,
+    "pk": 8110,
     "fields": {
       "user": [
         "demo53"
       ],
       "cert_code": "ITQ",
-      "acquired_date": "2023-04-15"
+      "acquired_date": "2022-08-07"
+    }
+  },
+  {
+    "model": "users.usercertification",
+    "pk": 8111,
+    "fields": {
+      "user": [
+        "demo53"
+      ],
+      "cert_code": "PMP",
+      "acquired_date": "2022-03-05"
     }
   },
   {
@@ -7673,6 +8356,17 @@
     }
   },
   {
+    "model": "users.usercertification",
+    "pk": 8112,
+    "fields": {
+      "user": [
+        "demo54"
+      ],
+      "cert_code": "INFO_SECURITY_ENGINEER",
+      "acquired_date": "2023-10-24"
+    }
+  },
+  {
     "model": "users.userskill",
     "pk": 5217,
     "fields": {
@@ -7703,6 +8397,17 @@
       ],
       "skill_code": "PROTOTYPING",
       "proficiency_level": 4
+    }
+  },
+  {
+    "model": "users.usercertification",
+    "pk": 8113,
+    "fields": {
+      "user": [
+        "demo55"
+      ],
+      "cert_code": "COMPUTER_LITERACY_1",
+      "acquired_date": "2024-09-13"
     }
   },
   {
@@ -7762,24 +8467,35 @@
   },
   {
     "model": "users.usercertification",
-    "pk": 8059,
+    "pk": 8114,
     "fields": {
       "user": [
         "demo56"
       ],
       "cert_code": "SQLD",
-      "acquired_date": "2022-01-25"
+      "acquired_date": "2025-04-02"
     }
   },
   {
     "model": "users.usercertification",
-    "pk": 8060,
+    "pk": 8115,
     "fields": {
       "user": [
         "demo56"
       ],
-      "cert_code": "SQLP",
-      "acquired_date": "2025-04-02"
+      "cert_code": "INFO_PROCESSING_INDUSTRIAL_ENGINEER",
+      "acquired_date": "2025-09-05"
+    }
+  },
+  {
+    "model": "users.usercertification",
+    "pk": 8116,
+    "fields": {
+      "user": [
+        "demo56"
+      ],
+      "cert_code": "INFO_PROCESSING_ENGINEER",
+      "acquired_date": "2024-11-01"
     }
   },
   {
@@ -7817,13 +8533,24 @@
   },
   {
     "model": "users.usercertification",
-    "pk": 8061,
+    "pk": 8117,
     "fields": {
       "user": [
         "demo57"
       ],
       "cert_code": "COMPUTER_LITERACY_1",
-      "acquired_date": "2024-11-27"
+      "acquired_date": "2024-01-28"
+    }
+  },
+  {
+    "model": "users.usercertification",
+    "pk": 8118,
+    "fields": {
+      "user": [
+        "demo57"
+      ],
+      "cert_code": "COMPUTER_LITERACY_2",
+      "acquired_date": "2022-09-20"
     }
   },
   {
@@ -7883,13 +8610,24 @@
   },
   {
     "model": "users.usercertification",
-    "pk": 8062,
+    "pk": 8119,
     "fields": {
       "user": [
         "demo58"
       ],
       "cert_code": "INFO_PROCESSING_INDUSTRIAL_ENGINEER",
-      "acquired_date": "2021-08-07"
+      "acquired_date": "2024-04-16"
+    }
+  },
+  {
+    "model": "users.usercertification",
+    "pk": 8120,
+    "fields": {
+      "user": [
+        "demo58"
+      ],
+      "cert_code": "INFO_PROCESSING_ENGINEER",
+      "acquired_date": "2021-08-18"
     }
   },
   {
@@ -7927,24 +8665,35 @@
   },
   {
     "model": "users.usercertification",
-    "pk": 8063,
+    "pk": 8121,
     "fields": {
       "user": [
         "demo59"
       ],
       "cert_code": "ADSP",
-      "acquired_date": "2025-01-27"
+      "acquired_date": "2024-07-16"
     }
   },
   {
     "model": "users.usercertification",
-    "pk": 8064,
+    "pk": 8122,
     "fields": {
       "user": [
         "demo59"
       ],
       "cert_code": "SQLD",
-      "acquired_date": "2024-07-16"
+      "acquired_date": "2025-05-25"
+    }
+  },
+  {
+    "model": "users.usercertification",
+    "pk": 8123,
+    "fields": {
+      "user": [
+        "demo59"
+      ],
+      "cert_code": "SQLP",
+      "acquired_date": "2022-12-19"
     }
   },
   {
@@ -7989,6 +8738,17 @@
       ],
       "skill_code": "PYTHON",
       "proficiency_level": 4
+    }
+  },
+  {
+    "model": "users.usercertification",
+    "pk": 8124,
+    "fields": {
+      "user": [
+        "demo60"
+      ],
+      "cert_code": "AWS_SOLUTIONS_ARCHITECT",
+      "acquired_date": "2022-03-13"
     }
   },
   {
@@ -8037,13 +8797,24 @@
   },
   {
     "model": "users.usercertification",
-    "pk": 8065,
+    "pk": 8125,
     "fields": {
       "user": [
         "demo61"
       ],
       "cert_code": "COMPUTER_LITERACY_2",
-      "acquired_date": "2021-07-15"
+      "acquired_date": "2024-08-11"
+    }
+  },
+  {
+    "model": "users.usercertification",
+    "pk": 8126,
+    "fields": {
+      "user": [
+        "demo61"
+      ],
+      "cert_code": "PMP",
+      "acquired_date": "2022-06-21"
     }
   },
   {
@@ -8103,13 +8874,24 @@
   },
   {
     "model": "users.usercertification",
-    "pk": 8066,
+    "pk": 8127,
     "fields": {
       "user": [
         "demo62"
       ],
       "cert_code": "INFO_PROCESSING_INDUSTRIAL_ENGINEER",
-      "acquired_date": "2021-01-16"
+      "acquired_date": "2021-08-16"
+    }
+  },
+  {
+    "model": "users.usercertification",
+    "pk": 8128,
+    "fields": {
+      "user": [
+        "demo62"
+      ],
+      "cert_code": "INFO_PROCESSING_ENGINEER",
+      "acquired_date": "2025-01-25"
     }
   },
   {
@@ -8158,24 +8940,35 @@
   },
   {
     "model": "users.usercertification",
-    "pk": 8067,
+    "pk": 8129,
     "fields": {
       "user": [
         "demo63"
       ],
       "cert_code": "GTQI",
-      "acquired_date": "2021-11-10"
+      "acquired_date": "2023-12-20"
     }
   },
   {
     "model": "users.usercertification",
-    "pk": 8068,
+    "pk": 8130,
     "fields": {
       "user": [
         "demo63"
       ],
       "cert_code": "COMPUTER_LITERACY_1",
-      "acquired_date": "2025-01-08"
+      "acquired_date": "2021-04-22"
+    }
+  },
+  {
+    "model": "users.usercertification",
+    "pk": 8131,
+    "fields": {
+      "user": [
+        "demo63"
+      ],
+      "cert_code": "GTQ",
+      "acquired_date": "2022-06-08"
     }
   },
   {
@@ -8220,6 +9013,17 @@
       ],
       "skill_code": "DJANGO",
       "proficiency_level": 3
+    }
+  },
+  {
+    "model": "users.usercertification",
+    "pk": 8132,
+    "fields": {
+      "user": [
+        "demo64"
+      ],
+      "cert_code": "SQLP",
+      "acquired_date": "2024-04-24"
     }
   },
   {
@@ -8268,24 +9072,35 @@
   },
   {
     "model": "users.usercertification",
-    "pk": 8069,
+    "pk": 8133,
     "fields": {
       "user": [
         "demo65"
       ],
       "cert_code": "COMPUTER_LITERACY_2",
-      "acquired_date": "2021-09-15"
+      "acquired_date": "2025-08-09"
     }
   },
   {
     "model": "users.usercertification",
-    "pk": 8070,
+    "pk": 8134,
     "fields": {
       "user": [
         "demo65"
       ],
       "cert_code": "INFO_PROCESSING_INDUSTRIAL_ENGINEER",
-      "acquired_date": "2023-04-21"
+      "acquired_date": "2022-11-16"
+    }
+  },
+  {
+    "model": "users.usercertification",
+    "pk": 8135,
+    "fields": {
+      "user": [
+        "demo65"
+      ],
+      "cert_code": "INFO_PROCESSING_ENGINEER",
+      "acquired_date": "2025-12-02"
     }
   },
   {
@@ -8323,24 +9138,35 @@
   },
   {
     "model": "users.usercertification",
-    "pk": 8071,
+    "pk": 8136,
     "fields": {
       "user": [
         "demo66"
       ],
       "cert_code": "INFO_PROCESSING_INDUSTRIAL_ENGINEER",
-      "acquired_date": "2024-03-15"
+      "acquired_date": "2022-08-17"
     }
   },
   {
     "model": "users.usercertification",
-    "pk": 8072,
+    "pk": 8137,
     "fields": {
       "user": [
         "demo66"
       ],
       "cert_code": "AZURE_FUNDAMENTALS",
-      "acquired_date": "2025-03-26"
+      "acquired_date": "2022-12-03"
+    }
+  },
+  {
+    "model": "users.usercertification",
+    "pk": 8138,
+    "fields": {
+      "user": [
+        "demo66"
+      ],
+      "cert_code": "AWS_SOLUTIONS_ARCHITECT",
+      "acquired_date": "2023-12-06"
     }
   },
   {
@@ -8378,13 +9204,24 @@
   },
   {
     "model": "users.usercertification",
-    "pk": 8073,
+    "pk": 8139,
     "fields": {
       "user": [
         "demo67"
       ],
       "cert_code": "SQLD",
-      "acquired_date": "2022-11-02"
+      "acquired_date": "2021-11-06"
+    }
+  },
+  {
+    "model": "users.usercertification",
+    "pk": 8140,
+    "fields": {
+      "user": [
+        "demo67"
+      ],
+      "cert_code": "ADSP",
+      "acquired_date": "2023-01-06"
     }
   },
   {
@@ -8440,6 +9277,17 @@
       ],
       "skill_code": "LINUX",
       "proficiency_level": 4
+    }
+  },
+  {
+    "model": "users.usercertification",
+    "pk": 8141,
+    "fields": {
+      "user": [
+        "demo68"
+      ],
+      "cert_code": "AWS_SOLUTIONS_ARCHITECT",
+      "acquired_date": "2021-09-24"
     }
   },
   {
@@ -8499,24 +9347,35 @@
   },
   {
     "model": "users.usercertification",
-    "pk": 8074,
+    "pk": 8142,
     "fields": {
       "user": [
         "demo69"
       ],
       "cert_code": "COMPUTER_LITERACY_2",
-      "acquired_date": "2025-08-05"
+      "acquired_date": "2022-07-13"
     }
   },
   {
     "model": "users.usercertification",
-    "pk": 8075,
+    "pk": 8143,
     "fields": {
       "user": [
         "demo69"
       ],
       "cert_code": "ITQ",
-      "acquired_date": "2024-07-03"
+      "acquired_date": "2021-07-10"
+    }
+  },
+  {
+    "model": "users.usercertification",
+    "pk": 8144,
+    "fields": {
+      "user": [
+        "demo69"
+      ],
+      "cert_code": "COMPUTER_LITERACY_1",
+      "acquired_date": "2022-04-05"
     }
   },
   {
@@ -8550,6 +9409,17 @@
       ],
       "skill_code": "GIT",
       "proficiency_level": 4
+    }
+  },
+  {
+    "model": "users.usercertification",
+    "pk": 8145,
+    "fields": {
+      "user": [
+        "demo70"
+      ],
+      "cert_code": "INFO_PROCESSING_INDUSTRIAL_ENGINEER",
+      "acquired_date": "2025-04-23"
     }
   },
   {
@@ -8598,24 +9468,35 @@
   },
   {
     "model": "users.usercertification",
-    "pk": 8076,
+    "pk": 8146,
     "fields": {
       "user": [
         "demo71"
       ],
       "cert_code": "GTQ",
-      "acquired_date": "2025-01-27"
+      "acquired_date": "2021-12-17"
     }
   },
   {
     "model": "users.usercertification",
-    "pk": 8077,
+    "pk": 8147,
     "fields": {
       "user": [
         "demo71"
       ],
       "cert_code": "GTQI",
-      "acquired_date": "2025-06-27"
+      "acquired_date": "2023-08-25"
+    }
+  },
+  {
+    "model": "users.usercertification",
+    "pk": 8148,
+    "fields": {
+      "user": [
+        "demo71"
+      ],
+      "cert_code": "COMPUTER_LITERACY_1",
+      "acquired_date": "2022-06-21"
     }
   },
   {
@@ -8653,24 +9534,35 @@
   },
   {
     "model": "users.usercertification",
-    "pk": 8078,
+    "pk": 8149,
     "fields": {
       "user": [
         "demo72"
       ],
       "cert_code": "SQLD",
-      "acquired_date": "2024-03-21"
+      "acquired_date": "2022-11-01"
     }
   },
   {
     "model": "users.usercertification",
-    "pk": 8079,
+    "pk": 8150,
     "fields": {
       "user": [
         "demo72"
       ],
-      "cert_code": "INFO_PROCESSING_ENGINEER",
-      "acquired_date": "2021-12-26"
+      "cert_code": "INFO_PROCESSING_INDUSTRIAL_ENGINEER",
+      "acquired_date": "2022-08-26"
+    }
+  },
+  {
+    "model": "users.usercertification",
+    "pk": 8151,
+    "fields": {
+      "user": [
+        "demo72"
+      ],
+      "cert_code": "SQLP",
+      "acquired_date": "2021-08-03"
     }
   },
   {
@@ -8719,13 +9611,24 @@
   },
   {
     "model": "users.usercertification",
-    "pk": 8080,
+    "pk": 8152,
     "fields": {
       "user": [
         "demo73"
       ],
       "cert_code": "COMPUTER_LITERACY_2",
-      "acquired_date": "2025-09-07"
+      "acquired_date": "2024-02-01"
+    }
+  },
+  {
+    "model": "users.usercertification",
+    "pk": 8153,
+    "fields": {
+      "user": [
+        "demo73"
+      ],
+      "cert_code": "INFO_PROCESSING_INDUSTRIAL_ENGINEER",
+      "acquired_date": "2023-07-25"
     }
   },
   {
@@ -8785,24 +9688,35 @@
   },
   {
     "model": "users.usercertification",
-    "pk": 8081,
+    "pk": 8154,
     "fields": {
       "user": [
         "demo74"
       ],
       "cert_code": "AWS_SYSOPS_ADMINISTRATOR",
-      "acquired_date": "2022-06-09"
+      "acquired_date": "2023-05-17"
     }
   },
   {
     "model": "users.usercertification",
-    "pk": 8082,
+    "pk": 8155,
     "fields": {
       "user": [
         "demo74"
       ],
       "cert_code": "AWS_SOLUTIONS_ARCHITECT",
-      "acquired_date": "2025-10-01"
+      "acquired_date": "2025-01-23"
+    }
+  },
+  {
+    "model": "users.usercertification",
+    "pk": 8156,
+    "fields": {
+      "user": [
+        "demo74"
+      ],
+      "cert_code": "INFO_PROCESSING_INDUSTRIAL_ENGINEER",
+      "acquired_date": "2025-01-05"
     }
   },
   {
@@ -8847,6 +9761,17 @@
       ],
       "skill_code": "DATA_ANALYSIS",
       "proficiency_level": 4
+    }
+  },
+  {
+    "model": "users.usercertification",
+    "pk": 8157,
+    "fields": {
+      "user": [
+        "demo75"
+      ],
+      "cert_code": "SQLD",
+      "acquired_date": "2023-08-24"
     }
   },
   {
@@ -8895,13 +9820,24 @@
   },
   {
     "model": "users.usercertification",
-    "pk": 8083,
+    "pk": 8158,
     "fields": {
       "user": [
         "demo76"
       ],
       "cert_code": "NETWORK_ADMINISTRATOR",
-      "acquired_date": "2024-04-03"
+      "acquired_date": "2022-02-11"
+    }
+  },
+  {
+    "model": "users.usercertification",
+    "pk": 8159,
+    "fields": {
+      "user": [
+        "demo76"
+      ],
+      "cert_code": "AZURE_FUNDAMENTALS",
+      "acquired_date": "2023-04-11"
     }
   },
   {
@@ -8949,6 +9885,17 @@
     }
   },
   {
+    "model": "users.usercertification",
+    "pk": 8160,
+    "fields": {
+      "user": [
+        "demo77"
+      ],
+      "cert_code": "PMP",
+      "acquired_date": "2023-01-27"
+    }
+  },
+  {
     "model": "users.userskill",
     "pk": 5308,
     "fields": {
@@ -8983,7 +9930,7 @@
   },
   {
     "model": "users.usercertification",
-    "pk": 8084,
+    "pk": 8161,
     "fields": {
       "user": [
         "demo78"
@@ -8994,13 +9941,24 @@
   },
   {
     "model": "users.usercertification",
-    "pk": 8085,
+    "pk": 8162,
     "fields": {
       "user": [
         "demo78"
       ],
       "cert_code": "INFO_PROCESSING_INDUSTRIAL_ENGINEER",
       "acquired_date": "2021-04-24"
+    }
+  },
+  {
+    "model": "users.usercertification",
+    "pk": 8163,
+    "fields": {
+      "user": [
+        "demo78"
+      ],
+      "cert_code": "CISSP",
+      "acquired_date": "2022-06-14"
     }
   },
   {
@@ -9034,6 +9992,17 @@
       ],
       "skill_code": "ILLUSTRATOR",
       "proficiency_level": 5
+    }
+  },
+  {
+    "model": "users.usercertification",
+    "pk": 8164,
+    "fields": {
+      "user": [
+        "demo79"
+      ],
+      "cert_code": "GTQ",
+      "acquired_date": "2023-01-07"
     }
   },
   {
@@ -9082,24 +10051,35 @@
   },
   {
     "model": "users.usercertification",
-    "pk": 8086,
+    "pk": 8165,
     "fields": {
       "user": [
         "demo80"
       ],
       "cert_code": "SQLP",
-      "acquired_date": "2025-01-13"
+      "acquired_date": "2021-07-08"
     }
   },
   {
     "model": "users.usercertification",
-    "pk": 8087,
+    "pk": 8166,
     "fields": {
       "user": [
         "demo80"
       ],
-      "cert_code": "INFO_PROCESSING_ENGINEER",
-      "acquired_date": "2022-03-17"
+      "cert_code": "INFO_PROCESSING_INDUSTRIAL_ENGINEER",
+      "acquired_date": "2022-09-19"
+    }
+  },
+  {
+    "model": "users.usercertification",
+    "pk": 8167,
+    "fields": {
+      "user": [
+        "demo80"
+      ],
+      "cert_code": "SQLD",
+      "acquired_date": "2021-03-15"
     }
   },
   {
@@ -9159,24 +10139,35 @@
   },
   {
     "model": "users.usercertification",
-    "pk": 8088,
+    "pk": 8168,
     "fields": {
       "user": [
         "demo81"
       ],
       "cert_code": "ITQ",
-      "acquired_date": "2023-05-24"
+      "acquired_date": "2023-12-12"
     }
   },
   {
     "model": "users.usercertification",
-    "pk": 8089,
+    "pk": 8169,
     "fields": {
       "user": [
         "demo81"
       ],
       "cert_code": "INFO_PROCESSING_ENGINEER",
-      "acquired_date": "2023-04-10"
+      "acquired_date": "2022-05-22"
+    }
+  },
+  {
+    "model": "users.usercertification",
+    "pk": 8170,
+    "fields": {
+      "user": [
+        "demo81"
+      ],
+      "cert_code": "INFO_PROCESSING_INDUSTRIAL_ENGINEER",
+      "acquired_date": "2022-10-03"
     }
   },
   {
@@ -9210,6 +10201,17 @@
       ],
       "skill_code": "CSS",
       "proficiency_level": 4
+    }
+  },
+  {
+    "model": "users.usercertification",
+    "pk": 8171,
+    "fields": {
+      "user": [
+        "demo82"
+      ],
+      "cert_code": "INFO_PROCESSING_ENGINEER",
+      "acquired_date": "2024-08-19"
     }
   },
   {
@@ -9254,6 +10256,17 @@
       ],
       "skill_code": "POSTGRESQL",
       "proficiency_level": 3
+    }
+  },
+  {
+    "model": "users.usercertification",
+    "pk": 8172,
+    "fields": {
+      "user": [
+        "demo83"
+      ],
+      "cert_code": "SQLD",
+      "acquired_date": "2021-01-14"
     }
   },
   {
@@ -9313,24 +10326,35 @@
   },
   {
     "model": "users.usercertification",
-    "pk": 8090,
+    "pk": 8173,
     "fields": {
       "user": [
         "demo84"
       ],
       "cert_code": "GCP_ASSOCIATE_CLOUD_ENGINEER",
-      "acquired_date": "2024-07-24"
+      "acquired_date": "2024-12-11"
     }
   },
   {
     "model": "users.usercertification",
-    "pk": 8091,
+    "pk": 8174,
     "fields": {
       "user": [
         "demo84"
       ],
       "cert_code": "NETWORK_ADMINISTRATOR",
-      "acquired_date": "2023-10-08"
+      "acquired_date": "2025-04-05"
+    }
+  },
+  {
+    "model": "users.usercertification",
+    "pk": 8175,
+    "fields": {
+      "user": [
+        "demo84"
+      ],
+      "cert_code": "AZURE_FUNDAMENTALS",
+      "acquired_date": "2024-01-17"
     }
   },
   {
@@ -9368,13 +10392,24 @@
   },
   {
     "model": "users.usercertification",
-    "pk": 8092,
+    "pk": 8176,
     "fields": {
       "user": [
         "demo85"
       ],
       "cert_code": "COMPUTER_LITERACY_2",
-      "acquired_date": "2025-04-22"
+      "acquired_date": "2022-11-13"
+    }
+  },
+  {
+    "model": "users.usercertification",
+    "pk": 8177,
+    "fields": {
+      "user": [
+        "demo85"
+      ],
+      "cert_code": "ITQ",
+      "acquired_date": "2025-09-08"
     }
   },
   {
@@ -9408,6 +10443,17 @@
       ],
       "skill_code": "CYPRESS",
       "proficiency_level": 5
+    }
+  },
+  {
+    "model": "users.usercertification",
+    "pk": 8178,
+    "fields": {
+      "user": [
+        "demo86"
+      ],
+      "cert_code": "INFO_SECURITY_INDUSTRIAL_ENGINEER",
+      "acquired_date": "2021-07-15"
     }
   },
   {
@@ -9445,24 +10491,35 @@
   },
   {
     "model": "users.usercertification",
-    "pk": 8093,
+    "pk": 8179,
     "fields": {
       "user": [
         "demo87"
       ],
       "cert_code": "GTQ",
-      "acquired_date": "2021-05-13"
+      "acquired_date": "2023-07-25"
     }
   },
   {
     "model": "users.usercertification",
-    "pk": 8094,
+    "pk": 8180,
     "fields": {
       "user": [
         "demo87"
       ],
       "cert_code": "COMPUTER_LITERACY_1",
       "acquired_date": "2021-08-17"
+    }
+  },
+  {
+    "model": "users.usercertification",
+    "pk": 8181,
+    "fields": {
+      "user": [
+        "demo87"
+      ],
+      "cert_code": "ITQ",
+      "acquired_date": "2025-12-03"
     }
   },
   {
@@ -9510,6 +10567,17 @@
     }
   },
   {
+    "model": "users.usercertification",
+    "pk": 8182,
+    "fields": {
+      "user": [
+        "demo88"
+      ],
+      "cert_code": "INFO_PROCESSING_ENGINEER",
+      "acquired_date": "2022-10-06"
+    }
+  },
+  {
     "model": "users.userskill",
     "pk": 5348,
     "fields": {
@@ -9540,6 +10608,17 @@
       ],
       "skill_code": "REACT",
       "proficiency_level": 2
+    }
+  },
+  {
+    "model": "users.usercertification",
+    "pk": 8183,
+    "fields": {
+      "user": [
+        "demo89"
+      ],
+      "cert_code": "COMPUTER_LITERACY_2",
+      "acquired_date": "2023-04-10"
     }
   },
   {
@@ -9577,24 +10656,35 @@
   },
   {
     "model": "users.usercertification",
-    "pk": 8095,
+    "pk": 8184,
     "fields": {
       "user": [
         "demo90"
       ],
       "cert_code": "AWS_SYSOPS_ADMINISTRATOR",
-      "acquired_date": "2024-05-12"
+      "acquired_date": "2023-06-03"
     }
   },
   {
     "model": "users.usercertification",
-    "pk": 8096,
+    "pk": 8185,
     "fields": {
       "user": [
         "demo90"
       ],
       "cert_code": "AWS_DEVELOPER_ASSOCIATE",
-      "acquired_date": "2021-09-24"
+      "acquired_date": "2025-12-05"
+    }
+  },
+  {
+    "model": "users.usercertification",
+    "pk": 8186,
+    "fields": {
+      "user": [
+        "demo90"
+      ],
+      "cert_code": "AWS_SOLUTIONS_ARCHITECT",
+      "acquired_date": "2021-11-21"
     }
   },
   {
@@ -9632,24 +10722,35 @@
   },
   {
     "model": "users.usercertification",
-    "pk": 8097,
+    "pk": 8187,
     "fields": {
       "user": [
         "demo91"
       ],
       "cert_code": "SQLP",
-      "acquired_date": "2024-05-08"
+      "acquired_date": "2023-04-07"
     }
   },
   {
     "model": "users.usercertification",
-    "pk": 8098,
+    "pk": 8188,
     "fields": {
       "user": [
         "demo91"
       ],
       "cert_code": "BIG_DATA_ANALYST_ENGINEER",
-      "acquired_date": "2022-10-27"
+      "acquired_date": "2025-06-26"
+    }
+  },
+  {
+    "model": "users.usercertification",
+    "pk": 8189,
+    "fields": {
+      "user": [
+        "demo91"
+      ],
+      "cert_code": "SQLD",
+      "acquired_date": "2024-04-26"
     }
   },
   {
@@ -9697,6 +10798,17 @@
     }
   },
   {
+    "model": "users.usercertification",
+    "pk": 8190,
+    "fields": {
+      "user": [
+        "demo92"
+      ],
+      "cert_code": "LINUX_MASTER",
+      "acquired_date": "2021-01-28"
+    }
+  },
+  {
     "model": "users.userskill",
     "pk": 5361,
     "fields": {
@@ -9738,6 +10850,17 @@
       ],
       "skill_code": "GIT",
       "proficiency_level": 5
+    }
+  },
+  {
+    "model": "users.usercertification",
+    "pk": 8191,
+    "fields": {
+      "user": [
+        "demo93"
+      ],
+      "cert_code": "COMPUTER_LITERACY_1",
+      "acquired_date": "2025-01-20"
     }
   },
   {
@@ -9797,24 +10920,35 @@
   },
   {
     "model": "users.usercertification",
-    "pk": 8099,
+    "pk": 8192,
     "fields": {
       "user": [
         "demo94"
       ],
       "cert_code": "CISSP",
-      "acquired_date": "2024-01-24"
+      "acquired_date": "2021-12-14"
     }
   },
   {
     "model": "users.usercertification",
-    "pk": 8100,
+    "pk": 8193,
     "fields": {
       "user": [
         "demo94"
       ],
       "cert_code": "INFO_PROCESSING_ENGINEER",
-      "acquired_date": "2024-06-15"
+      "acquired_date": "2023-08-12"
+    }
+  },
+  {
+    "model": "users.usercertification",
+    "pk": 8194,
+    "fields": {
+      "user": [
+        "demo94"
+      ],
+      "cert_code": "INFO_PROCESSING_INDUSTRIAL_ENGINEER",
+      "acquired_date": "2022-11-24"
     }
   },
   {
@@ -9873,6 +11007,17 @@
     }
   },
   {
+    "model": "users.usercertification",
+    "pk": 8195,
+    "fields": {
+      "user": [
+        "demo95"
+      ],
+      "cert_code": "ITQ",
+      "acquired_date": "2025-10-07"
+    }
+  },
+  {
     "model": "users.userskill",
     "pk": 5375,
     "fields": {
@@ -9918,13 +11063,24 @@
   },
   {
     "model": "users.usercertification",
-    "pk": 8101,
+    "pk": 8196,
     "fields": {
       "user": [
         "demo96"
       ],
       "cert_code": "SQLD",
-      "acquired_date": "2021-05-11"
+      "acquired_date": "2023-06-12"
+    }
+  },
+  {
+    "model": "users.usercertification",
+    "pk": 8197,
+    "fields": {
+      "user": [
+        "demo96"
+      ],
+      "cert_code": "INFO_PROCESSING_ENGINEER",
+      "acquired_date": "2023-03-17"
     }
   },
   {
@@ -9962,24 +11118,35 @@
   },
   {
     "model": "users.usercertification",
-    "pk": 8102,
+    "pk": 8198,
     "fields": {
       "user": [
         "demo97"
       ],
       "cert_code": "COMPUTER_LITERACY_1",
-      "acquired_date": "2021-02-21"
+      "acquired_date": "2021-11-15"
     }
   },
   {
     "model": "users.usercertification",
-    "pk": 8103,
+    "pk": 8199,
     "fields": {
       "user": [
         "demo97"
       ],
       "cert_code": "ITQ",
-      "acquired_date": "2024-08-22"
+      "acquired_date": "2024-11-04"
+    }
+  },
+  {
+    "model": "users.usercertification",
+    "pk": 8200,
+    "fields": {
+      "user": [
+        "demo97"
+      ],
+      "cert_code": "INFO_PROCESSING_ENGINEER",
+      "acquired_date": "2023-04-10"
     }
   },
   {
@@ -10028,13 +11195,24 @@
   },
   {
     "model": "users.usercertification",
-    "pk": 8104,
+    "pk": 8201,
     "fields": {
       "user": [
         "demo98"
       ],
       "cert_code": "AWS_SOLUTIONS_ARCHITECT",
-      "acquired_date": "2024-01-21"
+      "acquired_date": "2021-11-26"
+    }
+  },
+  {
+    "model": "users.usercertification",
+    "pk": 8202,
+    "fields": {
+      "user": [
+        "demo98"
+      ],
+      "cert_code": "LINUX_MASTER",
+      "acquired_date": "2023-01-25"
     }
   },
   {
@@ -10083,13 +11261,24 @@
   },
   {
     "model": "users.usercertification",
-    "pk": 8105,
+    "pk": 8203,
     "fields": {
       "user": [
         "demo99"
       ],
       "cert_code": "SQLP",
-      "acquired_date": "2025-11-23"
+      "acquired_date": "2025-02-20"
+    }
+  },
+  {
+    "model": "users.usercertification",
+    "pk": 8204,
+    "fields": {
+      "user": [
+        "demo99"
+      ],
+      "cert_code": "SQLD",
+      "acquired_date": "2024-04-14"
     }
   },
   {
@@ -10127,24 +11316,35 @@
   },
   {
     "model": "users.usercertification",
-    "pk": 8106,
+    "pk": 8205,
     "fields": {
       "user": [
         "demo100"
       ],
       "cert_code": "AWS_SOLUTIONS_ARCHITECT",
-      "acquired_date": "2021-02-24"
+      "acquired_date": "2021-12-15"
     }
   },
   {
     "model": "users.usercertification",
-    "pk": 8107,
+    "pk": 8206,
     "fields": {
       "user": [
         "demo100"
       ],
       "cert_code": "GCP_ASSOCIATE_CLOUD_ENGINEER",
-      "acquired_date": "2024-05-02"
+      "acquired_date": "2023-01-22"
+    }
+  },
+  {
+    "model": "users.usercertification",
+    "pk": 8207,
+    "fields": {
+      "user": [
+        "demo100"
+      ],
+      "cert_code": "AWS_DEVELOPER_ASSOCIATE",
+      "acquired_date": "2022-06-08"
     }
   }
 ]
