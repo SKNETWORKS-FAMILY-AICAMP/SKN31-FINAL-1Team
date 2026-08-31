@@ -1071,10 +1071,24 @@ paths:
   /api/users/logout/:
     post:
       operationId: users_logout_create
-      description: 현재 로그인된 세션을 종료합니다.
+      description: 현재 로그인된 세션을 종료합니다. 요청 바디에 refresh 토큰을 함께 보내면 그 토큰을
+        블랙리스트 처리(재사용 방지)합니다. 블랙리스트 앱이 설치돼 있지 않으면 조용히 건너뜁니다 — 클라이언트가
+        토큰을 버리는 것만으로도 사실상 로그아웃되므로 로그아웃 자체를 막지 않습니다.
       summary: 사용자 로그아웃
       tags:
       - 0단계 - 사용자 관리
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LogoutRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/LogoutRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/LogoutRequest'
+        required: false
       security:
       - jwtAuth: []
       responses:
@@ -1179,8 +1193,24 @@ components:
           default: 로그인 성공
         user:
           $ref: '#/components/schemas/UserSimple'
+        access:
+          type: string
+          description: JWT Access Token — 이후 요청의 Authorization:Bearer 헤더에 사용
+        refresh:
+          type: string
+          description: JWT Refresh Token — access 토큰 재발급 및 로그아웃 시 블랙리스트 처리에 사용
       required:
       - user
+      - access
+      - refresh
+    LogoutRequest:
+      type: object
+      description: 로그아웃 요청 — refresh 토큰을 함께 보내면 블랙리스트 처리(재사용 방지)를 시도합니다
+      properties:
+        refresh:
+          type: string
+          nullable: true
+          description: 블랙리스트 처리할 JWT Refresh Token (선택)
     MeetingNote:
       type: object
       description: |-
