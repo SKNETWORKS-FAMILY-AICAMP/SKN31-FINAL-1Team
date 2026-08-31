@@ -63,7 +63,12 @@ export async function apiFetch<T>(path: string, init: RequestInit = {}, isRetry 
 
   if (!response.ok) {
     const errorBody = await response.json().catch(() => null);
-    throw new Error(errorBody?.detail ?? errorBody?.error ?? `API 요청 실패 (${response.status})`);
+    // DRF serializer의 validate()에서 던진 에러(예: 로그인 실패)는 "detail"이나 "error"가
+    // 아니라 "non_field_errors" 배열로 온다 — 이걸 안 보면 로그인 실패 사유(예: "아이디 또는
+    // 비밀번호가 올바르지 않습니다")가 화면에 안 뜨고 항상 뭉뚱그려진 "API 요청 실패"만 보였다
+    // (실제로 재현된 버그).
+    const nonFieldError = Array.isArray(errorBody?.non_field_errors) ? errorBody.non_field_errors[0] : null;
+    throw new Error(errorBody?.detail ?? errorBody?.error ?? nonFieldError ?? `API 요청 실패 (${response.status})`);
   }
 
   if (response.status === 204) return undefined as T;
