@@ -4,12 +4,15 @@ import { Fragment, useEffect, useState } from "react";
 import { Bot, Loader2, ChevronDown, UserIcon, CalendarIcon, CheckCircle2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { AgentBadge } from "@/components/ui/AgentBadge";
+import { DifficultyBadge } from "@/components/ui/DifficultyBadge";
 
 type Task = {
   id: string;
   title: string;
   description: string | null;
   estimatedHours: number | null;
+  difficulty: string | null;
+  difficultyReason: string | null;
   status: string;
   assigneeId: string | null;
   assignee: { id: string; name: string } | null;
@@ -24,6 +27,8 @@ type Suggestion = {
   taskId: string;
   title: string;
   estimatedHours: number | null;
+  difficulty: string | null;
+  difficultyReason: string | null;
   suggestedAssigneeId: string | null;
   fitScore: number | null;
   techFit: string | null;
@@ -38,6 +43,8 @@ type DraftRow = {
   taskId: string;
   title: string;
   estimatedHours: number | null;
+  difficulty: string | null;
+  difficultyReason: string | null;
   assigneeId: string;
   fitScore: number | null;
   techFit: string | null;
@@ -46,6 +53,7 @@ type DraftRow = {
   wbsStart: string; // yyyy-mm-dd for <input type="date">
   wbsEnd: string;
 };
+
 
 type GanttItem = { id: string; title: string; assigneeName: string; wbsStart: string; wbsEnd: string };
 
@@ -99,18 +107,30 @@ export function TaskAssignmentPanel({
 
   const runAssign = async () => {
     setGenerating(true);
+    // onRefresh(=fetchProject)는 페이지 전체를 로딩 스피너로 갈아치우며 이 패널을 통째로
+    // 리마운트시킨다 — 추출과 배정 추천 사이에 호출하면 이 함수가 이어서 채우려던 drafts가
+    // 이미 버려진(언마운트된) 컴포넌트 인스턴스에 적용되어 화면에 반영되지 않고, 사용자는
+    // "미배정 업무 N건" 화면으로 되돌아가 버튼을 한 번 더 눌러야 했다. assign-tasks는 어차피
+    // DB에서 직접 미배정 업무를 조회하므로 중간에 prop을 갱신할 필요가 없어 호출 자체를 없앤다.
+    const extractedNewTasks = tasks.length === 0;
     try {
       // 이 문서에서 아직 업무가 추출된 적이 없다면 먼저 추출부터 한다
-      if (tasks.length === 0) {
+      if (extractedNewTasks) {
         const res = await fetch(`/api/projects/${projectId}/documents/${doc.id}/extract-tasks`, { method: "POST" });
         const data = await res.json();
         if (!res.ok) { alert(data.error || "업무 생성에 실패했습니다."); return; }
-        onRefresh();
       }
 
       const res = await fetch(`/api/projects/${projectId}/documents/${doc.id}/assign-tasks`, { method: "POST" });
       const data = await res.json();
-      if (!res.ok) { alert(data.error || "배정 추천 생성에 실패했습니다."); return; }
+      if (!res.ok) {
+        alert(data.error || "배정 추천 생성에 실패했습니다.");
+        // 방금 추출한 업무가 이미 DB에 있는데 prop이 여전히 0건이면, 사용자가 재시도할 때
+        // "업무 배분 시작" 분기로 다시 들어가 extract-tasks를 중복 호출하게 된다 — 실패
+        // 시에만 여기서 새로고침해 prop을 DB 상태와 맞춘다.
+        if (extractedNewTasks) onRefresh();
+        return;
+      }
 
       const meta: Record<string, number> = {};
       (data.candidates ?? []).forEach((c: any) => { meta[c.userId] = c.currentActiveTasks; });
@@ -120,6 +140,8 @@ export function TaskAssignmentPanel({
           taskId: s.taskId,
           title: s.title,
           estimatedHours: s.estimatedHours,
+          difficulty: s.difficulty,
+          difficultyReason: s.difficultyReason,
           assigneeId: s.suggestedAssigneeId ?? "",
           fitScore: s.fitScore,
           techFit: s.techFit,
@@ -221,6 +243,7 @@ export function TaskAssignmentPanel({
                             <span className="shrink-0 text-[10px] px-1.5 py-0.5 rounded-full bg-black/5 dark:bg-white/5 text-muted-foreground font-semibold">
                               {d.estimatedHours ?? "-"}h
                             </span>
+                            <DifficultyBadge difficulty={d.difficulty} reason={d.difficultyReason} />
                             {d.techFit && <span className="text-xs font-normal text-muted-foreground line-clamp-1">{d.techFit}</span>}
                           </span>
                         </span>
@@ -371,6 +394,7 @@ function AssignedList({
                             <span className="shrink-0 text-[10px] px-1.5 py-0.5 rounded-full bg-black/5 dark:bg-white/5 text-muted-foreground font-semibold">
                               {t.estimatedHours ?? "-"}h
                             </span>
+                            <DifficultyBadge difficulty={t.difficulty} reason={t.difficultyReason} />
                             {reason?.techFit ? (
                               <span className="text-xs font-normal text-muted-foreground line-clamp-1">{reason.techFit}</span>
                             ) : (

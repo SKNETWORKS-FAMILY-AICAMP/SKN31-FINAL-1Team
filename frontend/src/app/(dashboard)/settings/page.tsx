@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useAuth } from "@/lib/auth";
-import { Settings as SettingsIcon, Loader2, Save, CheckCircle2, Sparkles, FolderKanban, HelpCircle, Mail, ChevronDown, FileText, ShieldCheck } from "lucide-react";
+import { Settings as SettingsIcon, Loader2, Save, CheckCircle2, Sparkles, FolderKanban, HelpCircle, Mail, ChevronDown, FileText, ShieldCheck, Lightbulb, AlertTriangle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { AgentBadge } from "@/components/ui/AgentBadge";
 import { parseAgentConfig, DEFAULT_AGENT_CONFIG, type AgentConfig } from "@/lib/agentConfig";
@@ -42,6 +42,17 @@ export default function SettingsPage() {
   const [agentSectionOpen, setAgentSectionOpen] = useState(false);
   const [openLegal, setOpenLegal] = useState<"terms" | "privacy" | null>(null);
 
+  // 반려 패턴 분석(피드백 루프) — 요청 즉시 생성해 화면에만 보여주고 저장하지는 않는다.
+  // 다시 보고 싶으면 버튼을 또 누르면 된다(매번 최신 반려 사유 기준으로 새로 분석됨).
+  type RejectInsight = {
+    theme: string; occurrenceCount: number; evidence: string; suggestion: string;
+  };
+  const [insightLoading, setInsightLoading] = useState(false);
+  const [insightError, setInsightError] = useState("");
+  const [insightResult, setInsightResult] = useState<{
+    insufficientData: boolean; message?: string; reasonCount: number; overallSummary?: string; patterns?: RejectInsight[];
+  } | null>(null);
+
   useEffect(() => {
     const load = async () => {
       setLoading(true);
@@ -78,6 +89,25 @@ export default function SettingsPage() {
       if (res.ok) { setSavedAgents(true); setTimeout(() => setSavedAgents(false), 2000); }
     } finally {
       setSavingAgents(false);
+    }
+  };
+
+  const runInsightAnalysis = async () => {
+    if (!project) return;
+    setInsightLoading(true);
+    setInsightError("");
+    try {
+      const res = await fetch(`/api/projects/${project.id}/reject-insights`, { method: "POST" });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setInsightResult(data);
+      } else {
+        setInsightError(data.error || "분석에 실패했습니다.");
+      }
+    } catch {
+      setInsightError("네트워크 오류가 발생했습니다.");
+    } finally {
+      setInsightLoading(false);
     }
   };
 
@@ -181,6 +211,64 @@ export default function SettingsPage() {
                 {savingAgents ? <Loader2 className="w-4 h-4 animate-spin" /> : savedAgents ? <CheckCircle2 className="w-4 h-4" /> : <Save className="w-4 h-4" />}
                 {savedAgents ? "저장됨" : "저장하기"}
               </button>
+            </div>
+          )}
+        </section>
+      )}
+
+      {/* 반려 패턴 분석 — PM이 반려할 때 남긴 사유를 모아 반복 패턴/프롬프트 개선 제안을 보여주는
+          반자동 피드백 루프. AI가 프롬프트를 직접 고치지는 않는다 — 사람이 읽고 판단한다. */}
+      {isPM && (
+        <section className="glass rounded-2xl border border-border p-6 space-y-4">
+          <div>
+            <h2 className="text-lg font-bold flex items-center gap-2">
+              <Lightbulb className="w-5 h-5 text-primary" /> 반려 패턴 분석
+            </h2>
+            <p className="text-xs text-muted-foreground mt-1">
+              지금까지 반려하며 남긴 사유들을 모아 반복되는 패턴과 프롬프트 개선 제안을 AI가 찾아드립니다.
+              결과는 참고용이며 자동으로 적용되지 않습니다.
+            </p>
+          </div>
+
+          <button
+            onClick={runInsightAnalysis}
+            disabled={insightLoading}
+            className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-bold hover:bg-primary/90 disabled:opacity-50"
+          >
+            {insightLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+            {insightLoading ? "분석 중..." : "반려 사유 분석하기"}
+          </button>
+
+          {insightError && (
+            <p className="text-sm text-red-500 flex items-center gap-1.5"><AlertTriangle className="w-4 h-4" /> {insightError}</p>
+          )}
+
+          {insightResult && insightResult.insufficientData && (
+            <p className="text-sm text-muted-foreground">{insightResult.message}</p>
+          )}
+
+          {insightResult && !insightResult.insufficientData && (
+            <div className="space-y-3">
+              <p className="text-xs text-muted-foreground">반려 사유 {insightResult.reasonCount}건 기준 분석</p>
+              {insightResult.overallSummary && (
+                <p className="text-sm bg-black/5 dark:bg-white/5 rounded-xl p-4">{insightResult.overallSummary}</p>
+              )}
+              {insightResult.patterns && insightResult.patterns.length > 0 ? (
+                <div className="space-y-3">
+                  {insightResult.patterns.map((p, i) => (
+                    <div key={i} className="border border-border rounded-xl p-4 space-y-1.5">
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold text-sm">{p.theme}</span>
+                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-primary/10 text-primary">{p.occurrenceCount}건</span>
+                      </div>
+                      <p className="text-xs text-muted-foreground">근거: {p.evidence}</p>
+                      <p className="text-xs">💡 {p.suggestion}</p>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground">뚜렷하게 반복되는 패턴은 아직 발견되지 않았습니다.</p>
+              )}
             </div>
           )}
         </section>

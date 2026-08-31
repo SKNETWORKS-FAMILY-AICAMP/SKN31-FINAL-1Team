@@ -1,13 +1,13 @@
 "use client";
 
-import { useEffect, useState, useMemo, Fragment } from "react";
+import { useEffect, useState, useMemo, useRef, Fragment } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useAuth } from "@/lib/auth";
 import {
   FileText, Plus, Bot, Loader2, Send, CheckCircle2, XCircle,
   AlertCircle, Clock, RotateCcw, MessageSquare, X, FolderKanban,
-  Download, Printer, Trash2, Save, Pencil, ChevronDown, Lock,
+  Download, Printer, Trash2, Save, Pencil, ChevronDown, ChevronLeft, ChevronRight, Lock,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { NewDocumentModal } from "@/components/projects/NewDocumentModal";
@@ -35,7 +35,17 @@ type ProjectDocument = {
   reqSpecRejectReason: string | null;
   meetingDate: string | null;
   updatedAt: string;
+  // 이 회의록을 등록한 사용자 id. 2026-08-27 이전 데이터는 없어 null일 수 있다(레거시).
+  authorId: string | null;
+  // 화면에 "작성자: 이름" 배지를 보여주기 위한 관계 데이터. authorId가 null이면 이것도 null.
+  author: { id: string; name: string; email: string } | null;
 };
+
+// 문서 미리보기 A4 박스 크기(px). 기획서는 세로(A4), 요구사항정의서는 표라 가로(A4)로 눕혀 쓴다.
+const PROPOSAL_PAGE_W = 840;
+const PROPOSAL_PAGE_H = 1190;
+const REQSPEC_BOX_W = 1190;
+const REQSPEC_BOX_H = 840;
 
 const STATUS_META: Record<string, { label: string; className: string; icon: any }> = {
   DRAFT: { label: "초안", className: "bg-muted text-muted-foreground", icon: FileText },
@@ -85,6 +95,12 @@ export default function DocumentsPage() {
     setSelectedDocId(doc.id);
     setActiveTab(stageOf(doc));
   };
+  const stepDone = (doc: ProjectDocument | null, step: PipelineTab): boolean => {
+    if (!doc) return false;
+    if (step === "proposal") return doc.proposalStatus === "APPROVED";
+    if (step === "reqSpec") return doc.reqSpecStatus === "APPROVED";
+    return false; // 업무분배는 "완료"라는 개념 자체가 없어(계속 추가 배분 가능) 항상 false
+  };
 
   // 히스토리 등 다른 화면에서 "문서생성에서 열기"로 넘어올 때 ?docId=...&tab=... 쿼리로
   // 특정 문서·탭을 바로 열어준다. localStorage로 복원한 탭보다 이 쪽이 우선한다(방금 클릭한 의도이므로).
@@ -101,6 +117,10 @@ export default function DocumentsPage() {
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; title: string } | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [docFilter, setDocFilter] = useState<"all" | "DRAFT" | "PENDING_REVIEW" | "APPROVED" | "REJECTED">("all");
+  // 검토요청/승인/반려처럼 방금 액션이 일어난 문서가 항상 목록 맨 위로 오도록 최신순(updatedAt desc)이
+  // 기본값 — PM이 "방금 누가 검토 요청을 보냈는지" 목록 훑어보지 않고도 바로 알 수 있어야 한다는
+  // 요청. 일반유저도 자기 문서를 날짜순으로 보고 싶을 수 있어 오래된순으로 뒤집는 토글도 같이 둔다.
+  const [sortOrder, setSortOrder] = useState<"desc" | "asc">("desc");
 
   // preferredId가 있으면 그 프로젝트를 바로 보여준다(예: 문서 작성 모달에서 새 프로젝트를 만든 직후) —
   // 없으면 기존처럼 가장 최근(첫 번째) 프로젝트를 기본으로 본다(단일 프로젝트 전제).
@@ -130,21 +150,44 @@ export default function DocumentsPage() {
   // autoApprove 로직 참고), 목록에 DRAFT 단계로 남아있는 문서는 전부 아직 검토 요청 전인
   // 다른 팀원의 작업 중 문서다. PM이 할 수 있는 액션이 없는 상태라 굳이 목록에 섞여있을
   // 필요가 없어서 PM 화면에서는 제외한다(작성자 본인에게는 계속 보임).
+  //
+  // 2026-08-27 수정: 예전엔 "content가 없으면 PM 본인이 방금 만든 새 문서"라고 가정했는데,
+  // 이 가정이 팀원이 막 등록한(아직 생성 버튼을 안 누른) 새 회의록에도 똑같이 적용돼 PM
+  // 목록에 그대로 노출됐다 — 그 상태에서 PM이 "기획서 생성"을 누르면 작성자가 검토해보기도
+  // 전에 곧장 승인 처리되는 게 이번에 보고된 실제 버그였다. authorId로 정확히 구분한다.
+  //
+  // 2026-08-27 추가 수정: 위 수정을 "현재 단계(stageOf) 기준"으로 넣었더니, 기획서가 이미
+  // 승인된 뒤 요구사항정의서 단계로 넘어간 문서가 — 요구사항정의서 쪽엔 아직 아무 내용도 없으니 —
+  // PM 목록에서 통째로 사라지는 새 버그가 생겼다(실제 보고됨). "다른 사람의 시작 전 문서를 숨긴다"는
+  // 규칙은 기획서 자체가 없는 경우에만 의미가 있다 — 기획서가 한 번이라도 검토 단계에 들어갔다면
+  // (DRAFT를 벗어났다면) 이미 실제 진행 중인 문서이므로, 다음 단계에 아직 아무것도 없어도 계속
+  // 보여야 PM이 전체 파이프라인을 놓치지 않는다. 그래서 판단 기준을 stageOf가 아니라 항상
+  // proposalContent/proposalStatus로 고정한다.
   const allDocuments: ProjectDocument[] = project?.documents ?? [];
   const isVisibleToViewer = (d: ProjectDocument) => {
     if (!isPM) return true;
-    const stage = stageOf(d);
-    // stage가 "taskAssignment"라는 것 자체가 이미 reqSpecStatus === APPROVED라는 뜻이라
-    // (stageOf 정의 참고) 그 경우도 reqSpecStatus 기준으로 판단하면 항상 DRAFT가 아니게 된다.
-    const status = stage === "proposal" ? d.proposalStatus : d.reqSpecStatus;
-    const content = stage === "proposal" ? d.proposalContent : d.reqSpecContent;
-    // 아직 AI가 아무 내용도 생성하지 않은 새 문서는 "남이 검토 요청 전인 초안"이 아니라
-    // PM 본인이 방금 만들어서 이제 막 생성 버튼을 눌러야 하는 문서다 — content 유무로
-    // 구분하지 않으면 PM이 새 문서를 만들자마자 목록에서 사라져버린다(실제 버그 보고됨).
-    if (!content) return true;
-    return status !== "DRAFT";
+    // authorId가 없는 문서는 이 필드가 생기기 전(레거시) 데이터라 작성자를 알 수 없으므로
+    // 기존처럼 항상 노출한다.
+    if (!d.authorId) return true;
+    // PM 본인이 만든 문서는 항상 보인다(방금 만들어 아직 생성 버튼을 안 눌렀어도 마찬가지).
+    if (d.authorId === user?.id) return true;
+    // 다른 사람이 시작했고 기획서조차 아직 생성 전이면 "검토 요청 전인 남의 초안"이므로 숨긴다.
+    if (!d.proposalContent) return false;
+    // 기획서에 내용은 있는데 아직 DRAFT(작성자가 검토요청을 안 보낸 상태)면 작성자의 작업
+    // 중이므로 계속 숨긴다. 그 이후(검토중/승인/반려 — 즉 한 번이라도 PM 액션이 있었던 문서)는
+    // 요구사항정의서가 아직 미생성이어도 계속 보여준다.
+    return d.proposalStatus !== "DRAFT";
   };
-  const documents: ProjectDocument[] = allDocuments.filter(isVisibleToViewer);
+  // 서버(/api/projects/current)도 updatedAt desc로 내려주지만, 방금 액션한 문서를 즉시 맨 위로
+  // 옮기거나(patchDoc이 updatedAt을 같이 갱신) 오래된순으로 뒤집는 토글을 클라이언트에서 처리하려면
+  // 여기서도 명시적으로 정렬해야 한다 — 서버 응답 순서에만 의존하면 안 된다.
+  const documents: ProjectDocument[] = allDocuments
+    .filter(isVisibleToViewer)
+    .slice()
+    .sort((a, b) => {
+      const diff = new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
+      return sortOrder === "desc" ? diff : -diff;
+    });
   const hiddenDraftCount = allDocuments.length - documents.length;
   const selectedDoc = useMemo(
     () => documents.find(d => d.id === selectedDocId) ?? documents[0] ?? null,
@@ -155,10 +198,23 @@ export default function DocumentsPage() {
     if (!selectedDocId && documents.length > 0) selectDoc(documents[0]);
   }, [documents, selectedDocId]);
 
+  // 승인이 끝난(=완료된) 단계는 탭 자체를 잠가 다시 못 들어가게 한다 — 승인 후에도 이전 탭이
+  // 계속 열람/조작 가능해 보이면 "이미 승인됐는데도 그 전 화면이 보여서 헷갈린다"는 문제가
+  // 있었다(실제 피드백). 지금 보던 탭이 잠기게 되면(다른 사람이 방금 승인 처리한 경우 포함)
+  // 자동으로 "지금 진행해야 할" 단계로 넘어가, 첫 화면이 항상 해야 할 일부터 보이게 한다.
+  useEffect(() => {
+    if (!selectedDoc) return;
+    if (stepDone(selectedDoc, activeTab)) setActiveTab(stageOf(selectedDoc));
+  }, [selectedDoc?.id, selectedDoc?.proposalStatus, selectedDoc?.reqSpecStatus, activeTab]);
+
   const patchDoc = (docId: string, patch: Partial<ProjectDocument>) => {
     setProject((prev: any) => ({
       ...prev,
-      documents: prev.documents.map((d: ProjectDocument) => d.id === docId ? { ...d, ...patch } : d),
+      // 서버도 매 update마다 updatedAt을 자동 갱신하므로(@updatedAt), 클라이언트에서 미리 반영해두면
+      // 최신순 정렬이 새로고침 없이도 바로 이 문서를 목록 맨 위로 옮긴다.
+      documents: prev.documents.map((d: ProjectDocument) =>
+        d.id === docId ? { ...d, ...patch, updatedAt: new Date().toISOString() } : d
+      ),
     }));
   };
 
@@ -170,7 +226,7 @@ export default function DocumentsPage() {
       const res = await fetch(`/api/projects/${project.id}/documents/${doc.id}/generate`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ type, autoApprove: isPM }),
+        body: JSON.stringify({ type }),
       });
       const data = await res.json();
       if (res.ok) {
@@ -223,7 +279,14 @@ export default function DocumentsPage() {
         body: JSON.stringify({ type }),
       });
       const data = await res.json();
-      if (data.success) patchDoc(doc.id, { [STATUS_FIELD[type]]: "APPROVED", [REASON_FIELD[type]]: null } as Partial<ProjectDocument>);
+      if (data.success) {
+        patchDoc(doc.id, { [STATUS_FIELD[type]]: "APPROVED", [REASON_FIELD[type]]: null } as Partial<ProjectDocument>);
+      } else {
+        alert(data.error || "승인에 실패했습니다.");
+        fetchProject(project.id);
+      }
+    } catch {
+      alert("승인 요청 중 오류가 발생했습니다. 네트워크 상태를 확인해주세요.");
     } finally {
       setBusy(null);
     }
@@ -244,7 +307,12 @@ export default function DocumentsPage() {
         patchDoc(docId, { [STATUS_FIELD[type]]: "REJECTED", [REASON_FIELD[type]]: rejectReason } as Partial<ProjectDocument>);
         setRejectModal(null);
         setRejectReason("");
+      } else {
+        alert(data.error || "반려에 실패했습니다.");
+        fetchProject(project.id);
       }
+    } catch {
+      alert("반려 요청 중 오류가 발생했습니다. 네트워크 상태를 확인해주세요.");
     } finally {
       setBusy(null);
     }
@@ -419,12 +487,6 @@ export default function DocumentsPage() {
   const filteredDocuments = docFilter === "all" ? documents : documents.filter(d => docStatusKey(d) === docFilter);
 
   const PIPELINE_STEPS: PipelineTab[] = ["proposal", "reqSpec", "taskAssignment"];
-  const stepDone = (doc: ProjectDocument | null, step: PipelineTab): boolean => {
-    if (!doc) return false;
-    if (step === "proposal") return doc.proposalStatus === "APPROVED";
-    if (step === "reqSpec") return doc.reqSpecStatus === "APPROVED";
-    return false; // 업무분배는 "완료"라는 개념 자체가 없어(계속 추가 배분 가능) 항상 false
-  };
 
   return (
     <div className="w-full space-y-6 animate-in fade-in duration-500">
@@ -439,14 +501,21 @@ export default function DocumentsPage() {
               const isDocStage = selectedDoc ? stageOf(selectedDoc) === step : false;
               const isViewed = activeTab === step;
               const prevDone = i > 0 ? stepDone(selectedDoc, PIPELINE_STEPS[i - 1]) : false;
+              // 이미 승인이 끝난(=done) 단계는 다시 들어갈 수 없게 잠근다 — 실제 클릭도 막고
+              // 시각적으로도 잠금 상태임을 보여줘서, "승인됐는데도 그 전 화면이 계속 보여 헷갈림"을 없앤다.
+              const locked = done;
               return (
                 <Fragment key={step}>
                   {i > 0 && <div className={cn("h-0.5 w-6 md:w-10 rounded-full transition-colors", prevDone ? "bg-emerald-500/50" : "bg-black/10 dark:bg-white/10")} />}
                   <button
-                    onClick={() => setActiveTab(step)}
+                    onClick={() => !locked && setActiveTab(step)}
+                    disabled={locked}
+                    title={locked ? "승인이 완료되어 더 이상 열람할 수 없습니다." : undefined}
                     className={cn(
                       "flex items-center gap-2 pb-1 px-1 text-base font-medium transition-colors border-b-2",
-                      isViewed ? "border-primary text-primary font-bold" : "border-transparent text-muted-foreground hover:text-foreground"
+                      locked
+                        ? "border-transparent text-muted-foreground/50 cursor-not-allowed"
+                        : isViewed ? "border-primary text-primary font-bold" : "border-transparent text-muted-foreground hover:text-foreground"
                     )}
                   >
                     <span className={cn(
@@ -455,7 +524,7 @@ export default function DocumentsPage() {
                         : isDocStage ? "bg-primary text-primary-foreground ring-4 ring-primary/20"
                         : "bg-black/10 dark:bg-white/10 text-muted-foreground"
                     )}>
-                      {done ? <CheckCircle2 className="w-3 h-3" /> : i + 1}
+                      {locked ? <Lock className="w-3 h-3" /> : i + 1}
                     </span>
                     {PIPELINE_TAB_LABEL[step]}
                   </button>
@@ -493,6 +562,32 @@ export default function DocumentsPage() {
                   <span className="text-[9px] opacity-70">{docFilterCounts[f.key]}</span>
                 </button>
               ))}
+            </div>
+          )}
+
+          {/* 검토요청/승인/반려처럼 방금 액션이 있었던 문서를 훑어보지 않고 바로 찾을 수 있도록
+              최신순을 기본으로 하되, 날짜순으로 훑어보고 싶을 때는 오래된순으로 뒤집을 수 있게 한다.
+              PM 전용이 아니라 일반유저 화면에도 동일하게 둔다. */}
+          {documents.length > 1 && (
+            <div className="flex items-center justify-end gap-1 text-[11px]">
+              <button
+                onClick={() => setSortOrder("desc")}
+                className={cn(
+                  "px-2 py-1 rounded-lg font-bold transition-colors",
+                  sortOrder === "desc" ? "bg-primary/15 text-primary" : "text-muted-foreground hover:text-foreground"
+                )}
+              >
+                최신순
+              </button>
+              <button
+                onClick={() => setSortOrder("asc")}
+                className={cn(
+                  "px-2 py-1 rounded-lg font-bold transition-colors",
+                  sortOrder === "asc" ? "bg-primary/15 text-primary" : "text-muted-foreground hover:text-foreground"
+                )}
+              >
+                오래된순
+              </button>
             </div>
           )}
 
@@ -542,8 +637,12 @@ export default function DocumentsPage() {
                       </span>
                       {/* 제목이 겹치는 문서가 많아 구분하기 어려우니 날짜를 함께 보여준다 — 회의 날짜가
                           있으면 그걸(문서 내용과 의미가 맞음), 없으면(과거/시드 데이터) 최근 수정일로 대체 */}
-                      <p className="text-[11px] text-muted-foreground mt-1">
-                        {new Date(doc.meetingDate ?? doc.updatedAt).toLocaleDateString("ko-KR")}
+                      <p className="text-[11px] text-muted-foreground mt-1 flex items-center gap-1.5">
+                        <span>{new Date(doc.meetingDate ?? doc.updatedAt).toLocaleDateString("ko-KR")}</span>
+                        {/* 누가 이 회의록을 시작했는지 눈으로 바로 확인할 수 있어야 한다는 피드백으로 추가 —
+                            PM이 남의 문서를 대신 생성 못 하게 막는 규칙과 짝을 이룬다. */}
+                        <span className="text-muted-foreground/60">·</span>
+                        <span className="truncate">작성자 {doc.author?.name || doc.author?.email || "알 수 없음"}</span>
                       </p>
                     </button>
                     {isDocDeletable(doc) ? (
@@ -596,6 +695,7 @@ export default function DocumentsPage() {
                   doc={selectedDoc}
                   type="proposal"
                   isPM={isPM}
+                  currentUserId={user?.id}
                   busy={busy}
                   onGenerate={() => handleGenerate(selectedDoc, "proposal")}
                   onSubmitReview={() => handleSubmitReview(selectedDoc, "proposal")}
@@ -611,6 +711,7 @@ export default function DocumentsPage() {
                   doc={selectedDoc}
                   type="reqSpec"
                   isPM={isPM}
+                  currentUserId={user?.id}
                   busy={busy}
                   onGenerate={() => handleGenerate(selectedDoc, "reqSpec")}
                   onSubmitReview={() => handleSubmitReview(selectedDoc, "reqSpec")}
@@ -703,9 +804,9 @@ export default function DocumentsPage() {
 }
 
 function DocDetail({
-  doc, type, isPM, busy, onGenerate, onSubmitReview, onApprove, onReject, onSaveRawContent, onSaveDocContent, onGenerateTasks,
+  doc, type, isPM, currentUserId, busy, onGenerate, onSubmitReview, onApprove, onReject, onSaveRawContent, onSaveDocContent, onGenerateTasks,
 }: {
-  doc: ProjectDocument; type: DocType; isPM: boolean; busy: string | null;
+  doc: ProjectDocument; type: DocType; isPM: boolean; currentUserId: string | undefined; busy: string | null;
   onGenerate: () => void;
   onSubmitReview: () => void; onApprove: () => void; onReject: () => void;
   onSaveRawContent: (rawContent: string) => void;
@@ -718,7 +819,18 @@ function DocDetail({
   // API가 상태값을 검증하지 않아 이론상 STATUS_META에 없는 값이 저장될 수 있다(QA에서 실제로 발견됨) —
   // 그런 경우에도 화면이 죽지 않도록 DRAFT로 방어적으로 대체한다.
   const meta = STATUS_META[status] ?? STATUS_META.DRAFT;
+  // 이 회의록을 시작한 사람만 AI 생성/재생성을 실행할 수 있다. authorId가 없는 문서는
+  // 이 필드가 생기기 전(레거시) 데이터라 작성자를 알 수 없으므로 기존처럼 제한하지 않는다.
+  const canGenerate = !doc.authorId || doc.authorId === currentUserId;
   const canGenerateReqSpec = type === "reqSpec" ? doc.proposalStatus === "APPROVED" : true;
+  // 목록(isVisibleToViewer)에는 보여야 하지만(파이프라인 추적용), 작성자가 아직 검토요청을
+  // 보내지 않은(DRAFT) 콘텐츠 "본문"까지 미리 보여주면 안 된다 — 검토요청 전 문서를 목록에서
+  // 통째로 숨기는 것과 같은 원칙을, 승인된 기획서 뒤에 이어지는 요구사항정의서처럼 목록엔
+  // 남아있지만 아직 DRAFT인 콘텐츠에도 똑같이 적용한다(실제 보고된 문제). 처음엔 PM 전용으로만
+  // 막았었는데, 그러면 PM이 아닌 동료끼리는 서로의 검토요청 전 초안이 그대로 다 보였다(전체
+  // 점검에서 발견) — canGenerate(=본인 문서인지)만으로 판단하면 PM/동료 구분 없이 작성자
+  // 본인이 아닌 모든 사람에게 동일하게 적용된다.
+  const contentHiddenFromReviewer = !canGenerate && status === "DRAFT";
   const dateLabel = new Date(doc.updatedAt).toLocaleDateString("ko-KR");
 
   const busyKey = (action: string) => `${doc.id}-${action}-${type}`;
@@ -773,19 +885,63 @@ function DocDetail({
   // reqSpec 탭의 "기획서 원본" 참고 박스에서 쓴다 — 위와 별개로 항상 doc.proposalContent 기준.
   const parsedProposalRef = parseProposalDoc(doc.proposalContent);
 
+  // 기획서(세로 A4) 미리보기: 스크롤 없이 실제 인쇄물처럼 "페이지" 단위로 넘겨보고 싶다는
+  // 요청 — 내용을 CSS 다단(column)으로 페이지 폭만큼씩 잘라 흘려보낸 뒤, translateX로
+  // 페이지를 넘긴다(전자책 리더가 쓰는 방식). 편집 모드는 폼 요소가 컬럼 사이에서 잘려
+  // 보이는 문제가 있어 그대로 스크롤 방식을 쓴다.
+  //
+  // 페이지 폭(pageBoxWidth)은 상수(PROPOSAL_PAGE_W)로 고정하지 않고 실제 렌더된 박스
+  // 너비를 측정해서 쓴다 — 좁은 화면에서는 박스가 max-width:100%로 줄어드는데, 컬럼
+  // 너비 계산을 고정 840px 기준으로 하면 실제 렌더 너비와 안 맞아 페이지 수가 틀어진다.
+  //
+  // 페이지 수는 ResizeObserver로 재는데, 관찰 대상은 반드시 "박스"(outerBoxRef) 여야
+  // 한다 — 컬럼이 흘러넘치는 내부 콘텐츠 div(pagedContentRef) 자체는 폭/높이가 고정이라
+  // 내용이 늘어나 열이 여러 개로 나뉘어도 그 div "자신의" 레이아웃 박스 크기는 변하지
+  // 않는다(overflow는 scrollWidth만 늘릴 뿐 ResizeObserver가 감지하는 border-box는 그대로).
+  // 처음에 내부 div를 관찰 대상으로 뒀다가 리사이즈 이벤트가 전혀 안 와서 페이지네이션이
+  // 조용히 죽어있던 실제 버그였다 — 박스 쪽을 관찰하고, 콘텐츠가 바뀔 때마다 별도로
+  // scrollWidth를 다시 재는 방식으로 고친다.
+  const isPaginatedView = type === "proposal" && !editMode;
+  const outerBoxRef = useRef<HTMLDivElement>(null);
+  const pagedContentRef = useRef<HTMLDivElement>(null);
+  const [proposalPage, setProposalPage] = useState(0);
+  const [proposalPageCount, setProposalPageCount] = useState(1);
+  const [pageBoxWidth, setPageBoxWidth] = useState(PROPOSAL_PAGE_W);
+  useEffect(() => { setProposalPage(0); }, [doc.id, type, editMode]);
+  useEffect(() => {
+    if (!isPaginatedView) return;
+    const box = outerBoxRef.current;
+    if (!box) return;
+    const onResize = () => setPageBoxWidth(box.getBoundingClientRect().width || PROPOSAL_PAGE_W);
+    onResize();
+    const ro = new ResizeObserver(onResize);
+    ro.observe(box);
+    return () => ro.disconnect();
+  }, [isPaginatedView]);
+  useEffect(() => {
+    if (!isPaginatedView) return;
+    const el = pagedContentRef.current;
+    if (!el || !pageBoxWidth) return;
+    const pages = Math.max(1, Math.round(el.scrollWidth / pageBoxWidth));
+    setProposalPageCount(pages);
+    setProposalPage(p => Math.min(p, pages - 1));
+  }, [isPaginatedView, parsedContent, pageBoxWidth]);
+
   // 잠긴 상태에서도 내용 자체는 볼 수 있어야 하므로, 수정은 막되 펼쳐서 전체를 확인하는 건 허용한다.
-  // 기본은 접어서(h-20) 자리를 적게 차지하다가, 필요할 때만 펼친다(h-64) — 수정 가능 여부와는 별개.
-  const [rawLockedExpanded, setRawLockedExpanded] = useState(false);
-  useEffect(() => { setRawLockedExpanded(false); }, [doc.id]);
+  // 기본은 펼쳐서(h-64) 보여준다 — 접혀 있으면 지금 보는 게 원본 회의록인지 기획서 본문인지
+  // 헷갈린다는 실제 피드백이 있어, 처음엔 항상 펼친 채로 시작하고 필요할 때만 접는다.
+  const [rawLockedExpanded, setRawLockedExpanded] = useState(true);
+  useEffect(() => { setRawLockedExpanded(true); }, [doc.id]);
 
   // 검토요청(PENDING_REVIEW) 이후 ~ 승인(APPROVED) 상태에서는 원본 회의록을 잠근다 —
   // 이미 그 내용을 근거로 기획서가 만들어져 검토에 들어간 상태라, 뒤에서 원본이 바뀌면 안 된다.
   // PM이 반려하면 다시 풀려서 수정할 수 있고, 그때 기획서 에이전트도 다시 실행할 수 있다.
   const rawLocked = status === "PENDING_REVIEW" || status === "APPROVED";
 
-  // 요구사항정의서 탭 상단에 보여줄 기획서 원본 참고 박스 — 기본은 접어두고 필요할 때만 펼친다
-  const [proposalRefOpen, setProposalRefOpen] = useState(false);
-  useEffect(() => { setProposalRefOpen(false); }, [doc.id]);
+  // 요구사항정의서 탭 상단에 보여줄 기획서 원본 참고 박스 — 접혀 있으면 이 박스와 그 아래
+  // 요구사항정의서 본문을 구분하기 어려워 헷갈린다는 피드백이 있어, 기본은 펼친 채로 시작한다.
+  const [proposalRefOpen, setProposalRefOpen] = useState(true);
+  useEffect(() => { setProposalRefOpen(true); }, [doc.id]);
   const proposalMeta = STATUS_META[doc.proposalStatus] ?? STATUS_META.DRAFT;
   const REQSPEC_BLOCK_MESSAGE: Record<string, string> = {
     DRAFT: "기획서가 아직 작성 중입니다. 기획서를 검토요청하고 승인받아야 요구사항정의서를 생성할 수 있습니다.",
@@ -797,7 +953,15 @@ function DocDetail({
   return (
     <div className="space-y-5">
       <div className="flex items-center justify-between">
-        <h2 className="font-bold text-lg">{doc.title}</h2>
+        <div>
+          <h2 className="font-bold text-lg">{doc.title}</h2>
+          {/* PM이 남이 시작한 회의록에서 생성 버튼을 누르면 안 되는 규칙이 실제로 눈에 보여야 한다는
+              피드백으로 추가 — 아래 canGenerate 판단과 항상 같은 값(doc.author)을 근거로 쓴다. */}
+          <p className="text-xs text-muted-foreground mt-0.5">
+            작성자 {doc.author?.name || doc.author?.email || "알 수 없음"}
+            {doc.author?.id === currentUserId && <span className="text-primary font-medium"> (나)</span>}
+          </p>
+        </div>
         <span className={cn("inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold", meta.className)}>
           <meta.icon className="w-3.5 h-3.5" /> {meta.label}
         </span>
@@ -890,41 +1054,116 @@ function DocDetail({
         </div>
       )}
 
-      <div className="border border-border rounded-xl overflow-hidden">
-        <div className="max-h-[520px] overflow-y-auto bg-black/5 dark:bg-black/20">
-          {content && parsedContent ? (
-            <div id="print-area">
-              {type === "proposal" ? (
-                <ProposalTemplate
-                  doc={parsedContent}
-                  title={doc.title} dateLabel={dateLabel}
-                  editable={editMode} onChange={setEditDraft}
-                />
-              ) : (
-                <ReqSpecTemplate
-                  doc={parsedContent}
-                  title={doc.title} dateLabel={dateLabel}
-                  editable={editMode} onChange={setEditDraft}
-                />
+      {/* 위 참고 박스(원본 회의록 / 기획서 원본)와 시각적으로 비슷해서, 지금 보고 있는 게
+          어느 문서인지 헷갈린다는 피드백이 있어 실제 생성 문서 위에 이름표를 붙인다. */}
+      <p className="text-sm text-muted-foreground font-semibold">{TAB_LABEL[type]}</p>
+      {/* A4 용지 느낌의 프리뷰.
+          - 기획서(세로): 스크롤 없이 딱 A4 한 장 크기로 고정하고, 내용이 넘치면 실제 책처럼
+            CSS 다단(column)으로 잘라 화살표로 페이지를 넘긴다(isPaginatedView). 편집 모드는
+            폼 요소가 컬럼 사이에서 잘려 보이므로 예전처럼 세로 스크롤 박스를 쓴다.
+          - 요구사항정의서(가로): 표라 페이지 나누기가 부자연스러워 컬럼 방식 대신, A4 크기로
+            고정한 박스 자체를 상하좌우 스크롤 컨테이너로 둔다(표의 min-width가 박스 폭보다
+            크면 가로로, 행이 많아 높이를 넘으면 세로로 스크롤 — ReqSpecTemplate 참고). */}
+      <div className="border border-border rounded-xl overflow-hidden bg-black/10 dark:bg-black/30 p-4 flex flex-col items-center gap-3">
+        {contentHiddenFromReviewer ? (
+          <div className="w-full max-w-[1190px] bg-white dark:bg-white p-10 text-center text-muted-foreground text-sm">
+            아직 {TAB_LABEL[type]} 검토 요청 전입니다. 작성자가 검토를 요청하면 내용을 확인하실 수 있습니다.
+          </div>
+        ) : content && parsedContent ? (
+          isPaginatedView ? (
+            <>
+              <div
+                ref={outerBoxRef}
+                className="bg-white dark:bg-white shadow-sm overflow-hidden print:hidden"
+                style={{ width: PROPOSAL_PAGE_W, height: PROPOSAL_PAGE_H, maxWidth: "100%" }}
+              >
+                <div
+                  ref={pagedContentRef}
+                  style={{
+                    columnWidth: pageBoxWidth,
+                    columnGap: 0,
+                    height: PROPOSAL_PAGE_H,
+                    transform: `translateX(-${proposalPage * pageBoxWidth}px)`,
+                    transition: "transform 0.25s ease",
+                  }}
+                >
+                  <ProposalTemplate doc={parsedContent} title={doc.title} dateLabel={dateLabel} editable={false} />
+                </div>
+              </div>
+              {proposalPageCount > 1 && (
+                <div className="flex items-center gap-3 print:hidden">
+                  <button
+                    type="button"
+                    onClick={() => setProposalPage(p => Math.max(0, p - 1))}
+                    disabled={proposalPage === 0}
+                    className="p-2 rounded-lg bg-black/5 dark:bg-white/10 hover:bg-black/10 dark:hover:bg-white/20 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                  >
+                    <ChevronLeft className="w-4 h-4" />
+                  </button>
+                  <span className="text-xs font-semibold text-muted-foreground tabular-nums">
+                    {proposalPage + 1} / {proposalPageCount} 페이지
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setProposalPage(p => Math.min(proposalPageCount - 1, p + 1))}
+                    disabled={proposalPage >= proposalPageCount - 1}
+                    className="p-2 rounded-lg bg-black/5 dark:bg-white/10 hover:bg-black/10 dark:hover:bg-white/20 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                  >
+                    <ChevronRight className="w-4 h-4" />
+                  </button>
+                </div>
               )}
-            </div>
-          ) : content ? (
-            <div className="p-10 text-center text-muted-foreground text-sm">
-              문서 내용을 표시할 수 없습니다. 형식이 손상되었을 수 있습니다.
-            </div>
+              {/* 인쇄/PDF는 페이지 넘김 없이 한 번에 이어지는 문서여야 하므로, 화면엔 숨긴
+                  전체 버전을 따로 하나 더 둔다(#print-area만 인쇄되도록 globals.css 참고). */}
+              <div id="print-area" className="hidden print:block w-full">
+                <ProposalTemplate doc={parsedContent} title={doc.title} dateLabel={dateLabel} editable={false} />
+              </div>
+            </>
           ) : (
-            <div className="p-10 text-center text-muted-foreground text-sm">
-              {!canGenerateReqSpec
-                ? REQSPEC_BLOCK_MESSAGE[doc.proposalStatus] || "기획서가 승인되면 요구사항정의서를 생성할 수 있습니다."
-                : `AI가 아직 ${TAB_LABEL[type]}를 생성하지 않았습니다.`}
+            <div
+              className={cn(
+                "bg-white dark:bg-white",
+                type === "proposal"
+                  ? "w-full max-w-[840px] max-h-[1190px] overflow-y-auto"
+                  : "w-full overflow-auto doc-scroll"
+              )}
+              style={type === "reqSpec" ? { maxWidth: REQSPEC_BOX_W, height: REQSPEC_BOX_H } : undefined}
+            >
+              <div id="print-area">
+                {type === "proposal" ? (
+                  <ProposalTemplate
+                    doc={parsedContent}
+                    title={doc.title} dateLabel={dateLabel}
+                    editable={editMode} onChange={setEditDraft}
+                  />
+                ) : (
+                  <ReqSpecTemplate
+                    doc={parsedContent}
+                    title={doc.title} dateLabel={dateLabel}
+                    editable={editMode} onChange={setEditDraft}
+                  />
+                )}
+              </div>
             </div>
-          )}
-        </div>
+          )
+        ) : content ? (
+          <div className="w-full max-w-[1190px] bg-white dark:bg-white p-10 text-center text-muted-foreground text-sm">
+            문서 내용을 표시할 수 없습니다. 형식이 손상되었을 수 있습니다.
+          </div>
+        ) : (
+          <div className="w-full max-w-[1190px] bg-white dark:bg-white p-10 text-center text-muted-foreground text-sm">
+            {!canGenerateReqSpec
+              ? REQSPEC_BLOCK_MESSAGE[doc.proposalStatus] || "기획서가 승인되면 요구사항정의서를 생성할 수 있습니다."
+              : !canGenerate
+              ? "다른 사용자가 시작한 회의록입니다. 작성자 본인만 생성할 수 있습니다."
+              : `AI가 아직 ${TAB_LABEL[type]}를 생성하지 않았습니다.`}
+          </div>
+        )}
       </div>
 
       {/* Action bar */}
       <div className="flex justify-end items-center gap-3 pt-2">
-        {content && (
+        {content && !contentHiddenFromReviewer && (
           <div className="flex items-center gap-2 mr-auto">
             <button onClick={handlePrint} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 text-xs font-semibold transition-colors">
               <Printer className="w-3.5 h-3.5" /> PDF 다운로드
@@ -940,8 +1179,10 @@ function DocDetail({
           </div>
         )}
 
-        {/* 문서를 누가 만들었든(PM 포함) 그 자리에서 바로 AI 에이전트를 실행할 수 있어야 하므로 역할 제한을 두지 않는다 */}
-        {!content && canGenerateReqSpec && (
+        {/* 2026-08-27 수정: "누구든 실행 가능"은 의도적 설계가 아니라 실제 버그였다 — 회의록을
+            시작한 사람만 생성할 수 있다(canGenerate, authorId 기준). PM이라도 남이 시작한
+            회의록을 대신 생성하면 안 되므로 여기서 막는다. */}
+        {!content && canGenerateReqSpec && canGenerate && (
           <button
             onClick={onGenerate}
             disabled={busy === busyKey("generate")}
@@ -953,7 +1194,10 @@ function DocDetail({
           </button>
         )}
 
-        {content && !isPM && status === "DRAFT" && (
+        {/* canGenerate(=본인이 시작한 회의록인지) 체크가 없으면 동료가 남의 초안을 대신
+            검토요청 상태로 바꿀 수 있었다(실제 발견된 문제 — 서버도 동일하게 막지만, 버튼
+            자체를 안 보이게 해야 애초에 시도할 일이 없다). */}
+        {content && !isPM && canGenerate && status === "DRAFT" && (
           <button
             onClick={onSubmitReview}
             disabled={busy === busyKey("submit")}
@@ -966,21 +1210,25 @@ function DocDetail({
 
         {content && status === "REJECTED" && !editMode && (
           <>
+            {/* 직접 수정은 PM이 반려한 본인의 판단을 그 자리에서 바로 반영하는 행위라 작성자
+                여부와 무관하게 계속 허용한다 — 새로 AI를 "재생성"하는 것과는 성격이 다르다. */}
             <button
               onClick={startEdit}
               className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 text-sm font-bold transition-colors"
             >
               <Pencil className="w-4 h-4" /> 직접 수정
             </button>
-            <button
-              onClick={onGenerate}
-              disabled={busy === busyKey("generate")}
-              className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-red-500/10 text-red-400 border border-red-500/30 text-sm font-bold hover:bg-red-500/20 disabled:opacity-50"
-            >
-              {busy === busyKey("generate") ? <Loader2 className="w-4 h-4 animate-spin" /> : <RotateCcw className="w-4 h-4" />}
-              {type === "proposal" ? "기획서 재생성" : "요구사항정의서 재생성"}
-              <AgentBadge agent={type} />
-            </button>
+            {canGenerate && (
+              <button
+                onClick={onGenerate}
+                disabled={busy === busyKey("generate")}
+                className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-red-500/10 text-red-400 border border-red-500/30 text-sm font-bold hover:bg-red-500/20 disabled:opacity-50"
+              >
+                {busy === busyKey("generate") ? <Loader2 className="w-4 h-4 animate-spin" /> : <RotateCcw className="w-4 h-4" />}
+                {type === "proposal" ? "기획서 재생성" : "요구사항정의서 재생성"}
+                <AgentBadge agent={type} />
+              </button>
+            )}
           </>
         )}
 

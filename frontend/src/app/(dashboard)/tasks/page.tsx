@@ -9,6 +9,7 @@ import { useSearchParams } from "next/navigation";
 import { KanbanBoard } from "@/components/layout/KanbanBoard";
 import { TaskDetailModal } from "@/components/projects/TaskDetailModal";
 import { isTaskOverdue } from "@/lib/taskOverdue";
+import { DifficultyBadge } from "@/components/ui/DifficultyBadge";
 
 type Task = {
   id: string;
@@ -16,6 +17,8 @@ type Task = {
   description: string | null;
   status: string;
   estimatedHours: number | null;
+  difficulty: string | null;
+  difficultyReason: string | null;
   gitStatus: string;
   wbsStart: string | null;
   wbsEnd: string | null;
@@ -450,9 +453,12 @@ function WbsBoardView({ tasks, onGitStatusChange, onRowClick }: { tasks: Task[];
                           </span>
                         )}
                       </div>
-                      {task.estimatedHours != null && (
-                        <div className="text-[11px] text-muted-foreground mt-0.5">예상 소요 {task.estimatedHours}시간</div>
-                      )}
+                      <div className="flex items-center gap-1.5 mt-0.5">
+                        {task.estimatedHours != null && (
+                          <span className="text-[11px] text-muted-foreground">예상 소요 {task.estimatedHours}시간</span>
+                        )}
+                        <DifficultyBadge difficulty={task.difficulty} reason={task.difficultyReason} />
+                      </div>
                     </td>
                     <td className="px-6 py-4 text-[13px]">{task.assignee ? task.assignee.name : <span className="text-muted-foreground">미배정</span>}</td>
                     <td className="px-6 py-4">

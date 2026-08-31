@@ -12,13 +12,18 @@ export async function exportReqSpecExcel(doc: ReqSpecDoc, title: string) {
     "중분류": item.subCategory,
     "요구사항명": item.name,
     "기능설명": item.description,
+    "우선순위": item.priority,
+    "관련 기능": item.relatedFeature,
+    "입력/처리/출력": item.inputOutput,
+    "수용 기준": item.acceptanceCriteria,
     "비고": item.note,
   }));
 
   const sheet = XLSX.utils.json_to_sheet(rows);
-  // 위 rows 컬럼 순서(ID/대분류/중분류/요구사항명/기능설명/비고)와 동일한 순서로 각 컬럼 너비(문자 수 기준)를 지정.
+  // 위 rows 컬럼 순서와 동일한 순서로 각 컬럼 너비(문자 수 기준)를 지정.
   sheet["!cols"] = [
-    { wch: 14 }, { wch: 12 }, { wch: 12 }, { wch: 24 }, { wch: 48 }, { wch: 20 },
+    { wch: 14 }, { wch: 12 }, { wch: 12 }, { wch: 24 }, { wch: 44 },
+    { wch: 10 }, { wch: 20 }, { wch: 36 }, { wch: 40 }, { wch: 20 },
   ];
 
   const workbook = XLSX.utils.book_new();

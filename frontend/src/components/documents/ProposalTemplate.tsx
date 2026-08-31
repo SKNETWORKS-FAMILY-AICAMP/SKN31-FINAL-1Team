@@ -1,7 +1,23 @@
-import type { ProposalDoc, ProposalFeature, ProposalMilestone } from "@/lib/documentTemplates";
+import { stripLeadingNumber, type FeaturePriority, type ProposalDoc, type ProposalFeature } from "@/lib/documentTemplates";
 import { Trash2, Plus } from "lucide-react";
 
 const inputCls = "w-full bg-black/5 border border-black/10 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40";
+
+const PRIORITY_OPTIONS: FeaturePriority[] = ["필수", "권장", "선택"];
+const PRIORITY_BADGE_CLASS: Record<FeaturePriority, string> = {
+  필수: "bg-red-100 text-red-700",
+  권장: "bg-blue-100 text-blue-700",
+  선택: "bg-gray-100 text-gray-600",
+};
+
+function PriorityBadge({ priority }: { priority?: FeaturePriority }) {
+  const p = priority ?? "권장";
+  return (
+    <span className={`inline-block text-[11px] font-semibold px-1.5 py-0.5 rounded ${PRIORITY_BADGE_CLASS[p]}`}>
+      {p}
+    </span>
+  );
+}
 
 export function ProposalTemplate({
   doc, title, dateLabel, editable, onChange,
@@ -17,11 +33,13 @@ export function ProposalTemplate({
   const addFeature = () => set("features", [...(doc.features ?? []), { name: "", description: "" }]);
   const removeFeature = (i: number) => set("features", doc.features.filter((_, idx) => idx !== i));
 
-  const setMilestone = (i: number, patch: Partial<ProposalMilestone>) => {
-    set("milestones", doc.milestones.map((m, idx) => (idx === i ? { ...m, ...patch } : m)));
+  // 사용자 시나리오 / 최종 결정사항은 둘 다 "단순 문자열 목록"이라 같은 add/remove/set 패턴을 재사용한다.
+  const setListItem = (key: "userScenario" | "finalDecisions", i: number, value: string) => {
+    set(key, doc[key].map((s, idx) => (idx === i ? value : s)));
   };
-  const addMilestone = () => set("milestones", [...(doc.milestones ?? []), { name: "", date: "" }]);
-  const removeMilestone = (i: number) => set("milestones", doc.milestones.filter((_, idx) => idx !== i));
+  const addListItem = (key: "userScenario" | "finalDecisions") => set(key, [...(doc[key] ?? []), ""]);
+  const removeListItem = (key: "userScenario" | "finalDecisions", i: number) =>
+    set(key, doc[key].filter((_, idx) => idx !== i));
 
   return (
     <div className="bg-white text-black p-10 w-full shadow-sm print:shadow-none print:p-0">
@@ -53,19 +71,31 @@ export function ProposalTemplate({
         ) : null}
       </div>
 
-      <Section num="1" title="배경 및 목적">
+      <Section num="1" title="프로젝트 개요">
         {editable ? (
           <textarea
-            value={doc.background}
-            onChange={e => set("background", e.target.value)}
+            value={doc.projectOverview}
+            onChange={e => set("projectOverview", e.target.value)}
             className={`${inputCls} h-24 resize-none whitespace-pre-wrap`}
           />
         ) : (
-          <p className="whitespace-pre-wrap leading-relaxed">{doc.background || "-"}</p>
+          <p className="whitespace-pre-wrap leading-relaxed">{doc.projectOverview || "-"}</p>
         )}
       </Section>
 
-      <Section num="2" title="타겟 사용자">
+      <Section num="2" title="문제 정의">
+        {editable ? (
+          <textarea
+            value={doc.problemDefinition}
+            onChange={e => set("problemDefinition", e.target.value)}
+            className={`${inputCls} h-24 resize-none whitespace-pre-wrap`}
+          />
+        ) : (
+          <p className="whitespace-pre-wrap leading-relaxed">{doc.problemDefinition || "-"}</p>
+        )}
+      </Section>
+
+      <Section num="3" title="대상 사용자">
         {editable ? (
           <textarea
             value={doc.target}
@@ -77,18 +107,27 @@ export function ProposalTemplate({
         )}
       </Section>
 
-      <Section num="3" title="주요 기능">
+      <Section num="4" title="주요 기능">
         {editable ? (
           <div className="space-y-3">
             {doc.features?.map((f, i) => (
               <div key={i} className="flex gap-2 items-start p-3 rounded-lg bg-black/[0.03] border border-black/10">
                 <div className="flex-1 space-y-2">
-                  <input
-                    value={f.name}
-                    onChange={e => setFeature(i, { name: e.target.value })}
-                    placeholder="기능명"
-                    className={`${inputCls} font-semibold`}
-                  />
+                  <div className="flex gap-2 items-center">
+                    <input
+                      value={f.name}
+                      onChange={e => setFeature(i, { name: e.target.value })}
+                      placeholder="기능명"
+                      className={`${inputCls} font-semibold`}
+                    />
+                    <select
+                      value={f.priority ?? "권장"}
+                      onChange={e => setFeature(i, { priority: e.target.value as FeaturePriority })}
+                      className={`${inputCls} w-24! shrink-0`}
+                    >
+                      {PRIORITY_OPTIONS.map(p => <option key={p} value={p}>{p}</option>)}
+                    </select>
+                  </div>
                   <textarea
                     value={f.description}
                     onChange={e => setFeature(i, { description: e.target.value })}
@@ -109,7 +148,8 @@ export function ProposalTemplate({
           <ol className="space-y-3 list-decimal list-inside">
             {doc.features.map((f, i) => (
               <li key={i}>
-                <span className="font-semibold">{f.name}</span>
+                <span className="font-semibold">{f.name}</span>{" "}
+                <PriorityBadge priority={f.priority} />
                 <p className="text-sm text-gray-700 mt-0.5 ml-5 whitespace-pre-wrap">{f.description}</p>
               </li>
             ))}
@@ -117,65 +157,80 @@ export function ProposalTemplate({
         ) : <p className="text-gray-400">-</p>}
       </Section>
 
-      <Section num="4" title="기대 효과">
+      <Section num="5" title="사용자 시나리오">
+        {editable ? (
+          <div className="space-y-2">
+            {doc.userScenario?.map((step, i) => (
+              <div key={i} className="flex gap-2 items-center">
+                <span className="text-sm text-gray-400 w-5 shrink-0 text-right">{i + 1}.</span>
+                <input
+                  value={stripLeadingNumber(step)}
+                  onChange={e => setListItem("userScenario", i, e.target.value)}
+                  placeholder="시나리오 단계"
+                  className={inputCls}
+                />
+                <button type="button" onClick={() => removeListItem("userScenario", i)} className="p-2 text-red-500 hover:bg-red-50 rounded-lg shrink-0">
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              </div>
+            ))}
+            <button type="button" onClick={() => addListItem("userScenario")} className="flex items-center gap-1.5 text-sm font-semibold text-primary hover:underline">
+              <Plus className="w-4 h-4" /> 단계 추가
+            </button>
+          </div>
+        ) : doc.userScenario?.length ? (
+          <ol className="space-y-1.5 list-decimal list-inside">
+            {doc.userScenario.map((step, i) => (
+              <li key={i} className="whitespace-pre-wrap">{stripLeadingNumber(step)}</li>
+            ))}
+          </ol>
+        ) : <p className="text-gray-400">-</p>}
+      </Section>
+
+      <Section num="6" title="기술 스택 및 제약사항">
         {editable ? (
           <textarea
-            value={doc.expectedEffect}
-            onChange={e => set("expectedEffect", e.target.value)}
+            value={doc.techStackConstraints}
+            onChange={e => set("techStackConstraints", e.target.value)}
+            placeholder="기술 스택, 플랫폼, 연동 대상, 제약사항 등 (없으면 비워두세요)"
             className={`${inputCls} h-20 resize-none whitespace-pre-wrap`}
           />
         ) : (
-          <p className="whitespace-pre-wrap leading-relaxed">{doc.expectedEffect || "-"}</p>
+          <p className="whitespace-pre-wrap leading-relaxed">{doc.techStackConstraints || "-"}</p>
         )}
       </Section>
 
-      {(editable || doc.milestones?.length > 0) && (
-        <Section num="5" title="일정 / 마일스톤">
-          {editable ? (
-            <div className="space-y-2">
-              {doc.milestones?.map((m, i) => (
-                <div key={i} className="flex gap-2 items-center">
-                  <input
-                    value={m.name}
-                    onChange={e => setMilestone(i, { name: e.target.value })}
-                    placeholder="마일스톤"
-                    className={`${inputCls} flex-1`}
-                  />
-                  <input
-                    value={m.date}
-                    onChange={e => setMilestone(i, { date: e.target.value })}
-                    placeholder="시기"
-                    className={`${inputCls} w-40`}
-                  />
-                  <button type="button" onClick={() => removeMilestone(i)} className="p-2 text-red-500 hover:bg-red-50 rounded-lg shrink-0">
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                </div>
-              ))}
-              <button type="button" onClick={addMilestone} className="flex items-center gap-1.5 text-sm font-semibold text-primary hover:underline">
-                <Plus className="w-4 h-4" /> 마일스톤 추가
-              </button>
-            </div>
-          ) : (
-            <table className="w-full border-collapse text-sm">
-              <thead>
-                <tr className="border-b border-black">
-                  <th className="text-left py-2 font-semibold">마일스톤</th>
-                  <th className="text-left py-2 font-semibold w-40">시기</th>
-                </tr>
-              </thead>
-              <tbody>
-                {doc.milestones.map((m, i) => (
-                  <tr key={i} className="border-b border-gray-200">
-                    <td className="py-2">{m.name}</td>
-                    <td className="py-2">{m.date}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </Section>
-      )}
+      <Section num="7" title="최종 결정사항">
+        {editable ? (
+          <div className="space-y-2">
+            {doc.finalDecisions?.map((decision, i) => (
+              <div key={i} className="flex gap-2 items-center">
+                <input
+                  value={decision}
+                  onChange={e => setListItem("finalDecisions", i, e.target.value)}
+                  placeholder="결정 사항"
+                  className={inputCls}
+                />
+                <button type="button" onClick={() => removeListItem("finalDecisions", i)} className="p-2 text-red-500 hover:bg-red-50 rounded-lg shrink-0">
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              </div>
+            ))}
+            <button type="button" onClick={() => addListItem("finalDecisions")} className="flex items-center gap-1.5 text-sm font-semibold text-primary hover:underline">
+              <Plus className="w-4 h-4" /> 결정사항 추가
+            </button>
+          </div>
+        ) : doc.finalDecisions?.length ? (
+          <ul className="space-y-1.5">
+            {doc.finalDecisions.map((decision, i) => (
+              <li key={i} className="flex items-start gap-2">
+                <span className="w-1.5 h-1.5 rounded-full bg-black shrink-0 mt-2" />
+                <span className="whitespace-pre-wrap">{decision}</span>
+              </li>
+            ))}
+          </ul>
+        ) : <p className="text-gray-400">-</p>}
+      </Section>
     </div>
   );
 }

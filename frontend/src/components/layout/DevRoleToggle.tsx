@@ -11,10 +11,13 @@
 import { useAuth } from "@/lib/auth";
 import { ShieldCheck, User as UserIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { isDevToolsEnabled } from "@/lib/devTools";
 
 export function DevRoleToggle({ isOpen }: { isOpen: boolean }) {
   const { user, devToggleRole } = useAuth();
-  if (!user) return null;
+  // 서버(dev-impersonate 라우트)도 같은 기준(isDevToolsEnabled)으로 이 기능을 거부하므로,
+  // 여기서 버튼을 숨겨도 실제 보안 경계는 서버 쪽이다 — 이건 그냥 안 켜져 있을 때 안 보이게 하는 것.
+  if (!user || !isDevToolsEnabled()) return null;
 
   const isPM = user.role === "PM";
 

@@ -95,18 +95,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     window.location.href = "/login";
   };
 
-  // DEV ONLY — 그냥 role 라벨만 바꾸면 대시보드 등 개인화 화면이 여전히 PM 본인 id로 조회돼서
-  // (PM은 업무를 배정받지 않는 역할이라) 항상 빈 화면만 보였다. 그래서 "일반유저"로 갈 땐 실제
-  // 배정 업무가 있는 팀원 계정으로 세션 자체를 바꾸고, 돌아올 땐 원래 PM 계정을 복원한다.
-  // 주의: 이건 localStorage(hz_session)만 바꾸는 화면 미리보기용이다 — 실제 API 권한 검증은
-  // 로그인 시 서버가 심어준 HttpOnly 쿠키(src/lib/session.ts)의 role을 기준으로 하므로, 이
-  // 토글로 "일반유저"를 봐도 실제 로그인 계정이 PM이면 서버는 여전히 PM으로 취급한다(그 반대도
-  // 마찬가지). 진짜 다른 권한으로 API를 테스트하려면 해당 계정으로 다시 로그인해야 한다.
+  // DEV ONLY — 재로그인 없이 실제 서버 세션(HttpOnly 쿠키) 자체를 다른 팀원 계정으로 바꾼다.
+  // 2026-08-27 이전에는 localStorage(hz_session)만 바꾸는 화면 라벨용 미리보기였는데, 그러면
+  // "일반유저가 만든 회의록은 PM이 대신 생성 못 한다" 같은 서버 권한 규칙을 이 토글로는 빠르게
+  // 테스트할 수 없었다(실제 로그인 계정이 PM이면 서버는 계속 PM으로 취급) — 로그아웃/재로그인
+  // 없이도 진짜로 다른 계정처럼 API를 호출할 수 있어야 한다는 요청으로 서버 라우트
+  // (dev-impersonate/dev-stop-impersonate)를 거치도록 바꿨다. 두 라우트 모두 PM 권한 +
+  // NODE_ENV(개발 환경)를 서버에서 강제하므로, 이 토글은 프로덕션에서는 아예 동작하지 않는다.
   const devToggleRole = async () => {
     if (!user) return;
 
     if (user.role === "PM") {
-      localStorage.setItem("hz_dev_pm_identity", JSON.stringify(user));
       try {
         const res = await fetch("/api/users");
         const json = await res.json();
@@ -114,13 +113,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           .filter((u: any) => u.role === "EMPLOYEE")
           .sort((a: any, b: any) => a.email.localeCompare(b.email));
         if (employees.length === 0) return;
-        const preview: User = {
-          id: employees[0].id,
-          email: employees[0].email,
-          name: employees[0].name,
-          role: "MEMBER",
-          isFirstLogin: false,
-        };
+
+        const impRes = await fetch("/api/auth/dev-impersonate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ targetUserId: employees[0].id }),
+        });
+        if (!impRes.ok) {
+          const data = await impRes.json().catch(() => null);
+          console.error("dev-impersonate failed:", data?.error);
+          return;
+        }
+        const data = await impRes.json();
+        const preview: User = { id: data.id, email: data.email, name: data.name, role: data.role, isFirstLogin: false };
         setUser(preview);
         localStorage.setItem("hz_session", JSON.stringify(preview));
       } catch (err) {
@@ -129,19 +134,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return;
     }
 
-    const stored = localStorage.getItem("hz_dev_pm_identity");
-    if (stored) {
-      const pmUser = JSON.parse(stored) as User;
+    try {
+      const res = await fetch("/api/auth/dev-stop-impersonate", { method: "POST" });
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        console.error("dev-stop-impersonate failed:", data?.error);
+        return;
+      }
+      const data = await res.json();
+      const pmUser: User = { id: data.id, email: data.email, name: data.name, role: data.role, isFirstLogin: false };
       setUser(pmUser);
       localStorage.setItem("hz_session", JSON.stringify(pmUser));
-      localStorage.removeItem("hz_dev_pm_identity");
-      return;
+    } catch (err) {
+      console.error(err);
     }
-    // 백업이 없다면 이전 버전 토글로 저장된 세션 — 이땐 id/email/name이 이미 실제 로그인 계정 것이므로
-    // role 라벨만 PM으로 되돌리면 재로그인 없이 복구된다(토글의 존재 이유 자체가 재로그인 회피이므로).
-    const restored = { ...user, role: "PM" as const };
-    setUser(restored);
-    localStorage.setItem("hz_session", JSON.stringify(restored));
   };
 
   const completeOnboarding = async (name: string, info: any) => {
