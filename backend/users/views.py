@@ -1,12 +1,68 @@
-from rest_framework import generics, permissions
+#users/views.py
+
+from rest_framework import generics, permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from django.contrib.auth import get_user_model
+from django.contrib.auth import get_user_model, login, logout
 from drf_spectacular.utils import extend_schema, OpenApiParameter, OpenApiTypes
 
-from users.serializers import UserDetailSerializer, UserSimpleSerializer
+from users.serializers import (
+    UserDetailSerializer, 
+    UserSimpleSerializer, 
+    LoginRequestSerializer, 
+    LoginResponseSerializer
+)
 
 User = get_user_model()
+
+
+class LoginView(APIView):
+    """
+    사용자 로그인 API
+    POST /api/users/login/
+    """
+    permission_classes = [permissions.AllowAny]
+
+    @extend_schema(
+        tags=['0단계 - 사용자 관리'],
+        summary='사용자 로그인',
+        description='아이디와 비밀번호를 검증하여 세션 로그인을 처리합니다.',
+        request=LoginRequestSerializer,
+        responses={
+            200: LoginResponseSerializer,
+            400: OpenApiTypes.OBJECT
+        }
+    )
+    def post(self, request):
+        serializer = LoginRequestSerializer(data=request.data)
+        if serializer.is_valid():
+            user = serializer.validated_data['user']
+            login(request, user)  # Django 세션 로그인 처리
+            
+            return Response({
+                "message": "로그인 성공",
+                "user": UserSimpleSerializer(user).data
+            }, status=status.HTTP_200_OK)
+            
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+class LogoutView(APIView):
+    """
+    사용자 로그아웃 API
+    POST /api/users/logout/
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    @extend_schema(
+        tags=['0단계 - 사용자 관리'],
+        summary='사용자 로그아웃',
+        description='현재 로그인된 세션을 종료합니다.',
+        responses={200: OpenApiTypes.OBJECT}
+    )
+    def post(self, request):
+        logout(request)  # Django 세션 로그아웃
+        return Response({"message": "로그아웃되었습니다."}, status=status.HTTP_200_OK)
 
 
 class CurrentUserProfileView(APIView):

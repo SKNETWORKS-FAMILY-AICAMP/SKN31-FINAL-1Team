@@ -1,9 +1,11 @@
+# users/serializers.py
+
 ###############################################################
 # 사용자 프로필 조회 및 기술 스택(UserSkill), 자격증(UserCertification), 공통 코드 정보(CommonCode)를 깔끔하게 조합
 ###############################################################
 
 from rest_framework import serializers
-from django.contrib.auth import get_user_model
+from django.contrib.auth import get_user_model, authenticate
 from users.models import UserSkill, UserCertification
 from common.models import CommonCode
 from drf_spectacular.utils import extend_schema_field
@@ -87,3 +89,36 @@ class UserDetailSerializer(serializers.ModelSerializer):
             'certifications',
         ]
         read_only_fields = ['id']
+
+        # ===============================================================
+# 로그인 관련 Serializers (추가)
+# ===============================================================
+
+class LoginRequestSerializer(serializers.Serializer):
+    """
+    로그인 요청 시 아이디/비밀번호 검증
+    """
+    username = serializers.CharField(required=True, help_text="사용자 아이디")
+    password = serializers.CharField(required=True, write_only=True, help_text="비밀번호")
+
+    def validate(self, attrs):
+        username = attrs.get('username')
+        password = attrs.get('password')
+
+        user = authenticate(username=username, password=password)
+
+        if not user:
+            raise serializers.ValidationError("아이디 또는 비밀번호가 올바르지 않습니다.")
+        if not user.is_active:
+            raise serializers.ValidationError("비활성화된 계정입니다.")
+
+        attrs['user'] = user
+        return attrs
+
+
+class LoginResponseSerializer(serializers.Serializer):
+    """
+    Swagger(drf-spectacular) 문서화를 위한 로그인 성공 응답 구조
+    """
+    message = serializers.CharField(default="로그인 성공")
+    user = UserSimpleSerializer()

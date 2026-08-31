@@ -1032,6 +1032,59 @@ paths:
                 items:
                   $ref: '#/components/schemas/UserDetail'
           description: ''
+  /api/users/login/:
+    post:
+      operationId: users_login_create
+      description: 아이디와 비밀번호를 검증하여 세션 로그인을 처리합니다.
+      summary: 사용자 로그인
+      tags:
+      - 0단계 - 사용자 관리
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
+  /api/users/logout/:
+    post:
+      operationId: users_logout_create
+      description: 현재 로그인된 세션을 종료합니다.
+      summary: 사용자 로그아웃
+      tags:
+      - 0단계 - 사용자 관리
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
   /api/users/me/:
     get:
       operationId: users_me_retrieve
@@ -1103,6 +1156,31 @@ components:
       required:
       - code_id
       - code_name
+    LoginRequest:
+      type: object
+      description: 로그인 요청 시 아이디/비밀번호 검증
+      properties:
+        username:
+          type: string
+          description: 사용자 아이디
+        password:
+          type: string
+          writeOnly: true
+          description: 비밀번호
+      required:
+      - password
+      - username
+    LoginResponse:
+      type: object
+      description: Swagger(drf-spectacular) 문서화를 위한 로그인 성공 응답 구조
+      properties:
+        message:
+          type: string
+          default: 로그인 성공
+        user:
+          $ref: '#/components/schemas/UserSimple'
+      required:
+      - user
     MeetingNote:
       type: object
       description: |-

@@ -60,26 +60,47 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [user]);
 
   const login = async (email: string, password: string) => {
-    const res = await fetch("/api/auth/login", {
+    // 1. 로그인 API 호출 (세션 쿠키 수신을 위해 credentials: "include" 필수)
+    // 명세서 규격: Request Body { username, password }
+    const res = await fetch("/api/users/login/", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, password }),
+      headers: {
+        "Content-Type": "application/json",
+      },
+      credentials: "include",
+      body: JSON.stringify({ username: email, password }),
     });
 
+    // 2. 예외 처리
     if (!res.ok) {
-      const errorData = await res.json();
-      throw new Error(errorData.error || "로그인에 실패했습니다.");
+      const errorData = await res.json().catch(() => ({}));
+      const errorMessage =
+        errorData.non_field_errors?.[0] ||
+        errorData.detail ||
+        errorData.error ||
+        "로그인에 실패했습니다.";
+      throw new Error(errorMessage);
     }
 
-    const userData = await res.json();
-    
-    // Map DB schema to Client Schema
+    // 3. 백엔드 응답 데이터 구조 처리
+    // 명세서 규격: Response Body { message: string, user: { id, username, full_name, emp_no } }
+    const data: {
+      message: string;
+      user: {
+        id: number | string;
+        username: string;
+        full_name: string;
+        emp_no: string | null;
+      };
+    } = await res.json();
+
+    // 4. Client Schema(User 타입)에 맞게 데이터 매핑
     const mappedUser: User = {
-      id: userData.id,
-      email: userData.email,
-      name: userData.name,
-      role: userData.role === "PM" ? "PM" : "MEMBER",
-      isFirstLogin: userData.mustChangePassword,
+      id: String(data.user.id),
+      email: data.user.username,
+      name: data.user.full_name,
+      role: "MEMBER", // 백엔드 기본 역할 매핑 (필요 시 로직 확장 가능)
+      isFirstLogin: false,
     };
 
     setUser(mappedUser);

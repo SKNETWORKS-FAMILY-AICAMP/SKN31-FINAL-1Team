@@ -6,7 +6,7 @@
         "group_name": "CERTIFICATION - CLOUD_DEVOPS",
         "description": "CERTIFICATION 대분류 하위 CLOUD_DEVOPS 그룹",
         "is_active": true,
-        "created_at": "2026-08-26T08:37:28.690Z"
+        "created_at": "2026-08-31T01:04:46.793Z"
     }
 },
 {
@@ -16,7 +16,7 @@
         "group_name": "CERTIFICATION - DATABASE",
         "description": "CERTIFICATION 대분류 하위 DATABASE 그룹",
         "is_active": true,
-        "created_at": "2026-08-26T08:37:28.718Z"
+        "created_at": "2026-08-31T01:04:46.913Z"
     }
 },
 {
@@ -26,7 +26,7 @@
         "group_name": "CERTIFICATION - DATA_AI",
         "description": "CERTIFICATION 대분류 하위 DATA_AI 그룹",
         "is_active": true,
-        "created_at": "2026-08-26T08:37:28.729Z"
+        "created_at": "2026-08-31T01:04:46.783Z"
     }
 },
 {
@@ -36,7 +36,7 @@
         "group_name": "CERTIFICATION - DESIGN",
         "description": "CERTIFICATION 대분류 하위 DESIGN 그룹",
         "is_active": true,
-        "created_at": "2026-08-26T08:37:28.741Z"
+        "created_at": "2026-08-31T01:04:46.855Z"
     }
 },
 {
@@ -46,7 +46,7 @@
         "group_name": "CERTIFICATION - LANGUAGE",
         "description": "CERTIFICATION 대분류 하위 LANGUAGE 그룹",
         "is_active": true,
-        "created_at": "2026-08-26T08:37:28.752Z"
+        "created_at": "2026-08-31T01:04:46.899Z"
     }
 },
 {
@@ -56,7 +56,7 @@
         "group_name": "CERTIFICATION - NETWORK",
         "description": "CERTIFICATION 대분류 하위 NETWORK 그룹",
         "is_active": true,
-        "created_at": "2026-08-26T08:37:28.759Z"
+        "created_at": "2026-08-31T01:04:46.823Z"
     }
 },
 {
@@ -66,7 +66,7 @@
         "group_name": "CERTIFICATION - OFFICE",
         "description": "CERTIFICATION 대분류 하위 OFFICE 그룹",
         "is_active": true,
-        "created_at": "2026-08-26T08:37:28.771Z"
+        "created_at": "2026-08-31T01:04:46.838Z"
     }
 },
 {
@@ -76,7 +76,7 @@
         "group_name": "CERTIFICATION - PM",
         "description": "CERTIFICATION 대분류 하위 PM 그룹",
         "is_active": true,
-        "created_at": "2026-08-26T08:37:28.788Z"
+        "created_at": "2026-08-31T01:04:46.906Z"
     }
 },
 {
@@ -86,7 +86,7 @@
         "group_name": "CERTIFICATION - SECURITY",
         "description": "CERTIFICATION 대분류 하위 SECURITY 그룹",
         "is_active": true,
-        "created_at": "2026-08-26T08:37:28.796Z"
+        "created_at": "2026-08-31T01:04:46.831Z"
     }
 },
 {
@@ -96,7 +96,7 @@
         "group_name": "CERTIFICATION - SOFTWARE_DEV",
         "description": "CERTIFICATION 대분류 하위 SOFTWARE_DEV 그룹",
         "is_active": true,
-        "created_at": "2026-08-26T08:37:28.813Z"
+        "created_at": "2026-08-31T01:04:46.866Z"
     }
 },
 {
@@ -106,7 +106,7 @@
         "group_name": "HISTORY - ENTITY_TYPE",
         "description": "HISTORY 대분류 하위 ENTITY_TYPE 그룹",
         "is_active": true,
-        "created_at": "2026-08-26T08:37:28.378Z"
+        "created_at": "2026-08-31T01:04:46.933Z"
     }
 },
 {
@@ -116,7 +116,7 @@
         "group_name": "HISTORY - PIPELINE_NAME",
         "description": "HISTORY 대분류 하위 PIPELINE_NAME 그룹",
         "is_active": true,
-        "created_at": "2026-08-26T08:37:28.362Z"
+        "created_at": "2026-08-31T01:04:46.940Z"
     }
 },
 {
@@ -126,7 +126,47 @@
         "group_name": "HISTORY - STATUS",
         "description": "HISTORY 대분류 하위 STATUS 그룹",
         "is_active": true,
-        "created_at": "2026-08-26T08:37:28.343Z"
+        "created_at": "2026-08-31T01:04:46.925Z"
+    }
+},
+{
+    "model": "common.commoncodegroup",
+    "pk": "MEETING_TYPE",
+    "fields": {
+        "group_name": "MEETING - TYPE",
+        "description": "MEETING 대분류 하위 TYPE 그룹",
+        "is_active": true,
+        "created_at": "2026-08-31T01:04:46.978Z"
+    }
+},
+{
+    "model": "common.commoncodegroup",
+    "pk": "PROJECT_STATUS",
+    "fields": {
+        "group_name": "PROJECT - STATUS",
+        "description": "PROJECT 대분류 하위 STATUS 그룹",
+        "is_active": true,
+        "created_at": "2026-08-31T01:04:47.000Z"
+    }
+},
+{
+    "model": "common.commoncodegroup",
+    "pk": "PROPOSAL_STATUS",
+    "fields": {
+        "group_name": "PROPOSAL - STATUS",
+        "description": "PROPOSAL 대분류 하위 STATUS 그룹",
+        "is_active": true,
+        "created_at": "2026-08-31T01:04:47.024Z"
+    }
+},
+{
+    "model": "common.commoncodegroup",
+    "pk": "REQSPEC_STATUS",
+    "fields": {
+        "group_name": "REQSPEC - STATUS",
+        "description": "REQSPEC 대분류 하위 STATUS 그룹",
+        "is_active": true,
+        "created_at": "2026-08-31T01:04:47.045Z"
     }
 },
 {
@@ -136,7 +176,7 @@
         "group_name": "SKILL - API",
         "description": "SKILL 대분류 하위 API 그룹",
         "is_active": true,
-        "created_at": "2026-08-26T08:37:28.395Z"
+        "created_at": "2026-08-31T01:04:47.194Z"
     }
 },
 {
@@ -146,7 +186,7 @@
         "group_name": "SKILL - BACKEND",
         "description": "SKILL 대분류 하위 BACKEND 그룹",
         "is_active": true,
-        "created_at": "2026-08-26T08:37:28.407Z"
+        "created_at": "2026-08-31T01:04:47.143Z"
     }
 },
 {
@@ -156,7 +196,7 @@
         "group_name": "SKILL - CLOUD_DEVOPS",
         "description": "SKILL 대분류 하위 CLOUD_DEVOPS 그룹",
         "is_active": true,
-        "created_at": "2026-08-26T08:37:28.444Z"
+        "created_at": "2026-08-31T01:04:47.090Z"
     }
 },
 {
@@ -166,7 +206,7 @@
         "group_name": "SKILL - DATABASE",
         "description": "SKILL 대분류 하위 DATABASE 그룹",
         "is_active": true,
-        "created_at": "2026-08-26T08:37:28.479Z"
+        "created_at": "2026-08-31T01:04:47.244Z"
     }
 },
 {
@@ -176,7 +216,7 @@
         "group_name": "SKILL - DATA_AI",
         "description": "SKILL 대분류 하위 DATA_AI 그룹",
         "is_active": true,
-        "created_at": "2026-08-26T08:37:28.511Z"
+        "created_at": "2026-08-31T01:04:47.127Z"
     }
 },
 {
@@ -186,7 +226,7 @@
         "group_name": "SKILL - DESIGN",
         "description": "SKILL 대분류 하위 DESIGN 그룹",
         "is_active": true,
-        "created_at": "2026-08-26T08:37:28.532Z"
+        "created_at": "2026-08-31T01:04:47.135Z"
     }
 },
 {
@@ -196,7 +236,7 @@
         "group_name": "SKILL - FRONTEND",
         "description": "SKILL 대분류 하위 FRONTEND 그룹",
         "is_active": true,
-        "created_at": "2026-08-26T08:37:28.562Z"
+        "created_at": "2026-08-31T01:04:47.082Z"
     }
 },
 {
@@ -206,7 +246,7 @@
         "group_name": "SKILL - LANGUAGE",
         "description": "SKILL 대분류 하위 LANGUAGE 그룹",
         "is_active": true,
-        "created_at": "2026-08-26T08:37:28.593Z"
+        "created_at": "2026-08-31T01:04:47.107Z"
     }
 },
 {
@@ -216,7 +256,7 @@
         "group_name": "SKILL - MOBILE",
         "description": "SKILL 대분류 하위 MOBILE 그룹",
         "is_active": true,
-        "created_at": "2026-08-26T08:37:28.631Z"
+        "created_at": "2026-08-31T01:04:47.075Z"
     }
 },
 {
@@ -226,7 +266,7 @@
         "group_name": "SKILL - PM",
         "description": "SKILL 대분류 하위 PM 그룹",
         "is_active": true,
-        "created_at": "2026-08-26T08:37:28.650Z"
+        "created_at": "2026-08-31T01:04:47.067Z"
     }
 },
 {
@@ -236,7 +276,7 @@
         "group_name": "SKILL - TEST",
         "description": "SKILL 대분류 하위 TEST 그룹",
         "is_active": true,
-        "created_at": "2026-08-26T08:37:28.666Z"
+        "created_at": "2026-08-31T01:04:47.120Z"
     }
 },
 {
@@ -246,7 +286,37 @@
         "group_name": "SKILL - VCS",
         "description": "SKILL 대분류 하위 VCS 그룹",
         "is_active": true,
-        "created_at": "2026-08-26T08:37:28.683Z"
+        "created_at": "2026-08-31T01:04:47.182Z"
+    }
+},
+{
+    "model": "common.commoncodegroup",
+    "pk": "TASK_DIFFICULTY",
+    "fields": {
+        "group_name": "TASK - DIFFICULTY",
+        "description": "TASK 대분류 하위 DIFFICULTY 그룹",
+        "is_active": true,
+        "created_at": "2026-08-31T01:04:47.395Z"
+    }
+},
+{
+    "model": "common.commoncodegroup",
+    "pk": "TASK_GIT_STATUS",
+    "fields": {
+        "group_name": "TASK - GIT_STATUS",
+        "description": "TASK 대분류 하위 GIT_STATUS 그룹",
+        "is_active": true,
+        "created_at": "2026-08-31T01:04:47.408Z"
+    }
+},
+{
+    "model": "common.commoncodegroup",
+    "pk": "TASK_STATUS",
+    "fields": {
+        "group_name": "TASK - STATUS",
+        "description": "TASK 대분류 하위 STATUS 그룹",
+        "is_active": true,
+        "created_at": "2026-08-31T01:04:47.376Z"
     }
 },
 {
@@ -256,7 +326,7 @@
         "group_name": "USER - DEPARTMENT",
         "description": "USER 대분류 하위 DEPARTMENT 그룹",
         "is_active": true,
-        "created_at": "2026-08-26T08:37:28.198Z"
+        "created_at": "2026-08-31T01:04:47.492Z"
     }
 },
 {
@@ -266,7 +336,7 @@
         "group_name": "USER - JOB_ROLE",
         "description": "USER 대분류 하위 JOB_ROLE 그룹",
         "is_active": true,
-        "created_at": "2026-08-26T08:37:28.235Z"
+        "created_at": "2026-08-31T01:04:47.475Z"
     }
 },
 {
@@ -276,7 +346,7 @@
         "group_name": "USER - POSITION",
         "description": "USER 대분류 하위 POSITION 그룹",
         "is_active": true,
-        "created_at": "2026-08-26T08:37:28.272Z"
+        "created_at": "2026-08-31T01:04:47.467Z"
     }
 },
 {
@@ -286,7 +356,7 @@
         "group_name": "USER - ROLE",
         "description": "USER 대분류 하위 ROLE 그룹",
         "is_active": true,
-        "created_at": "2026-08-26T08:37:28.306Z"
+        "created_at": "2026-08-31T01:04:47.459Z"
     }
 },
 {
@@ -296,7 +366,7 @@
         "group_name": "USER - STATUS",
         "description": "USER 대분류 하위 STATUS 그룹",
         "is_active": true,
-        "created_at": "2026-08-26T08:37:28.322Z"
+        "created_at": "2026-08-31T01:04:47.450Z"
     }
 },
 {
@@ -308,7 +378,7 @@
         "sort_order": 0,
         "is_active": true,
         "description": null,
-        "created_at": "2026-08-26T08:37:28.325Z"
+        "created_at": "2026-08-31T01:04:47.454Z"
     }
 },
 {
@@ -320,7 +390,7 @@
         "sort_order": 0,
         "is_active": true,
         "description": null,
-        "created_at": "2026-08-26T08:37:28.318Z"
+        "created_at": "2026-08-31T01:04:47.463Z"
     }
 },
 {
@@ -332,7 +402,7 @@
         "sort_order": 0,
         "is_active": true,
         "description": null,
-        "created_at": "2026-08-26T08:37:28.733Z"
+        "created_at": "2026-08-31T01:04:46.788Z"
     }
 },
 {
@@ -344,7 +414,7 @@
         "sort_order": 0,
         "is_active": true,
         "description": null,
-        "created_at": "2026-08-26T08:37:28.654Z"
+        "created_at": "2026-08-31T01:04:47.072Z"
     }
 },
 {
@@ -356,7 +426,7 @@
         "sort_order": 0,
         "is_active": true,
         "description": null,
-        "created_at": "2026-08-26T08:37:28.639Z"
+        "created_at": "2026-08-31T01:04:47.079Z"
     }
 },
 {
@@ -368,7 +438,19 @@
         "sort_order": 0,
         "is_active": true,
         "description": null,
-        "created_at": "2026-08-26T08:37:28.578Z"
+        "created_at": "2026-08-31T01:04:47.087Z"
+    }
+},
+{
+    "model": "common.commoncode",
+    "pk": "APPROVED",
+    "fields": {
+        "group": "REQSPEC_STATUS",
+        "code_name": "승인완료",
+        "sort_order": 0,
+        "is_active": true,
+        "description": null,
+        "created_at": "2026-08-31T01:04:47.029Z"
     }
 },
 {
@@ -380,7 +462,7 @@
         "sort_order": 0,
         "is_active": true,
         "description": null,
-        "created_at": "2026-08-26T08:37:28.280Z"
+        "created_at": "2026-08-31T01:04:47.471Z"
     }
 },
 {
@@ -392,7 +474,7 @@
         "sort_order": 0,
         "is_active": true,
         "description": null,
-        "created_at": "2026-08-26T08:37:28.456Z"
+        "created_at": "2026-08-31T01:04:47.094Z"
     }
 },
 {
@@ -404,7 +486,7 @@
         "sort_order": 0,
         "is_active": true,
         "description": null,
-        "created_at": "2026-08-26T08:37:28.699Z"
+        "created_at": "2026-08-31T01:04:46.797Z"
     }
 },
 {
@@ -416,7 +498,7 @@
         "sort_order": 0,
         "is_active": true,
         "description": null,
-        "created_at": "2026-08-26T08:37:28.694Z"
+        "created_at": "2026-08-31T01:04:46.802Z"
     }
 },
 {
@@ -428,7 +510,7 @@
         "sort_order": 0,
         "is_active": true,
         "description": null,
-        "created_at": "2026-08-26T08:37:28.703Z"
+        "created_at": "2026-08-31T01:04:46.808Z"
     }
 },
 {
@@ -440,7 +522,7 @@
         "sort_order": 0,
         "is_active": true,
         "description": null,
-        "created_at": "2026-08-26T08:37:28.464Z"
+        "created_at": "2026-08-31T01:04:47.099Z"
     }
 },
 {
@@ -452,7 +534,7 @@
         "sort_order": 0,
         "is_active": true,
         "description": null,
-        "created_at": "2026-08-26T08:37:28.710Z"
+        "created_at": "2026-08-31T01:04:46.813Z"
     }
 },
 {
@@ -464,7 +546,19 @@
         "sort_order": 0,
         "is_active": true,
         "description": null,
-        "created_at": "2026-08-26T08:37:28.242Z"
+        "created_at": "2026-08-31T01:04:47.480Z"
+    }
+},
+{
+    "model": "common.commoncode",
+    "pk": "BACKLOG",
+    "fields": {
+        "group": "TASK_STATUS",
+        "code_name": "대기",
+        "sort_order": 0,
+        "is_active": true,
+        "description": null,
+        "created_at": "2026-08-31T01:04:47.380Z"
     }
 },
 {
@@ -476,7 +570,19 @@
         "sort_order": 0,
         "is_active": true,
         "description": null,
-        "created_at": "2026-08-26T08:37:28.737Z"
+        "created_at": "2026-08-31T01:04:46.818Z"
+    }
+},
+{
+    "model": "common.commoncode",
+    "pk": "CANCELLED",
+    "fields": {
+        "group": "TASK_STATUS",
+        "code_name": "취소됨",
+        "sort_order": 0,
+        "is_active": true,
+        "description": null,
+        "created_at": "2026-08-31T01:04:47.004Z"
     }
 },
 {
@@ -488,7 +594,7 @@
         "sort_order": 0,
         "is_active": true,
         "description": null,
-        "created_at": "2026-08-26T08:37:28.767Z"
+        "created_at": "2026-08-31T01:04:46.827Z"
     }
 },
 {
@@ -500,7 +606,7 @@
         "sort_order": 0,
         "is_active": true,
         "description": null,
-        "created_at": "2026-08-26T08:37:28.810Z"
+        "created_at": "2026-08-31T01:04:46.834Z"
     }
 },
 {
@@ -512,7 +618,19 @@
         "sort_order": 0,
         "is_active": true,
         "description": null,
-        "created_at": "2026-08-26T08:37:28.472Z"
+        "created_at": "2026-08-31T01:04:47.104Z"
+    }
+},
+{
+    "model": "common.commoncode",
+    "pk": "COMPLETED",
+    "fields": {
+        "group": "PROJECT_STATUS",
+        "code_name": "완료",
+        "sort_order": 0,
+        "is_active": true,
+        "description": null,
+        "created_at": "2026-08-31T01:04:47.008Z"
     }
 },
 {
@@ -524,7 +642,7 @@
         "sort_order": 0,
         "is_active": true,
         "description": null,
-        "created_at": "2026-08-26T08:37:28.774Z"
+        "created_at": "2026-08-31T01:04:46.842Z"
     }
 },
 {
@@ -536,7 +654,7 @@
         "sort_order": 0,
         "is_active": true,
         "description": null,
-        "created_at": "2026-08-26T08:37:28.780Z"
+        "created_at": "2026-08-31T01:04:46.847Z"
     }
 },
 {
@@ -548,7 +666,7 @@
         "sort_order": 0,
         "is_active": true,
         "description": null,
-        "created_at": "2026-08-26T08:37:28.627Z"
+        "created_at": "2026-08-31T01:04:47.111Z"
     }
 },
 {
@@ -560,7 +678,7 @@
         "sort_order": 0,
         "is_active": true,
         "description": null,
-        "created_at": "2026-08-26T08:37:28.585Z"
+        "created_at": "2026-08-31T01:04:47.116Z"
     }
 },
 {
@@ -572,7 +690,7 @@
         "sort_order": 0,
         "is_active": true,
         "description": null,
-        "created_at": "2026-08-26T08:37:28.675Z"
+        "created_at": "2026-08-31T01:04:47.123Z"
     }
 },
 {
@@ -584,7 +702,7 @@
         "sort_order": 0,
         "is_active": true,
         "description": null,
-        "created_at": "2026-08-26T08:37:28.515Z"
+        "created_at": "2026-08-31T01:04:47.132Z"
     }
 },
 {
@@ -596,7 +714,7 @@
         "sort_order": 0,
         "is_active": true,
         "description": null,
-        "created_at": "2026-08-26T08:37:28.268Z"
+        "created_at": "2026-08-31T01:04:47.484Z"
     }
 },
 {
@@ -608,7 +726,7 @@
         "sort_order": 0,
         "is_active": true,
         "description": null,
-        "created_at": "2026-08-26T08:37:28.292Z"
+        "created_at": "2026-08-31T01:04:47.488Z"
     }
 },
 {
@@ -620,7 +738,7 @@
         "sort_order": 0,
         "is_active": true,
         "description": null,
-        "created_at": "2026-08-26T08:37:28.558Z"
+        "created_at": "2026-08-31T01:04:47.139Z"
     }
 },
 {
@@ -632,7 +750,7 @@
         "sort_order": 0,
         "is_active": true,
         "description": null,
-        "created_at": "2026-08-26T08:37:28.208Z"
+        "created_at": "2026-08-31T01:04:47.497Z"
     }
 },
 {
@@ -644,7 +762,7 @@
         "sort_order": 0,
         "is_active": true,
         "description": null,
-        "created_at": "2026-08-26T08:37:28.251Z"
+        "created_at": "2026-08-31T01:04:47.507Z"
     }
 },
 {
@@ -656,7 +774,7 @@
         "sort_order": 0,
         "is_active": true,
         "description": null,
-        "created_at": "2026-08-26T08:37:28.203Z"
+        "created_at": "2026-08-31T01:04:47.502Z"
     }
 },
 {
@@ -668,7 +786,7 @@
         "sort_order": 0,
         "is_active": true,
         "description": null,
-        "created_at": "2026-08-26T08:37:28.301Z"
+        "created_at": "2026-08-31T01:04:47.512Z"
     }
 },
 {
@@ -680,7 +798,7 @@
         "sort_order": 0,
         "is_active": true,
         "description": null,
-        "created_at": "2026-08-26T08:37:28.422Z"
+        "created_at": "2026-08-31T01:04:47.147Z"
     }
 },
 {
@@ -692,7 +810,19 @@
         "sort_order": 0,
         "is_active": true,
         "description": null,
-        "created_at": "2026-08-26T08:37:28.448Z"
+        "created_at": "2026-08-31T01:04:47.152Z"
+    }
+},
+{
+    "model": "common.commoncode",
+    "pk": "DONE",
+    "fields": {
+        "group": "TASK_STATUS",
+        "code_name": "완료",
+        "sort_order": 0,
+        "is_active": true,
+        "description": null,
+        "created_at": "2026-08-31T01:04:47.390Z"
     }
 },
 {
@@ -704,7 +834,19 @@
         "sort_order": 0,
         "is_active": true,
         "description": null,
-        "created_at": "2026-08-26T08:37:28.435Z"
+        "created_at": "2026-08-31T01:04:47.156Z"
+    }
+},
+{
+    "model": "common.commoncode",
+    "pk": "DRAFT",
+    "fields": {
+        "group": "REQSPEC_STATUS",
+        "code_name": "초안",
+        "sort_order": 0,
+        "is_active": true,
+        "description": null,
+        "created_at": "2026-08-31T01:04:47.033Z"
     }
 },
 {
@@ -716,7 +858,7 @@
         "sort_order": 0,
         "is_active": true,
         "description": null,
-        "created_at": "2026-08-26T08:37:28.309Z"
+        "created_at": "2026-08-31T01:04:47.518Z"
     }
 },
 {
@@ -728,7 +870,7 @@
         "sort_order": 0,
         "is_active": true,
         "description": null,
-        "created_at": "2026-08-26T08:37:28.415Z"
+        "created_at": "2026-08-31T01:04:47.160Z"
     }
 },
 {
@@ -740,7 +882,7 @@
         "sort_order": 0,
         "is_active": true,
         "description": null,
-        "created_at": "2026-08-26T08:37:28.355Z"
+        "created_at": "2026-08-31T01:04:46.929Z"
     }
 },
 {
@@ -752,7 +894,7 @@
         "sort_order": 0,
         "is_active": true,
         "description": null,
-        "created_at": "2026-08-26T08:37:28.427Z"
+        "created_at": "2026-08-31T01:04:47.165Z"
     }
 },
 {
@@ -764,7 +906,7 @@
         "sort_order": 0,
         "is_active": true,
         "description": null,
-        "created_at": "2026-08-26T08:37:28.535Z"
+        "created_at": "2026-08-31T01:04:47.170Z"
     }
 },
 {
@@ -776,7 +918,7 @@
         "sort_order": 0,
         "is_active": true,
         "description": null,
-        "created_at": "2026-08-26T08:37:28.647Z"
+        "created_at": "2026-08-31T01:04:47.174Z"
     }
 },
 {
@@ -788,7 +930,7 @@
         "sort_order": 0,
         "is_active": true,
         "description": null,
-        "created_at": "2026-08-26T08:37:28.238Z"
+        "created_at": "2026-08-31T01:04:47.522Z"
     }
 },
 {
@@ -800,7 +942,7 @@
         "sort_order": 0,
         "is_active": true,
         "description": null,
-        "created_at": "2026-08-26T08:37:28.247Z"
+        "created_at": "2026-08-31T01:04:47.527Z"
     }
 },
 {
@@ -812,7 +954,7 @@
         "sort_order": 0,
         "is_active": true,
         "description": null,
-        "created_at": "2026-08-26T08:37:28.460Z"
+        "created_at": "2026-08-31T01:04:47.178Z"
     }
 },
 {
@@ -824,7 +966,7 @@
         "sort_order": 0,
         "is_active": true,
         "description": null,
-        "created_at": "2026-08-26T08:37:28.707Z"
+        "created_at": "2026-08-31T01:04:46.851Z"
     }
 },
 {
@@ -836,7 +978,7 @@
         "sort_order": 0,
         "is_active": true,
         "description": null,
-        "created_at": "2026-08-26T08:37:28.297Z"
+        "created_at": "2026-08-31T01:04:47.532Z"
     }
 },
 {
@@ -848,7 +990,7 @@
         "sort_order": 0,
         "is_active": true,
         "description": null,
-        "created_at": "2026-08-26T08:37:28.687Z"
+        "created_at": "2026-08-31T01:04:47.185Z"
     }
 },
 {
@@ -860,7 +1002,7 @@
         "sort_order": 0,
         "is_active": true,
         "description": null,
-        "created_at": "2026-08-26T08:37:28.616Z"
+        "created_at": "2026-08-31T01:04:47.190Z"
     }
 },
 {
@@ -872,7 +1014,7 @@
         "sort_order": 0,
         "is_active": true,
         "description": null,
-        "created_at": "2026-08-26T08:37:28.399Z"
+        "created_at": "2026-08-31T01:04:47.198Z"
     }
 },
 {
@@ -884,7 +1026,7 @@
         "sort_order": 0,
         "is_active": true,
         "description": null,
-        "created_at": "2026-08-26T08:37:28.745Z"
+        "created_at": "2026-08-31T01:04:46.859Z"
     }
 },
 {
@@ -896,7 +1038,19 @@
         "sort_order": 0,
         "is_active": true,
         "description": null,
-        "created_at": "2026-08-26T08:37:28.749Z"
+        "created_at": "2026-08-31T01:04:46.863Z"
+    }
+},
+{
+    "model": "common.commoncode",
+    "pk": "HIGH",
+    "fields": {
+        "group": "TASK_DIFFICULTY",
+        "code_name": "높음",
+        "sort_order": 0,
+        "is_active": true,
+        "description": null,
+        "created_at": "2026-08-31T01:04:47.399Z"
     }
 },
 {
@@ -908,7 +1062,7 @@
         "sort_order": 0,
         "is_active": true,
         "description": null,
-        "created_at": "2026-08-26T08:37:28.227Z"
+        "created_at": "2026-08-31T01:04:47.536Z"
     }
 },
 {
@@ -920,7 +1074,7 @@
         "sort_order": 0,
         "is_active": true,
         "description": null,
-        "created_at": "2026-08-26T08:37:28.582Z"
+        "created_at": "2026-08-31T01:04:47.202Z"
     }
 },
 {
@@ -932,7 +1086,7 @@
         "sort_order": 0,
         "is_active": true,
         "description": null,
-        "created_at": "2026-08-26T08:37:28.543Z"
+        "created_at": "2026-08-31T01:04:47.206Z"
     }
 },
 {
@@ -944,7 +1098,7 @@
         "sort_order": 0,
         "is_active": true,
         "description": null,
-        "created_at": "2026-08-26T08:37:28.817Z"
+        "created_at": "2026-08-31T01:04:46.870Z"
     }
 },
 {
@@ -956,7 +1110,7 @@
         "sort_order": 0,
         "is_active": true,
         "description": null,
-        "created_at": "2026-08-26T08:37:28.822Z"
+        "created_at": "2026-08-31T01:04:46.874Z"
     }
 },
 {
@@ -968,7 +1122,7 @@
         "sort_order": 0,
         "is_active": true,
         "description": null,
-        "created_at": "2026-08-26T08:37:28.800Z"
+        "created_at": "2026-08-31T01:04:46.878Z"
     }
 },
 {
@@ -980,7 +1134,31 @@
         "sort_order": 0,
         "is_active": true,
         "description": null,
-        "created_at": "2026-08-26T08:37:28.805Z"
+        "created_at": "2026-08-31T01:04:46.882Z"
+    }
+},
+{
+    "model": "common.commoncode",
+    "pk": "IN_PROGRESS",
+    "fields": {
+        "group": "TASK_STATUS",
+        "code_name": "진행 중",
+        "sort_order": 0,
+        "is_active": true,
+        "description": null,
+        "created_at": "2026-08-31T01:04:47.012Z"
+    }
+},
+{
+    "model": "common.commoncode",
+    "pk": "IN_REVIEW",
+    "fields": {
+        "group": "TASK_GIT_STATUS",
+        "code_name": "PR리뷰중",
+        "sort_order": 0,
+        "is_active": true,
+        "description": null,
+        "created_at": "2026-08-31T01:04:47.412Z"
     }
 },
 {
@@ -992,7 +1170,7 @@
         "sort_order": 0,
         "is_active": true,
         "description": null,
-        "created_at": "2026-08-26T08:37:28.635Z"
+        "created_at": "2026-08-31T01:04:47.210Z"
     }
 },
 {
@@ -1004,7 +1182,7 @@
         "sort_order": 0,
         "is_active": true,
         "description": null,
-        "created_at": "2026-08-26T08:37:28.784Z"
+        "created_at": "2026-08-31T01:04:46.886Z"
     }
 },
 {
@@ -1016,7 +1194,7 @@
         "sort_order": 0,
         "is_active": true,
         "description": null,
-        "created_at": "2026-08-26T08:37:28.607Z"
+        "created_at": "2026-08-31T01:04:47.214Z"
     }
 },
 {
@@ -1028,7 +1206,7 @@
         "sort_order": 0,
         "is_active": true,
         "description": null,
-        "created_at": "2026-08-26T08:37:28.600Z"
+        "created_at": "2026-08-31T01:04:47.218Z"
     }
 },
 {
@@ -1040,7 +1218,7 @@
         "sort_order": 0,
         "is_active": true,
         "description": null,
-        "created_at": "2026-08-26T08:37:28.670Z"
+        "created_at": "2026-08-31T01:04:47.223Z"
     }
 },
 {
@@ -1052,7 +1230,19 @@
         "sort_order": 0,
         "is_active": true,
         "description": null,
-        "created_at": "2026-08-26T08:37:28.662Z"
+        "created_at": "2026-08-31T01:04:47.227Z"
+    }
+},
+{
+    "model": "common.commoncode",
+    "pk": "KICKOFF",
+    "fields": {
+        "group": "MEETING_TYPE",
+        "code_name": "킥오프",
+        "sort_order": 0,
+        "is_active": true,
+        "description": null,
+        "created_at": "2026-08-31T01:04:46.982Z"
     }
 },
 {
@@ -1064,7 +1254,7 @@
         "sort_order": 0,
         "is_active": true,
         "description": null,
-        "created_at": "2026-08-26T08:37:28.611Z"
+        "created_at": "2026-08-31T01:04:47.231Z"
     }
 },
 {
@@ -1076,7 +1266,7 @@
         "sort_order": 0,
         "is_active": true,
         "description": null,
-        "created_at": "2026-08-26T08:37:28.452Z"
+        "created_at": "2026-08-31T01:04:47.236Z"
     }
 },
 {
@@ -1088,7 +1278,7 @@
         "sort_order": 0,
         "is_active": true,
         "description": null,
-        "created_at": "2026-08-26T08:37:28.329Z"
+        "created_at": "2026-08-31T01:04:47.541Z"
     }
 },
 {
@@ -1100,7 +1290,7 @@
         "sort_order": 0,
         "is_active": true,
         "description": null,
-        "created_at": "2026-08-26T08:37:28.475Z"
+        "created_at": "2026-08-31T01:04:47.240Z"
     }
 },
 {
@@ -1112,7 +1302,7 @@
         "sort_order": 0,
         "is_active": true,
         "description": null,
-        "created_at": "2026-08-26T08:37:28.715Z"
+        "created_at": "2026-08-31T01:04:46.890Z"
     }
 },
 {
@@ -1124,7 +1314,19 @@
         "sort_order": 0,
         "is_active": true,
         "description": null,
-        "created_at": "2026-08-26T08:37:28.339Z"
+        "created_at": "2026-08-31T01:04:47.545Z"
+    }
+},
+{
+    "model": "common.commoncode",
+    "pk": "LOW",
+    "fields": {
+        "group": "TASK_DIFFICULTY",
+        "code_name": "낮음",
+        "sort_order": 0,
+        "is_active": true,
+        "description": null,
+        "created_at": "2026-08-31T01:04:47.416Z"
     }
 },
 {
@@ -1136,7 +1338,7 @@
         "sort_order": 0,
         "is_active": true,
         "description": null,
-        "created_at": "2026-08-26T08:37:28.288Z"
+        "created_at": "2026-08-31T01:04:47.549Z"
     }
 },
 {
@@ -1148,7 +1350,19 @@
         "sort_order": 0,
         "is_active": true,
         "description": null,
-        "created_at": "2026-08-26T08:37:28.223Z"
+        "created_at": "2026-08-31T01:04:47.554Z"
+    }
+},
+{
+    "model": "common.commoncode",
+    "pk": "MEDIUM",
+    "fields": {
+        "group": "TASK_DIFFICULTY",
+        "code_name": "보통",
+        "sort_order": 0,
+        "is_active": true,
+        "description": null,
+        "created_at": "2026-08-31T01:04:47.422Z"
     }
 },
 {
@@ -1160,7 +1374,7 @@
         "sort_order": 0,
         "is_active": true,
         "description": null,
-        "created_at": "2026-08-26T08:37:28.382Z"
+        "created_at": "2026-08-31T01:04:46.936Z"
     }
 },
 {
@@ -1172,7 +1386,19 @@
         "sort_order": 0,
         "is_active": true,
         "description": null,
-        "created_at": "2026-08-26T08:37:28.367Z"
+        "created_at": "2026-08-31T01:04:46.943Z"
+    }
+},
+{
+    "model": "common.commoncode",
+    "pk": "MERGED",
+    "fields": {
+        "group": "TASK_GIT_STATUS",
+        "code_name": "완료",
+        "sort_order": 0,
+        "is_active": true,
+        "description": null,
+        "created_at": "2026-08-31T01:04:47.429Z"
     }
 },
 {
@@ -1184,7 +1410,7 @@
         "sort_order": 0,
         "is_active": true,
         "description": null,
-        "created_at": "2026-08-26T08:37:28.496Z"
+        "created_at": "2026-08-31T01:04:47.249Z"
     }
 },
 {
@@ -1196,7 +1422,7 @@
         "sort_order": 0,
         "is_active": true,
         "description": null,
-        "created_at": "2026-08-26T08:37:28.491Z"
+        "created_at": "2026-08-31T01:04:47.253Z"
     }
 },
 {
@@ -1208,7 +1434,7 @@
         "sort_order": 0,
         "is_active": true,
         "description": null,
-        "created_at": "2026-08-26T08:37:28.418Z"
+        "created_at": "2026-08-31T01:04:47.257Z"
     }
 },
 {
@@ -1220,7 +1446,7 @@
         "sort_order": 0,
         "is_active": true,
         "description": null,
-        "created_at": "2026-08-26T08:37:28.763Z"
+        "created_at": "2026-08-31T01:04:46.894Z"
     }
 },
 {
@@ -1232,7 +1458,7 @@
         "sort_order": 0,
         "is_active": true,
         "description": null,
-        "created_at": "2026-08-26T08:37:28.570Z"
+        "created_at": "2026-08-31T01:04:47.261Z"
     }
 },
 {
@@ -1244,7 +1470,19 @@
         "sort_order": 0,
         "is_active": true,
         "description": null,
-        "created_at": "2026-08-26T08:37:28.411Z"
+        "created_at": "2026-08-31T01:04:47.266Z"
+    }
+},
+{
+    "model": "common.commoncode",
+    "pk": "NONE",
+    "fields": {
+        "group": "TASK_GIT_STATUS",
+        "code_name": "미연동",
+        "sort_order": 0,
+        "is_active": true,
+        "description": null,
+        "created_at": "2026-08-31T01:04:47.434Z"
     }
 },
 {
@@ -1256,7 +1494,19 @@
         "sort_order": 0,
         "is_active": true,
         "description": null,
-        "created_at": "2026-08-26T08:37:28.756Z"
+        "created_at": "2026-08-31T01:04:46.902Z"
+    }
+},
+{
+    "model": "common.commoncode",
+    "pk": "ON_HOLD",
+    "fields": {
+        "group": "PROJECT_STATUS",
+        "code_name": "보류",
+        "sort_order": 0,
+        "is_active": true,
+        "description": null,
+        "created_at": "2026-08-31T01:04:47.016Z"
     }
 },
 {
@@ -1268,7 +1518,7 @@
         "sort_order": 0,
         "is_active": true,
         "description": null,
-        "created_at": "2026-08-26T08:37:28.520Z"
+        "created_at": "2026-08-31T01:04:47.270Z"
     }
 },
 {
@@ -1280,7 +1530,43 @@
         "sort_order": 0,
         "is_active": true,
         "description": null,
-        "created_at": "2026-08-26T08:37:28.358Z"
+        "created_at": "2026-08-31T01:04:46.948Z"
+    }
+},
+{
+    "model": "common.commoncode",
+    "pk": "PENDING",
+    "fields": {
+        "group": "TASK_GIT_STATUS",
+        "code_name": "대기",
+        "sort_order": 0,
+        "is_active": true,
+        "description": null,
+        "created_at": "2026-08-31T01:04:47.439Z"
+    }
+},
+{
+    "model": "common.commoncode",
+    "pk": "PENDING_APPROVAL",
+    "fields": {
+        "group": "TASK_STATUS",
+        "code_name": "배분승인대기",
+        "sort_order": 0,
+        "is_active": true,
+        "description": null,
+        "created_at": "2026-08-31T01:04:47.445Z"
+    }
+},
+{
+    "model": "common.commoncode",
+    "pk": "PENDING_REVIEW",
+    "fields": {
+        "group": "REQSPEC_STATUS",
+        "code_name": "승인대기",
+        "sort_order": 0,
+        "is_active": true,
+        "description": null,
+        "created_at": "2026-08-31T01:04:47.037Z"
     }
 },
 {
@@ -1292,7 +1578,7 @@
         "sort_order": 0,
         "is_active": true,
         "description": null,
-        "created_at": "2026-08-26T08:37:28.547Z"
+        "created_at": "2026-08-31T01:04:47.274Z"
     }
 },
 {
@@ -1304,7 +1590,19 @@
         "sort_order": 0,
         "is_active": true,
         "description": null,
-        "created_at": "2026-08-26T08:37:28.624Z"
+        "created_at": "2026-08-31T01:04:47.278Z"
+    }
+},
+{
+    "model": "common.commoncode",
+    "pk": "PLANNING",
+    "fields": {
+        "group": "PROJECT_STATUS",
+        "code_name": "기획중",
+        "sort_order": 0,
+        "is_active": true,
+        "description": null,
+        "created_at": "2026-08-31T01:04:47.020Z"
     }
 },
 {
@@ -1316,7 +1614,7 @@
         "sort_order": 0,
         "is_active": true,
         "description": null,
-        "created_at": "2026-08-26T08:37:28.214Z"
+        "created_at": "2026-08-31T01:04:47.558Z"
     }
 },
 {
@@ -1328,7 +1626,7 @@
         "sort_order": 0,
         "is_active": true,
         "description": null,
-        "created_at": "2026-08-26T08:37:28.792Z"
+        "created_at": "2026-08-31T01:04:46.910Z"
     }
 },
 {
@@ -1340,7 +1638,7 @@
         "sort_order": 0,
         "is_active": true,
         "description": null,
-        "created_at": "2026-08-26T08:37:28.483Z"
+        "created_at": "2026-08-31T01:04:47.283Z"
     }
 },
 {
@@ -1352,7 +1650,7 @@
         "sort_order": 0,
         "is_active": true,
         "description": null,
-        "created_at": "2026-08-26T08:37:28.440Z"
+        "created_at": "2026-08-31T01:04:47.287Z"
     }
 },
 {
@@ -1364,7 +1662,7 @@
         "sort_order": 0,
         "is_active": true,
         "description": null,
-        "created_at": "2026-08-26T08:37:28.260Z"
+        "created_at": "2026-08-31T01:04:47.563Z"
     }
 },
 {
@@ -1376,7 +1674,7 @@
         "sort_order": 0,
         "is_active": true,
         "description": null,
-        "created_at": "2026-08-26T08:37:28.387Z"
+        "created_at": "2026-08-31T01:04:46.952Z"
     }
 },
 {
@@ -1388,7 +1686,7 @@
         "sort_order": 0,
         "is_active": true,
         "description": null,
-        "created_at": "2026-08-26T08:37:28.371Z"
+        "created_at": "2026-08-31T01:04:46.956Z"
     }
 },
 {
@@ -1400,7 +1698,7 @@
         "sort_order": 0,
         "is_active": true,
         "description": null,
-        "created_at": "2026-08-26T08:37:28.551Z"
+        "created_at": "2026-08-31T01:04:47.291Z"
     }
 },
 {
@@ -1412,7 +1710,7 @@
         "sort_order": 0,
         "is_active": true,
         "description": null,
-        "created_at": "2026-08-26T08:37:28.604Z"
+        "created_at": "2026-08-31T01:04:47.296Z"
     }
 },
 {
@@ -1424,7 +1722,7 @@
         "sort_order": 0,
         "is_active": true,
         "description": null,
-        "created_at": "2026-08-26T08:37:28.527Z"
+        "created_at": "2026-08-31T01:04:47.300Z"
     }
 },
 {
@@ -1436,7 +1734,7 @@
         "sort_order": 0,
         "is_active": true,
         "description": null,
-        "created_at": "2026-08-26T08:37:28.264Z"
+        "created_at": "2026-08-31T01:04:47.567Z"
     }
 },
 {
@@ -1448,7 +1746,7 @@
         "sort_order": 0,
         "is_active": true,
         "description": null,
-        "created_at": "2026-08-26T08:37:28.219Z"
+        "created_at": "2026-08-31T01:04:47.572Z"
     }
 },
 {
@@ -1460,7 +1758,7 @@
         "sort_order": 0,
         "is_active": true,
         "description": null,
-        "created_at": "2026-08-26T08:37:28.566Z"
+        "created_at": "2026-08-31T01:04:47.304Z"
     }
 },
 {
@@ -1472,7 +1770,7 @@
         "sort_order": 0,
         "is_active": true,
         "description": null,
-        "created_at": "2026-08-26T08:37:28.643Z"
+        "created_at": "2026-08-31T01:04:47.308Z"
     }
 },
 {
@@ -1484,7 +1782,31 @@
         "sort_order": 0,
         "is_active": true,
         "description": null,
-        "created_at": "2026-08-26T08:37:28.500Z"
+        "created_at": "2026-08-31T01:04:47.313Z"
+    }
+},
+{
+    "model": "common.commoncode",
+    "pk": "REGULAR",
+    "fields": {
+        "group": "MEETING_TYPE",
+        "code_name": "정기회의",
+        "sort_order": 0,
+        "is_active": true,
+        "description": null,
+        "created_at": "2026-08-31T01:04:46.988Z"
+    }
+},
+{
+    "model": "common.commoncode",
+    "pk": "REJECTED",
+    "fields": {
+        "group": "REQSPEC_STATUS",
+        "code_name": "반려",
+        "sort_order": 0,
+        "is_active": true,
+        "description": null,
+        "created_at": "2026-08-31T01:04:47.041Z"
     }
 },
 {
@@ -1496,7 +1818,7 @@
         "sort_order": 0,
         "is_active": true,
         "description": null,
-        "created_at": "2026-08-26T08:37:28.391Z"
+        "created_at": "2026-08-31T01:04:46.961Z"
     }
 },
 {
@@ -1508,7 +1830,7 @@
         "sort_order": 0,
         "is_active": true,
         "description": null,
-        "created_at": "2026-08-26T08:37:28.374Z"
+        "created_at": "2026-08-31T01:04:46.965Z"
     }
 },
 {
@@ -1520,7 +1842,7 @@
         "sort_order": 0,
         "is_active": true,
         "description": null,
-        "created_at": "2026-08-26T08:37:28.334Z"
+        "created_at": "2026-08-31T01:04:47.576Z"
     }
 },
 {
@@ -1532,7 +1854,31 @@
         "sort_order": 0,
         "is_active": true,
         "description": null,
-        "created_at": "2026-08-26T08:37:28.404Z"
+        "created_at": "2026-08-31T01:04:47.318Z"
+    }
+},
+{
+    "model": "common.commoncode",
+    "pk": "RETROSPECTIVE",
+    "fields": {
+        "group": "MEETING_TYPE",
+        "code_name": "회고",
+        "sort_order": 0,
+        "is_active": true,
+        "description": null,
+        "created_at": "2026-08-31T01:04:46.992Z"
+    }
+},
+{
+    "model": "common.commoncode",
+    "pk": "REVIEW",
+    "fields": {
+        "group": "MEETING_TYPE",
+        "code_name": "리뷰",
+        "sort_order": 0,
+        "is_active": true,
+        "description": null,
+        "created_at": "2026-08-31T01:04:46.996Z"
     }
 },
 {
@@ -1544,7 +1890,7 @@
         "sort_order": 0,
         "is_active": true,
         "description": null,
-        "created_at": "2026-08-26T08:37:28.347Z"
+        "created_at": "2026-08-31T01:04:46.969Z"
     }
 },
 {
@@ -1556,7 +1902,7 @@
         "sort_order": 0,
         "is_active": true,
         "description": null,
-        "created_at": "2026-08-26T08:37:28.619Z"
+        "created_at": "2026-08-31T01:04:47.322Z"
     }
 },
 {
@@ -1568,7 +1914,7 @@
         "sort_order": 0,
         "is_active": true,
         "description": null,
-        "created_at": "2026-08-26T08:37:28.231Z"
+        "created_at": "2026-08-31T01:04:47.581Z"
     }
 },
 {
@@ -1580,7 +1926,7 @@
         "sort_order": 0,
         "is_active": true,
         "description": null,
-        "created_at": "2026-08-26T08:37:28.658Z"
+        "created_at": "2026-08-31T01:04:47.326Z"
     }
 },
 {
@@ -1592,7 +1938,7 @@
         "sort_order": 0,
         "is_active": true,
         "description": null,
-        "created_at": "2026-08-26T08:37:28.679Z"
+        "created_at": "2026-08-31T01:04:47.331Z"
     }
 },
 {
@@ -1604,7 +1950,7 @@
         "sort_order": 0,
         "is_active": true,
         "description": null,
-        "created_at": "2026-08-26T08:37:28.284Z"
+        "created_at": "2026-08-31T01:04:47.586Z"
     }
 },
 {
@@ -1616,7 +1962,7 @@
         "sort_order": 0,
         "is_active": true,
         "description": null,
-        "created_at": "2026-08-26T08:37:28.539Z"
+        "created_at": "2026-08-31T01:04:47.336Z"
     }
 },
 {
@@ -1628,7 +1974,7 @@
         "sort_order": 0,
         "is_active": true,
         "description": null,
-        "created_at": "2026-08-26T08:37:28.431Z"
+        "created_at": "2026-08-31T01:04:47.340Z"
     }
 },
 {
@@ -1640,7 +1986,7 @@
         "sort_order": 0,
         "is_active": true,
         "description": null,
-        "created_at": "2026-08-26T08:37:28.508Z"
+        "created_at": "2026-08-31T01:04:47.344Z"
     }
 },
 {
@@ -1652,7 +1998,7 @@
         "sort_order": 0,
         "is_active": true,
         "description": null,
-        "created_at": "2026-08-26T08:37:28.722Z"
+        "created_at": "2026-08-31T01:04:46.917Z"
     }
 },
 {
@@ -1664,7 +2010,7 @@
         "sort_order": 0,
         "is_active": true,
         "description": null,
-        "created_at": "2026-08-26T08:37:28.726Z"
+        "created_at": "2026-08-31T01:04:46.921Z"
     }
 },
 {
@@ -1676,7 +2022,7 @@
         "sort_order": 0,
         "is_active": true,
         "description": null,
-        "created_at": "2026-08-26T08:37:28.275Z"
+        "created_at": "2026-08-31T01:04:47.590Z"
     }
 },
 {
@@ -1688,7 +2034,7 @@
         "sort_order": 0,
         "is_active": true,
         "description": null,
-        "created_at": "2026-08-26T08:37:28.351Z"
+        "created_at": "2026-08-31T01:04:46.974Z"
     }
 },
 {
@@ -1700,7 +2046,7 @@
         "sort_order": 0,
         "is_active": true,
         "description": null,
-        "created_at": "2026-08-26T08:37:28.589Z"
+        "created_at": "2026-08-31T01:04:47.349Z"
     }
 },
 {
@@ -1712,7 +2058,7 @@
         "sort_order": 0,
         "is_active": true,
         "description": null,
-        "created_at": "2026-08-26T08:37:28.314Z"
+        "created_at": "2026-08-31T01:04:47.594Z"
     }
 },
 {
@@ -1724,7 +2070,7 @@
         "sort_order": 0,
         "is_active": true,
         "description": null,
-        "created_at": "2026-08-26T08:37:28.523Z"
+        "created_at": "2026-08-31T01:04:47.353Z"
     }
 },
 {
@@ -1736,7 +2082,7 @@
         "sort_order": 0,
         "is_active": true,
         "description": null,
-        "created_at": "2026-08-26T08:37:28.467Z"
+        "created_at": "2026-08-31T01:04:47.357Z"
     }
 },
 {
@@ -1748,7 +2094,7 @@
         "sort_order": 0,
         "is_active": true,
         "description": null,
-        "created_at": "2026-08-26T08:37:28.596Z"
+        "created_at": "2026-08-31T01:04:47.362Z"
     }
 },
 {
@@ -1760,7 +2106,7 @@
         "sort_order": 0,
         "is_active": true,
         "description": null,
-        "created_at": "2026-08-26T08:37:28.255Z"
+        "created_at": "2026-08-31T01:04:47.600Z"
     }
 },
 {
@@ -1772,7 +2118,7 @@
         "sort_order": 0,
         "is_active": true,
         "description": null,
-        "created_at": "2026-08-26T08:37:28.555Z"
+        "created_at": "2026-08-31T01:04:47.367Z"
     }
 },
 {
@@ -1784,7 +2130,32 @@
         "sort_order": 0,
         "is_active": true,
         "description": null,
-        "created_at": "2026-08-26T08:37:28.574Z"
+        "created_at": "2026-08-31T01:04:47.372Z"
+    }
+},
+{
+    "model": "users.user",
+    "fields": {
+        "password": "pbkdf2_sha256$1200000$gwTbinfGIIL1EgeXVer7eA$NZhHVXJgnUia3KLdK+EzGVjpnkw5SSIN0SQaVw7Q1Rw=",
+        "last_login": null,
+        "is_superuser": true,
+        "username": "admin",
+        "first_name": "",
+        "last_name": "",
+        "email": "a@a.com",
+        "is_staff": true,
+        "is_active": true,
+        "date_joined": "2026-08-31T00:39:47.244Z",
+        "emp_no": null,
+        "phone": null,
+        "dept_code": null,
+        "job_role_code": null,
+        "position_code": null,
+        "role_code": null,
+        "status_code": null,
+        "is_busy": false,
+        "groups": [],
+        "user_permissions": []
     }
 }
 ]
