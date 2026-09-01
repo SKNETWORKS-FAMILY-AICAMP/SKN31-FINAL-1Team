@@ -7,7 +7,15 @@ from drf_spectacular.views import (
     SpectacularRedocView,
     SpectacularSwaggerView,
 )
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework import status
 
+class DummyNotificationView(APIView):
+    def get(self, request):
+        # 프론트엔드가 안 깨지도록 빈 알림 목록 반환
+        return Response([], status=status.HTTP_200_OK)
+    
 urlpatterns = [
     path('admin/', admin.site.urls),
 

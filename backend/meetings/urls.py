@@ -1,3 +1,4 @@
+#meetings/urls.py
 from django.urls import path
 from meetings.views import (
     MeetingNoteListCreateView,
