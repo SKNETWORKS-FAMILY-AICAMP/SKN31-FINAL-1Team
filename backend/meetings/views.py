@@ -123,16 +123,25 @@ class MeetingNoteAnalyzeView(APIView):
                     return json.dumps(val, ensure_ascii=False, indent=2)
                 return str(val)
 
+            # 기획서 7개 섹션 중 회의에서 실제로 논의 안 된 항목은 AI가 빈 값을 준다 — 화면에
+            # 그냥 빈 칸으로 두면 "생성이 덜 됐나?" 오해를 살 수 있어서, 비어있으면 명시적으로
+            # "회의에서 논의되지 않았습니다"를 채운다(내용을 지어내지 않는다는 원칙은 그대로 유지).
+            NOT_DISCUSSED = "회의에서 논의되지 않았습니다."
+
+            def section_or_not_discussed(val):
+                parsed = parse_section(val)
+                return parsed if parsed.strip() else NOT_DISCUSSED
+
             # AI 에이전트 스키마 변수명 대응 (다양한 key 명칭 감지)
             spec_defaults = {
                 'title': f"{meeting.title} - 기획 초안",
-                'overview': parse_section(plan_dict.get('overview') or plan_dict.get('project_overview') or plan_dict.get('summary')),
-                'problem_definition': parse_section(plan_dict.get('problem_definition') or plan_dict.get('problem') or plan_dict.get('background')),
-                'target_users': parse_section(plan_dict.get('target_users') or plan_dict.get('target_user') or plan_dict.get('target_audience')),
-                'key_features': parse_section(plan_dict.get('key_features') or plan_dict.get('features') or plan_dict.get('main_features')),
-                'user_scenarios': parse_section(plan_dict.get('user_scenarios') or plan_dict.get('scenarios') or plan_dict.get('user_story')),
-                'tech_stack': parse_section(plan_dict.get('tech_stack') or plan_dict.get('technology') or plan_dict.get('constraints')),
-                'final_decisions': parse_section(plan_dict.get('final_decisions') or plan_dict.get('decisions') or plan_dict.get('next_steps')),
+                'overview': section_or_not_discussed(plan_dict.get('overview') or plan_dict.get('project_overview') or plan_dict.get('summary')),
+                'problem_definition': section_or_not_discussed(plan_dict.get('problem_definition') or plan_dict.get('problem') or plan_dict.get('background')),
+                'target_users': section_or_not_discussed(plan_dict.get('target_users') or plan_dict.get('target_user') or plan_dict.get('target_audience')),
+                'key_features': section_or_not_discussed(plan_dict.get('key_features') or plan_dict.get('features') or plan_dict.get('main_features')),
+                'user_scenarios': section_or_not_discussed(plan_dict.get('user_scenarios') or plan_dict.get('scenarios') or plan_dict.get('user_story')),
+                'tech_stack': section_or_not_discussed(plan_dict.get('tech_stack') or plan_dict.get('technology') or plan_dict.get('constraints')),
+                'final_decisions': section_or_not_discussed(plan_dict.get('final_decisions') or plan_dict.get('decisions') or plan_dict.get('next_steps')),
             }
 
             # 6. 기존 기획서가 있다면 필드 값 업데이트 (get_or_create 대신 update_or_create 적용)
