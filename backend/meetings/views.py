@@ -3,10 +3,13 @@ import json
 import re
 import html
 from django.shortcuts import get_object_or_404
-from rest_framework import status, permissions, generics
+from rest_framework import status, permissions, generics, parsers
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from drf_spectacular.utils import extend_schema, OpenApiParameter, OpenApiResponse, OpenApiTypes
+
+import docx
+from pypdf import PdfReader
 
 from meetings.models import MeetingNote, SpecDocument
 from meetings.serializers import (
@@ -289,3 +292,53 @@ class SpecDocumentRejectView(APIView):
             link='/documents',
         )
         return Response({"message": "기획서가 반려되었습니다.", "spec": SpecDocumentSerializer(spec).data})
+
+
+class MeetingNoteParseFileView(APIView):
+    """
+    회의록 첨부 파일에서 텍스트를 추출해 반환 (저장은 하지 않음 — 프론트가 "원본 내용" 칸을 채우는 용도)
+    POST /api/meetings/notes/parse-file/  (multipart/form-data, key: file)
+    지원 형식: .docx, .pdf, .txt — .hwp는 안정적인 순수 파이썬 파서가 없어 지원하지 않는다.
+    """
+    permission_classes = [permissions.IsAuthenticated]
+    parser_classes = [parsers.MultiPartParser]
+
+    MAX_SIZE = 10 * 1024 * 1024  # 10MB — 회의록 텍스트 추출용이라 크게 둘 이유가 없다
+
+    @extend_schema(
+        tags=['1단계 - 회의록'],
+        summary='회의록 첨부 파일 텍스트 추출',
+        description='.docx/.pdf/.txt 파일을 업로드하면 텍스트를 추출해서 돌려준다. DB에 저장하지 않는다.',
+        request={'multipart/form-data': {'type': 'object', 'properties': {'file': {'type': 'string', 'format': 'binary'}}}},
+        responses={200: OpenApiResponse(description='추출된 텍스트')},
+    )
+    def post(self, request):
+        f = request.FILES.get('file')
+        if not f:
+            return Response({"error": "파일이 없습니다."}, status=status.HTTP_400_BAD_REQUEST)
+        if f.size > self.MAX_SIZE:
+            return Response({"error": "파일 크기는 10MB를 넘을 수 없습니다."}, status=status.HTTP_400_BAD_REQUEST)
+
+        name = f.name.lower()
+        try:
+            if name.endswith('.docx'):
+                document = docx.Document(f)
+                text = "\n".join(para.text for para in document.paragraphs)
+            elif name.endswith('.pdf'):
+                reader = PdfReader(f)
+                text = "\n".join((page.extract_text() or "") for page in reader.pages)
+            elif name.endswith('.txt'):
+                text = f.read().decode('utf-8', errors='ignore')
+            else:
+                return Response(
+                    {"error": "지원하지 않는 파일 형식입니다. .docx, .pdf, .txt 파일만 업로드해주세요."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+        except Exception as e:
+            return Response({"error": f"파일을 읽는 중 오류가 발생했습니다: {e}"}, status=status.HTTP_400_BAD_REQUEST)
+
+        text = text.strip()
+        if not text:
+            return Response({"error": "파일에서 텍스트를 추출하지 못했습니다."}, status=status.HTTP_400_BAD_REQUEST)
+
+        return Response({"content": text, "filename": f.name}, status=status.HTTP_200_OK)
