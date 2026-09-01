@@ -419,17 +419,26 @@ class UserStopImpersonateView(APIView):
         if not original_access:
             return Response({"error": "되돌아갈 계정 정보가 없습니다."}, status=status.HTTP_400_BAD_REQUEST)
 
+        # 저장해둔 원본 토큰을 그대로 되돌려주면, 전환해 있던 동안 시간이 흘러 그 토큰(특히
+        # refresh, 수명 1일 고정)까지 함께 만료돼 있는 경우가 생긴다 — 그러면 복귀 직후 다음
+        # API 호출에서 refresh까지 실패해 실제로 로그아웃당한다(재현됨: DEV 전환을 오래 켜둔 채
+        # 왔다갔다 하다 로그아웃). user_id만 꺼내서 그 사람 몫으로 새 토큰을 발급하면 전환해
+        # 있던 시간과 무관하게 항상 복귀가 성공한다.
         try:
             user_id = RefreshToken(original_refresh).payload.get('user_id') if original_refresh else None
             original_user = User.objects.get(pk=user_id) if user_id else None
         except (TokenError, User.DoesNotExist):
             original_user = None
 
+        if not original_user:
+            return Response({"error": "되돌아갈 계정 정보가 유효하지 않습니다."}, status=status.HTTP_400_BAD_REQUEST)
+
+        refresh = RefreshToken.for_user(original_user)
         response = Response(
-            {"user": UserSimpleSerializer(original_user).data if original_user else None},
+            {"user": UserSimpleSerializer(original_user).data},
             status=status.HTTP_200_OK,
         )
-        set_auth_cookies(response, original_access, original_refresh)
+        set_auth_cookies(response, str(refresh.access_token), str(refresh))
         response.delete_cookie('dev_original_access_token', path='/')
         response.delete_cookie('dev_original_refresh_token', path=REFRESH_COOKIE_PATH)
         return response
