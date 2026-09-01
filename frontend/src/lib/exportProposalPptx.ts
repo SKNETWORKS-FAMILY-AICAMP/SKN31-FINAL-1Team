@@ -19,8 +19,8 @@ export async function exportProposalPptx(doc: ProposalDoc, title: string) {
   titleSlide.addText(title, { x: 0.5, y: 2.1, w: 9, h: 1, fontSize: 32, bold: true, color: TITLE_COLOR });
   titleSlide.addText("프로젝트 기획서", { x: 0.5, y: 3.0, w: 9, h: 0.5, fontSize: 18, color: ACCENT });
 
-  // "제목 + 본문 텍스트" 형태의 슬라이드가 여러 섹션(배경/타겟/기대효과)에서 반복되므로
-  // 매번 addSlide를 새로 쓰지 않고 헬퍼 함수로 묶어 재사용한다.
+  // "제목 + 본문 텍스트" 형태의 슬라이드가 여러 섹션(개요/문제정의/대상사용자/기술스택)에서
+  // 반복되므로 매번 addSlide를 새로 쓰지 않고 헬퍼 함수로 묶어 재사용한다.
   const addSectionSlide = (heading: string, bodyText: string) => {
     const slide = pptx.addSlide();
     slide.addText(heading, { x: 0.5, y: 0.4, w: 9, h: 0.6, fontSize: 24, bold: true, color: ACCENT });
@@ -28,36 +28,13 @@ export async function exportProposalPptx(doc: ProposalDoc, title: string) {
     return slide;
   };
 
-  addSectionSlide("1. 배경 및 목적", doc.background);
-  addSectionSlide("2. 타겟 사용자", doc.target);
-
-  const featureSlide = pptx.addSlide();
-  featureSlide.addText("3. 주요 기능", { x: 0.5, y: 0.4, w: 9, h: 0.6, fontSize: 24, bold: true, color: ACCENT });
-  const featureLines = (doc.features || []).map(f => ({
-    text: `${f.name}\n`,
-    options: { bold: true, fontSize: 14, color: TITLE_COLOR, breakLine: false },
-  }));
-  // pptxgenjs의 rich-text 배열: 기능명은 글머리 기호(bullet)로, 설명은 한 단계 들여쓰기(indentLevel)해서
-  // "기능명 - 설명" 구조가 한눈에 보이도록 구성한다.
-  const featureBullets = (doc.features || []).flatMap(f => ([
-    { text: f.name, options: { bold: true, fontSize: 14, color: TITLE_COLOR, bullet: true, breakLine: true } },
-    { text: f.description, options: { fontSize: 11, color: "64748B", indentLevel: 1, breakLine: true } },
-  ]));
-  featureSlide.addText(featureBullets.length ? featureBullets : [{ text: "-" }], { x: 0.5, y: 1.2, w: 9, h: 4, valign: "top" });
-
-  addSectionSlide("4. 기대 효과", doc.expectedEffect);
-
-  // 원본 회의록/메모에 일정 언급이 없으면 milestones가 빈 배열이므로 이 슬라이드 자체를 생략한다
-  // (없는 일정을 억지로 만들어 보여주지 않기 위함).
-  if (doc.milestones?.length) {
-    const msSlide = pptx.addSlide();
-    msSlide.addText("5. 일정 / 마일스톤", { x: 0.5, y: 0.4, w: 9, h: 0.6, fontSize: 24, bold: true, color: ACCENT });
-    const rows: any[] = [
-      [{ text: "마일스톤", options: { bold: true, fill: { color: "F1F5F9" } } }, { text: "시기", options: { bold: true, fill: { color: "F1F5F9" } } }],
-      ...doc.milestones.map(m => [m.name, m.date]),
-    ];
-    msSlide.addTable(rows, { x: 0.5, y: 1.2, w: 9, fontSize: 12, color: TITLE_COLOR, border: { type: "solid", color: "E2E8F0", pt: 1 } });
-  }
+  addSectionSlide("1. 프로젝트 개요", doc.projectOverview);
+  addSectionSlide("2. 문제 정의", doc.problemDefinition);
+  addSectionSlide("3. 대상 사용자", doc.target);
+  addSectionSlide("4. 주요 기능", doc.features);
+  addSectionSlide("5. 사용자 시나리오", doc.userScenario);
+  addSectionSlide("6. 기술 스택 및 제약사항", doc.techStackConstraints);
+  addSectionSlide("7. 최종 결정사항", doc.finalDecisions);
 
   await pptx.writeFile({ fileName: `${title}_기획서.pptx` });
 }

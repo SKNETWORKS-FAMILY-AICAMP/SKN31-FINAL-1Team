@@ -3,34 +3,87 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
-import { UserPlus, Search, Settings, MoreVertical, KeyRound, Trash2, ShieldCheck, X, Loader2, CheckCircle2, Briefcase } from "lucide-react";
+import { UserPlus, Search, Settings, MoreVertical, KeyRound, Trash2, ShieldCheck, X, Loader2, CheckCircle2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth";
-import { DEPARTMENTS, POSITIONS, JOB_TITLES, STATUS_META, SKILL_SUGGESTIONS, CERT_SUGGESTIONS, PROJECT_SUGGESTIONS } from "@/lib/employeeOptions";
+import { apiFetch } from "@/lib/api/client";
+import { STATUS_META, PROJECT_SUGGESTIONS } from "@/lib/employeeOptions";
 import TagAutocomplete from "@/components/ui/TagAutocomplete";
 
 type EmployeeStatus = "ACTIVE" | "LEAVE" | "RESIGNED" | "LOCKED";
 
+// Django CommonCode 응답(부서/직급/직무/상태) 최소 형태 — GET /api/common/codes/?group_code=...
+type CodeOption = { code_id: string; code_name: string };
+
 type Employee = {
   id: string;
+  username: string;
+  firstName: string;
+  lastName: string;
   name: string;
   email: string;
-  role: string;
-  department: string | null;
-  techStack: string | null;
-  certifications: string | null;
-  pastProjects: string | null;
   phone: string | null;
-  employeeNo: string | null;
-  position: string | null;
-  jobTitle: string | null;
+  empNo: string | null;
+  deptCode: string | null;
+  deptName: string | null;
+  positionCode: string | null;
+  positionName: string | null;
+  jobRoleCode: string | null;
+  jobRoleName: string | null;
+  // 이 화면은 PM/일반 멤버 이분법만 다룬다 — 실제 USER_ROLE 공통코드엔 TEAM_LEAD도 있지만
+  // (frontend/src/lib/api/mappers.ts의 toUser()와 동일한 단순화) 여기서는 다루지 않는다.
+  roleCode: "ADMIN" | "EMPLOYEE" | string | null;
+  role: "PM" | "MEMBER";
   status: EmployeeStatus;
   hireDate: string | null;
   resignDate: string | null;
-  createdAt: string;
+  pastProjects: string[];
+  // 기술 스택/자격증은 UserSkill/UserCertification이 CommonCode를 참조하는 구조라 이 화면에서
+  // 바로 수정하게 하려면 스킬 그룹별 선택 UI가 통째로 더 필요하다 — 이번 재설계 범위 밖이라
+  // 조회만 지원한다.
+  skills: string[];
+  certifications: string[];
 };
 
 const fmtDate = (iso: string | null) => iso ? new Date(iso).toLocaleDateString("ko-KR", { year: "numeric", month: "2-digit", day: "2-digit" }) : "-";
+
+function toEmployee(dto: any): Employee {
+  const lastName = dto.last_name ?? "";
+  const firstName = dto.first_name ?? "";
+  const name = lastName || firstName ? `${lastName}${firstName}` : dto.username;
+  const isPM = dto.role_info?.code_id === "ADMIN" || dto.is_staff;
+  return {
+    id: String(dto.id),
+    username: dto.username,
+    firstName,
+    lastName,
+    name,
+    email: dto.email || "",
+    phone: dto.phone ?? null,
+    empNo: dto.emp_no ?? null,
+    deptCode: dto.dept_code ?? null,
+    deptName: dto.dept_info?.code_name ?? null,
+    positionCode: dto.position_code ?? null,
+    positionName: dto.position_info?.code_name ?? null,
+    jobRoleCode: dto.job_role_code ?? null,
+    jobRoleName: dto.job_role_info?.code_name ?? null,
+    roleCode: dto.role_info?.code_id ?? (dto.is_staff ? "ADMIN" : null),
+    role: isPM ? "PM" : "MEMBER",
+    // status_code가 비어있는 시드/신규 계정은 활성으로 취급한다(퇴사 처리를 거치지 않았다면
+    // 사실상 활성이라 화면에 빈 배지 대신 "활성"을 보여주는 편이 맞다).
+    status: (dto.status_info?.code_id as EmployeeStatus) ?? "ACTIVE",
+    hireDate: dto.hire_date ?? null,
+    resignDate: dto.resign_date ?? null,
+    pastProjects: dto.past_projects ? String(dto.past_projects).split(",").map((s: string) => s.trim()).filter(Boolean) : [],
+    skills: (dto.skills ?? []).map((s: any) => s.skill_name),
+    certifications: (dto.certifications ?? []).map((c: any) => c.cert_name),
+  };
+}
+
+async function fetchCodeOptions(groupCode: string): Promise<CodeOption[]> {
+  const list = await apiFetch<CodeOption[]>(`/api/common/codes/?group_code=${groupCode}`);
+  return list.map(c => ({ code_id: c.code_id, code_name: c.code_name }));
+}
 
 type FilterStatus = "all" | EmployeeStatus;
 
@@ -49,34 +102,41 @@ export default function MembersPage() {
 
   const [members, setMembers] = useState<Employee[]>([]);
   const [loading, setLoading] = useState(true);
-  // 담당자별 "아직 안 끝난" 업무 개수 — 대시보드의 "팀원별 업무량" 위젯엔 상위 6명만 나오고
-  // 전체보기로 갈 페이지가 없어서, 팀원 전체를 이미 다루는 이 화면에 붙이는 쪽을 택함.
-  const [activeTaskCounts, setActiveTaskCounts] = useState<Record<string, number>>({});
   const [search, setSearch] = useState("");
   const [filterStatus, setFilterStatus] = useState<FilterStatus>("all");
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [processingId, setProcessingId] = useState<string | null>(null);
   const [toast, setToast] = useState<{ msg: string; type: "success" | "error" } | null>(null);
 
+  // 부서/직급/직무/상태 드롭다운 옵션 — Django의 CommonCode(USER_DEPARTMENT 등)에서 가져온다.
+  // 예전엔 employeeOptions.ts에 하드코딩된 한글 라벨 문자열을 그대로 department/position 값으로
+  // 저장했는데, 실제 백엔드는 dept_code 같은 코드ID(FK)를 요구해서 그 값들을 그대로 못 쓴다.
+  const [deptOptions, setDeptOptions] = useState<CodeOption[]>([]);
+  const [positionOptions, setPositionOptions] = useState<CodeOption[]>([]);
+  const [jobRoleOptions, setJobRoleOptions] = useState<CodeOption[]>([]);
+  const [statusOptions, setStatusOptions] = useState<CodeOption[]>([]);
+
   // Add Employee Modal
   const [addModal, setAddModal] = useState(false);
   const [newUsername, setNewUsername] = useState("");
-  const [newName, setNewName] = useState("");
+  const [newLastName, setNewLastName] = useState("");
+  const [newFirstName, setNewFirstName] = useState("");
   const [newDept, setNewDept] = useState("");
   const [newEmployeeNo, setNewEmployeeNo] = useState("");
   const [newPosition, setNewPosition] = useState("");
-  const [newJobTitle, setNewJobTitle] = useState("");
+  const [newJobRole, setNewJobRole] = useState("");
   const [newHireDate, setNewHireDate] = useState("");
   const [adding, setAdding] = useState(false);
 
-    // Edit Modal
+  // Edit Modal
   const [editModal, setEditModal] = useState<{
-    id: string; name: string; department: string; role: string; techStack: string[]; certifications: string[]; phone: string;
-    employeeNo: string; position: string; jobTitle: string; status: EmployeeStatus; hireDate: string; resignDate: string; pastProjects: string[];
+    id: string; lastName: string; firstName: string; department: string; roleCode: string;
+    phone: string; employeeNo: string; position: string; jobRole: string; status: EmployeeStatus;
+    hireDate: string; resignDate: string; pastProjects: string[];
   } | null>(null);
   const [editing, setEditing] = useState(false);
 
-// Delete Confirm Modal
+  // Delete Confirm Modal
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
 
   const menuRef = useRef<HTMLDivElement>(null);
@@ -94,19 +154,21 @@ export default function MembersPage() {
 
   useEffect(() => {
     Promise.all([
-      fetch("/api/users").then(r => r.json()),
-      fetch("/api/tasks").then(r => r.json()),
-    ]).then(([usersRes, tasksRes]) => {
-      if (usersRes.success) setMembers(usersRes.data);
-      if (tasksRes.success) {
-        const counts: Record<string, number> = {};
-        for (const t of tasksRes.data) {
-          if (!t.assigneeId || t.status === "DONE" || t.status === "CANCELLED") continue;
-          counts[t.assigneeId] = (counts[t.assigneeId] ?? 0) + 1;
-        }
-        setActiveTaskCounts(counts);
-      }
-    }).finally(() => setLoading(false));
+      apiFetch<any[]>("/api/users/"),
+      fetchCodeOptions("USER_DEPARTMENT"),
+      fetchCodeOptions("USER_POSITION"),
+      fetchCodeOptions("USER_JOB_ROLE"),
+      fetchCodeOptions("USER_STATUS"),
+    ])
+      .then(([users, depts, positions, jobRoles, statuses]) => {
+        setMembers(users.map(toEmployee));
+        setDeptOptions(depts);
+        setPositionOptions(positions);
+        setJobRoleOptions(jobRoles);
+        setStatusOptions(statuses);
+      })
+      .catch(err => showToast(err.message || "직원 목록을 불러오지 못했습니다.", "error"))
+      .finally(() => setLoading(false));
   }, []);
 
   // Close dropdown when clicking outside — 메뉴 본문이 이제 포탈로 document.body 밑에
@@ -130,9 +192,9 @@ export default function MembersPage() {
       const q = search.toLowerCase();
       result = result.filter(m =>
         m.name.toLowerCase().includes(q) ||
-        m.email.toLowerCase().includes(q) ||
-        (m.department ?? "").toLowerCase().includes(q) ||
-        (m.employeeNo ?? "").toLowerCase().includes(q)
+        m.username.toLowerCase().includes(q) ||
+        (m.deptName ?? "").toLowerCase().includes(q) ||
+        (m.empNo ?? "").toLowerCase().includes(q)
       );
     }
     return result;
@@ -146,119 +208,124 @@ export default function MembersPage() {
     LOCKED: members.filter(m => m.status === "LOCKED").length,
   };
 
-    const handleEditEmployee = async () => {
+  const handleEditEmployee = async () => {
     if (!editModal) return;
     setEditing(true);
-    const res = await fetch(`/api/users/${editModal.id}/profile`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        name: editModal.name,
-        department: editModal.department,
-        role: editModal.role,
-        techStack: editModal.techStack.join(", "),
-        certifications: editModal.certifications.join(", "),
-        phone: editModal.phone,
-        employeeNo: editModal.employeeNo,
-        position: editModal.position,
-        jobTitle: editModal.jobTitle,
-        status: editModal.status,
-        hireDate: editModal.hireDate,
-        resignDate: editModal.resignDate,
-        pastProjects: editModal.pastProjects.join(", "),
-      }),
-    });
-    const data = await res.json();
-    setEditing(false);
-    if (data.success) {
-      setMembers(members.map(m => m.id === editModal.id ? { ...m, ...data.data } : m));
+    try {
+      const dto = await apiFetch<any>(`/api/users/${editModal.id}/`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          last_name: editModal.lastName,
+          first_name: editModal.firstName,
+          dept_code: editModal.department || null,
+          role_code: editModal.roleCode || null,
+          position_code: editModal.position || null,
+          job_role_code: editModal.jobRole || null,
+          phone: editModal.phone || null,
+          emp_no: editModal.employeeNo || null,
+          status_code: editModal.status || null,
+          hire_date: editModal.hireDate || null,
+          resign_date: editModal.resignDate || null,
+          past_projects: editModal.pastProjects.join(","),
+        }),
+      });
+      setMembers(prev => prev.map(m => m.id === editModal.id ? toEmployee(dto) : m));
       setEditModal(null);
       showToast("직원 정보가 수정되었습니다.");
-    } else {
-      showToast("수정에 실패했습니다.", "error");
+    } catch (err: any) {
+      showToast(err.message || "수정에 실패했습니다.", "error");
+    } finally {
+      setEditing(false);
     }
   };
 
-const handlePasswordReset = async (id: string, name: string) => {
+  const handlePasswordReset = async (id: string, name: string) => {
     setProcessingId(id);
     setOpenMenuId(null);
-    const res = await fetch(`/api/users/${id}/password-reset`, { method: "POST" });
-    const data = await res.json();
-    setProcessingId(null);
-    if (data.success) showToast(`${name}님의 비밀번호가 1111로 초기화되었습니다.`);
-    else showToast("초기화 실패", "error");
+    try {
+      await apiFetch(`/api/users/${id}/password-reset/`, { method: "POST" });
+      showToast(`${name}님의 비밀번호가 1111로 초기화되었습니다.`);
+    } catch (err: any) {
+      showToast(err.message || "초기화 실패", "error");
+    } finally {
+      setProcessingId(null);
+    }
   };
 
   const handleDelete = async () => {
     if (!deleteTarget) return;
     setProcessingId(deleteTarget.id);
-    const res = await fetch(`/api/users/${deleteTarget.id}/delete`, { method: "DELETE" });
-    const data = await res.json();
-    setProcessingId(null);
-    setDeleteTarget(null);
-    if (data.success) {
+    try {
+      await apiFetch(`/api/users/${deleteTarget.id}/`, { method: "DELETE" });
       setMembers(prev => prev.filter(m => m.id !== deleteTarget.id));
       showToast(`${deleteTarget.name}님 계정이 삭제되었습니다.`);
-    } else showToast("삭제 실패", "error");
-  };
-
-  const handleRoleChange = async (id: string, role: string) => {
-    const res = await fetch(`/api/users/${id}/role`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ role }),
-    });
-    if (res.ok) {
-      setMembers(prev => prev.map(m => m.id === id ? { ...m, role } : m));
-      showToast("역할이 변경되었습니다.");
+    } catch (err: any) {
+      showToast(err.message || "삭제 실패", "error");
+    } finally {
+      setProcessingId(null);
+      setDeleteTarget(null);
     }
   };
 
-  const handleStatusChange = async (id: string, status: string) => {
-    const res = await fetch(`/api/users/${id}/profile`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status }),
-    });
-    const data = await res.json();
-    if (res.ok && data.success) {
-      // 퇴사로 바꾸면 서버가 퇴사일을 자동으로 채워 응답하므로(반대로 되돌리면 지워서 응답하므로)
-      // status만 낙관적으로 반영하면 안 되고 서버가 돌려준 resignDate도 함께 반영해야 한다.
-      setMembers(prev => prev.map(m => m.id === id ? { ...m, status: data.data.status, resignDate: data.data.resignDate } : m));
+  const handleRoleChange = async (id: string, roleCode: "ADMIN" | "EMPLOYEE") => {
+    try {
+      const dto = await apiFetch<any>(`/api/users/${id}/`, {
+        method: "PATCH",
+        body: JSON.stringify({ role_code: roleCode }),
+      });
+      setMembers(prev => prev.map(m => m.id === id ? toEmployee(dto) : m));
+      showToast("역할이 변경되었습니다.");
+    } catch (err: any) {
+      // 예전엔 실패해도 아무 알림이 없었다 — select의 value가 member.role에 그대로 묶여있어
+      // 상태가 안 바뀌었는데도 드롭다운은 방금 고른 값으로 남아있어, PM이 "바뀐 줄" 착각하는
+      // 문제가 있었다(전체 점검에서 발견). 실패를 알리면 드롭다운이 실제 값(member.role)으로
+      // 다시 그려진다(members 상태를 안 건드리므로).
+      showToast(err.message || "역할 변경 실패", "error");
+    }
+  };
+
+  const handleStatusChange = async (id: string, status: EmployeeStatus) => {
+    try {
+      const dto = await apiFetch<any>(`/api/users/${id}/`, {
+        method: "PATCH",
+        body: JSON.stringify({ status_code: status }),
+      });
+      setMembers(prev => prev.map(m => m.id === id ? toEmployee(dto) : m));
       showToast("계정 상태가 변경되었습니다.");
+    } catch (err: any) {
+      showToast(err.message || "계정 상태 변경 실패", "error");
     }
   };
 
   const handleAddEmployee = async () => {
     if (!newUsername.trim()) return;
     setAdding(true);
-    const res = await fetch("/api/users", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        username: newUsername.trim(),
-        name: newName.trim() || newUsername.trim(),
-        department: newDept.trim(),
-        position: newPosition.trim(),
-        jobTitle: newJobTitle.trim(),
-        employeeNo: newEmployeeNo.trim(),
-        hireDate: newHireDate || undefined,
-      }),
-    });
-    const data = await res.json();
-    setAdding(false);
-    if (data.success) {
-      setMembers(prev => [data.data, ...prev]);
+    try {
+      const dto = await apiFetch<any>("/api/users/", {
+        method: "POST",
+        body: JSON.stringify({
+          username: newUsername.trim(),
+          last_name: newLastName.trim(),
+          first_name: newFirstName.trim(),
+          dept_code: newDept || null,
+          position_code: newPosition || null,
+          job_role_code: newJobRole || null,
+          emp_no: newEmployeeNo.trim() || null,
+          hire_date: newHireDate || null,
+        }),
+      });
+      const employee = toEmployee(dto);
+      setMembers(prev => [employee, ...prev]);
       setAddModal(false);
-      setNewUsername(""); setNewName(""); setNewDept("");
-      setNewEmployeeNo(""); setNewPosition(""); setNewJobTitle(""); setNewHireDate("");
-      showToast(`${data.data.name}님 계정이 생성되었습니다. 초기 비밀번호: 1111`);
-    } else {
-      showToast(data.error || "생성 실패", "error");
+      setNewUsername(""); setNewLastName(""); setNewFirstName(""); setNewDept("");
+      setNewEmployeeNo(""); setNewPosition(""); setNewJobRole(""); setNewHireDate("");
+      showToast(`${employee.name}님 계정이 생성되었습니다. 초기 비밀번호: 1111`);
+    } catch (err: any) {
+      showToast(err.message || "생성 실패", "error");
+    } finally {
+      setAdding(false);
     }
   };
-
-  const skills = (raw: string | null) => raw ? raw.split(",").map(s => s.trim()).filter(Boolean) : [];
 
   // PM이 아니면 위 useEffect가 리다이렉트를 시작하지만, 그 한 렌더 사이에 팀원 개인정보가
   // 잠깐이라도 그려지지 않도록 여기서도 막는다.
@@ -307,7 +374,7 @@ const handlePasswordReset = async (id: string, name: string) => {
           <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
           <input
             type="text"
-            placeholder="이름, 이메일, 부서, 사번으로 검색..."
+            placeholder="이름, 아이디, 부서, 사번으로 검색..."
             value={search}
             onChange={e => setSearch(e.target.value)}
             className="w-full pl-10 pr-4 py-2.5 bg-black/5 dark:bg-white/5 border border-border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 lg:w-80"
@@ -349,19 +416,18 @@ const handlePasswordReset = async (id: string, name: string) => {
               <tr>
                 <th className="px-6 py-4 font-semibold">직원</th>
                 <th className="px-6 py-4 font-semibold whitespace-nowrap">부서 / 직급 /<br />직무</th>
-                <th className="px-6 py-4 font-semibold">기술 스택</th>
+                <th className="px-6 py-4 font-semibold">보유 기술 / 자격증</th>
                 <th className="px-6 py-4 font-semibold whitespace-nowrap">입사일 /<br />퇴사일</th>
                 <th className="px-6 py-4 font-semibold">역할</th>
                 <th className="px-6 py-4 font-semibold">상태</th>
-                <th className="px-6 py-4 font-semibold">업무량</th>
                 {isPM && <th className="px-6 py-4 font-semibold text-center">설정</th>}
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
               {loading ? (
-                <tr><td colSpan={8} className="py-16 text-center"><Loader2 className="w-6 h-6 animate-spin text-primary mx-auto" /></td></tr>
+                <tr><td colSpan={7} className="py-16 text-center"><Loader2 className="w-6 h-6 animate-spin text-primary mx-auto" /></td></tr>
               ) : filtered.length === 0 ? (
-                <tr><td colSpan={8} className="py-16 text-center text-muted-foreground">검색 결과가 없습니다.</td></tr>
+                <tr><td colSpan={7} className="py-16 text-center text-muted-foreground">검색 결과가 없습니다.</td></tr>
               ) : (
                 filtered.map(member => (
                   <tr key={member.id} className="hover:bg-black/5 dark:hover:bg-white/5 transition-colors">
@@ -373,30 +439,33 @@ const handlePasswordReset = async (id: string, name: string) => {
                         </div>
                         <div>
                           <p className="font-semibold">{member.name}</p>
-                          <p className="text-xs text-muted-foreground">{member.email}</p>
+                          <p className="text-xs text-muted-foreground">{member.username}</p>
                           {member.phone && <p className="text-xs text-muted-foreground">{member.phone}</p>}
                         </div>
                       </div>
                     </td>
 
-                    {/* Department / Position / Job Title */}
+                    {/* Department / Position / Job Role */}
                     <td className="px-6 py-4 text-muted-foreground whitespace-nowrap">
-                      <p>{member.department || "-"} {member.position ? `· ${member.position}` : ""}</p>
-                      <p className="text-xs">{member.jobTitle || "-"}{member.employeeNo ? ` · ${member.employeeNo}` : ""}</p>
+                      <p>{member.deptName || "-"} {member.positionName ? `· ${member.positionName}` : ""}</p>
+                      <p className="text-xs">{member.jobRoleName || "-"}{member.empNo ? ` · ${member.empNo}` : ""}</p>
                     </td>
 
-                    {/* Skills + Certs */}
+                    {/* Skills + Certs (read-only) */}
                     <td className="px-6 py-4">
                       <div className="flex flex-wrap gap-1">
-                        {skills(member.techStack).slice(0, 3).map((s, i) => (
+                        {member.skills.slice(0, 3).map((s, i) => (
                           <span key={i} className="text-[10px] px-1.5 py-0.5 rounded bg-primary/10 text-primary font-semibold">{s}</span>
                         ))}
-                        {skills(member.techStack).length > 3 && (
-                          <span className="text-[10px] text-muted-foreground">+{skills(member.techStack).length - 3}</span>
+                        {member.skills.length > 3 && (
+                          <span className="text-[10px] text-muted-foreground">+{member.skills.length - 3}</span>
                         )}
-                        {skills(member.certifications).slice(0, 2).map((c, i) => (
+                        {member.certifications.slice(0, 2).map((c, i) => (
                           <span key={`c${i}`} className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-400 font-semibold">{c}</span>
                         ))}
+                        {member.skills.length === 0 && member.certifications.length === 0 && (
+                          <span className="text-xs text-muted-foreground">-</span>
+                        )}
                       </div>
                     </td>
 
@@ -412,16 +481,15 @@ const handlePasswordReset = async (id: string, name: string) => {
                     <td className="px-6 py-4">
                       {isPM ? (
                         <select
-                          value={member.role}
-                          onChange={e => handleRoleChange(member.id, e.target.value)}
+                          value={member.role === "PM" ? "ADMIN" : "EMPLOYEE"}
+                          onChange={e => handleRoleChange(member.id, e.target.value as "ADMIN" | "EMPLOYEE")}
                           className={cn(
                             "appearance-none bg-transparent border rounded-lg px-3 py-1.5 text-xs font-semibold cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary/40",
                             member.role === "PM" ? "text-emerald-400 border-emerald-400/30" : "text-muted-foreground border-border"
                           )}
                         >
-                          <option value="PM">PM</option>
+                          <option value="ADMIN">PM</option>
                           <option value="EMPLOYEE">일반 멤버</option>
-                          <option value="GUEST">게스트</option>
                         </select>
                       ) : (
                         <span className={cn(
@@ -438,14 +506,14 @@ const handlePasswordReset = async (id: string, name: string) => {
                       {isPM ? (
                         <select
                           value={member.status}
-                          onChange={e => handleStatusChange(member.id, e.target.value)}
+                          onChange={e => handleStatusChange(member.id, e.target.value as EmployeeStatus)}
                           className={cn(
                             "appearance-none bg-transparent border rounded-lg px-3 py-1.5 text-xs font-semibold cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary/40",
                             STATUS_META[member.status].selectClass
                           )}
                         >
-                          {Object.keys(STATUS_META).map(s => (
-                            <option key={s} value={s}>{STATUS_META[s].label}</option>
+                          {statusOptions.map(s => (
+                            <option key={s.code_id} value={s.code_id}>{STATUS_META[s.code_id]?.label ?? s.code_name}</option>
                           ))}
                         </select>
                       ) : (
@@ -454,20 +522,6 @@ const handlePasswordReset = async (id: string, name: string) => {
                           STATUS_META[member.status].badgeClass
                         )}>
                           {STATUS_META[member.status].label}
-                        </span>
-                      )}
-                    </td>
-
-                    {/* Workload — PM은 업무 배정 대상이 아니라 집계 자체가 의미 없어 "-"로 표시 */}
-                    <td className="px-6 py-4">
-                      {member.role === "PM" ? (
-                        <span className="text-xs text-muted-foreground">-</span>
-                      ) : (
-                        <span className={cn(
-                          "inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold whitespace-nowrap",
-                          (activeTaskCounts[member.id] ?? 0) > 0 ? "bg-primary/10 text-primary" : "bg-black/5 dark:bg-white/5 text-muted-foreground"
-                        )}>
-                          <Briefcase className="w-3 h-3 shrink-0" /> {activeTaskCounts[member.id] ?? 0}건
                         </span>
                       )}
                     </td>
@@ -515,12 +569,13 @@ const handlePasswordReset = async (id: string, name: string) => {
                               <button
                                 onClick={() => {
                                   setEditModal({
-                                    id: member.id, name: member.name, department: member.department || "", role: member.role,
-                                    techStack: skills(member.techStack), certifications: skills(member.certifications), phone: member.phone || "",
-                                    employeeNo: member.employeeNo || "", position: member.position || "", jobTitle: member.jobTitle || "",
+                                    id: member.id, lastName: member.lastName, firstName: member.firstName,
+                                    department: member.deptCode || "", roleCode: member.roleCode || "EMPLOYEE",
+                                    phone: member.phone || "", employeeNo: member.empNo || "",
+                                    position: member.positionCode || "", jobRole: member.jobRoleCode || "",
                                     status: member.status, hireDate: member.hireDate ? member.hireDate.slice(0, 10) : "",
                                     resignDate: member.resignDate ? member.resignDate.slice(0, 10) : "",
-                                    pastProjects: skills(member.pastProjects),
+                                    pastProjects: member.pastProjects,
                                   });
                                   setOpenMenuId(null);
                                 }}
@@ -552,11 +607,10 @@ const handlePasswordReset = async (id: string, name: string) => {
       </div>
 
       {/* Role Legend */}
-      <div className="grid md:grid-cols-3 gap-4 mt-8">
+      <div className="grid md:grid-cols-2 gap-4 mt-8">
         {[
           { role: "PM", color: "border-t-emerald-500", textColor: "text-emerald-500", perms: ["프로젝트 생성/삭제", "직원 추가 및 역할 변경", "비밀번호 초기화", "승인 및 반려 처리"] },
           { role: "일반 멤버", color: "border-t-primary", textColor: "text-primary", perms: ["할 일 생성 및 수정", "칸반 보드 상태 변경", "검토 요청", "본인 프로필 수정"] },
-          { role: "게스트", color: "border-t-muted-foreground", textColor: "text-muted-foreground", perms: ["읽기 전용 열람", "코멘트 작성", "수정/생성 불가"] },
         ].map(item => (
           <div key={item.role} className={cn("glass p-5 rounded-xl border border-border border-t-4", item.color)}>
             <h4 className={cn("font-bold mb-3", item.textColor)}>{item.role}</h4>
@@ -587,29 +641,38 @@ const handlePasswordReset = async (id: string, name: string) => {
             <div className="space-y-4">
               <div>
                 <label className="text-sm font-semibold mb-1.5 block">아이디 <span className="text-red-400">*</span></label>
-                <div className="flex items-center border border-border rounded-xl overflow-hidden bg-black/5 dark:bg-white/5">
-                  <input
-                    type="text"
-                    placeholder="아이디 입력"
-                    value={newUsername}
-                    onChange={e => setNewUsername(e.target.value)}
-                    className="flex-1 px-4 py-2.5 bg-transparent text-sm focus:outline-none"
-                    onKeyDown={e => e.key === "Enter" && handleAddEmployee()}
-                  />
-                  <span className="pr-4 text-xs text-muted-foreground whitespace-nowrap">@heyzzabi.com</span>
-                </div>
+                <input
+                  type="text"
+                  placeholder="로그인에 사용할 아이디"
+                  value={newUsername}
+                  onChange={e => setNewUsername(e.target.value)}
+                  className="w-full px-4 py-2.5 bg-black/5 dark:bg-white/5 border border-border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
+                  onKeyDown={e => e.key === "Enter" && handleAddEmployee()}
+                />
                 <p className="text-xs text-muted-foreground mt-1">초기 비밀번호: <strong>1111</strong></p>
               </div>
 
-              <div>
-                <label className="text-sm font-semibold mb-1.5 block">이름 (비어있으면 아이디로 설정)</label>
-                <input
-                  type="text"
-                  placeholder="홍길동"
-                  value={newName}
-                  onChange={e => setNewName(e.target.value)}
-                  className="w-full px-4 py-2.5 bg-black/5 dark:bg-white/5 border border-border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
-                />
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-sm font-semibold mb-1.5 block">성</label>
+                  <input
+                    type="text"
+                    placeholder="홍"
+                    value={newLastName}
+                    onChange={e => setNewLastName(e.target.value)}
+                    className="w-full px-4 py-2.5 bg-black/5 dark:bg-white/5 border border-border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
+                  />
+                </div>
+                <div>
+                  <label className="text-sm font-semibold mb-1.5 block">이름</label>
+                  <input
+                    type="text"
+                    placeholder="길동"
+                    value={newFirstName}
+                    onChange={e => setNewFirstName(e.target.value)}
+                    className="w-full px-4 py-2.5 bg-black/5 dark:bg-white/5 border border-border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
+                  />
+                </div>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
@@ -621,7 +684,7 @@ const handlePasswordReset = async (id: string, name: string) => {
                     className="w-full px-3 py-2.5 bg-black/5 dark:bg-white/5 border border-border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 appearance-none"
                   >
                     <option value="">선택 안 함</option>
-                    {DEPARTMENTS.map(d => <option key={d} value={d}>{d}</option>)}
+                    {deptOptions.map(d => <option key={d.code_id} value={d.code_id}>{d.code_name}</option>)}
                   </select>
                 </div>
                 <div>
@@ -632,7 +695,7 @@ const handlePasswordReset = async (id: string, name: string) => {
                     className="w-full px-3 py-2.5 bg-black/5 dark:bg-white/5 border border-border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 appearance-none"
                   >
                     <option value="">선택 안 함</option>
-                    {POSITIONS.map(p => <option key={p} value={p}>{p}</option>)}
+                    {positionOptions.map(p => <option key={p.code_id} value={p.code_id}>{p.code_name}</option>)}
                   </select>
                 </div>
               </div>
@@ -641,12 +704,12 @@ const handlePasswordReset = async (id: string, name: string) => {
                 <div>
                   <label className="text-sm font-semibold mb-1.5 block">직무 (선택)</label>
                   <select
-                    value={newJobTitle}
-                    onChange={e => setNewJobTitle(e.target.value)}
+                    value={newJobRole}
+                    onChange={e => setNewJobRole(e.target.value)}
                     className="w-full px-3 py-2.5 bg-black/5 dark:bg-white/5 border border-border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 appearance-none"
                   >
                     <option value="">선택 안 함</option>
-                    {JOB_TITLES.map(j => <option key={j} value={j}>{j}</option>)}
+                    {jobRoleOptions.map(j => <option key={j.code_id} value={j.code_id}>{j.code_name}</option>)}
                   </select>
                 </div>
                 <div>
@@ -700,7 +763,7 @@ const handlePasswordReset = async (id: string, name: string) => {
             </h3>
             <p className="text-sm text-muted-foreground mb-6">
               <span className="font-bold text-foreground">"{deleteTarget.name}"</span> 님의 계정을 삭제하시겠습니까?<br />
-              이 작업은 되돌릴 수 없습니다.
+              실제로는 계정이 비활성화·퇴사 처리되며, 이 작업은 목록 화면에서 되돌릴 수 없습니다.
             </p>
             <div className="flex gap-3">
               <button onClick={() => setDeleteTarget(null)} className="flex-1 py-2.5 rounded-xl border border-border text-sm font-semibold hover:bg-black/5 dark:hover:bg-white/5">취소</button>
@@ -716,9 +779,8 @@ const handlePasswordReset = async (id: string, name: string) => {
           </div>
         </div>
       )}
-    
 
-      {/* Edit Modal — 필드가 많아 세로로 나열하면 모달이 지나치게 길어지므로 좌(기본정보)/우(스택·이력) 2단 레이아웃으로 분리 */}
+      {/* Edit Modal — 필드가 많아 세로로 나열하면 모달이 지나치게 길어지므로 좌(기본정보)/우(이력) 2단 레이아웃으로 분리 */}
       {editModal && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in">
           <div className="bg-background border border-border rounded-2xl p-6 shadow-2xl max-w-3xl w-full mx-4 max-h-[90vh] overflow-y-auto">
@@ -734,14 +796,25 @@ const handlePasswordReset = async (id: string, name: string) => {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4">
               {/* 좌측: 이름/부서/권한/직급/직무/사번/입사일/계정상태 — 기본 인사 정보 */}
               <div className="space-y-4">
-                <div>
-                  <label className="text-sm font-semibold mb-1.5 block text-muted-foreground">이름</label>
-                  <input
-                    type="text"
-                    value={editModal.name}
-                    onChange={e => setEditModal({ ...editModal, name: e.target.value })}
-                    className="w-full px-4 py-2.5 bg-black/5 dark:bg-white/5 border border-border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
-                  />
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-sm font-semibold mb-1.5 block text-muted-foreground">성</label>
+                    <input
+                      type="text"
+                      value={editModal.lastName}
+                      onChange={e => setEditModal({ ...editModal, lastName: e.target.value })}
+                      className="w-full px-4 py-2.5 bg-black/5 dark:bg-white/5 border border-border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-sm font-semibold mb-1.5 block text-muted-foreground">이름</label>
+                    <input
+                      type="text"
+                      value={editModal.firstName}
+                      onChange={e => setEditModal({ ...editModal, firstName: e.target.value })}
+                      className="w-full px-4 py-2.5 bg-black/5 dark:bg-white/5 border border-border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
+                    />
+                  </div>
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
@@ -752,18 +825,18 @@ const handlePasswordReset = async (id: string, name: string) => {
                       className="w-full px-4 py-2.5 bg-black/5 dark:bg-white/5 border border-border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 appearance-none"
                     >
                       <option value="">선택 안 함</option>
-                      {DEPARTMENTS.map(d => <option key={d} value={d}>{d}</option>)}
+                      {deptOptions.map(d => <option key={d.code_id} value={d.code_id}>{d.code_name}</option>)}
                     </select>
                   </div>
                   <div>
                     <label className="text-sm font-semibold mb-1.5 block text-muted-foreground">권한</label>
                     <select
-                      value={editModal.role}
-                      onChange={e => setEditModal({ ...editModal, role: e.target.value })}
+                      value={editModal.roleCode}
+                      onChange={e => setEditModal({ ...editModal, roleCode: e.target.value })}
                       className="w-full px-4 py-2.5 bg-black/5 dark:bg-white/5 border border-border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 appearance-none"
                     >
                       <option value="EMPLOYEE">일반 멤버</option>
-                      <option value="PM">PM</option>
+                      <option value="ADMIN">PM</option>
                     </select>
                   </div>
                 </div>
@@ -776,18 +849,18 @@ const handlePasswordReset = async (id: string, name: string) => {
                       className="w-full px-4 py-2.5 bg-black/5 dark:bg-white/5 border border-border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 appearance-none"
                     >
                       <option value="">선택 안 함</option>
-                      {POSITIONS.map(p => <option key={p} value={p}>{p}</option>)}
+                      {positionOptions.map(p => <option key={p.code_id} value={p.code_id}>{p.code_name}</option>)}
                     </select>
                   </div>
                   <div>
                     <label className="text-sm font-semibold mb-1.5 block text-muted-foreground">직무</label>
                     <select
-                      value={editModal.jobTitle}
-                      onChange={e => setEditModal({ ...editModal, jobTitle: e.target.value })}
+                      value={editModal.jobRole}
+                      onChange={e => setEditModal({ ...editModal, jobRole: e.target.value })}
                       className="w-full px-4 py-2.5 bg-black/5 dark:bg-white/5 border border-border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 appearance-none"
                     >
                       <option value="">선택 안 함</option>
-                      {JOB_TITLES.map(j => <option key={j} value={j}>{j}</option>)}
+                      {jobRoleOptions.map(j => <option key={j.code_id} value={j.code_id}>{j.code_name}</option>)}
                     </select>
                   </div>
                 </div>
@@ -819,7 +892,7 @@ const handlePasswordReset = async (id: string, name: string) => {
                       onChange={e => setEditModal({ ...editModal, status: e.target.value as EmployeeStatus })}
                       className="w-full px-4 py-2.5 bg-black/5 dark:bg-white/5 border border-border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 appearance-none"
                     >
-                      {Object.keys(STATUS_META).map(s => <option key={s} value={s}>{STATUS_META[s].label}</option>)}
+                      {statusOptions.map(s => <option key={s.code_id} value={s.code_id}>{STATUS_META[s.code_id]?.label ?? s.code_name}</option>)}
                     </select>
                   </div>
                   <div>
@@ -834,27 +907,35 @@ const handlePasswordReset = async (id: string, name: string) => {
                 </div>
               </div>
 
-              {/* 우측: 기술스택/자격증/주요프로젝트/연락처 — 태그형 이력 정보 */}
+              {/* 우측: 기술스택/자격증(읽기 전용)/주요프로젝트/연락처 — 태그형 이력 정보 */}
               <div className="space-y-4">
                 <div>
-                  <label className="text-sm font-semibold mb-1.5 block text-muted-foreground">기술 스택</label>
-                  <TagAutocomplete
-                    value={editModal.techStack}
-                    onChange={techStack => setEditModal({ ...editModal, techStack })}
-                    suggestions={SKILL_SUGGESTIONS}
-                    placeholder="목록에서 선택"
-                    allowCustom={false}
-                  />
+                  <label className="text-sm font-semibold mb-1.5 block text-muted-foreground">
+                    기술 스택 <span className="font-normal">(읽기 전용 — 본인이 프로필에서 등록)</span>
+                  </label>
+                  <div className="flex flex-wrap gap-1.5 min-h-[2.5rem] px-3 py-2 bg-black/5 dark:bg-white/5 border border-border rounded-xl">
+                    {editModal.pastProjects.length === 0 && members.find(m => m.id === editModal.id)?.skills.length === 0 ? (
+                      <span className="text-xs text-muted-foreground py-1">-</span>
+                    ) : (
+                      (members.find(m => m.id === editModal.id)?.skills ?? []).map((s, i) => (
+                        <span key={i} className="text-xs px-2 py-1 rounded bg-primary/10 text-primary font-semibold">{s}</span>
+                      ))
+                    )}
+                  </div>
                 </div>
                 <div>
-                  <label className="text-sm font-semibold mb-1.5 block text-muted-foreground">자격증</label>
-                  <TagAutocomplete
-                    value={editModal.certifications}
-                    onChange={certifications => setEditModal({ ...editModal, certifications })}
-                    suggestions={CERT_SUGGESTIONS}
-                    placeholder="목록에서 선택"
-                    allowCustom={false}
-                  />
+                  <label className="text-sm font-semibold mb-1.5 block text-muted-foreground">
+                    자격증 <span className="font-normal">(읽기 전용)</span>
+                  </label>
+                  <div className="flex flex-wrap gap-1.5 min-h-[2.5rem] px-3 py-2 bg-black/5 dark:bg-white/5 border border-border rounded-xl">
+                    {(members.find(m => m.id === editModal.id)?.certifications ?? []).length === 0 ? (
+                      <span className="text-xs text-muted-foreground py-1">-</span>
+                    ) : (
+                      (members.find(m => m.id === editModal.id)?.certifications ?? []).map((c, i) => (
+                        <span key={i} className="text-xs px-2 py-1 rounded bg-emerald-500/10 text-emerald-400 font-semibold">{c}</span>
+                      ))
+                    )}
+                  </div>
                 </div>
                 <div>
                   <label className="text-sm font-semibold mb-1.5 block text-muted-foreground">주요 프로젝트</label>
@@ -862,8 +943,8 @@ const handlePasswordReset = async (id: string, name: string) => {
                     value={editModal.pastProjects}
                     onChange={pastProjects => setEditModal({ ...editModal, pastProjects })}
                     suggestions={PROJECT_SUGGESTIONS}
-                    placeholder="목록에서 선택"
-                    allowCustom={false}
+                    placeholder="입력 후 Enter로 추가"
+                    allowCustom
                   />
                 </div>
                 <div>
@@ -883,7 +964,7 @@ const handlePasswordReset = async (id: string, name: string) => {
               <button onClick={() => setEditModal(null)} className="flex-1 py-2.5 rounded-xl border border-border text-sm font-semibold hover:bg-black/5 dark:hover:bg-white/5">취소</button>
               <button
                 onClick={handleEditEmployee}
-                disabled={!editModal.name.trim() || editing}
+                disabled={editing}
                 className="flex-1 py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 disabled:opacity-40 flex items-center justify-center gap-2"
               >
                 {editing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Settings className="w-4 h-4" />}
@@ -893,6 +974,6 @@ const handlePasswordReset = async (id: string, name: string) => {
           </div>
         </div>
       )}
-</div>
+    </div>
   );
 }

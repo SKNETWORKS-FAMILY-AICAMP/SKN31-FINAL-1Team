@@ -94,23 +94,27 @@ WSGI_APPLICATION = 'config.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/6.0/ref/settings/#databases
 
-# DATABASES = {
-#     'default': {
-#         'ENGINE': 'django.db.backends.sqlite3',
-#         'NAME': BASE_DIR / 'db.sqlite3',
-#     }
-# }
-
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.mysql',
-        'NAME': env.str('MYSQL_DB'),
-        'USER': env.str('MYSQL_USER'),
-        'PASSWORD': env.str('MYSQL_PASSWORD'),
-        'HOST': env.str('MYSQL_HOST'),
-        'PORT': env.int('MYSQL_PORT', default=3306),
+# .env에 MYSQL_HOST가 채워져 있으면(팀 공용 RDS 접속 정보를 아는 사람) MySQL을 쓰고,
+# 없으면(.env.example 그대로 두거나 MYSQL_* 항목을 아예 안 채운 팀원) SQLite로 자동 전환된다.
+# MySQL을 하드 요구하면 RDS 접속 정보가 없는 팀원은 서버 자체가 안 켜지므로 이 폴백이 필요하다.
+if env.str('MYSQL_HOST', default=''):
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.mysql',
+            'NAME': env.str('MYSQL_DB'),
+            'USER': env.str('MYSQL_USER'),
+            'PASSWORD': env.str('MYSQL_PASSWORD'),
+            'HOST': env.str('MYSQL_HOST'),
+            'PORT': env.int('MYSQL_PORT', default=3306),
+        }
     }
-}
+else:
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': BASE_DIR / 'db.sqlite3',
+        }
+    }
 
 # Password validation
 # https://docs.djangoproject.com/en/6.0/ref/settings/#auth-password-validators
@@ -155,8 +159,10 @@ REST_FRAMEWORK = {
 'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
 
 # 2. 사용자 인증 설정 (Simple JWT)
+# 2026-08-31: 토큰을 localStorage 대신 HttpOnly 쿠키로 옮기면서, Authorization 헤더가
+# 아니라 쿠키에서 JWT를 읽는 커스텀 인증 클래스로 교체(users/authentication.py 참고).
 'DEFAULT_AUTHENTICATION_CLASSES': (
-    'rest_framework_simplejwt.authentication.JWTAuthentication',
+    'users.authentication.CookieJWTAuthentication',
 ),
 
 # (선택) 기본 접근 권한 설정 (예: 인증된 사용자만 접근 가능)
@@ -192,6 +198,14 @@ CORS_ALLOWED_ORIGINS = [
 # 인증 정보(Cookie, Authorization 헤더 등)를 포함한 요청 허용
 CORS_ALLOW_CREDENTIALS = True
 
+# 2026-08-31: 쿠키 기반 인증으로 옮기면서 CSRF 검증이 다시 필요해졌다(위 CookieJWTAuthentication
+# 참고). Django의 CSRF 미들웨어는 Origin/Referer가 다른 포트(localhost:3000 → :8000)로 온
+# 요청을 기본적으로 신뢰하지 않으므로, 프론트 개발 서버 주소를 명시적으로 허용해야 한다.
+CSRF_TRUSTED_ORIGINS = [
+"http://localhost:3000",
+"http://127.0.0.1:3000",
+]
+
 CORS_ALLOW_HEADERS = [
 'accept',
 'accept-encoding',
@@ -203,3 +217,5 @@ CORS_ALLOW_HEADERS = [
 'x-csrftoken',
 'x-requested-with',
 ]
+
+# APPEND_SLASH = False

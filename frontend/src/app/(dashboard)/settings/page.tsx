@@ -3,10 +3,8 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useAuth } from "@/lib/auth";
-import { Settings as SettingsIcon, Loader2, Save, CheckCircle2, Sparkles, FolderKanban, HelpCircle, Mail, ChevronDown, FileText, ShieldCheck } from "lucide-react";
+import { Settings as SettingsIcon, Loader2, Sparkles, FolderKanban, HelpCircle, Mail, ChevronDown, FileText, ShieldCheck, Lightbulb, AlertTriangle } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { AgentBadge } from "@/components/ui/AgentBadge";
-import { parseAgentConfig, DEFAULT_AGENT_CONFIG, type AgentConfig } from "@/lib/agentConfig";
 import { TERMS_ARTICLES, TERMS_EFFECTIVE_DATE, PRIVACY_SECTIONS, PRIVACY_EFFECTIVE_DATE } from "@/lib/legalContent";
 
 const SUPPORT_EMAIL = "kimjae9360@gmail.com";
@@ -17,14 +15,12 @@ const FAQ_ITEMS = [
   { q: "업무 담당자는 어떻게 배정하나요?", a: "요구사항정의서가 승인되면 문서생성의 \"업무 배분\" 탭에서 AI 추천을 받아 배정하거나, 업무관리 칸반에서 직접 담당자를 지정해 배분 승인을 요청할 수 있습니다." },
   { q: "\"배분승인대기\"는 무슨 뜻인가요?", a: "업무 완료 승인이 아니라, 담당자 지정에 대한 PM 승인 대기 상태입니다. PM이 승인해야 그 업무가 \"진행 중\"으로 넘어갑니다." },
   { q: "알림은 어디서 확인하나요?", a: "모든 화면 상단 우측 종 아이콘에서 확인할 수 있습니다. 안읽음이 있으면 아이콘이 주황색으로 바뀌고, 항목을 클릭하면 관련 화면으로 이동하며 읽음 처리됩니다." },
-  { q: "설정의 \"에이전트 설정\"은 무엇을 바꾸나요?", a: "AI가 문서/업무를 생성할 때의 일관성(temperature)과, 업무 배분 시 한 번에 추출할 업무 개수 범위를 조정합니다. 환각 방지를 위해 일관성은 일정 범위 안에서만 조정할 수 있습니다." },
-  { q: "PM과 일반유저는 권한이 어떻게 다른가요?", a: "PM은 프로젝트 생성, 문서·업무 배분 승인, 직원관리, 에이전트 설정 등을 할 수 있습니다. 일반유저는 본인이 담당한 업무 위주로 진행 상황을 관리합니다." },
+  { q: "PM과 일반유저는 권한이 어떻게 다른가요?", a: "PM은 프로젝트 생성, 문서·업무 배분 승인, 직원관리 등을 할 수 있습니다. 일반유저는 본인이 담당한 업무 위주로 진행 상황을 관리합니다." },
   { q: "비밀번호를 잊어버렸어요.", a: "현재는 자가 비밀번호 재설정 기능이 없습니다. 소속 PM(관리자)에게 계정 초기화를 요청해 주세요." },
 ];
 
 type Project = {
   id: string;
-  agentConfig: string | null;
 };
 
 export default function SettingsPage() {
@@ -33,14 +29,19 @@ export default function SettingsPage() {
 
   const [project, setProject] = useState<Project | null>(null);
   const [loading, setLoading] = useState(true);
-  const [agentConfig, setAgentConfig] = useState<AgentConfig>(DEFAULT_AGENT_CONFIG);
-  const [savingAgents, setSavingAgents] = useState(false);
-  const [savedAgents, setSavedAgents] = useState(false);
   const [openFaq, setOpenFaq] = useState<number | null>(null);
-  // 에이전트 설정은 PM 전용(일반유저에게는 섹션 자체를 안 보여줌)이라 collapse 상태는 PM한테만 의미가 있다.
-  // 기본값은 접힌 상태 — 페이지 진입 시 바로 눈에 띄지 않아도 되는 설정이라는 판단(사용자 요청).
-  const [agentSectionOpen, setAgentSectionOpen] = useState(false);
   const [openLegal, setOpenLegal] = useState<"terms" | "privacy" | null>(null);
+
+  // 반려 패턴 분석(피드백 루프) — 요청 즉시 생성해 화면에만 보여주고 저장하지는 않는다.
+  // 다시 보고 싶으면 버튼을 또 누르면 된다(매번 최신 반려 사유 기준으로 새로 분석됨).
+  type RejectInsight = {
+    theme: string; occurrenceCount: number; evidence: string; suggestion: string;
+  };
+  const [insightLoading, setInsightLoading] = useState(false);
+  const [insightError, setInsightError] = useState("");
+  const [insightResult, setInsightResult] = useState<{
+    insufficientData: boolean; message?: string; reasonCount: number; overallSummary?: string; patterns?: RejectInsight[];
+  } | null>(null);
 
   useEffect(() => {
     const load = async () => {
@@ -53,7 +54,6 @@ export default function SettingsPage() {
         if (detail.success && detail.data) {
           const p: Project = detail.data;
           setProject(p);
-          setAgentConfig(parseAgentConfig(p.agentConfig));
         }
       } finally {
         setLoading(false);
@@ -62,22 +62,22 @@ export default function SettingsPage() {
     load();
   }, []);
 
-  const saveAgents = async () => {
+  const runInsightAnalysis = async () => {
     if (!project) return;
-    setSavingAgents(true); setSavedAgents(false);
+    setInsightLoading(true);
+    setInsightError("");
     try {
-      const res = await fetch(`/api/projects/${project.id}/settings`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ agentConfig }),
-      });
+      const res = await fetch(`/api/projects/${project.id}/reject-insights`, { method: "POST" });
       const data = await res.json();
-      // 서버가 clamp한 최종값으로 화면을 맞춘다 — 슬라이더로는 이미 범위 안이라 보통 그대로지만,
-      // min/max 업무 개수처럼 두 값이 서로 얽힌 필드는 서버 쪽 보정이 있을 수 있다.
-      if (res.ok && data.data?.agentConfig) setAgentConfig(parseAgentConfig(data.data.agentConfig));
-      if (res.ok) { setSavedAgents(true); setTimeout(() => setSavedAgents(false), 2000); }
+      if (res.ok && data.success) {
+        setInsightResult(data);
+      } else {
+        setInsightError(data.error || "분석에 실패했습니다.");
+      }
+    } catch {
+      setInsightError("네트워크 오류가 발생했습니다.");
     } finally {
-      setSavingAgents(false);
+      setInsightLoading(false);
     }
   };
 
@@ -109,78 +109,63 @@ export default function SettingsPage() {
           <h1 className="text-3xl font-black text-foreground tracking-tight">설정</h1>
         </div>
         <p className="text-muted-foreground">
-          {isPM ? "AI 에이전트 설정, 자주 묻는 질문, 법적 고지를 확인합니다." : "자주 묻는 질문과 법적 고지를 확인합니다."}
+          자주 묻는 질문과 법적 고지를 확인합니다.
         </p>
       </div>
 
-      {/* 에이전트 설정 — 일반유저는 조정할 일이 없어 섹션 자체를 안 보여준다(PM 전용) */}
+      {/* 반려 패턴 분석 — PM이 반려할 때 남긴 사유를 모아 반복 패턴/프롬프트 개선 제안을 보여주는
+          반자동 피드백 루프. AI가 프롬프트를 직접 고치지는 않는다 — 사람이 읽고 판단한다. */}
       {isPM && (
-        <section className="glass rounded-2xl border border-border overflow-hidden">
-          <button
-            onClick={() => setAgentSectionOpen(v => !v)}
-            className="w-full flex items-center justify-between gap-3 p-6 text-left hover:bg-black/5 dark:hover:bg-white/5 transition-colors"
-          >
+        <section className="glass rounded-2xl border border-border p-6 space-y-4">
+          <div>
             <h2 className="text-lg font-bold flex items-center gap-2">
-              <Sparkles className="w-5 h-5 text-primary" /> 에이전트 설정
+              <Lightbulb className="w-5 h-5 text-primary" /> 반려 패턴 분석
             </h2>
-            <ChevronDown className={cn("w-5 h-5 text-muted-foreground shrink-0 transition-transform", agentSectionOpen && "rotate-180")} />
+            <p className="text-xs text-muted-foreground mt-1">
+              지금까지 반려하며 남긴 사유들을 모아 반복되는 패턴과 프롬프트 개선 제안을 AI가 찾아드립니다.
+              결과는 참고용이며 자동으로 적용되지 않습니다.
+            </p>
+          </div>
+
+          <button
+            onClick={runInsightAnalysis}
+            disabled={insightLoading}
+            className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-bold hover:bg-primary/90 disabled:opacity-50"
+          >
+            {insightLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+            {insightLoading ? "분석 중..." : "반려 사유 분석하기"}
           </button>
 
-          {agentSectionOpen && (
-            <div className="px-6 pb-6 space-y-5">
-              <p className="text-xs text-muted-foreground -mt-2">
-                문서생성 파이프라인의 AI 에이전트 3종을 세부 조정합니다. 값은 실제 생성 API 호출에 그대로 반영됩니다.
-                &ldquo;원본에 없는 내용은 지어내지 않는다&rdquo;는 환각 방지 원칙을 지키기 위해 다양성(temperature)은
-                0~0.3 범위로만 조정할 수 있습니다.
-              </p>
+          {insightError && (
+            <p className="text-sm text-red-500 flex items-center gap-1.5"><AlertTriangle className="w-4 h-4" /> {insightError}</p>
+          )}
 
-              <AgentTemperatureCard
-                agent="proposal"
-                title="기획서 생성 에이전트"
-                description="회의록/메모를 바탕으로 프로젝트 기획서 초안을 작성합니다."
-                temperature={agentConfig.proposal.temperature}
-                onChange={t => setAgentConfig(c => ({ ...c, proposal: { temperature: t } }))}
-                editable={isPM}
-              />
-              <AgentTemperatureCard
-                agent="reqSpec"
-                title="요구사항정의서 생성 에이전트"
-                description="승인된 기획서를 바탕으로 개발 가능한 수준의 요구사항정의서를 작성합니다."
-                temperature={agentConfig.reqSpec.temperature}
-                onChange={t => setAgentConfig(c => ({ ...c, reqSpec: { temperature: t } }))}
-                editable={isPM}
-              />
-              <AgentTemperatureCard
-                agent="taskAssign"
-                title="업무 배분 에이전트"
-                description="승인된 요구사항정의서를 실행 가능한 업무 단위로 쪼갭니다."
-                temperature={agentConfig.taskAssign.temperature}
-                onChange={t => setAgentConfig(c => ({ ...c, taskAssign: { ...c.taskAssign, temperature: t } }))}
-                editable={isPM}
-              >
-                <div className="flex items-center gap-3 mt-3 pt-3 border-t border-border">
-                  <label className="text-xs font-semibold text-muted-foreground shrink-0">한 번에 추출할 업무 개수</label>
-                  <input
-                    type="number" min={1} max={agentConfig.taskAssign.maxTasks} step={1}
-                    value={agentConfig.taskAssign.minTasks}
-                    onChange={e => setAgentConfig(c => ({ ...c, taskAssign: { ...c.taskAssign, minTasks: Math.max(1, Number(e.target.value) || 1) } }))}
-                    className="w-16 px-2 py-1 bg-black/5 dark:bg-white/5 border border-border rounded-lg text-xs text-center focus:outline-none focus:ring-2 focus:ring-primary/40 disabled:opacity-60"
-                  />
-                  <span className="text-xs text-muted-foreground">~</span>
-                  <input
-                    type="number" min={agentConfig.taskAssign.minTasks} max={15} step={1}
-                    value={agentConfig.taskAssign.maxTasks}
-                    onChange={e => setAgentConfig(c => ({ ...c, taskAssign: { ...c.taskAssign, maxTasks: Math.min(15, Number(e.target.value) || c.taskAssign.minTasks) } }))}
-                    className="w-16 px-2 py-1 bg-black/5 dark:bg-white/5 border border-border rounded-lg text-xs text-center focus:outline-none focus:ring-2 focus:ring-primary/40 disabled:opacity-60"
-                  />
-                  <span className="text-xs text-muted-foreground">개 (기본 3~7)</span>
+          {insightResult && insightResult.insufficientData && (
+            <p className="text-sm text-muted-foreground">{insightResult.message}</p>
+          )}
+
+          {insightResult && !insightResult.insufficientData && (
+            <div className="space-y-3">
+              <p className="text-xs text-muted-foreground">반려 사유 {insightResult.reasonCount}건 기준 분석</p>
+              {insightResult.overallSummary && (
+                <p className="text-sm bg-black/5 dark:bg-white/5 rounded-xl p-4">{insightResult.overallSummary}</p>
+              )}
+              {insightResult.patterns && insightResult.patterns.length > 0 ? (
+                <div className="space-y-3">
+                  {insightResult.patterns.map((p, i) => (
+                    <div key={i} className="border border-border rounded-xl p-4 space-y-1.5">
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold text-sm">{p.theme}</span>
+                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-primary/10 text-primary">{p.occurrenceCount}건</span>
+                      </div>
+                      <p className="text-xs text-muted-foreground">근거: {p.evidence}</p>
+                      <p className="text-xs">💡 {p.suggestion}</p>
+                    </div>
+                  ))}
                 </div>
-              </AgentTemperatureCard>
-
-              <button onClick={saveAgents} disabled={savingAgents} className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-bold hover:bg-primary/90 disabled:opacity-50">
-                {savingAgents ? <Loader2 className="w-4 h-4 animate-spin" /> : savedAgents ? <CheckCircle2 className="w-4 h-4" /> : <Save className="w-4 h-4" />}
-                {savedAgents ? "저장됨" : "저장하기"}
-              </button>
+              ) : (
+                <p className="text-sm text-muted-foreground">뚜렷하게 반복되는 패턴은 아직 발견되지 않았습니다.</p>
+              )}
             </div>
           )}
         </section>
@@ -272,40 +257,6 @@ export default function SettingsPage() {
           </div>
         </div>
       </section>
-    </div>
-  );
-}
-
-function AgentTemperatureCard({
-  agent, title, description, temperature, onChange, editable, children,
-}: {
-  agent: "proposal" | "reqSpec" | "taskAssign";
-  title: string;
-  description: string;
-  temperature: number;
-  onChange: (t: number) => void;
-  editable: boolean;
-  children?: React.ReactNode;
-}) {
-  return (
-    <div className="rounded-xl border border-border p-4">
-      <div className="flex items-center justify-between mb-1">
-        <h3 className="font-semibold text-sm flex items-center gap-2">{title} <AgentBadge agent={agent} /></h3>
-        <span className="text-xs font-mono text-muted-foreground">{temperature.toFixed(2)}</span>
-      </div>
-      <p className="text-xs text-muted-foreground mb-3">{description}</p>
-      <input
-        type="range" min={0} max={0.3} step={0.05}
-        value={temperature}
-        onChange={e => onChange(Number(e.target.value))}
-        disabled={!editable}
-        className="w-full accent-primary disabled:opacity-60"
-      />
-      <div className="flex justify-between text-[10px] text-muted-foreground mt-1">
-        <span>0 · 항상 같은 결과(결정적)</span>
-        <span>0.3 · 표현에 약간의 다양성</span>
-      </div>
-      {children}
     </div>
   );
 }

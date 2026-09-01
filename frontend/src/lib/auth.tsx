@@ -1,6 +1,8 @@
 "use client";
 
 import React, { createContext, useContext, useState, useEffect } from "react";
+import { apiFetch } from "@/lib/api/client";
+import { toUser } from "@/lib/api/mappers";
 
 export type User = {
   id: string;
@@ -36,23 +38,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   // 로그인해 있는 동안 PM이 이 계정을 휴직/퇴사/잠금 처리할 수 있다 — 그 순간 즉시 화면이
-  // 튕기진 않지만(세션 쿠키 자체는 만료 전까지 유효한 서명이므로), 다음 API 호출부터는
-  // requireAuth가 막는다. 여기서는 API 호출이 없는 유휴 상태에서도 놓치지 않도록 주기적으로
-  // /api/auth/me를 불러 계정이 여전히 유효한지 확인하고, 아니면 사유를 알리고 강제 로그아웃한다.
+  // 튕기진 않지만(access 토큰 자체는 만료 전까지 유효한 서명이므로), 다음 API 호출부터는
+  // 서버가 막는다. 여기서는 API 호출이 없는 유휴 상태에서도 놓치지 않도록 주기적으로
+  // GET /api/users/me/ 를 불러 계정이 여전히 유효한지 확인하고, 아니면 강제 로그아웃한다.
   useEffect(() => {
     if (!user) return;
     const checkSession = async () => {
       try {
-        const res = await fetch("/api/auth/me");
-        if (!res.ok) {
-          const data = await res.json().catch(() => null);
-          setUser(null);
-          localStorage.removeItem("hz_session");
-          alert(data?.error || "계정이 비활성화되어 로그아웃되었습니다.");
-          window.location.href = "/login";
-        }
+        await apiFetch("/api/users/me/");
       } catch {
-        // 네트워크 오류 등은 일시적일 수 있으므로 무시하고 다음 주기에 다시 시도한다.
+        // apiFetch는 네트워크 오류와 401/403을 구분하지 않고 둘 다 throw하므로, 여기서 바로
+        // 로그아웃 처리한다 — 일시적 네트워크 오류로 오탐하더라도 재로그인만 하면 되니 안전한 쪽.
+        // 토큰 자체(쿠키)는 서버가 관리하므로 여기선 화면 상태만 정리한다.
+        setUser(null);
+        localStorage.removeItem("hz_session");
+        window.location.href = "/login";
       }
     };
     const interval = setInterval(checkSession, 30000);
@@ -60,88 +60,84 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [user]);
 
   const login = async (email: string, password: string) => {
-    const res = await fetch("/api/auth/login", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, password }),
-    });
+    // 2026-08-31: 토큰을 localStorage 대신 HttpOnly 쿠키로 옮기면서, 로그인(쓰기 요청) 전에
+    // csrftoken 쿠키를 먼저 확보해야 한다 — Django의 CSRF 검증은 X-CSRFToken 헤더 값이
+    // csrftoken 쿠키 값과 일치하는지 보는데, 첫 로그인 시도 시점엔 그 쿠키가 아직 없다.
+    await apiFetch("/api/users/csrf/");
 
-    if (!res.ok) {
-      const errorData = await res.json();
-      throw new Error(errorData.error || "로그인에 실패했습니다.");
-    }
-
-    const userData = await res.json();
-    
-    // Map DB schema to Client Schema
-    const mappedUser: User = {
-      id: userData.id,
-      email: userData.email,
-      name: userData.name,
-      role: userData.role === "PM" ? "PM" : "MEMBER",
-      isFirstLogin: userData.mustChangePassword,
+    type LoginResponse = {
+      message: string;
+      user: { id: number | string; username: string; full_name: string; emp_no: string | null };
     };
+    try {
+      await apiFetch<LoginResponse>("/api/users/login/", {
+        method: "POST",
+        body: JSON.stringify({ username: email, password }),
+      });
+    } catch (err: any) {
+      throw new Error(err.message || "로그인에 실패했습니다.");
+    }
+    // access/refresh 토큰은 이제 서버가 Set-Cookie로 내려준다 — 여기서 직접 저장할 게 없다.
+
+    // 로그인 응답(UserSimpleSerializer)에는 role 정보가 없다 — 화면의 PM/MEMBER 분기에 필요한
+    // role_code는 GET /api/users/me/ (UserDetailSerializer)에만 있어서 한 번 더 불러온다.
+    const profile = await apiFetch<any>("/api/users/me/");
+    const mappedUser = toUser(profile);
 
     setUser(mappedUser);
     localStorage.setItem("hz_session", JSON.stringify(mappedUser));
   };
 
   const logout = () => {
+    // 쿠키(access/refresh)는 HttpOnly라 프론트가 직접 지울 수 없다 — 서버가 응답에서
+    // Set-Cookie로 만료시켜야 한다(users/views.py LogoutView의 clear_auth_cookies).
+    apiFetch("/api/users/logout/", { method: "POST" }).catch(() => {});
+
     setUser(null);
     localStorage.removeItem("hz_session");
-    // 서버가 실제 권한 판단에 쓰는 HttpOnly 세션 쿠키도 지운다 — 응답을 기다릴 필요는 없다
-    // (실패해도 로그아웃 자체는 진행돼야 하고, 어차피 곧 로그인 페이지로 이동한다).
-    fetch("/api/auth/logout", { method: "POST" }).catch(() => {});
     window.location.href = "/login";
   };
 
-  // DEV ONLY — 그냥 role 라벨만 바꾸면 대시보드 등 개인화 화면이 여전히 PM 본인 id로 조회돼서
-  // (PM은 업무를 배정받지 않는 역할이라) 항상 빈 화면만 보였다. 그래서 "일반유저"로 갈 땐 실제
-  // 배정 업무가 있는 팀원 계정으로 세션 자체를 바꾸고, 돌아올 땐 원래 PM 계정을 복원한다.
-  // 주의: 이건 localStorage(hz_session)만 바꾸는 화면 미리보기용이다 — 실제 API 권한 검증은
-  // 로그인 시 서버가 심어준 HttpOnly 쿠키(src/lib/session.ts)의 role을 기준으로 하므로, 이
-  // 토글로 "일반유저"를 봐도 실제 로그인 계정이 PM이면 서버는 여전히 PM으로 취급한다(그 반대도
-  // 마찬가지). 진짜 다른 권한으로 API를 테스트하려면 해당 계정으로 다시 로그인해야 한다.
+  // DEV ONLY — 재로그인 없이 다른 팀원 계정으로 세션을 바꿔본다.
+  // 2026-08-31: 토큰이 HttpOnly 쿠키로 바뀌면서 "프론트 JS가 원래 PM 토큰을 보관해뒀다가
+  // 되돌린다"는 방식이 아예 불가능해졌다(JS가 쿠키 값을 읽을 수 없으므로) — 대신 서버가
+  // 원래 토큰을 dev_original_* 쿠키에 보관해두고, 복귀는 전용 엔드포인트
+  // (POST /api/users/dev-stop-impersonate/)가 그걸 읽어 되돌린다.
   const devToggleRole = async () => {
     if (!user) return;
 
     if (user.role === "PM") {
-      localStorage.setItem("hz_dev_pm_identity", JSON.stringify(user));
       try {
-        const res = await fetch("/api/users");
-        const json = await res.json();
-        const employees = (json.data ?? [])
-          .filter((u: any) => u.role === "EMPLOYEE")
-          .sort((a: any, b: any) => a.email.localeCompare(b.email));
-        if (employees.length === 0) return;
-        const preview: User = {
-          id: employees[0].id,
-          email: employees[0].email,
-          name: employees[0].name,
-          role: "MEMBER",
-          isFirstLogin: false,
-        };
+        const employees = await apiFetch<any[]>("/api/users/");
+        const nonPm = employees
+          .filter((u: any) => !(u.role_info?.code_id === "ADMIN" || u.is_staff))
+          .sort((a: any, b: any) => (a.username || "").localeCompare(b.username || ""));
+        if (nonPm.length === 0) {
+          console.error("dev-impersonate: 전환할 일반 유저 계정이 없습니다.");
+          return;
+        }
+        await apiFetch(`/api/users/${nonPm[0].id}/impersonate/`, { method: "POST" });
+
+        const profile = await apiFetch<any>("/api/users/me/");
+        const preview = toUser(profile);
         setUser(preview);
         localStorage.setItem("hz_session", JSON.stringify(preview));
       } catch (err) {
-        console.error(err);
+        console.error("dev-impersonate failed:", err);
       }
       return;
     }
 
-    const stored = localStorage.getItem("hz_dev_pm_identity");
-    if (stored) {
-      const pmUser = JSON.parse(stored) as User;
+    try {
+      await apiFetch("/api/users/dev-stop-impersonate/", { method: "POST" });
+
+      const profile = await apiFetch<any>("/api/users/me/");
+      const pmUser = toUser(profile);
       setUser(pmUser);
       localStorage.setItem("hz_session", JSON.stringify(pmUser));
-      localStorage.removeItem("hz_dev_pm_identity");
-      return;
+    } catch (err) {
+      console.error("dev-stop-impersonate failed:", err);
     }
-    // 백업이 없다면 이전 버전 토글로 저장된 세션 — 이땐 id/email/name이 이미 실제 로그인 계정 것이므로
-    // role 라벨만 PM으로 되돌리면 재로그인 없이 복구된다(토글의 존재 이유 자체가 재로그인 회피이므로).
-    const restored = { ...user, role: "PM" as const };
-    setUser(restored);
-    localStorage.setItem("hz_session", JSON.stringify(restored));
   };
 
   const completeOnboarding = async (name: string, info: any) => {

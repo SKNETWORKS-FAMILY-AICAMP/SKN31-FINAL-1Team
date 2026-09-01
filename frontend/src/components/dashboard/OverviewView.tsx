@@ -224,6 +224,9 @@ export default function OverviewView() {
             <div className="flex justify-between items-center mb-5">
               <h3 className="text-base font-bold flex items-center gap-2">
                 <FolderKanban className="w-5 h-5 text-emerald-500" /> {isPM ? "진행 중인 프로젝트" : "내가 참여 중인 프로젝트"}
+                {projectList.length > 0 && (
+                  <span className="text-muted-foreground font-medium">({projectList.length}건)</span>
+                )}
               </h3>
               {isPM && (
                 <Link
