@@ -1,16 +1,15 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { X, Loader2, FileText, Users, CalendarIcon, FolderKanban } from "lucide-react";
+import { useState, useEffect, useRef } from "react";
+import { X, Loader2, FileText, Users, CalendarIcon, FolderKanban, Paperclip } from "lucide-react";
 import { apiFetch } from "@/lib/api/client";
 import TagAutocomplete from "@/components/ui/TagAutocomplete";
 
 type ProjectOption = { id: number; name: string };
 const NEW_PROJECT_VALUE = "__new__";
 
-// 2026-08-31: Django 백엔드(MeetingNote)로 재배선하면서 파일 첨부(.docx/.pdf/.hwp 텍스트 추출)는
-// 뺐다 — heyzzabi2에는 /api/documents/parse-file 로컬 라우트가 있었지만 Django엔 대응 API가
-// 없다. 직접 입력만 지원한다(범위 밖 — 필요해지면 별도로 구현).
+// 2026-09-01: /api/meetings/notes/parse-file/ (.docx/.pdf/.txt만 지원 — .hwp는 안정적인
+// 순수 파이썬 파서가 없어서 제외) 로 파일을 올리면 텍스트를 추출해 "원본 내용" 칸을 채운다.
 const SAMPLE_NOTES = [
   `[신규 쇼핑몰 프로젝트 킥오프 회의록]
 일자: 2026-08-19
@@ -61,6 +60,8 @@ export function NewDocumentModal({
   const [content, setContent] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
+  const [uploadingFile, setUploadingFile] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [projects, setProjects] = useState<ProjectOption[]>([]);
   const [loadingProjects, setLoadingProjects] = useState(true);
@@ -130,6 +131,29 @@ export function NewDocumentModal({
     const sample = SAMPLE_NOTES[randomIndex];
     setContent(sample);
     if (!title.trim()) setTitle(deriveTitleFromContent(sample));
+  };
+
+  const handleFileSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = ""; // 같은 파일을 다시 선택해도 onChange가 다시 뜨도록 초기화
+    if (!file) return;
+
+    setError("");
+    setUploadingFile(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const result = await apiFetch<{ content: string; filename: string }>(
+        "/api/meetings/notes/parse-file/",
+        { method: "POST", body: formData }
+      );
+      setContent(result.content);
+      if (!title.trim()) setTitle(deriveTitleFromContent(result.content));
+    } catch (err: any) {
+      setError(err.message || "파일에서 텍스트를 추출하지 못했습니다.");
+    } finally {
+      setUploadingFile(false);
+    }
   };
 
   const isCreatingNewProject = selectedProjectId === NEW_PROJECT_VALUE;
@@ -264,13 +288,32 @@ export function NewDocumentModal({
             <div className="flex flex-col">
               <div className="flex justify-between items-center mb-1">
                 <label className="block text-sm font-medium">원본 내용 (회의록/메모)</label>
-                <button
-                  type="button"
-                  onClick={handleLoadSample}
-                  className="text-xs font-semibold text-blue-500 hover:text-blue-600 bg-blue-500/10 px-3 py-1 rounded-full transition-colors"
-                >
-                  랜덤 샘플 불러오기
-                </button>
+                <div className="flex items-center gap-2">
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept=".docx,.pdf,.txt"
+                    onChange={handleFileSelected}
+                    className="hidden"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={uploadingFile}
+                    className="flex items-center gap-1 text-xs font-semibold text-primary hover:text-primary/80 bg-primary/10 px-3 py-1 rounded-full transition-colors disabled:opacity-50"
+                    title="지원 형식: .docx, .pdf, .txt"
+                  >
+                    {uploadingFile ? <Loader2 className="w-3 h-3 animate-spin" /> : <Paperclip className="w-3 h-3" />}
+                    {uploadingFile ? "추출 중..." : "파일에서 불러오기"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleLoadSample}
+                    className="text-xs font-semibold text-blue-500 hover:text-blue-600 bg-blue-500/10 px-3 py-1 rounded-full transition-colors"
+                  >
+                    랜덤 샘플 불러오기
+                  </button>
+                </div>
               </div>
               <textarea
                 required

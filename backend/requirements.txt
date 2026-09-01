@@ -140,3 +140,7 @@ websockets==16.1.1
 xxhash==4.0.1
 yarl==1.24.5
 zstandard==0.25.0
+
+# 회의록 파일 첨부(.docx/.pdf) 텍스트 추출용 — 2026-09-01 추가
+python-docx==1.2.0
+pypdf==6.16.2
