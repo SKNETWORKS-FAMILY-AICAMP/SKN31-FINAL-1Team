@@ -263,7 +263,7 @@ class MeetingNoteParseFileView(APIView):
     """
     회의록 첨부 파일에서 텍스트를 추출해 반환 (저장은 하지 않음 — 프론트가 "원본 내용" 칸을 채우는 용도)
     POST /api/meetings/notes/parse-file/  (multipart/form-data, key: file)
-    지원 형식: .docx, .pdf, .txt — .hwp는 안정적인 순수 파이썬 파서가 없어 지원하지 않는다.
+    지원 형식: .docx, .pdf, .txt, .hwp(HWPv5 바이너리 포맷 — pyhwp의 hwp5txt CLI를 서브프로세스로 호출)
     """
     permission_classes = [permissions.IsAuthenticated]
     parser_classes = [parsers.MultiPartParser]
@@ -273,7 +273,7 @@ class MeetingNoteParseFileView(APIView):
     @extend_schema(
         tags=['1단계 - 회의록'],
         summary='회의록 첨부 파일 텍스트 추출',
-        description='.docx/.pdf/.txt 파일을 업로드하면 텍스트를 추출해서 돌려준다. DB에 저장하지 않는다.',
+        description='.docx/.pdf/.txt/.hwp 파일을 업로드하면 텍스트를 추출해서 돌려준다. DB에 저장하지 않는다.',
         request={'multipart/form-data': {'type': 'object', 'properties': {'file': {'type': 'string', 'format': 'binary'}}}},
         responses={200: OpenApiResponse(description='추출된 텍스트')},
     )
@@ -294,9 +294,11 @@ class MeetingNoteParseFileView(APIView):
                 text = "\n".join((page.extract_text() or "") for page in reader.pages)
             elif name.endswith('.txt'):
                 text = f.read().decode('utf-8', errors='ignore')
+            elif name.endswith('.hwp'):
+                text = self._extract_hwp_text(f)
             else:
                 return Response(
-                    {"error": "지원하지 않는 파일 형식입니다. .docx, .pdf, .txt 파일만 업로드해주세요."},
+                    {"error": "지원하지 않는 파일 형식입니다. .docx, .pdf, .txt, .hwp 파일만 업로드해주세요."},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
         except Exception as e:
@@ -307,3 +309,31 @@ class MeetingNoteParseFileView(APIView):
             return Response({"error": "파일에서 텍스트를 추출하지 못했습니다."}, status=status.HTTP_400_BAD_REQUEST)
 
         return Response({"content": text, "filename": f.name}, status=status.HTTP_200_OK)
+
+    @staticmethod
+    def _extract_hwp_text(uploaded_file):
+        """
+        .hwp(HWPv5)는 바이너리 OLE 복합 문서 포맷이라 python-docx/pypdf 같은 순수 파이썬
+        라이브러리로는 못 읽는다 — pyhwp 패키지가 설치하는 hwp5txt CLI를 서브프로세스로
+        불러서 변환한다(파이썬 API가 내부 구현 세부사항이라 CLI가 더 안정적).
+        """
+        import subprocess
+        import tempfile
+        import os
+
+        with tempfile.NamedTemporaryFile(suffix='.hwp', delete=False) as tmp:
+            for chunk in uploaded_file.chunks():
+                tmp.write(chunk)
+            tmp_path = tmp.name
+
+        try:
+            result = subprocess.run(
+                ['hwp5txt', tmp_path],
+                capture_output=True,
+                timeout=30,
+            )
+            if result.returncode != 0:
+                raise ValueError(result.stderr.decode('utf-8', errors='ignore') or "hwp5txt 변환 실패")
+            return result.stdout.decode('utf-8', errors='ignore')
+        finally:
+            os.unlink(tmp_path)
