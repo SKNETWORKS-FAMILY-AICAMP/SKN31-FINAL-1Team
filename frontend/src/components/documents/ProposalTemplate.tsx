@@ -3,33 +3,40 @@ import type { ProposalDoc } from "@/lib/documentTemplates";
 const inputCls = "w-full bg-black/5 border border-black/10 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40";
 
 export function ProposalTemplate({
-  doc, title, dateLabel, editable, onChange,
+  doc, title, dateLabel, editable, onChange, periodEditable, onPeriodChange,
 }: {
   doc: ProposalDoc; title: string; dateLabel: string;
   editable?: boolean; onChange?: (doc: ProposalDoc) => void;
+  // 기간은 본문 섹션들과 달리 "직접 수정" 모드에 들어가지 않아도 항상 바로 입력할 수 있어야
+  // 한다(회의록에 범위가 없으면 AI가 채울 수 없는 값이라 매번 수정 모드까지 탈 필요가 없음).
+  // 그래서 본문 편집 여부(editable)와 별도로 periodEditable을 둔다.
+  periodEditable?: boolean; onPeriodChange?: (period: { start: string; end: string }) => void;
 }) {
   const set = <K extends keyof ProposalDoc>(key: K, value: ProposalDoc[K]) => onChange?.({ ...doc, [key]: value });
+  const setPeriod = (period: { start: string; end: string }) => {
+    onPeriodChange?.(period);
+    if (editable) set("projectPeriod", period);
+  };
 
   return (
     <div className="bg-white text-black p-10 w-full shadow-sm print:shadow-none print:p-0">
       <div className="text-center border-b-2 border-black pb-6 mb-8">
         <h1 className="text-3xl font-bold">{title}</h1>
         <p className="text-sm text-gray-500 mt-2">작성일 {dateLabel}</p>
-        {/* 원본에 명시된 프로젝트 기간 — 업무분배 탭에서 오늘 날짜 대신 이 시작일부터 WBS 일정을 잡는 데 쓰인다 */}
-        {editable ? (
+        {editable || periodEditable ? (
           <div className="flex items-center justify-center gap-2 mt-3 text-sm">
             <span className="text-gray-500">프로젝트 기간</span>
             <input
               type="date"
               value={doc.projectPeriod?.start ?? ""}
-              onChange={e => set("projectPeriod", { start: e.target.value, end: doc.projectPeriod?.end ?? "" })}
+              onChange={e => setPeriod({ start: e.target.value, end: doc.projectPeriod?.end ?? "" })}
               className={`${inputCls} w-auto`}
             />
             <span className="text-gray-400">~</span>
             <input
               type="date"
               value={doc.projectPeriod?.end ?? ""}
-              onChange={e => set("projectPeriod", { start: doc.projectPeriod?.start ?? "", end: e.target.value })}
+              onChange={e => setPeriod({ start: doc.projectPeriod?.start ?? "", end: e.target.value })}
               className={`${inputCls} w-auto`}
             />
           </div>
