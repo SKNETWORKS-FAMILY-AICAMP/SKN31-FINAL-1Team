@@ -94,23 +94,27 @@ WSGI_APPLICATION = 'config.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/6.0/ref/settings/#databases
 
-# DATABASES = {
-#     'default': {
-#         'ENGINE': 'django.db.backends.sqlite3',
-#         'NAME': BASE_DIR / 'db.sqlite3',
-#     }
-# }
-
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.mysql',
-        'NAME': env.str('MYSQL_DB'),
-        'USER': env.str('MYSQL_USER'),
-        'PASSWORD': env.str('MYSQL_PASSWORD'),
-        'HOST': env.str('MYSQL_HOST'),
-        'PORT': env.int('MYSQL_PORT', default=3306),
+# .env에 MYSQL_HOST가 채워져 있으면(팀 공용 RDS 접속 정보를 아는 사람) MySQL을 쓰고,
+# 없으면(.env.example 그대로 두거나 MYSQL_* 항목을 아예 안 채운 팀원) SQLite로 자동 전환된다.
+# MySQL을 하드 요구하면 RDS 접속 정보가 없는 팀원은 서버 자체가 안 켜지므로 이 폴백이 필요하다.
+if env.str('MYSQL_HOST', default=''):
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.mysql',
+            'NAME': env.str('MYSQL_DB'),
+            'USER': env.str('MYSQL_USER'),
+            'PASSWORD': env.str('MYSQL_PASSWORD'),
+            'HOST': env.str('MYSQL_HOST'),
+            'PORT': env.int('MYSQL_PORT', default=3306),
+        }
     }
-}
+else:
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': BASE_DIR / 'db.sqlite3',
+        }
+    }
 
 # Password validation
 # https://docs.djangoproject.com/en/6.0/ref/settings/#auth-password-validators
