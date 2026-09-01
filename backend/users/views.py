@@ -162,6 +162,36 @@ class CurrentUserProfileView(APIView):
         return Response(serializer.data)
 
 
+class ChangePasswordView(APIView):
+    """
+    본인 비밀번호 변경 API — 지금까지는 PM이 초기화(UserPasswordResetView)해주는 방법만
+    있었고, 사용자 본인이 직접 바꾸는 엔드포인트가 없었다.
+    PATCH /api/users/me/change-password/
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    @extend_schema(
+        tags=['0단계 - 사용자 관리'],
+        summary='본인 비밀번호 변경',
+        description='현재 비밀번호 확인 후 새 비밀번호로 변경합니다.',
+        responses={200: None, 400: None},
+    )
+    def patch(self, request):
+        current_password = request.data.get('current_password')
+        new_password = request.data.get('new_password')
+
+        if not current_password or not new_password:
+            return Response({"error": "현재 비밀번호와 새 비밀번호를 모두 입력해주세요."}, status=status.HTTP_400_BAD_REQUEST)
+        if not request.user.check_password(current_password):
+            return Response({"error": "현재 비밀번호가 올바르지 않습니다."}, status=status.HTTP_400_BAD_REQUEST)
+        if len(new_password) < 4:
+            return Response({"error": "새 비밀번호는 4자 이상이어야 합니다."}, status=status.HTTP_400_BAD_REQUEST)
+
+        request.user.set_password(new_password)
+        request.user.save(update_fields=['password'])
+        return Response({"message": "비밀번호가 변경되었습니다."}, status=status.HTTP_200_OK)
+
+
 class UserListView(generics.ListCreateAPIView):
     """
     사용자 및 개발자 목록 조회 API (업무 배정 및 참조용)
