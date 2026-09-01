@@ -8,7 +8,7 @@
       "key": "overview",
       "title": "프로젝트 개요",
       "section_type": "narrative",
-      "content_html": "<p>리테일링크(RetailLink)는 소상공인들이 엑셀이나 수기 장부로 재고를 관리하는 데서 오는 발주 시점 놓침과 과재고로 인한 손실 문제를 해결하기 위해 개발되었습니다.</p>",
+      "content_html": "<p><strong>리테일링크(RetailLink)</strong>는 소상공인들이 엑셀이나 수기 장부로 재고를 관리하는 데서 오는 불편함을 해결하기 위해 개발되었습니다. 발주 시점을 놓치거나 과재고로 인한 손실 문제를 해결하고자 합니다.</p>",
       "items": [],
       "source_fields": [
         "project.name",
@@ -59,7 +59,7 @@
       "key": "users",
       "title": "대상 사용자",
       "section_type": "narrative",
-      "content_html": "<ul>\n<li><strong>소상공인 사장:</strong> 매장 1~3개를 직접 운영하며, 모바일 사용 비중이 높습니다. 이들은 재고 관리의 자동화, 발주 시점 알림, 모바일 우선 반응형 설계를 필요로 합니다.</li>\n<li><strong>매장 직원:</strong> 매장 파트타임 직원으로 입출고 등록 정도만 수행합니다. 이들은 간편한 입출고 등록을 필요로 합니다.</li>\n</ul>",
+      "content_html": "<ul><li><strong>소상공인 사장:</strong> 매장 1~3개를 직접 운영하며, 모바일 사용 비중이 높습니다. 이들은 재고 관리의 자동화, 발주 시점 알림, 모바일 우선 반응형 설계를 필요로 합니다.</li><li><strong>매장 파트타임 직원:</strong> 입출고 등록 정도만 수행하며, 간편한 입출고 등록을 필요로 합니다.</li></ul>",
       "items": [],
       "source_fields": [
         "users"
@@ -87,7 +87,7 @@
       "key": "features",
       "title": "주요 기능",
       "section_type": "narrative",
-      "content_html": "<p><strong>바코드 입출고 등록</strong></p><p>스마트폰 카메라로 상품 바코드를 인식해 입출고를 등록한다. 전용 스캐너 없이 사용할 수 있다.</p><p><strong>재고 임계치 알림</strong></p><p>재고가 임계치에 도달하면 알림을 제공하여 적시에 발주할 수 있도록 돕는다.</p><p><strong>발주서 자동 생성</strong></p><p>재고 상황에 따라 자동으로 발주서를 생성하여 발주 과정을 간소화한다.</p><p><strong>거래처 관리</strong></p><p>거래처 정보를 체계적으로 관리하여 효율적인 거래를 지원한다.</p><p><strong>대시보드</strong></p><p>재고 및 판매 현황을 한눈에 볼 수 있는 대시보드를 제공한다.</p><p><strong>권한 관리</strong></p><p>사용자별로 접근 권한을 설정하여 보안을 강화한다.</p><p><strong>POS 연동</strong></p><p>POS 시스템과 연동하여 판매 데이터를 자동으로 수집하고 분석한다.</p>",
+      "content_html": "<p><strong>바코드 입출고 등록</strong></p><p>스마트폰 카메라로 상품 바코드를 인식해 입출고를 등록한다. 전용 스캐너 없이 사용할 수 있다.</p><p><strong>재고 임계치 알림</strong></p><p>재고가 임계치에 도달하면 알림을 제공하여 발주 시점을 놓치지 않도록 한다.</p><p><strong>발주서 자동 생성</strong></p><p>재고 상황에 따라 자동으로 발주서를 생성하여 발주 과정을 간소화한다.</p><p><strong>거래처 관리</strong></p><p>거래처 정보를 체계적으로 관리하여 효율적인 거래를 지원한다.</p><p><strong>대시보드</strong></p><p>재고 및 판매 현황을 한눈에 파악할 수 있는 대시보드를 제공한다.</p><p><strong>권한 관리</strong></p><p>사용자별로 접근 권한을 설정하여 보안을 강화한다.</p><p><strong>추천 수량 계산</strong></p><p>최근 4주 평균 판매량을 기반으로 추천 발주 수량을 계산한다.</p>",
       "items": [
         "바코드 입출고 등록",
         "재고 임계치 알림",
@@ -95,7 +95,7 @@
         "거래처 관리",
         "대시보드",
         "권한 관리",
-        "POS 연동"
+        "추천 수량 계산"
       ],
       "source_fields": [
         "requirements.functional",
@@ -110,7 +110,7 @@
         },
         {
           "title": "재고 임계치 알림",
-          "description": "재고가 임계치에 도달하면 알림을 제공하여 적시에 발주할 수 있도록 돕는다.",
+          "description": "재고가 임계치에 도달하면 알림을 제공하여 발주 시점을 놓치지 않도록 한다.",
           "priority": "high"
         },
         {
@@ -125,7 +125,7 @@
         },
         {
           "title": "대시보드",
-          "description": "재고 및 판매 현황을 한눈에 볼 수 있는 대시보드를 제공한다.",
+          "description": "재고 및 판매 현황을 한눈에 파악할 수 있는 대시보드를 제공한다.",
           "priority": "high"
         },
         {
@@ -134,9 +134,9 @@
           "priority": "high"
         },
         {
-          "title": "POS 연동",
-          "description": "POS 시스템과 연동하여 판매 데이터를 자동으로 수집하고 분석한다.",
-          "priority": "high"
+          "title": "추천 수량 계산",
+          "description": "최근 4주 평균 판매량을 기반으로 추천 발주 수량을 계산한다.",
+          "priority": "medium"
         }
       ],
       "needs_input": "",
@@ -202,28 +202,28 @@
       ],
       "evidence": [
         {
-          "quote": "프론트엔드 React, 백엔드 Spring Boot, DB MySQL, 인프라 AWS를 제안한다."
+          "quote": "이준호: 프론트엔드 React, 백엔드 Spring Boot, DB MySQL, 인프라 AWS를 제안한다."
         },
         {
-          "quote": "프론트엔드 React, 백엔드 Spring Boot, DB MySQL, 인프라 AWS를 제안한다."
+          "quote": "이준호: 프론트엔드 React, 백엔드 Spring Boot, DB MySQL, 인프라 AWS를 제안한다."
         },
         {
-          "quote": "프론트엔드 React, 백엔드 Spring Boot, DB MySQL, 인프라 AWS를 제안한다."
+          "quote": "이준호: 프론트엔드 React, 백엔드 Spring Boot, DB MySQL, 인프라 AWS를 제안한다."
         },
         {
-          "quote": "프론트엔드 React, 백엔드 Spring Boot, DB MySQL, 인프라 AWS를 제안한다."
+          "quote": "이준호: 프론트엔드 React, 백엔드 Spring Boot, DB MySQL, 인프라 AWS를 제안한다."
         },
         {
-          "quote": "주요 화면 응답 3초 이내를 기준으로 한다."
+          "quote": "김도현: 매장에서 바쁜 시간대에 사용하는 서비스이므로 응답 속도가 중요하다. 주요 화면 응답 3초 이내를 기준으로 한다."
         },
         {
           "quote": "동시 접속은 초기 목표 고객 수를 감안해 500명 처리로 설정했다."
         },
         {
-          "quote": "매장 내 모바일 사용 비중이 높으므로 모바일 우선 반응형으로 설계한다."
+          "quote": "최민아: 매장 내 모바일 사용 비중이 높으므로 모바일 우선 반응형으로 설계한다."
         },
         {
-          "quote": "40~50대 사용자 비중을 고려해 본문 폰트 최소 16px, 주요 버튼 터치 영역 44px 이상을 적용해야 한다."
+          "quote": "정우성: 40~50대 사용자 비중을 고려해 본문 폰트 최소 16px, 주요 버튼 터치 영역 44px 이상을 적용해야 한다."
         },
         {
           "quote": "한 손으로 조작하는 상황이 많으므로 주요 액션 버튼은 화면 하단에 배치한다."
@@ -310,7 +310,7 @@
     }
   ],
   "unresolved": [
-    "데이터 저장 및 연동 요구사항이 논의되지 않았습니다.",
+    "데이터 저장 및 연동에 대한 구체적인 요구사항이 논의되지 않았습니다.",
     "사용자 시나리오가 구체적으로 언급되지 않았습니다."
   ]
 }
