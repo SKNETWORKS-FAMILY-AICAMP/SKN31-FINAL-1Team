@@ -155,8 +155,10 @@ REST_FRAMEWORK = {
 'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
 
 # 2. 사용자 인증 설정 (Simple JWT)
+# 2026-08-31: 토큰을 localStorage 대신 HttpOnly 쿠키로 옮기면서, Authorization 헤더가
+# 아니라 쿠키에서 JWT를 읽는 커스텀 인증 클래스로 교체(users/authentication.py 참고).
 'DEFAULT_AUTHENTICATION_CLASSES': (
-    'rest_framework_simplejwt.authentication.JWTAuthentication',
+    'users.authentication.CookieJWTAuthentication',
 ),
 
 # (선택) 기본 접근 권한 설정 (예: 인증된 사용자만 접근 가능)
@@ -191,6 +193,14 @@ CORS_ALLOWED_ORIGINS = [
 
 # 인증 정보(Cookie, Authorization 헤더 등)를 포함한 요청 허용
 CORS_ALLOW_CREDENTIALS = True
+
+# 2026-08-31: 쿠키 기반 인증으로 옮기면서 CSRF 검증이 다시 필요해졌다(위 CookieJWTAuthentication
+# 참고). Django의 CSRF 미들웨어는 Origin/Referer가 다른 포트(localhost:3000 → :8000)로 온
+# 요청을 기본적으로 신뢰하지 않으므로, 프론트 개발 서버 주소를 명시적으로 허용해야 한다.
+CSRF_TRUSTED_ORIGINS = [
+"http://localhost:3000",
+"http://127.0.0.1:3000",
+]
 
 CORS_ALLOW_HEADERS = [
 'accept',

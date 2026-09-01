@@ -95,12 +95,6 @@ export default function LoginPage() {
             </button>
           </div>
         </form>
-
-        <div className="mt-6 text-center text-xs text-muted-foreground bg-black/5 dark:bg-white/5 p-4 rounded-xl border border-border">
-          <p className="font-bold mb-1 text-foreground">테스트 계정 안내</p>
-          <p>PM (관리자): 아이디 <b>pm</b> / 비번 <b>admin</b></p>
-          <p>MEMBER (신규): 아이디 <b>newbie</b> / 비번 <b>temp</b></p>
-        </div>
       </div>
     </div>
   );
