@@ -43,17 +43,33 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // GET /api/users/me/ 를 불러 계정이 여전히 유효한지 확인하고, 아니면 강제 로그아웃한다.
   useEffect(() => {
     if (!user) return;
+    // 2026-09-01: apiFetch는 네트워크 오류와 401/403을 구분 안 하고 둘 다 throw하는데, 예전엔
+    // 여기서 그 둘을 구분 없이 곧장 강제 로그아웃시켰다 — WSL 개발 환경처럼 네트워크가 잠깐씩
+    // 끊기는 상황에서 "계속 로그아웃된다"는 걸 사용자가 실제로 겪었다. access 토큰은 apiFetch가
+    // 401을 만나면 자체적으로 refresh 후 재시도하므로, 여기서 또 401을 받는다는 건 refresh
+    // 토큰까지 진짜 만료/무효라는 뜻 — 그때만 로그아웃한다. 그 외(네트워크 오류, 서버 일시 다운
+    // 등)는 다음 주기에 다시 시도하고 이번엔 그냥 넘어간다.
     const checkSession = async () => {
+      let res: Response;
       try {
-        await apiFetch("/api/users/me/");
+        res = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000"}/api/users/me/`, {
+          credentials: "include",
+        });
       } catch {
-        // apiFetch는 네트워크 오류와 401/403을 구분하지 않고 둘 다 throw하므로, 여기서 바로
-        // 로그아웃 처리한다 — 일시적 네트워크 오류로 오탐하더라도 재로그인만 하면 되니 안전한 쪽.
-        // 토큰 자체(쿠키)는 서버가 관리하므로 여기선 화면 상태만 정리한다.
-        setUser(null);
-        localStorage.removeItem("hz_session");
-        window.location.href = "/login";
+        return; // 네트워크 오류 — 일시적일 수 있으니 로그아웃시키지 않고 다음 주기에 재시도
       }
+      if (res.status === 401 || res.status === 403) {
+        // apiFetch를 한 번 더 태워서 refresh 시도까지 확실히 거친 뒤에도 401이면 진짜 만료된 것
+        try {
+          await apiFetch("/api/users/me/");
+          return; // refresh로 살아났으면 그냥 계속 진행
+        } catch {
+          setUser(null);
+          localStorage.removeItem("hz_session");
+          window.location.href = "/login";
+        }
+      }
+      // 200이거나 401/403이 아닌 다른 오류(5xx 등)는 계정 문제가 아니므로 무시
     };
     const interval = setInterval(checkSession, 30000);
     return () => clearInterval(interval);
