@@ -29,6 +29,8 @@ type SpecDto = {
   user_scenarios: string | null;
   tech_stack: string | null;
   final_decisions: string | null;
+  period_start: string | null;
+  period_end: string | null;
   status_code: string | null;
   status_info: { code_id: SpecStatusCode; code_name: string } | null;
   reviewer: number | null;
@@ -79,6 +81,9 @@ function specToProposalDoc(spec: SpecDto): ProposalDoc {
     userScenario: spec.user_scenarios ?? "",
     techStackConstraints: spec.tech_stack ?? "",
     finalDecisions: spec.final_decisions ?? "",
+    // 회의록 원문에 기간이 명시돼 있으면 AI 분석 시점에 자동으로 채워지고(백엔드
+    // MeetingNoteAnalyzeView), 없으면 null — 화면(ProposalTemplate)에서 직접 입력할 수 있다.
+    projectPeriod: { start: spec.period_start ?? "", end: spec.period_end ?? "" },
   };
 }
 function proposalDocToPatch(doc: ProposalDoc) {
@@ -90,6 +95,8 @@ function proposalDocToPatch(doc: ProposalDoc) {
     user_scenarios: doc.userScenario,
     tech_stack: doc.techStackConstraints,
     final_decisions: doc.finalDecisions,
+    period_start: doc.projectPeriod?.start || null,
+    period_end: doc.projectPeriod?.end || null,
   };
 }
 
