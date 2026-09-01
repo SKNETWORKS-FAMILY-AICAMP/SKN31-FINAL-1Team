@@ -11,6 +11,7 @@ class TaskAssignment(models.Model):
     class Status(models.TextChoices):
         PENDING_APPROVAL = 'PENDING_APPROVAL', '승인 대기'
         APPROVED = 'APPROVED', '승인 및 알림 완료'
+        REJECTED = 'REJECTED', '반려'
         IN_PROGRESS = 'IN_PROGRESS', '진행 중'
         COMPLETED = 'COMPLETED', '완료'
 
@@ -44,7 +45,12 @@ class TaskAssignment(models.Model):
     # 일정 정보
     start_date = models.DateField(null=True, blank=True, verbose_name="시작 예정일")
     due_date = models.DateField(null=True, blank=True, verbose_name="마감 예정일")
-    
+
+    # 2026-09-01: 칸반보드 연동을 위해 추가. progress는 담당자가 직접 갱신하는 진행률(%),
+    # reject_reason은 REJECTED 상태로 반려할 때 사유를 남긴다(승인 대기 상태로만 반려 가능).
+    progress = models.PositiveSmallIntegerField(default=0, verbose_name="진행률(%)")
+    reject_reason = models.TextField(null=True, blank=True, verbose_name="반려 사유")
+
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="생성 일시")
     updated_at = models.DateTimeField(auto_now=True, verbose_name="수정 일시")
 

@@ -21,6 +21,9 @@ class TaskAssignmentSerializer(serializers.ModelSerializer):
     req_code = serializers.CharField(source='req_item.req_code', read_only=True)
     req_name = serializers.CharField(source='req_item.req_name', read_only=True)
     status_display = serializers.CharField(source='get_status_display', read_only=True)
+    # 칸반보드가 업무의 소속 프로젝트를 알아야 하는데 TaskAssignment는 project를 직접 참조하지
+    # 않는다 — req_item -> req_def -> spec -> meeting -> project 체인을 그대로 읽기 전용으로 노출.
+    project = serializers.IntegerField(source='req_item.req_def.spec.meeting.project_id', read_only=True)
 
     class Meta:
         model = TaskAssignment
@@ -29,12 +32,15 @@ class TaskAssignmentSerializer(serializers.ModelSerializer):
             'req_item',
             'req_code',
             'req_name',
+            'project',
             'assigned_user',
             'assigned_user_name',
             'task_title',
             'task_description',
             'status',
             'status_display',
+            'progress',
+            'reject_reason',
             'start_date',
             'due_date',
             'created_at',
@@ -61,8 +67,8 @@ class TaskAssignmentCreateSerializer(serializers.ModelSerializer):
 
 class TaskStatusUpdateSerializer(serializers.ModelSerializer):
     """
-    업무 상태 변경 전용 Serializer (예: 승인 완료, 진행 중, 완료 처리)
+    업무 상태 변경 전용 Serializer (예: 승인 완료, 진행 중, 완료 처리, 반려)
     """
     class Meta:
         model = TaskAssignment
-        fields = ['status']
+        fields = ['status', 'reject_reason']
