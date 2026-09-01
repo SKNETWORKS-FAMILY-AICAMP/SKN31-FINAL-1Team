@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth";
+import { apiFetch } from "@/lib/api/client";
 import { KanbanBoard } from "@/components/layout/KanbanBoard";
 
 type User = { id: string; name: string; email: string; role: string };
@@ -60,14 +61,34 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   const [adding, setAdding] = useState(false);
 
   useEffect(() => {
+    // 2026-09-01: Django ProjectSerializer는 name/description만 주고 tasks를 내려주지 않는다
+    // (TaskAssignment가 project를 직접 참조하지 않아서 — req_item→req_def→spec→meeting→project로
+    // 이어지는 체인을 타야 함). 칸반/WBS 업무 연동은 백엔드 모델 확장(진행률 필드, 반려 상태 등)이
+    // 먼저 필요해서 이번엔 프로젝트 이름/설명만 재배선하고 업무 목록은 빈 배열로 둔다.
     Promise.all([
-      fetch(`/api/projects/${id}`).then(r => r.json()),
-      fetch(`/api/users`).then(r => r.json())
-    ]).then(([projRes, usersRes]) => {
-      if (projRes.success) setProject(projRes.data);
+      apiFetch<any>(`/api/projects/${id}/`),
+      apiFetch<any[]>("/api/users/"),
+    ]).then(([proj, allUsers]) => {
+      setProject({
+        id: String(proj.id),
+        name: proj.name,
+        description: proj.description,
+        startDate: null,
+        endDate: null,
+        tasks: [],
+      });
       // 칸반의 담당자 드롭다운에는 실제로 업무를 받을 수 있는 사람만 나와야 한다 —
-      // PM은 배정 대상이 아니고, 온보딩 전이라 이름이 비어있는 계정도 빈 옵션으로 보이니 제외한다.
-      if (usersRes.success) setUsers(usersRes.data.filter((u: User) => u.role !== "PM" && u.name?.trim()));
+      // PM(is_staff)은 배정 대상이 아니고, 온보딩 전이라 이름이 비어있는 계정도 빈 옵션으로 보이니 제외한다.
+      setUsers(
+        allUsers
+          .filter((u: any) => !u.is_staff && (u.first_name || u.last_name))
+          .map((u: any) => ({
+            id: String(u.id),
+            name: `${u.last_name ?? ""}${u.first_name ?? ""}`.trim() || u.username,
+            email: u.email,
+            role: u.is_staff ? "PM" : "MEMBER",
+          }))
+      );
       setLoading(false);
     }).catch(e => {
       console.error(e);

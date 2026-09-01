@@ -52,6 +52,22 @@ class TaskAssignmentListCreateView(generics.ListCreateAPIView):
             return TaskAssignmentCreateSerializer
         return TaskAssignmentSerializer
 
+    # 프론트(칸반보드/프로젝트 상세)가 "이 프로젝트의 업무만", "이 담당자 업무만" 같은 필터링을
+    # 필요로 하는데, TaskAssignment에는 project 필드가 없다 — 대신 req_item -> req_def -> spec
+    # -> meeting -> project로 이어지는 체인을 타고 내려가서 필터링한다.
+    def get_queryset(self):
+        qs = TaskAssignment.objects.all()
+        project_id = self.request.query_params.get('project')
+        assignee_id = self.request.query_params.get('assigneeId')
+        status_param = self.request.query_params.get('status')
+        if project_id:
+            qs = qs.filter(req_item__req_def__spec__meeting__project_id=project_id)
+        if assignee_id:
+            qs = qs.filter(assigned_user_id=assignee_id)
+        if status_param:
+            qs = qs.filter(status=status_param)
+        return qs
+
 
 @extend_schema_view(
     get=extend_schema(
