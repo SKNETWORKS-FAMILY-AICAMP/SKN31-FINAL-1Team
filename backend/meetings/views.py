@@ -144,6 +144,18 @@ class MeetingNoteAnalyzeView(APIView):
                 'final_decisions': section_or_not_discussed(plan_dict.get('final_decisions') or plan_dict.get('decisions') or plan_dict.get('next_steps')),
             }
 
+            # 회의록 원문에 "프로젝트 기간: 2026-08-25 ~ 2026-10-24"처럼 명시적인 날짜 범위가
+            # 있으면 정규식으로 추출해 자동으로 채운다. 못 찾으면 spec_defaults에 아예 키를 안 넣어서
+            # (update_or_create는 defaults에 있는 필드만 덮어쓴다) 이미 사용자가 화면에서 직접
+            # 입력해둔 기간이 재생성할 때마다 날아가지 않게 한다.
+            period_match = re.search(
+                r'(\d{4}-\d{2}-\d{2})\s*(?:~|-|부터)\s*(\d{4}-\d{2}-\d{2})',
+                meeting.content or "",
+            )
+            if period_match:
+                spec_defaults['period_start'] = period_match.group(1)
+                spec_defaults['period_end'] = period_match.group(2)
+
             # 6. 기존 기획서가 있다면 필드 값 업데이트 (get_or_create 대신 update_or_create 적용)
             spec, created = SpecDocument.objects.update_or_create(
                 meeting=meeting,
