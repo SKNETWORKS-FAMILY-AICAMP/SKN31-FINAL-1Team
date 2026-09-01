@@ -1,5 +1,28 @@
-nstructor>=1.5
-pydantic>=2.0
-python-dotenv>=1.0
-openai>=1.0
-pytest>=8.0
+# ===================================================================
+# SKN31-FINAL-1Team / ai 모듈 requirements.txt
+# 노드 ① 회의록 구조화, 노드 ② 기획서 생성
+#
+# 백엔드(Django)에서 ai 모듈을 import하려면 아래 패키지가 필요합니다.
+#   pip install -r ai/requirements.txt
+#
+# openai 버전은 backend/requirements.txt(3.3.1)에 맞췄습니다.
+# instructor가 openai<3.0.0만 지원한다는 경고를 띄우지만
+# 실제 동작은 확인했습니다(회의록 분석·기획서 생성·테스트 30개 통과).
+# 공식 지원 범위 밖이므로 instructor 업데이트 시 재검증이 필요합니다.
+# ===================================================================
+
+# ---- LLM 호출 ----
+# instructor: Pydantic 스키마로 LLM 응답을 검증하고 실패 시 자동 재시도(3회)
+instructor==1.15.4
+openai==2.54.0
+
+# ---- 스키마 정의·검증 ----
+pydantic==2.13.4
+
+# ---- 환경변수 (.env) ----
+# 백엔드는 django-environ을 쓰지만 ai 모듈은 python-dotenv를 사용합니다
+python-dotenv==1.2.3
+
+# ---- 테스트 ----
+# LLM 호출 없이 도는 단위 테스트 30개 (evidence 검증, 섹션 조립)
+pytest==9.1.1

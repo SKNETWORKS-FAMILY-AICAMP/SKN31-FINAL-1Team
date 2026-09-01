@@ -49,7 +49,6 @@ ipykernel==7.3.0
 ipython==9.16.1
 ipython-pygments-lexers==1.1.1
 jedi==0.20.0
-jiter==0.16.0
 jsonpatch==1.33
 jsonpointer==3.1.1
 jsonschema==4.26.0
@@ -74,7 +73,6 @@ multidict==6.7.1
 mysqlclient==2.2.8
 nest-asyncio2==1.7.2
 numpy==2.5.2
-openai==3.3.1
 openpyxl==3.1.5
 orjson==3.12.0
 ormsgpack==1.12.2
@@ -134,6 +132,56 @@ websockets==16.1.1
 xxhash==4.0.1
 yarl==1.24.5
 zstandard==0.25.0
+
+
+
+# ===================================================================
+# SKN31-FINAL-1Team requirements.txt
+# Django + MySQL + AWS + Qdrant + OpenAI 기준
+# 팀 전체 동일 버전 유지 — 버전 임의 변경 금지, 변경 필요 시 PR로 논의
+# ===================================================================
+
+# ---- Web Framework ----
+Django==6.0.7
+djangorestframework==3.18.0
+django-cors-headers==4.9.0
+drf-spectacular==0.30.0
+
+# ---- 환경변수 관리 ----
+django-environ==0.14.0
+
+# ---- LLM / AI 파이프라인 ----
+openai==2.54.0
+
+# ai/ 모듈(노드 ①② 회의록 구조화·기획서 생성)에서 사용
+# instructor: Pydantic 스키마로 LLM 응답을 검증하고 실패 시 자동 재시도(3회)
+#
+# ※ instructor가 openai<3.0.0만 지원한다는 경고를 띄우지만
+#   실제 동작은 확인했습니다 (회의록 분석·기획서 생성·테스트 30개 통과).
+#   공식 지원 범위 밖이므로 instructor 업데이트 시 재검증이 필요합니다.
+instructor==1.15.4
+pydantic==2.13.4
+
+# ai/ 모듈은 django-environ이 아닌 python-dotenv로 .env를 읽습니다
+python-dotenv==1.2.3
+
+# ---- JWT 기반 인증 ----
+djangorestframework-simplejwt==5.5.1
+
+# ---- Pandas ----
+pandas==3.0.5
+et-xmlfile==2.0.0
+openpyxl==3.1.5
+
+# ---- DB / 개발도구 ----
+mysqlclient==2.2.8
+django-extensions==4.1
+pygraphviz==2.0.1
+
+# ---- 테스트 ----
+# ai/tests 단위 테스트 30개 (LLM 호출 없이 동작)
+pytest==9.1.1
+
 
 
 
