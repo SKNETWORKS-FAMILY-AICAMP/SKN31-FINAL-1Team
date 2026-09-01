@@ -13,6 +13,7 @@ import { NewDocumentModal } from "@/components/projects/NewDocumentModal";
 import { ProposalTemplate } from "@/components/documents/ProposalTemplate";
 import { exportProposalPptx } from "@/lib/exportProposalPptx";
 import type { ProposalDoc } from "@/lib/documentTemplates";
+import { Toast } from "@/components/ui/Toast";
 
 // ── Django 응답 shape ──────────────────────────────────────────
 type SpecStatusCode = "PROPOSAL_DRAFT" | "PROPOSAL_PENDING_REVIEW" | "PROPOSAL_APPROVED" | "PROPOSAL_REJECTED";
@@ -115,6 +116,7 @@ export default function DocumentsPage() {
   const [deleteTarget, setDeleteTarget] = useState<{ id: number; title: string } | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState("");
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   const fetchAll = async (preferredProjectId?: number) => {
     setLoading(true);
@@ -165,6 +167,7 @@ export default function DocumentsPage() {
     try {
       await apiFetch(`/api/meetings/notes/${note.id}/analyze/`, { method: "POST" });
       await refetchNote(note.id);
+      setToastMessage("기획서 생성이 완료되었습니다");
     } catch (err: any) {
       alert(err.message || "기획서 생성에 실패했습니다.");
     } finally {
@@ -207,6 +210,7 @@ export default function DocumentsPage() {
     try {
       await apiFetch(`/api/meetings/specs/${spec.id}/submit-review/`, { method: "PATCH" });
       await refetchNote(note.id);
+      setToastMessage("검토요청이 완료되었습니다");
     } catch (err: any) {
       alert(err.message || "검토 요청에 실패했습니다.");
     } finally {
@@ -276,13 +280,19 @@ export default function DocumentsPage() {
     return (
       <div className="flex flex-col items-center justify-center h-[60vh] text-center gap-3">
         <FolderKanban className="w-10 h-10 text-muted-foreground/30" />
-        <p className="text-muted-foreground">아직 프로젝트가 없습니다. 새 회의록을 등록하면 프로젝트도 함께 만들 수 있습니다.</p>
-        <button
-          onClick={() => setNewDocModalOpen(true)}
-          className="inline-flex items-center gap-2 mt-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-bold hover:bg-primary/90 transition-colors"
-        >
-          <Plus className="w-4 h-4" /> 새 회의록 / 문서
-        </button>
+        {isPM ? (
+          <p className="text-muted-foreground">아직 프로젝트가 없습니다. 일반유저가 회의록을 등록하면 프로젝트가 자동으로 만들어집니다.</p>
+        ) : (
+          <>
+            <p className="text-muted-foreground">아직 프로젝트가 없습니다. 새 회의록을 등록하면 프로젝트도 함께 만들 수 있습니다.</p>
+            <button
+              onClick={() => setNewDocModalOpen(true)}
+              className="inline-flex items-center gap-2 mt-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-bold hover:bg-primary/90 transition-colors"
+            >
+              <Plus className="w-4 h-4" /> 새 회의록 / 문서
+            </button>
+          </>
+        )}
         {newDocModalOpen && (
           <NewDocumentModal
             onClose={async (createdProjectId, createdNoteId) => {
@@ -311,12 +321,16 @@ export default function DocumentsPage() {
       <div className="grid grid-cols-1 lg:grid-cols-[360px_minmax(0,1fr)] gap-6 items-start">
         {/* Document list */}
         <div className="glass rounded-2xl border border-border p-4 space-y-3">
-          <button
-            onClick={() => setNewDocModalOpen(true)}
-            className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-bold hover:bg-primary/90 transition-colors"
-          >
-            <Plus className="w-4 h-4" /> 새 회의록 / 문서
-          </button>
+          {/* PM은 회의록/기획서/요구사항정의서를 생성하지 않고 검토(승인/반려)만 한다 —
+              문서 생성은 일반유저 역할이므로 PM에게는 생성 버튼 자체를 숨긴다. */}
+          {!isPM && (
+            <button
+              onClick={() => setNewDocModalOpen(true)}
+              className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-bold hover:bg-primary/90 transition-colors"
+            >
+              <Plus className="w-4 h-4" /> 새 회의록 / 문서
+            </button>
+          )}
 
           <div className="space-y-2">
             {sortedNotes.length === 0 ? (
@@ -462,6 +476,7 @@ export default function DocumentsPage() {
           </div>
         </div>
       )}
+      <Toast message={toastMessage} onDismiss={() => setToastMessage(null)} />
     </div>
   );
 }

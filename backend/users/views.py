@@ -188,12 +188,23 @@ class UserListView(generics.ListCreateAPIView):
     def get_queryset(self):
         queryset = super().get_queryset()
         is_busy = self.request.query_params.get('is_busy', None)
-        
+
         if is_busy is not None:
             # is_busy=false 조건으로 현재 한가한 개발자 필터링 가능
             is_busy_bool = is_busy.lower() == 'true'
             queryset = queryset.filter(is_busy=is_busy_bool)
-            
+
+        # UserDetailSerializer가 dept_code/job_role_code/position_code/role_code/status_code(FK 5개)와
+        # skills/certifications(역참조 2개)를 매번 물고 있어서, 최적화 없이는 유저 한 명당 쿼리 7개씩
+        # 추가로 나간다 — 로컬 SQLite에선 안 느껴졌지만 실제 RDS(원격 MySQL)에 물리면 N+1이 그대로
+        # 왕복 지연으로 쌓여서 유저 목록 하나 불러오는 데 30초 넘게 걸리는 게 실측 확인됐다(DEV 롤
+        # 토글이 이 API를 호출해서 체감됨). simple=true(UserSimpleSerializer)는 이 FK들을 안 써서
+        # 그대로 둬도 되지만, 기본/상세 응답은 항상 이 쿼리셋을 타므로 여기서 한 번에 최적화한다.
+        if self.request.query_params.get('simple', None) != 'true':
+            queryset = queryset.select_related(
+                'dept_code', 'job_role_code', 'position_code', 'role_code', 'status_code',
+            ).prefetch_related('skills__skill_code', 'certifications__cert_code')
+
         return queryset
 
     @extend_schema(

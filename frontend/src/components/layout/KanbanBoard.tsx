@@ -12,6 +12,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { TaskDetailModal } from "../projects/TaskDetailModal";
 import { useAuth } from "@/lib/auth";
+import { Toast } from "@/components/ui/Toast";
 
 // 파이프라인: 대기(미배정) -> 배분승인대기(담당자 지정, PM 승인 필요) -> 진행 중 -> 완료 (FR-05-005, FR-05-018~021)
 const COLUMNS = [
@@ -291,6 +292,7 @@ export function KanbanBoard({ projectId, initialTasks, members = [] }: { project
   // FR-05-016/017: AI 담당자 추천 (기술 적합도 · 업무 여유도 · 유사 업무 경험 근거 포함)
   const [aiRecs, setAiRecs] = useState<any[] | null>(null);
   const [aiLoading, setAiLoading] = useState(false);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } })
@@ -364,7 +366,10 @@ export function KanbanBoard({ projectId, initialTasks, members = [] }: { project
     try {
       const res = await fetch(`/api/tasks/${task.id}/recommend-assignees`, { method: "POST" });
       const data = await res.json();
-      if (res.ok) setAiRecs(data.recommendations || []);
+      if (res.ok) {
+        setAiRecs(data.recommendations || []);
+        setToastMessage("담당자 추천이 완료되었습니다");
+      }
     } catch (e) {
       console.error("Failed to fetch AI recommendations", e);
     } finally {
@@ -423,6 +428,7 @@ export function KanbanBoard({ projectId, initialTasks, members = [] }: { project
 
   return (
     <>
+      <Toast message={toastMessage} onDismiss={() => setToastMessage(null)} />
       <DndContext sensors={sensors} collisionDetection={closestCorners} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
         {/* 컬럼 4개가 가로 스크롤 없이 화면 폭에 맞춰 균등하게 나뉘도록 grid로 배치 — 완료 컬럼까지 한 화면에 다 보이게.
             높이를 여기서 가두지 않는다 — 예전엔 부모가 h-[70vh]로 고정하고 각 컬럼이 그 안에서 따로
