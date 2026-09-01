@@ -11,10 +11,18 @@ https://docs.djangoproject.com/en/6.0/ref/settings/
 """
 import os
 import environ
+import sys
 from pathlib import Path
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
+
+# SKN31-FINAL-1Team/ai 디렉토리
+AI_DIR = BASE_DIR.parent / "ai"
+
+# ai 디렉토리를 파이썬 모듈 검색 경로 최상단(0번 index)에 등록
+if str(AI_DIR) not in sys.path:
+    sys.path.insert(0, str(AI_DIR))
 
 # --- env 설정 추가 ---
 env = environ.Env(
