@@ -8,8 +8,8 @@ import TagAutocomplete from "@/components/ui/TagAutocomplete";
 type ProjectOption = { id: number; name: string };
 const NEW_PROJECT_VALUE = "__new__";
 
-// 2026-09-01: /api/meetings/notes/parse-file/ (.docx/.pdf/.txt만 지원 — .hwp는 안정적인
-// 순수 파이썬 파서가 없어서 제외) 로 파일을 올리면 텍스트를 추출해 "원본 내용" 칸을 채운다.
+// 2026-09-01: /api/meetings/notes/parse-file/ (.docx/.pdf/.txt/.hwp 지원 — .hwp는 hwp5txt
+// CLI를 서브프로세스로 호출) 로 파일을 올리면 텍스트를 추출해 "원본 내용" 칸을 채운다.
 const SAMPLE_NOTES = [
   `[신규 쇼핑몰 프로젝트 킥오프 회의록]
 일자: 2026-08-19
@@ -292,7 +292,7 @@ export function NewDocumentModal({
                   <input
                     ref={fileInputRef}
                     type="file"
-                    accept=".docx,.pdf,.txt"
+                    accept=".docx,.pdf,.txt,.hwp"
                     onChange={handleFileSelected}
                     className="hidden"
                   />
@@ -301,7 +301,7 @@ export function NewDocumentModal({
                     onClick={() => fileInputRef.current?.click()}
                     disabled={uploadingFile}
                     className="flex items-center gap-1 text-xs font-semibold text-primary hover:text-primary/80 bg-primary/10 px-3 py-1 rounded-full transition-colors disabled:opacity-50"
-                    title="지원 형식: .docx, .pdf, .txt"
+                    title="지원 형식: .docx, .pdf, .txt, .hwp"
                   >
                     {uploadingFile ? <Loader2 className="w-3 h-3 animate-spin" /> : <Paperclip className="w-3 h-3" />}
                     {uploadingFile ? "추출 중..." : "파일에서 불러오기"}
