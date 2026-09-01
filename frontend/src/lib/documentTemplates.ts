@@ -2,17 +2,6 @@
 // renderers, and the PDF/PPTX exporters. Keeping one shape in one place means
 // "what the AI must return" and "what the screen renders" can never drift apart.
 
-// 2026-08-27: 기획서 품질이 너무 얕다는 피드백으로 기능별 우선순위를 추가했다. 원본에 강조/시급성이
-// 명시돼 있으면 그걸 근거로, 없으면 AI가 "핵심 플로우에 필수적인가"를 기준으로 합리적으로 판단해
-// 채우되(완전히 비워두면 화면에 표시할 게 없어지므로), 지어낸 근거로 과도하게 확신하지는 않는다.
-export type FeaturePriority = "필수" | "권장" | "선택";
-
-export type ProposalFeature = {
-  name: string;
-  description: string;
-  priority?: FeaturePriority;
-};
-
 // 원본(회의록/메모)에 "프로젝트 기간: 2026-08-25 ~ 2026-10-24" 처럼 명시적인 기간이 있으면 추출해둔다.
 // 업무분배 탭에서 이 값이 있으면 오늘 날짜 대신 여기서부터 WBS 일정을 잡는다. 원본에 언급이 없으면
 // start/end 모두 빈 문자열 — AI가 지어내지 않는다(절대 규칙).
@@ -21,18 +10,21 @@ export type ProjectPeriod = {
   end: string; // YYYY-MM-DD, 없으면 ""
 };
 
-// 기획서 템플릿: 팀에서 요청한 고정 형식 — 프로젝트 개요 / 문제 정의 / 대상 사용자 / 주요 기능 /
-// 사용자 시나리오 / 기술 스택 및 제약사항 / 최종 결정사항. 2026-08-30에 기존 7항목(배경·기대효과·
-// 리스크·KPI·마일스톤 구성)에서 이 구조로 통일했다 — 팀 전체가 항상 같은 형식으로 기획서를 읽고
-// 쓸 수 있도록 매번 AI가 알아서 구조를 고르지 않고 이 8개 항목으로 고정한다.
+// 기획서 템플릿: 프로젝트 개요 / 문제 정의 / 대상 사용자 / 주요 기능 / 사용자 시나리오 /
+// 기술 스택 및 제약사항 / 최종 결정사항 — 7개 섹션.
+// 2026-08-31: Django SpecDocument 모델과 1:1로 맞추면서(overview/problem_definition/target_users/
+// key_features/user_scenarios/tech_stack/final_decisions 전부 TextField) 팀 결정에 따라 7개
+// 섹션 전부 자유 텍스트(한 덩어리)로 통일했다 — features/userScenario/finalDecisions가 예전엔
+// 배열(카드·리스트, 항목별 추가/삭제 UI)이었지만, 백엔드가 자유 텍스트 컬럼 하나로 저장하기로
+// 정해져서 프론트도 그에 맞춰 문자열로 단순화한다(줄바꿈으로 항목을 구분).
 export type ProposalDoc = {
-  projectOverview: string; // 프로젝트 개요
-  problemDefinition: string; // 문제 정의
-  target: string; // 대상 사용자
-  features: ProposalFeature[]; // 주요 기능 (기능명 + 설명)
-  userScenario: string[]; // 사용자 시나리오 — 번호 매긴 단계별 목록
-  techStackConstraints: string; // 기술 스택 및 제약사항
-  finalDecisions: string[]; // 최종 결정사항 — 목록형
+  projectOverview: string; // 1. 프로젝트 개요
+  problemDefinition: string; // 2. 문제 정의
+  target: string; // 3. 대상 사용자
+  features: string; // 4. 주요 기능 — 자유 텍스트(줄바꿈 구분)
+  userScenario: string; // 5. 사용자 시나리오 — 자유 텍스트(줄바꿈 구분)
+  techStackConstraints: string; // 6. 기술 스택 및 제약사항
+  finalDecisions: string; // 7. 최종 결정사항 — 자유 텍스트(줄바꿈 구분)
   projectPeriod?: ProjectPeriod; // 원본에 명시된 경우에만 헤더에 표시
 };
 

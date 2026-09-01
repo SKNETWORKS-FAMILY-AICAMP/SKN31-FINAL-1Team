@@ -26,5 +26,9 @@ openpyxl==3.1.5
 
 # ----
 mysqlclient==2.2.8
+# mysqlclient는 libmysqlclient-dev 시스템 라이브러리가 필요해서 sudo 권한 없는 환경(WSL 등)
+# 에서는 설치가 안 될 수 있다 — 그런 경우를 위한 순수 Python 대체 드라이버.
+# mysqlclient가 정상 설치돼 있으면 영향 없음(config/__init__.py의 shim 참고).
+pymysql==1.2.0
 django-extensions==4.1
 pygraphviz==2.0.1
