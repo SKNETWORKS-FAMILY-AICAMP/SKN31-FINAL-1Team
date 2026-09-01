@@ -157,6 +157,8 @@ class AutoTaskAssignView(APIView):
         assigned_user.is_busy = True
         assigned_user.save()
 
+        notify_user(assigned_user, f"'{task.task_title}' 업무가 배정되었습니다.", type='info', link='/tasks')
+
         # 파이프라인 이력 로그 생성
         if project_id:
             project = get_object_or_404(Project, pk=project_id)
