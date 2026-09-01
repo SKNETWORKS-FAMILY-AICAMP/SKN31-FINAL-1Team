@@ -106,42 +106,62 @@ class MeetingNoteAnalyzeView(APIView):
             meeting.status = MeetingNote.Status.REVIEWED
             meeting.save()
 
-            # 5. 파싱 함수: 리스트/디렉토리 형태도 텍스트 줄바꿈으로 파싱
-            def parse_section(val):
-                if not val:
+            # AI가 내용을 <p>/<strong>/<ul><li> 같은 HTML 태그를 섞어서 줄 때가 있는데, 화면은
+            # 이걸 그냥 일반 텍스트로 보여주므로 태그가 그대로 노출된다(실제로 사용자가 발견한 문제).
+            # fe6a95c에서 이 제거 함수 자체가 삭제됐던 걸 복구 — html/re는 여전히 import되어 있다.
+            def strip_html_tags(text):
+                if not text:
                     return ""
-                if isinstance(val, list):
-                    # 리스트 원소가 dict인 경우와 일반 문자열인 경우 처리
+                text_str = str(text)
+                decoded_text = html.unescape(text_str)
+                clean_text = re.sub(r'<[^>]+>', ' ', decoded_text)
+                clean_text = re.sub(r'[ \t]+', ' ', clean_text)
+                clean_text = re.sub(r'\n\s*\n', '\n', clean_text)
+                return clean_text.strip()
+
+            # 실제 AI 응답 구조 확인 결과(2026-09-01 재확인): 위쪽 레벨에 overview/features 같은
+            # 키가 바로 있는 게 아니라, plan_dict["sections"]가 [{key, title, content_html, items}, ...]
+            # 형태의 리스트로 온다. 팀원 커밋(fe6a95c)이 이걸 top-level 키 매칭으로 바꿔놓는 바람에
+            # 실제로는 전부 매칭 실패 -> "회의에서 논의되지 않았습니다"로만 표시되고 있었다
+            # (내용이 있어도 안 보이는데, 폴백 문구가 그럴듯해서 눈치채기 어려웠다).
+            sections_map = {}
+            for sec in (plan_dict.get('sections') or []):
+                if not isinstance(sec, dict):
+                    continue
+                sec_key = sec.get('key')
+                if not sec_key or not isinstance(sec_key, str):
+                    continue
+
+                content = sec.get('content_html') or ""
+                if not content and isinstance(sec.get('items'), list):
+                    content = "\n".join(f"- {item}" for item in sec['items'] if isinstance(item, (str, int)))
+                if not content and isinstance(sec.get('features'), list):
                     lines = []
-                    for item in val:
-                        if isinstance(item, dict):
-                            lines.append(json.dumps(item, ensure_ascii=False))
-                        else:
-                            lines.append(f"- {item}")
-                    return "\n".join(lines)
-                if isinstance(val, dict):
-                    return json.dumps(val, ensure_ascii=False, indent=2)
-                return str(val)
+                    for f in sec['features']:
+                        if isinstance(f, dict):
+                            lines.append(f"• {f.get('title', '')}: {f.get('description', '')}")
+                    content = "\n".join(lines)
+
+                sections_map[sec_key] = strip_html_tags(content)
 
             # 기획서 7개 섹션 중 회의에서 실제로 논의 안 된 항목은 AI가 빈 값을 준다 — 화면에
             # 그냥 빈 칸으로 두면 "생성이 덜 됐나?" 오해를 살 수 있어서, 비어있으면 명시적으로
             # "회의에서 논의되지 않았습니다"를 채운다(내용을 지어내지 않는다는 원칙은 그대로 유지).
             NOT_DISCUSSED = "회의에서 논의되지 않았습니다."
 
-            def section_or_not_discussed(val):
-                parsed = parse_section(val)
-                return parsed if parsed.strip() else NOT_DISCUSSED
+            def section_or_not_discussed(key):
+                val = sections_map.get(key, "")
+                return val if val.strip() else NOT_DISCUSSED
 
-            # AI 에이전트 스키마 변수명 대응 (다양한 key 명칭 감지)
             spec_defaults = {
                 'title': f"{meeting.title} - 기획 초안",
-                'overview': section_or_not_discussed(plan_dict.get('overview') or plan_dict.get('project_overview') or plan_dict.get('summary')),
-                'problem_definition': section_or_not_discussed(plan_dict.get('problem_definition') or plan_dict.get('problem') or plan_dict.get('background')),
-                'target_users': section_or_not_discussed(plan_dict.get('target_users') or plan_dict.get('target_user') or plan_dict.get('target_audience')),
-                'key_features': section_or_not_discussed(plan_dict.get('key_features') or plan_dict.get('features') or plan_dict.get('main_features')),
-                'user_scenarios': section_or_not_discussed(plan_dict.get('user_scenarios') or plan_dict.get('scenarios') or plan_dict.get('user_story')),
-                'tech_stack': section_or_not_discussed(plan_dict.get('tech_stack') or plan_dict.get('technology') or plan_dict.get('constraints')),
-                'final_decisions': section_or_not_discussed(plan_dict.get('final_decisions') or plan_dict.get('decisions') or plan_dict.get('next_steps')),
+                'overview': section_or_not_discussed('overview'),
+                'problem_definition': section_or_not_discussed('problem'),
+                'target_users': section_or_not_discussed('users'),
+                'key_features': section_or_not_discussed('features'),
+                'user_scenarios': section_or_not_discussed('scenarios'),
+                'tech_stack': section_or_not_discussed('tech_scope'),
+                'final_decisions': section_or_not_discussed('decisions'),
             }
 
             # 6. 기존 기획서가 있다면 필드 값 업데이트 (get_or_create 대신 update_or_create 적용)
