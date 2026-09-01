@@ -8,6 +8,7 @@ from rest_framework.response import Response
 from drf_spectacular.utils import extend_schema, OpenApiParameter, OpenApiResponse, OpenApiTypes
 
 import docx
+
 from pypdf import PdfReader
 
 from meetings.models import MeetingNote, SpecDocument
