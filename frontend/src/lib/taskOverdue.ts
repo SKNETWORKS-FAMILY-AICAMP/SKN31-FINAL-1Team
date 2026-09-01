@@ -7,7 +7,9 @@
 // 마감일 당일은 하루를 통째로 인정해주고, 그 다음 날 UTC 자정부터만 지연으로 본다.
 export function isTaskOverdue(task: { wbsEnd: string | Date | null; status: string }): boolean {
   if (!task.wbsEnd) return false;
-  if (task.status === "DONE" || task.status === "CANCELLED") return false;
+  // "DONE"/"CANCELLED"는 예전(heyzzabi2) Task 상태값, "COMPLETED"/"REJECTED"는 Django
+  // TaskAssignment 상태값 — 두 체계가 아직 섞여 있어서 둘 다 받아준다.
+  if (["DONE", "CANCELLED", "COMPLETED", "REJECTED"].includes(task.status)) return false;
   const todayUtcMidnight = new Date();
   todayUtcMidnight.setUTCHours(0, 0, 0, 0);
   return new Date(task.wbsEnd) < todayUtcMidnight;
