@@ -20,6 +20,7 @@ from tasks.serializers import (
 )
 from requirements.models import RequirementItem
 from projects.models import PipelineHistory, Project
+from notifications.services import notify_user
 
 User = get_user_model()
 
@@ -211,6 +212,16 @@ class TaskStatusUpdateView(APIView):
         if new_status not in TaskAssignment.Status.values:
             return Response({"error": "유효하지 않은 status 값입니다."}, status=status.HTTP_400_BAD_REQUEST)
 
+        # 반려는 승인 대기 상태에서만 사유와 함께 — 담당자를 다시 배정 없이 그냥 되돌리면
+        # 사유가 안 남아 왜 반려됐는지 알 방법이 없다.
+        if new_status == TaskAssignment.Status.REJECTED:
+            reason = request.data.get('reject_reason', '').strip()
+            if not reason:
+                return Response({"error": "반려 사유를 입력해주세요."}, status=status.HTTP_400_BAD_REQUEST)
+            task.reject_reason = reason
+        elif new_status != task.status:
+            task.reject_reason = None
+
         task.status = new_status
         task.save()
 
@@ -219,6 +230,12 @@ class TaskStatusUpdateView(APIView):
             user = task.assigned_user
             user.is_busy = False
             user.save()
+
+        # 담당자에게 승인/반려 결과를 알린다 (검토요청/승인/반려 알림 패턴과 동일)
+        if new_status == TaskAssignment.Status.APPROVED:
+            notify_user(task.assigned_user, f"'{task.task_title}' 업무가 승인되었습니다.", type='success', link='/tasks')
+        elif new_status == TaskAssignment.Status.REJECTED:
+            notify_user(task.assigned_user, f"'{task.task_title}' 업무가 반려되었습니다: {task.reject_reason}", type='error', link='/tasks')
 
         return Response({
             "message": "업무 상태가 성공적으로 변경되었습니다.",
