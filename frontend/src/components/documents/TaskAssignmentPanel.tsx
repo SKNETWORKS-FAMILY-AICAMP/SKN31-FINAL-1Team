@@ -5,6 +5,7 @@ import { Bot, Loader2, ChevronDown, UserIcon, CalendarIcon, CheckCircle2 } from 
 import { cn } from "@/lib/utils";
 import { AgentBadge } from "@/components/ui/AgentBadge";
 import { DifficultyBadge } from "@/components/ui/DifficultyBadge";
+import { Toast } from "@/components/ui/Toast";
 
 type Task = {
   id: string;
@@ -87,6 +88,7 @@ export function TaskAssignmentPanel({
   const [confirming, setConfirming] = useState(false);
   const [reassigning, setReassigning] = useState<string | null>(null);
   const [expandedReason, setExpandedReason] = useState<string | null>(null);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   // 담당자 변경 드롭다운에 쓸 팀원 목록은 배정 실행 여부와 무관하게 항상 필요하다.
   // 온보딩 전이라 이름이 비어있는 계정은 드롭다운에 빈 옵션으로 뜨니 제외한다.
@@ -151,6 +153,7 @@ export function TaskAssignmentPanel({
           wbsEnd: toDateInput(s.suggestedWbsEnd),
         }))
       );
+      setToastMessage("업무 배분 생성이 완료되었습니다");
     } catch {
       alert("네트워크 오류가 발생했습니다.");
     } finally {
@@ -210,6 +213,7 @@ export function TaskAssignmentPanel({
       .map(d => ({ id: d.taskId, title: d.title, assigneeName: members.find(m => m.id === d.assigneeId)?.name ?? "미배정", wbsStart: d.wbsStart, wbsEnd: d.wbsEnd }));
     return (
       <div className="space-y-4">
+        <Toast message={toastMessage} onDismiss={() => setToastMessage(null)} />
         <p className="text-sm text-muted-foreground">
           AI가 추천한 담당자와 일정입니다. 필요하면 담당자·일정을 직접 바꾼 뒤 확정하세요.
         </p>

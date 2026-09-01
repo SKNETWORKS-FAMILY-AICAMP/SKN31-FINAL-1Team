@@ -15,6 +15,7 @@ from meetings.serializers import (
     SpecDocumentSerializer,
 )
 from common.models import CommonCode
+from notifications.services import notify_user, notify_all_pms
 
 # AI 모듈 불러오기
 from meeting_analysis.node import run as analyze_meeting
@@ -136,11 +137,17 @@ class MeetingNoteAnalyzeView(APIView):
                     # 문자열 타입 보장
                     sections_map[sec_key] = cleaned_content
 
+            # 기획서 7개 섹션 중 회의에서 실제로 논의 안 된 항목은 AI가 빈 값을 준다 — 화면에
+            # 그냥 빈 칸으로 두면 "생성이 덜 됐나?" 오해를 살 수 있어서, 비어있으면 명시적으로
+            # "회의에서 논의되지 않았습니다"를 채운다(내용을 지어내지 않는다는 원칙은 그대로 유지).
+            NOT_DISCUSSED = "회의에서 논의되지 않았습니다."
+
             def safe_get_section(key):
                 val = sections_map.get(key, "")
                 if isinstance(val, (dict, list)):
                     val = json.dumps(val, ensure_ascii=False)
-                return strip_html_tags(val)
+                cleaned = strip_html_tags(val)
+                return cleaned if cleaned.strip() else NOT_DISCUSSED
 
             # 회의록 상태 및 요약 저장
             summary_val = structured_data.get('summary') if isinstance(structured_data, dict) else None
@@ -223,11 +230,22 @@ class SpecDocumentSubmitReviewView(APIView):
 
     def post(self, request, pk):
         spec = get_object_or_404(SpecDocument, pk=pk)
-        status_code = CommonCode.objects.filter(code='REVIEW_SUBMITTED').first()
+        # CommonCode에는 code 필드가 없다(code_id) — 이 필터가 항상 FieldError로 500을 내던
+        # 기존 버그였다. PROPOSAL_ 접두사 code_id도 여기서 같이 맞춘다.
+        status_code = CommonCode.objects.filter(code_id='PROPOSAL_PENDING_REVIEW').first()
         if status_code:
             spec.status_code = status_code
             spec.save()
+        notify_all_pms(
+            f"'{spec.title}' 기획서 검토요청이 도착했습니다.",
+            type='info',
+            link='/documents',
+        )
         return Response({"message": "검토 요청이 완료되었습니다.", "spec": SpecDocumentSerializer(spec).data})
+
+    # 프론트(documents/page.tsx handleSubmitReview)는 PATCH로 호출하는데 여기 post만 있어서
+    # 405로 막혀 있던 기존 버그 — patch를 post에 그대로 별칭해서 고친다.
+    patch = post
 
 
 class SpecDocumentApproveView(APIView):
@@ -236,11 +254,17 @@ class SpecDocumentApproveView(APIView):
 
     def post(self, request, pk):
         spec = get_object_or_404(SpecDocument, pk=pk)
-        status_code = CommonCode.objects.filter(code='APPROVED').first()
+        status_code = CommonCode.objects.filter(code_id='PROPOSAL_APPROVED').first()
         if status_code:
             spec.status_code = status_code
         spec.reviewer = request.user
         spec.save()
+        notify_user(
+            spec.meeting.created_by,
+            f"'{spec.title}' 기획서가 승인되었습니다.",
+            type='success',
+            link='/documents',
+        )
         return Response({"message": "기획서가 승인되었습니다.", "spec": SpecDocumentSerializer(spec).data})
 
 
@@ -250,10 +274,18 @@ class SpecDocumentRejectView(APIView):
 
     def post(self, request, pk):
         spec = get_object_or_404(SpecDocument, pk=pk)
-        status_code = CommonCode.objects.filter(code='REJECTED').first()
+        status_code = CommonCode.objects.filter(code_id='PROPOSAL_REJECTED').first()
         if status_code:
             spec.status_code = status_code
         spec.reviewer = request.user
-        spec.review_comment = request.data.get('review_comment', spec.review_comment)
+        # 프론트(documents/page.tsx handleReject)가 review_comment가 아니라 reason 키로 보낸다 —
+        # 이것도 그동안 반려 사유가 항상 비어있게 저장되던 기존 버그였다.
+        spec.review_comment = request.data.get('reason', spec.review_comment)
         spec.save()
+        notify_user(
+            spec.meeting.created_by,
+            f"'{spec.title}' 기획서가 반려되었습니다.",
+            type='error',
+            link='/documents',
+        )
         return Response({"message": "기획서가 반려되었습니다.", "spec": SpecDocumentSerializer(spec).data})

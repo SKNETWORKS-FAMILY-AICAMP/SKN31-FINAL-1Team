@@ -28,11 +28,28 @@
 `npm run dev`
 8. 웹 실행
 `http://localhost:3000`
-
+```
+*  최초실행 완료 후에는 7,8번만 실행하면 됨.
+---
 ## 2. 백엔드 서버 실행
-* 새로운 터미널에서 실행
-1. cd backend
-2. python manage.py runserver
 
-## API 연동
-1. 로그인 - 완료
+* 새로운 터미널에서 실행
+
+1) 터미널에서 다음 명령어 순차적으로 실행
+```powershell
+cd backend
+uv venv .venv --python=3.13
+.venv\Scripts\activate
+uv pip install -r requirements.txt
+copy .env.example .env
+```
+1-1) 아래 코드 실행하여 django secret key 생성한 후 복사하여 env에 붙여넣기
+```
+python -c "from django.core.management.utils import get_random_secret_key; print(get_random_secret_key())"
+```
+2) env 파일 내 key 값 채우기
+```
+SECRET_KEY=<<본인 django API key 입력>>
+OPENAI_API_KEY=<<본인 API key 입력>>
+```
+3. python manage.py runserver
