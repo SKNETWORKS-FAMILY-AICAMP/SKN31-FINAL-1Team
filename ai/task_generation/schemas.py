@@ -3,7 +3,7 @@ task_generation/schemas.py
 
 컨텍스트 설계 요약
   - 입력: 요구사항정의서 출력(요구사항정의서 JSON), State Passing
-  - 정적 참고자료: 업무유형 6종 + Depth 기준(Epic->Task->Subtask) + 3원칙, Prompt Template + Few-shot
+  - 정적 참고자료: Depth 기준(Epic->Task->Subtask) + 3원칙, Prompt Template + Few-shot
   - 동적 조회: 프로젝트 참여인원 수의 SQL 조회 (FR-05-014: 업무 개수는 참여인원 이상 7개 이하)
   - Tools: 없음
   - 출력: 업무 리스트 JSON (Epic 정보 포함, Subtask 중첩)
@@ -27,7 +27,10 @@ class TaskItem(BaseModel):
     epic_title: str = Field(..., description="소속 Epic 명")
     title: str
     description: str
-    task_type: str = Field(..., description="task_type 테이블의 6종 중 하나")
+    required_skills: List[str] = Field(
+        default_factory=list,
+        description="이 업무 수행에 필요한 기술 스택 (A2-3 담당자 배정 시 매칭 기준으로 사용됨)",
+    )
     estimated_hours: float
     difficulty: str = Field(..., description="상/중/하")
     difficulty_reason: str = Field(..., description="난이도 판단 근거 — 화면에 그대로 노출")

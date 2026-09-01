@@ -10,8 +10,8 @@ from typing import Any, Dict, List
 
 from pydantic import ValidationError
 
-from shared.llm_client import get_client
-from shared.retry_config import DEFAULT_MAX_TOKENS, DEFAULT_MODEL, MAX_RETRIES, TEMPERATURE_STRUCTURED
+from shared.llm_client import create_structured
+from shared.retry_config import DEFAULT_MAX_TOKENS, MAX_RETRIES, TEMPERATURE_STRUCTURED
 
 from .prompt_builder import build_messages, load_nfr_checklist
 from .schemas import (
@@ -49,15 +49,14 @@ def verify_source_consistency(doc: RequirementDocument) -> List[str]:
 
 
 def generate_requirements(plan: PlanDocument, plan_id: str | None = None) -> RequirementDocumentOutput:
-    client = get_client()
     messages = build_messages(plan)
 
-    doc: RequirementDocument = client.chat.completions.create(
-        model=DEFAULT_MODEL,
+    doc: RequirementDocument = create_structured(
+        system_prompt=messages[0]["content"],
+        user_message=messages[1]["content"],
+        response_model=RequirementDocument,
         max_tokens=DEFAULT_MAX_TOKENS,
         temperature=TEMPERATURE_STRUCTURED,
-        messages=messages,
-        response_model=RequirementDocument,
         max_retries=MAX_RETRIES,
     )
 

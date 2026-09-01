@@ -9,6 +9,10 @@ EX-LLM 계열 예외처리(타임아웃, 파싱 실패)에 대응하는 공통 �
 DEFAULT_MODEL = "gpt-4o"
 DEFAULT_MAX_TOKENS = 8000
 
+# OpenAI 인프라 장애(연결 실패·타임아웃·5xx·레이트리밋) 시 폴백할 provider/모델.
+# shared/llm_client.py의 create_structured()가 이 값을 사용한다.
+FALLBACK_MODEL = "claude-opus-5"
+
 # 구조화 생성(JSON 출력) 노드는 0.0, 자연어 답변 생성 노드는 0.3
 TEMPERATURE_STRUCTURED = 0.0
 TEMPERATURE_GENERATIVE = 0.3

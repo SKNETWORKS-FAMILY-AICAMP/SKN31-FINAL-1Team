@@ -13,36 +13,27 @@ agent.py에 있고, 이 파일은 "누가 누구 다음에 오는지 / 반려되
 from langgraph.graph import END, StateGraph
 from langgraph.types import interrupt
 
-import shared.django_bootstrap  # noqa: F401  (Django 초기화 부작용 — backend 모델 import 전에 실행되어야 함)
 from meeting_analysis.agent import meeting_analysis_node
 from plan_draft.agent import plan_draft_node
-from plan_draft.review_sync import apply_plan_review_decision
 from requirement_draft.agent import requirement_draft_node
 from task_generation.agent import task_generation_node
+from assignee_mapping.agent import assignee_mapping_node
 from assignee_recommend.agent import assignee_recommend_node
 from state import PipelineState
 
 
 # ---------------------------------------------------------------------------
 # 사람 검토(human-in-the-loop) 게이트
+#
+# ai/는 DB를 모른다 — 승인/반려 결과를 실제 SpecDocument/ReqSpec에 반영하는 건
+# 이 그래프를 호출하는 쪽(Django/Celery task)의 책임이다. interrupt()로 멈추고
+# 재개된 decision을 State에만 반영하면, 호출부가 그 State를 보고 자기 DB에
+# 알맞게 저장한다 — 통합 방식 결정(B안, 2026-08-30) 참고.
 # ---------------------------------------------------------------------------
 
 def plan_review_gate(state: PipelineState) -> dict:
-    """A1-2가 만든 기획서를 PM이 승인/반려할 때까지 여기서 멈춘다.
-
-    interrupt()가 재개될 때 넘어오는 decision 형태:
-      승인: {"action": "승인", "reviewer_id": "<승인자 UUID>"}
-      반려: {"action": "반려", "reason": "<반려 사유>"}
-    """
+    """A1-2가 만든 기획서를 PM이 승인/반려할 때까지 여기서 멈춘다."""
     decision = interrupt({"plan": state["plan"], "question": "기획서 승인 또는 반려?"})
-
-    apply_plan_review_decision(
-        plan_id=state["plan_id"],
-        decision=decision["action"],
-        reviewer_id=decision.get("reviewer_id"),
-        reject_reason=decision.get("reason"),
-    )
-
     if decision["action"] == "반려":
         return {"plan_rejection_reason": decision.get("reason")}
     return {"plan_rejection_reason": None}
@@ -83,6 +74,7 @@ def build_graph() -> StateGraph:
     graph.add_node("a2_1_requirement_draft", requirement_draft_node)
     graph.add_node("requirement_review_gate", requirement_review_gate)
     graph.add_node("a2_2_task_generation", task_generation_node)
+    graph.add_node("assignee_mapping", assignee_mapping_node)
     graph.add_node("a2_3_assignee_recommend", assignee_recommend_node)
 
     graph.set_entry_point("a1_1_meeting_analysis")
@@ -102,7 +94,8 @@ def build_graph() -> StateGraph:
             "a2_2_task_generation": "a2_2_task_generation",
         },
     )
-    graph.add_edge("a2_2_task_generation", "a2_3_assignee_recommend")
+    graph.add_edge("a2_2_task_generation", "assignee_mapping")
+    graph.add_edge("assignee_mapping", "a2_3_assignee_recommend")
     graph.add_edge("a2_3_assignee_recommend", END)
 
     return graph

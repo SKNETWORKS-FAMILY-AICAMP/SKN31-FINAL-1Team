@@ -1,19 +1,4 @@
-# a2_2_task_generation/prompts/task_type.yaml
-
-
-task_types:
-  - id: "requirement_analysis"
-    name_kr: "요구사항분석"
-  - id: "design"
-    name_kr: "설계"
-  - id: "development"
-    name_kr: "개발"
-  - id: "testing"
-    name_kr: "테스트"
-  - id: "deployment_ops"
-    name_kr: "배포운영"
-  - id: "documentation"
-    name_kr: "문서화"
+# a2_2_task_generation/prompts/decomposition_rules.yaml
 
 decomposition_principles: |
   아래 3원칙은 최하위 노드(Task 또는 Subtask)에 적용된다. 하나라도 만족하지 못하면

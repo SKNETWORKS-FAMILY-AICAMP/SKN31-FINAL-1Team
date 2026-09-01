@@ -4,8 +4,9 @@ a2_2_task_generation/agent.py
 업무 자동 생성 (FR-05-014, 015)
 
 FR-05-014 원문: "3개 이상 7개 이하이며, 참여인원 수 이상이어야 한다."
-참여인원 수는 요구사항정의서 JSON 안에 없으므로, 이 노드에서 별도로
-member 테이블을 조회해 프롬프트 제약("min_tasks")에 반영한다.
+참여인원 수는 요구사항정의서 JSON 안에 없어 별도 조회가 필요하지만, 이 모듈은
+DB를 모른다 — 호출부(Django/Celery task)가 미리 조회해 state["participant_count"]로
+채워 넣는다는 전제다 (ai/ ↔ backend 통합 방식 B안, 2026-08-30 결정).
 """
 
 import logging
@@ -13,8 +14,8 @@ from typing import Any, Dict
 
 from pydantic import ValidationError
 
-from shared.llm_client import get_client
-from shared.retry_config import DEFAULT_MAX_TOKENS, DEFAULT_MODEL, MAX_RETRIES, TEMPERATURE_STRUCTURED
+from shared.llm_client import create_structured
+from shared.retry_config import DEFAULT_MAX_TOKENS, MAX_RETRIES, TEMPERATURE_STRUCTURED
 
 from .prompt_builder import build_system_prompt
 from .schemas import TaskList
@@ -22,32 +23,23 @@ from .schemas import TaskList
 logger = logging.getLogger(__name__)
 
 
-def get_participant_count(project_id: str) -> int:
-    """TODO(담당자2): member 테이블에서 project_id 기준 참여인원 수 조회."""
-    # SELECT COUNT(*) FROM member WHERE project_id = %s
-    raise NotImplementedError
-
-
 def generate_tasks(requirement_doc: dict, participant_count: int) -> TaskList:
-    client = get_client()
     system_prompt = build_system_prompt(requirement_doc, participant_count)
 
-    return client.chat.completions.create(
-        model=DEFAULT_MODEL,
+    return create_structured(
+        system_prompt=system_prompt,
+        user_message="위 요구사항정의서를 바탕으로 업무를 생성하라.",
+        response_model=TaskList,
         max_tokens=DEFAULT_MAX_TOKENS,
         temperature=TEMPERATURE_STRUCTURED,
-        system=system_prompt,
-        messages=[{"role": "user", "content": "위 요구사항정의서를 바탕으로 업무를 생성하라."}],
-        response_model=TaskList,
         max_retries=MAX_RETRIES,
     )
 
 
 def task_generation_node(state: Dict[str, Any]) -> Dict[str, Any]:
-    try:
-        participant_count = get_participant_count(state["project_id"])
-    except NotImplementedError:
-        return {"error": "NOT_IMPLEMENTED: get_participant_count"}
+    if "participant_count" not in state:
+        return {"error": "MISSING_INPUT: state['participant_count'] — 호출부가 미리 채워야 함"}
+    participant_count = state["participant_count"]
 
     try:
         result = generate_tasks(state["requirement_doc"], participant_count)

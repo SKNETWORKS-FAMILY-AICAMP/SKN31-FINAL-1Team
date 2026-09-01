@@ -28,10 +28,18 @@ class PipelineState(TypedDict, total=False):
     requirement_doc: Dict[str, Any]
     requirement_rejection_reason: Optional[str]
 
-    # ---- A2-2 출력 ----
+    # ---- A2-2 입력(호출부가 미리 조회해 채움) / 출력 ----
+    participant_count: int   # SELECT COUNT(*) FROM member WHERE project_id = %s — 호출부 책임
     tasks: List[Dict[str, Any]]
 
-    # ---- A2-3 출력 ----
+    # ---- 담당자 매핑 입력(호출부가 미리 조회해 채움) / 출력 (신규, A2-2와 A2-3 사이) ----
+    raw_employee_profiles: List[Dict[str, Any]]  # User+UserSkill+UserCertification 조회 결과
+    member_profiles: List[Dict[str, Any]]
+
+    # ---- A2-3 입력(호출부가 미리 조회해 채움) / 출력 ----
+    current_workload: Dict[str, float]  # assignee_id -> task.estimated_hours SUM, 호출부 책임
+    project_start_date: str  # project.start_date, "YYYY-MM-DD" — 배정 상한 계산용
+    project_end_date: str    # project.end_date, "YYYY-MM-DD"
     assignments: List[Dict[str, Any]]
 
     # ---- 공통 ----

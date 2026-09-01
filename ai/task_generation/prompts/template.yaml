@@ -1,5 +1,4 @@
 # a2_2_task_generation/prompts/template.yaml
-# TODO(담당자): 실제 few-shot 예시로 교체할 것
 role: |
   나는 주어진 요구사항정의서를 바탕으로 실행 가능한 팀 업무를 추출하는 어시스턴트다.
 
@@ -10,55 +9,69 @@ constraints: |
   - decomposition_principles(3원칙)를 모두 만족하지 못하면 더 잘게 쪼개라.
   - difficulty_reason에는 왜 그 난이도인지 구체적인 근거를 써야 한다. "복잡함" 같은
     추상적 표현 말고 어떤 요소 때문에 그런지 서술하라.
+  - required_skills에는 이 업무를 수행하는 데 실제로 필요한 기술 스택을 구체적으로
+    나열하라(예: "Django", "REST API"). "개발 능력"처럼 뭉뚱그리지 마라. 이 값은
+    다음 단계(A2-3)에서 담당자를 매칭하는 기준으로 그대로 쓰인다.
   - 출력은 JSON 외의 부가 설명을 포함하지 마라.
 
 few_shot_examples:
-  - description: "TODO: 실제 예시로 교체"
+  - description: >
+      기능요구사항 1건이 설계/개발/테스트 3개 유형에 걸쳐 분해되는 경우.
+      TASK-002는 서로 다른 두 검증 로직(시간대 검증, 일정 중복 확인)이 섞여 있어
+      "산출물이 하나로 특정된다" 원칙을 못 만족해 Subtask로 쪼갰고,
+      TASK-001·TASK-003은 이미 3원칙을 만족해 Subtask 없이 둔 예시.
     input:
+      project_id: "PJT-100"
       requirements:
         - id: "FR-01-001"
-          name: "문서 업로드"
-          description: "사용자가 PDF, DOCX, XLSX 파일을 업로드할 수 있어야 한다."
+          category_1: "산책 예약"
+          category_2: "예약 기능"
+          name: "산책 도우미 예약"
+          description: "보호자는 날짜와 시간을 지정해 산책 도우미에게 산책을 예약할 수 있어야 한다."
+          type: "기능"
+          priority: "High"
+          source: "requirement_text"
+          review_status: "검토완료"
     output:
       tasks:
         - task_id: "TASK-001"
           epic_id: "EPIC-001"
-          epic_title: "문서 업로드 기능"
-          title: "파일 업로드 API 개발"
-          description: "multipart/form-data 방식의 파일 업로드 엔드포인트 구현"
-          task_type: "development"
-          estimated_hours: 8
-          difficulty: "중"
-          difficulty_reason: "파일 스트리밍 처리와 S3 연동 로직이 포함되어 단순 CRUD보다 복잡도가 높음"
+          epic_title: "산책 예약 기능"
+          title: "산책 예약 API 설계"
+          description: "예약 요청/응답 스펙과 상태 코드를 정의한 API 명세 작성"
+          required_skills: ["REST API 설계"]
+          estimated_hours: 3
+          difficulty: "하"
+          difficulty_reason: "요청/응답 필드와 상태 코드만 정의하면 되고 별도의 복잡한 판단 로직이 없어 설계 범위가 명확함"
           source_req_id: "FR-01-001"
           subtasks: []
         - task_id: "TASK-002"
           epic_id: "EPIC-001"
-          epic_title: "문서 업로드 기능"
-          title: "파일 형식 및 크기 유효성 검사"
-          description: "허용 MIME 타입(pdf/docx/xlsx) 및 10MB 크기 제한 검증 로직 구현"
-          task_type: "development"
-          estimated_hours: 4
-          difficulty: "하"
-          difficulty_reason: "명확한 조건(파일 형식 목록, 크기 상한)이 정의되어 있어 구현 범위가 한정적임"
+          epic_title: "산책 예약 기능"
+          title: "산책 예약 API 개발"
+          description: "예약 가능 시간대 검증과 도우미 일정 중복 확인을 포함한 예약 생성 엔드포인트 구현"
+          required_skills: ["Django", "REST API"]
+          estimated_hours: 8
+          difficulty: "중"
+          difficulty_reason: "예약 가능 시간대(오전 7시~오후 8시) 검증과 도우미 일정 중복 확인이라는 서로 다른 두 검증 로직이 함께 필요해 산출물이 하나로 특정되지 않음"
           source_req_id: "FR-01-001"
           subtasks:
             - subtask_id: "SUBTASK-002-1"
-              title: "허용 MIME 타입 상수 정의"
-              description: "pdf, docx, xlsx 허용 형식을 상수로 정의하고 단위 테스트 작성"
-              estimated_hours: 1
+              title: "예약 가능 시간대 검증 로직 구현"
+              description: "오전 7시~오후 8시 범위를 벗어난 예약 요청을 400으로 거부하는 로직 구현"
+              estimated_hours: 4
             - subtask_id: "SUBTASK-002-2"
-              title: "파일 크기 초과 에러 처리"
-              description: "10MB 초과 시 400 Bad Request 응답 반환 로직 구현"
-              estimated_hours: 1
+              title: "도우미 일정 중복 확인 로직 구현"
+              description: "선택한 도우미의 동일 시간대 기존 예약과 겹치는지 확인하는 로직 구현"
+              estimated_hours: 4
         - task_id: "TASK-003"
           epic_id: "EPIC-001"
-          epic_title: "문서 업로드 기능"
-          title: "업로드 기능 통합 테스트"
-          description: "정상 업로드, 형식 오류, 크기 초과 시나리오에 대한 통합 테스트 작성"
-          task_type: "testing"
+          epic_title: "산책 예약 기능"
+          title: "예약 시나리오 통합 테스트"
+          description: "정상 예약, 시간대 외 예약, 도우미 일정 중복 시나리오에 대한 통합 테스트 작성"
+          required_skills: ["pytest"]
           estimated_hours: 4
           difficulty: "하"
-          difficulty_reason: "시나리오가 명확하고 테스트 범위가 단일 엔드포인트로 한정됨"
+          difficulty_reason: "정상/시간대 외/일정 중복 3가지 시나리오로 테스트 범위가 명확히 한정됨"
           source_req_id: "FR-01-001"
           subtasks: []
