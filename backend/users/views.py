@@ -127,7 +127,9 @@ class CookieTokenRefreshView(APIView):
     @extend_schema(
         tags=['0단계 - 사용자 관리'],
         summary='access 토큰 재발급',
-        description='refresh_token 쿠키로 새 access 토큰을 발급해 쿠키로 내려줍니다.',
+        description='refresh_token 쿠키로 새 access 토큰을 발급해 쿠키로 내려줍니다. 활동이 있는 '
+                     '동안은 refresh 토큰도 매번 새로 발급해(슬라이딩) 세션이 계속 연장되게 합니다 — '
+                     '그렇지 않으면 로그인 시점 기준 24시간 뒤 활동 중이어도 무조건 로그아웃됩니다.',
         responses={200: OpenApiTypes.OBJECT, 401: OpenApiTypes.OBJECT}
     )
     def post(self, request):
@@ -139,8 +141,20 @@ class CookieTokenRefreshView(APIView):
         except TokenError as e:
             return Response({"detail": str(e)}, status=status.HTTP_401_UNAUTHORIZED)
 
+        try:
+            user = User.objects.get(pk=refresh.payload.get('user_id'))
+        except User.DoesNotExist:
+            return Response({"detail": "유효하지 않은 토큰입니다."}, status=status.HTTP_401_UNAUTHORIZED)
+
+        # 활동(=API 호출로 인한 재발급)이 있을 때마다 refresh 토큰도 새로 발급해 만료 시점을
+        # 지금부터 다시 24시간으로 미룬다(슬라이딩 세션) — access만 갱신하고 refresh는 그대로
+        # 재사용하면, 로그인한 지 24시간이 지나는 순간 계속 활동 중이었어도 무조건 로그아웃된다
+        # (실제로 겪은 문제). 블랙리스트 앱은 안 붙어 있어 예전 refresh 토큰이 자기 수명이 끝날
+        # 때까지는 여전히 유효하지만, 로그아웃 처리도 지금 블랙리스트 없이 동작하는 것과 같은
+        # 수준이라 새로운 보안 저하는 아니다.
+        new_refresh = RefreshToken.for_user(user)
         response = Response({"detail": "재발급 완료"}, status=status.HTTP_200_OK)
-        set_auth_cookies(response, str(refresh.access_token))
+        set_auth_cookies(response, str(new_refresh.access_token), str(new_refresh))
         return response
 
 
