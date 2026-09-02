@@ -8,6 +8,8 @@ from rest_framework.response import Response
 from drf_spectacular.utils import extend_schema, OpenApiParameter, OpenApiResponse, OpenApiTypes
 
 import docx
+from docx.table import Table
+from docx.text.paragraph import Paragraph
 
 from pypdf import PdfReader
 
@@ -295,7 +297,7 @@ class MeetingNoteParseFileView(APIView):
     """
     회의록 첨부 파일에서 텍스트를 추출해 반환 (저장은 하지 않음 — 프론트가 "원본 내용" 칸을 채우는 용도)
     POST /api/meetings/notes/parse-file/  (multipart/form-data, key: file)
-    지원 형식: .docx, .pdf, .txt, .hwp(HWPv5 바이너리 포맷 — pyhwp의 hwp5txt CLI를 서브프로세스로 호출)
+    지원 형식: .docx, .pdf, .txt, .md, .hwp(HWPv5 바이너리 포맷 — pyhwp의 hwp5txt CLI를 서브프로세스로 호출)
     """
     permission_classes = [permissions.IsAuthenticated]
     parser_classes = [parsers.MultiPartParser]
@@ -305,7 +307,7 @@ class MeetingNoteParseFileView(APIView):
     @extend_schema(
         tags=['1단계 - 회의록'],
         summary='회의록 첨부 파일 텍스트 추출',
-        description='.docx/.pdf/.txt/.hwp 파일을 업로드하면 텍스트를 추출해서 돌려준다. DB에 저장하지 않는다.',
+        description='.docx/.pdf/.txt/.md/.hwp 파일을 업로드하면 텍스트를 추출해서 돌려준다. DB에 저장하지 않는다.',
         request={'multipart/form-data': {'type': 'object', 'properties': {'file': {'type': 'string', 'format': 'binary'}}}},
         responses={200: OpenApiResponse(description='추출된 텍스트')},
     )
@@ -320,17 +322,17 @@ class MeetingNoteParseFileView(APIView):
         try:
             if name.endswith('.docx'):
                 document = docx.Document(f)
-                text = "\n".join(para.text for para in document.paragraphs)
+                text = self._extract_docx_text(document)
             elif name.endswith('.pdf'):
                 reader = PdfReader(f)
                 text = "\n".join((page.extract_text() or "") for page in reader.pages)
-            elif name.endswith('.txt'):
+            elif name.endswith('.txt') or name.endswith('.md'):
                 text = f.read().decode('utf-8', errors='ignore')
             elif name.endswith('.hwp'):
                 text = self._extract_hwp_text(f)
             else:
                 return Response(
-                    {"error": "지원하지 않는 파일 형식입니다. .docx, .pdf, .txt, .hwp 파일만 업로드해주세요."},
+                    {"error": "지원하지 않는 파일 형식입니다. .docx, .pdf, .txt, .md, .hwp 파일만 업로드해주세요."},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
         except Exception as e:
@@ -341,6 +343,33 @@ class MeetingNoteParseFileView(APIView):
             return Response({"error": "파일에서 텍스트를 추출하지 못했습니다."}, status=status.HTTP_400_BAD_REQUEST)
 
         return Response({"content": text, "filename": f.name}, status=status.HTTP_200_OK)
+
+    @staticmethod
+    def _extract_docx_text(document):
+        """
+        기존엔 document.paragraphs만 이어붙였는데, 이건 표(Table)는 아예 건너뛴다 — python-docx가
+        표와 문단을 별도 컬렉션으로 나눠 두기 때문(표 안의 텍스트는 document.paragraphs에 없다).
+        회의록에 표가 있으면 통째로 사라지던 문제(실제 겪음)를 고치려고, body를 원래 문서 순서
+        그대로 순회하면서 문단은 그대로, 표는 마크다운 파이프 표 형태(| a | b |)로 바꿔 끼워 넣는다
+        — AI 분석 단계도 이 텍스트를 그대로 읽으므로, 표를 없애는 것보다 마크다운으로라도 남기는
+        편이 정보 손실이 적다.
+        """
+        lines = []
+        for child in document.element.body.iterchildren():
+            if child.tag.endswith('}p'):
+                text = Paragraph(child, document).text
+                if text.strip():
+                    lines.append(text)
+            elif child.tag.endswith('}tbl'):
+                table = Table(child, document)
+                rows = [[cell.text.strip() for cell in row.cells] for row in table.rows]
+                if not rows:
+                    continue
+                lines.append("| " + " | ".join(rows[0]) + " |")
+                lines.append("| " + " | ".join("---" for _ in rows[0]) + " |")
+                for row in rows[1:]:
+                    lines.append("| " + " | ".join(row) + " |")
+        return "\n".join(lines)
 
     @staticmethod
     def _extract_hwp_text(uploaded_file):
