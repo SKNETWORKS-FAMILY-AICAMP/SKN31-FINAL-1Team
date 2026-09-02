@@ -529,7 +529,12 @@ function NoteDetail({
   useEffect(() => { setRawDraft(note.content ?? ""); }, [note.id, note.content]);
   const rawDirty = rawDraft !== (note.content ?? "");
   const rawSaving = busy === busyKey("save-raw");
-  const rawLocked = status === "PENDING_REVIEW" || status === "APPROVED";
+  // 기획서가 한 번이라도 생성되면 그 순간의 회의록 내용을 근거로 AI가 만든 것이므로, 이후에
+  // 원본을 고치면 기획서와 내용이 어긋난다 — 그래서 검토중/승인됨뿐 아니라 기획서가 존재하는
+  // 한(초안/반려 포함) 항상 잠근다(수정 화면 자체가 없도록 — 저장 버튼도 자동으로 숨겨짐).
+  const rawLocked = !!spec;
+  // 기획서 자체(직접수정 모드/기간)의 잠금은 검토중/승인됨일 때만 — 이건 원본 회의록과 별개다.
+  const specLocked = status === "PENDING_REVIEW" || status === "APPROVED";
 
   const [editMode, setEditMode] = useState(false);
   const [editDraft, setEditDraft] = useState<ProposalDoc | null>(null);
@@ -543,7 +548,7 @@ function NoteDetail({
   useEffect(() => {
     setPeriodDraft({ start: spec?.period_start ?? "", end: spec?.period_end ?? "" });
   }, [note.id, spec?.period_start, spec?.period_end]);
-  const periodEditable = !!spec && !rawLocked && !editMode;
+  const periodEditable = !!spec && !specLocked && !editMode;
   const handlePeriodChange = (period: { start: string; end: string }) => {
     if (!spec) return;
     setPeriodDraft(period);
@@ -599,7 +604,7 @@ function NoteDetail({
             원본 회의록 / 메모
             {rawLocked && (
               <span className="flex items-center gap-1 text-[11px] text-muted-foreground/70">
-                <Lock className="w-3 h-3" /> 검토 중에는 수정할 수 없습니다
+                <Lock className="w-3 h-3" /> 기획서 생성 후에는 수정할 수 없습니다
               </span>
             )}
           </p>
