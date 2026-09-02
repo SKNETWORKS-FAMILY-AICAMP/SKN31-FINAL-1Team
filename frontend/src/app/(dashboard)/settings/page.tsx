@@ -1,9 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import Link from "next/link";
-import { useAuth } from "@/lib/auth";
-import { Settings as SettingsIcon, Loader2, Sparkles, FolderKanban, HelpCircle, Mail, ChevronDown, FileText, ShieldCheck, Lightbulb, AlertTriangle } from "lucide-react";
+import { useState } from "react";
+import { Settings as SettingsIcon, HelpCircle, Mail, ChevronDown, FileText, ShieldCheck } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { TERMS_ARTICLES, TERMS_EFFECTIVE_DATE, PRIVACY_SECTIONS, PRIVACY_EFFECTIVE_DATE } from "@/lib/legalContent";
 
@@ -19,87 +17,9 @@ const FAQ_ITEMS = [
   { q: "비밀번호를 잊어버렸어요.", a: "현재는 자가 비밀번호 재설정 기능이 없습니다. 소속 PM(관리자)에게 계정 초기화를 요청해 주세요." },
 ];
 
-type Project = {
-  id: string;
-};
-
 export default function SettingsPage() {
-  const { user } = useAuth();
-  const isPM = user?.role === "PM";
-
-  const [project, setProject] = useState<Project | null>(null);
-  const [loading, setLoading] = useState(true);
   const [openFaq, setOpenFaq] = useState<number | null>(null);
   const [openLegal, setOpenLegal] = useState<"terms" | "privacy" | null>(null);
-
-  // 반려 패턴 분석(피드백 루프) — 요청 즉시 생성해 화면에만 보여주고 저장하지는 않는다.
-  // 다시 보고 싶으면 버튼을 또 누르면 된다(매번 최신 반려 사유 기준으로 새로 분석됨).
-  type RejectInsight = {
-    theme: string; occurrenceCount: number; evidence: string; suggestion: string;
-  };
-  const [insightLoading, setInsightLoading] = useState(false);
-  const [insightError, setInsightError] = useState("");
-  const [insightResult, setInsightResult] = useState<{
-    insufficientData: boolean; message?: string; reasonCount: number; overallSummary?: string; patterns?: RejectInsight[];
-  } | null>(null);
-
-  useEffect(() => {
-    const load = async () => {
-      setLoading(true);
-      try {
-        // 예전엔 목록 조회 → 첫 프로젝트 id로 상세 조회 2단계였다 — 원격 DB 왕복이 하나 늘 때마다
-        // 체감 지연이 커서(/api/projects/current 참고) 단일 요청으로 합쳤다.
-        const res = await fetch("/api/projects/current");
-        const detail = await res.json();
-        if (detail.success && detail.data) {
-          const p: Project = detail.data;
-          setProject(p);
-        }
-      } finally {
-        setLoading(false);
-      }
-    };
-    load();
-  }, []);
-
-  const runInsightAnalysis = async () => {
-    if (!project) return;
-    setInsightLoading(true);
-    setInsightError("");
-    try {
-      const res = await fetch(`/api/projects/${project.id}/reject-insights`, { method: "POST" });
-      const data = await res.json();
-      if (res.ok && data.success) {
-        setInsightResult(data);
-      } else {
-        setInsightError(data.error || "분석에 실패했습니다.");
-      }
-    } catch {
-      setInsightError("네트워크 오류가 발생했습니다.");
-    } finally {
-      setInsightLoading(false);
-    }
-  };
-
-  if (loading) {
-    return <div className="flex items-center justify-center h-[60vh]"><Loader2 className="w-8 h-8 animate-spin text-primary" /></div>;
-  }
-
-  if (!project) {
-    return (
-      <div className="flex flex-col items-center justify-center h-[60vh] text-center gap-3">
-        <FolderKanban className="w-10 h-10 text-muted-foreground/30" />
-        <p className="text-muted-foreground">
-          {isPM ? "아직 프로젝트가 없습니다. 먼저 프로젝트를 생성해주세요." : "아직 프로젝트가 없습니다. PM에게 프로젝트 생성을 요청해주세요."}
-        </p>
-        {isPM && (
-          <Link href="/project/new" className="inline-block mt-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-bold hover:bg-primary/90 transition-colors">
-            첫 프로젝트 만들기
-          </Link>
-        )}
-      </div>
-    );
-  }
 
   return (
     <div className="w-full max-w-3xl mx-auto space-y-6 animate-in fade-in duration-500 pb-20">
@@ -113,63 +33,10 @@ export default function SettingsPage() {
         </p>
       </div>
 
-      {/* 반려 패턴 분석 — PM이 반려할 때 남긴 사유를 모아 반복 패턴/프롬프트 개선 제안을 보여주는
-          반자동 피드백 루프. AI가 프롬프트를 직접 고치지는 않는다 — 사람이 읽고 판단한다. */}
-      {isPM && (
-        <section className="glass rounded-2xl border border-border p-6 space-y-4">
-          <div>
-            <h2 className="text-lg font-bold flex items-center gap-2">
-              <Lightbulb className="w-5 h-5 text-primary" /> 반려 패턴 분석
-            </h2>
-            <p className="text-xs text-muted-foreground mt-1">
-              지금까지 반려하며 남긴 사유들을 모아 반복되는 패턴과 프롬프트 개선 제안을 AI가 찾아드립니다.
-              결과는 참고용이며 자동으로 적용되지 않습니다.
-            </p>
-          </div>
-
-          <button
-            onClick={runInsightAnalysis}
-            disabled={insightLoading}
-            className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-bold hover:bg-primary/90 disabled:opacity-50"
-          >
-            {insightLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
-            {insightLoading ? "분석 중..." : "반려 사유 분석하기"}
-          </button>
-
-          {insightError && (
-            <p className="text-sm text-red-500 flex items-center gap-1.5"><AlertTriangle className="w-4 h-4" /> {insightError}</p>
-          )}
-
-          {insightResult && insightResult.insufficientData && (
-            <p className="text-sm text-muted-foreground">{insightResult.message}</p>
-          )}
-
-          {insightResult && !insightResult.insufficientData && (
-            <div className="space-y-3">
-              <p className="text-xs text-muted-foreground">반려 사유 {insightResult.reasonCount}건 기준 분석</p>
-              {insightResult.overallSummary && (
-                <p className="text-sm bg-black/5 dark:bg-white/5 rounded-xl p-4">{insightResult.overallSummary}</p>
-              )}
-              {insightResult.patterns && insightResult.patterns.length > 0 ? (
-                <div className="space-y-3">
-                  {insightResult.patterns.map((p, i) => (
-                    <div key={i} className="border border-border rounded-xl p-4 space-y-1.5">
-                      <div className="flex items-center gap-2">
-                        <span className="font-bold text-sm">{p.theme}</span>
-                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-primary/10 text-primary">{p.occurrenceCount}건</span>
-                      </div>
-                      <p className="text-xs text-muted-foreground">근거: {p.evidence}</p>
-                      <p className="text-xs">💡 {p.suggestion}</p>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <p className="text-sm text-muted-foreground">뚜렷하게 반복되는 패턴은 아직 발견되지 않았습니다.</p>
-              )}
-            </div>
-          )}
-        </section>
-      )}
+      {/* "반려 패턴 분석"(AI가 반려 사유를 모아 패턴/개선안을 제안하는 기능) 섹션은 제거했다 —
+          heyzzabi2 시절 /api/projects/{id}/reject-insights 라우트를 그대로 호출하고 있었는데,
+          이 프로젝트의 Django 백엔드엔 그런 엔드포인트/AI 파이프라인이 아예 없다. 버튼만 있고
+          누르면 항상 실패하는 상태였다 — 만들려면 별도 기능 개발이 필요해서 지금은 뺀다. */}
 
       {/* 고객지원 */}
       <section className="glass rounded-2xl border border-border p-6 space-y-4">

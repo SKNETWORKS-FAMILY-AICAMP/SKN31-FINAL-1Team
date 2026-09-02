@@ -6,17 +6,78 @@ import {
   CartesianGrid, ResponsiveContainer, PieChart, Pie, Cell, Tooltip
 } from "recharts";
 import { Loader2, TrendingUp, Users, Clock, Target, CheckCircle2, AlertTriangle, Layers } from "lucide-react";
+import { apiFetch } from "@/lib/api/client";
+
+type TaskDto = {
+  id: number;
+  project: number | null;
+  assigned_user_name: string | null;
+  status: string;
+  created_at: string;
+  updated_at: string;
+};
+
+type ProjectDto = { id: number; name: string };
+
+// 백엔드엔 통계 전용 API가 없다 — 업무 원본을 받아 화면에서 직접 집계한다. 완료 시각을 따로
+// 기록하지 않으므로 "완료 시점"은 상태가 마지막으로 바뀐 시각(updated_at)으로 근사한다.
+function buildAnalytics(tasks: TaskDto[], projects: ProjectDto[]) {
+  const days: string[] = [];
+  for (let i = 6; i >= 0; i--) {
+    const d = new Date();
+    d.setDate(d.getDate() - i);
+    days.push(d.toISOString().slice(0, 10));
+  }
+  const weeklyCompletion = days.map(date => ({
+    date: date.slice(5),
+    count: tasks.filter(t => t.status === "COMPLETED" && t.updated_at.slice(0, 10) === date).length,
+  }));
+
+  const contributionMap = new Map<string, { done: number; inProgress: number }>();
+  tasks.forEach(t => {
+    const name = t.assigned_user_name ?? "미배정";
+    const entry = contributionMap.get(name) ?? { done: 0, inProgress: 0 };
+    if (t.status === "COMPLETED") entry.done += 1;
+    if (t.status === "IN_PROGRESS") entry.inProgress += 1;
+    contributionMap.set(name, entry);
+  });
+  const teamContribution = Array.from(contributionMap.entries()).map(([name, v]) => ({ name, ...v }));
+
+  const completedTasks = tasks.filter(t => t.status === "COMPLETED");
+  const averageProcessTime = completedTasks.length
+    ? Math.round(
+        (completedTasks.reduce((sum, t) => sum + (new Date(t.updated_at).getTime() - new Date(t.created_at).getTime()), 0) /
+          completedTasks.length / 86400000) * 10
+      ) / 10
+    : 0;
+
+  const approved = tasks.filter(t => ["APPROVED", "IN_PROGRESS", "COMPLETED"].includes(t.status)).length;
+  const rejected = tasks.filter(t => t.status === "REJECTED").length;
+
+  const projectBurndown = projects.map(p => ({
+    name: p.name,
+    remaining: tasks.filter(t => t.project === p.id && ["PENDING_APPROVAL", "APPROVED", "IN_PROGRESS"].includes(t.status)).length,
+  }));
+
+  return {
+    weeklyCompletion,
+    teamContribution,
+    averageProcessTime,
+    approvalPassRate: { approved, rejected },
+    projectBurndown,
+  };
+}
 
 export default function AnalyticsPage() {
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch("/api/analytics")
-      .then(res => res.json())
-      .then(d => {
-        if (d.success) setData(d.data);
-      })
+    Promise.all([
+      apiFetch<TaskDto[]>("/api/tasks/assignments/"),
+      apiFetch<ProjectDto[]>("/api/projects/"),
+    ])
+      .then(([tasks, projects]) => setData(buildAnalytics(tasks, projects)))
       .catch(console.error)
       .finally(() => setLoading(false));
   }, []);

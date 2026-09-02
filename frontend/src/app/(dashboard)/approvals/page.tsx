@@ -7,17 +7,18 @@ import {
   MessageSquare, RotateCcw, ShieldCheck
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { apiFetch } from "@/lib/api/client";
 
 type Task = {
-  id: string;
-  title: string;
+  id: number;
+  task_title: string;
   status: string;
-  description?: string | null;
-  rejectReason?: string | null;
+  task_description?: string | null;
+  reject_reason?: string | null;
   progress: number;
-  assignee: { id: string; name: string } | null;
-  project: { id: string; name: string };
-  updatedAt: string;
+  assigned_user_name: string | null;
+  project: number | null;
+  updated_at: string;
 };
 
 export default function ApprovalsPage() {
@@ -26,8 +27,8 @@ export default function ApprovalsPage() {
 
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
-  const [processingId, setProcessingId] = useState<string | null>(null);
-  const [rejectModal, setRejectModal] = useState<{ id: string; title: string } | null>(null);
+  const [processingId, setProcessingId] = useState<number | null>(null);
+  const [rejectModal, setRejectModal] = useState<{ id: number; title: string } | null>(null);
   const [rejectReason, setRejectReason] = useState("");
 
   useEffect(() => {
@@ -35,16 +36,15 @@ export default function ApprovalsPage() {
       setLoading(true);
       try {
         const url = isPM
-          ? "/api/tasks?status=PENDING_APPROVAL"
+          ? "/api/tasks/assignments/?status=PENDING_APPROVAL"
           : user?.id
-          ? `/api/tasks?assigneeId=${user.id}&status=PENDING_APPROVAL`
+          ? `/api/tasks/assignments/?assigneeId=${user.id}&status=PENDING_APPROVAL`
           : null;
 
         if (!url) return;
 
-        const res = await fetch(url);
-        const data = await res.json();
-        if (data.success) setTasks(data.data);
+        const data = await apiFetch<Task[]>(url);
+        setTasks(data);
       } catch (e) {
         console.error(e);
       } finally {
@@ -54,13 +54,14 @@ export default function ApprovalsPage() {
     if (user) fetchTasks();
   }, [user, isPM]);
 
-  const handleApprove = async (taskId: string) => {
+  const handleApprove = async (taskId: number) => {
     setProcessingId(taskId);
     try {
-      const res = await fetch(`/api/tasks/${taskId}/approve`, { method: "POST" });
-      if (res.ok) {
-        setTasks(prev => prev.filter(t => t.id !== taskId));
-      }
+      await apiFetch(`/api/tasks/assignments/${taskId}/status/`, {
+        method: "PATCH",
+        body: JSON.stringify({ status: "APPROVED" }),
+      });
+      setTasks(prev => prev.filter(t => t.id !== taskId));
     } catch (e) {
       console.error(e);
     } finally {
@@ -72,16 +73,13 @@ export default function ApprovalsPage() {
     if (!rejectModal || !rejectReason.trim()) return;
     setProcessingId(rejectModal.id);
     try {
-      const res = await fetch(`/api/tasks/${rejectModal.id}/reject`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ reason: rejectReason }),
+      await apiFetch(`/api/tasks/assignments/${rejectModal.id}/status/`, {
+        method: "PATCH",
+        body: JSON.stringify({ status: "REJECTED", reject_reason: rejectReason }),
       });
-      if (res.ok) {
-        setTasks(prev => prev.filter(t => t.id !== rejectModal.id));
-        setRejectModal(null);
-        setRejectReason("");
-      }
+      setTasks(prev => prev.filter(t => t.id !== rejectModal.id));
+      setRejectModal(null);
+      setRejectReason("");
     } catch (e) {
       console.error(e);
     } finally {
@@ -153,20 +151,20 @@ export default function ApprovalsPage() {
                   {/* Time */}
                   <div className="flex items-center gap-2 mb-2">
                     <span className="text-muted-foreground text-xs flex items-center gap-1">
-                      <Clock className="w-3 h-3" /> {relativeTime(task.updatedAt)}
+                      <Clock className="w-3 h-3" /> {relativeTime(task.updated_at)}
                     </span>
                   </div>
 
                   {/* Title */}
-                  <h3 className="font-bold text-lg leading-tight mb-1">{task.title}</h3>
+                  <h3 className="font-bold text-lg leading-tight mb-1">{task.task_title}</h3>
 
                   {/* Assignee (PM view) */}
-                  {isPM && task.assignee && (
+                  {isPM && task.assigned_user_name && (
                     <div className="flex items-center gap-2 mt-2">
                       <div className="w-6 h-6 rounded-full bg-primary/20 flex items-center justify-center text-xs font-bold text-primary">
-                        {task.assignee.name.charAt(0)}
+                        {task.assigned_user_name.charAt(0)}
                       </div>
-                      <span className="text-sm text-muted-foreground">{task.assignee.name}에게 배정 요청</span>
+                      <span className="text-sm text-muted-foreground">{task.assigned_user_name}에게 배정 요청</span>
                     </div>
                   )}
 
@@ -198,7 +196,7 @@ export default function ApprovalsPage() {
                       승인
                     </button>
                     <button
-                      onClick={() => setRejectModal({ id: task.id, title: task.title })}
+                      onClick={() => setRejectModal({ id: task.id, title: task.task_title })}
                       disabled={processingId === task.id}
                       className="flex items-center gap-2 px-4 py-2 bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-red-400 rounded-xl text-sm font-semibold transition-colors disabled:opacity-50"
                     >
