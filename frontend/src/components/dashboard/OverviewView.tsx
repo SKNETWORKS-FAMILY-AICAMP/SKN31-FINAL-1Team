@@ -16,6 +16,7 @@ import { cn } from "@/lib/utils";
 import { formatDistanceToNow } from "date-fns";
 import { ko } from "date-fns/locale";
 import { useAuth } from "@/lib/auth";
+import { apiFetch } from "@/lib/api/client";
 
 type ProjectStat = {
   id: string;
@@ -35,21 +36,103 @@ type ActivityLog = {
   updatedAt: string;
 };
 
-const STATUS_COLORS: Record<string, string> = {
-  BACKLOG: "bg-gray-500",
-  PENDING_APPROVAL: "bg-orange-500",
-  IN_PROGRESS: "bg-blue-500",
-  DONE: "bg-emerald-500",
+type TaskDto = {
+  id: number;
+  project: number | null;
+  assigned_user_name: string | null;
+  task_title: string;
+  status: string;
+  status_display: string;
+  updated_at: string;
 };
 
-// statusChart는 API가 이미 한글 라벨로 만들어 내려주는데(dashboard/route.ts), 클릭 시 /tasks로
-// 보내려면 원래 상태 코드가 필요해서 여기서 역매핑한다.
-const STATUS_CODE_BY_LABEL: Record<string, string> = {
-  "대기": "BACKLOG",
-  "배분승인대기": "PENDING_APPROVAL",
-  "진행 중": "IN_PROGRESS",
-  "완료": "DONE",
+type ProjectDto = { id: number; name: string };
+
+const STATUS_COLORS: Record<string, string> = {
+  PENDING_APPROVAL: "bg-orange-500",
+  APPROVED: "bg-blue-500",
+  IN_PROGRESS: "bg-indigo-500",
+  COMPLETED: "bg-emerald-500",
+  REJECTED: "bg-red-500",
 };
+
+const STATUS_CHART_COLOR: Record<string, string> = {
+  PENDING_APPROVAL: "#f97316",
+  APPROVED: "#3b82f6",
+  IN_PROGRESS: "#6366f1",
+  COMPLETED: "#10b981",
+  REJECTED: "#ef4444",
+};
+
+// statusChart를 그릴 때 한글 라벨(status_display)로 이름을 쓰는데, 클릭 시 /tasks로 보내려면
+// 원래 상태 코드가 필요해서 여기서 역매핑한다.
+const STATUS_CODE_BY_LABEL: Record<string, string> = {
+  "승인 대기": "PENDING_APPROVAL",
+  "승인 및 알림 완료": "APPROVED",
+  "진행 중": "IN_PROGRESS",
+  "완료": "COMPLETED",
+  "반려": "REJECTED",
+};
+
+// 백엔드엔 대시보드 요약 API가 따로 없다 — 업무/프로젝트 원본 목록을 받아 화면에서 직접 집계한다
+// (다른 화면들과 동일한 패턴: KanbanBoard/projects 페이지도 원본을 받아 클라이언트에서 가공).
+function buildStats(tasks: TaskDto[], projects: ProjectDto[], isPM: boolean) {
+  const projectNameById = new Map(projects.map(p => [p.id, p.name]));
+
+  const totalTasks = tasks.length;
+  const inProgress = tasks.filter(t => t.status === "IN_PROGRESS").length;
+  const pendingApproval = tasks.filter(t => t.status === "PENDING_APPROVAL").length;
+  const done = tasks.filter(t => t.status === "COMPLETED").length;
+  const completionRate = totalTasks ? Math.round((done / totalTasks) * 100) : 0;
+
+  const statusOrder = ["PENDING_APPROVAL", "APPROVED", "IN_PROGRESS", "COMPLETED", "REJECTED"];
+  const statusChart = statusOrder
+    .map(code => ({
+      name: tasks.find(t => t.status === code)?.status_display ?? code,
+      value: tasks.filter(t => t.status === code).length,
+      color: STATUS_CHART_COLOR[code],
+    }))
+    .filter(d => d.value > 0);
+
+  const workloadMap = new Map<string, number>();
+  tasks.forEach(t => {
+    const name = t.assigned_user_name ?? "미배정";
+    workloadMap.set(name, (workloadMap.get(name) ?? 0) + 1);
+  });
+  const workload = Array.from(workloadMap.entries()).map(([name, taskCount]) => ({ name, taskCount }));
+
+  const activityLog: ActivityLog[] = [...tasks]
+    .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())
+    .slice(0, 8)
+    .map(t => ({
+      projectId: String(t.project ?? ""),
+      projectName: (t.project != null ? projectNameById.get(t.project) : undefined) ?? "",
+      taskTitle: t.task_title,
+      status: t.status,
+      statusLabel: t.status_display,
+      assigneeName: t.assigned_user_name,
+      updatedAt: t.updated_at,
+    }));
+
+  // 참여 중인 프로젝트 = PM은 전체, 팀원은 자기 업무가 걸린 프로젝트만
+  const relevantProjectIds = isPM ? new Set(projects.map(p => p.id)) : new Set(tasks.map(t => t.project).filter((id): id is number => id != null));
+  const projectList: ProjectStat[] = projects
+    .filter(p => relevantProjectIds.has(p.id))
+    .map(p => {
+      const projectTasks = tasks.filter(t => t.project === p.id);
+      const totalTasks = projectTasks.length;
+      const doneTasks = projectTasks.filter(t => t.status === "COMPLETED").length;
+      return {
+        id: String(p.id),
+        name: p.name,
+        totalTasks,
+        doneTasks,
+        progress: totalTasks ? Math.round((doneTasks / totalTasks) * 100) : 0,
+      };
+    });
+
+  return { summary: { totalTasks, inProgress, pendingApproval, done, completionRate }, statusChart, workload, activityLog, projectList };
+}
 
 export default function OverviewView() {
   const { user } = useAuth();
@@ -60,13 +143,13 @@ export default function OverviewView() {
 
   useEffect(() => {
     if (!user) return;
-    const url = isPM ? "/api/dashboard" : `/api/dashboard?scope=me&userId=${user.id}`;
-    fetch(url)
-      .then((res) => res.json())
-      .then((data) => {
-        if (data && !data.error) {
-          setStats(data);
-        }
+    const tasksUrl = isPM ? "/api/tasks/assignments/" : `/api/tasks/assignments/?assigneeId=${user.id}`;
+    Promise.all([
+      apiFetch<TaskDto[]>(tasksUrl),
+      apiFetch<ProjectDto[]>("/api/projects/"),
+    ])
+      .then(([tasks, projects]) => {
+        setStats(buildStats(tasks, projects, isPM));
       })
       .catch((err) => console.error(err))
       .finally(() => setLoading(false));
