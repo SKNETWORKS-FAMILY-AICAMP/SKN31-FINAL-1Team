@@ -235,4 +235,6 @@ AI가 생성한 결과를 사람이 확인하고 승인한 후 다음 단계로 
 
 ## 화면설계
 
-
+<p align="center">
+  <img src="./산출물/heyzzabi_slides.gif" width="70%"/>
+</p>
