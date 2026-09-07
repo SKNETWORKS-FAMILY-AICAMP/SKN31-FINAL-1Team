@@ -13,6 +13,14 @@ class RequirementDefinition(models.Model):
         related_name="requirement_definitions",
         verbose_name="관련 기획서"
     )
+    project = models.ForeignKey(
+        'projects.Project',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="requirement_definitions",
+        verbose_name="소속 프로젝트"
+    )
     title = models.CharField(max_length=200, verbose_name="요구사항 정의서 제목")
     version = models.CharField(max_length=20, default="v1.0", verbose_name="버전")
     description = models.TextField(null=True, blank=True, verbose_name="설명")
@@ -64,6 +72,7 @@ class RequirementItem(models.Model):
     
     difficulty = models.CharField(max_length=20, null=True, blank=True, verbose_name="난이도 (상/중/하)")
     category = models.CharField(max_length=50, null=True, blank=True, verbose_name="기능 카테고리")
+    category_2 = models.CharField(max_length=50, null=True, blank=True, verbose_name="기능 카테고리 2")
 
     class Meta:
         db_table = "requirement_item"

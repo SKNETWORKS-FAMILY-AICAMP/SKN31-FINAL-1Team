@@ -2,25 +2,30 @@
 
 import { useState, useEffect } from "react";
 import { useAuth } from "@/lib/auth";
+import { apiFetch } from "@/lib/api/client";
 import { User as UserIcon, Mail, Shield, KeyRound, Loader2, CheckCircle2, X, Phone, Pencil } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { PROJECT_SUGGESTIONS } from "@/lib/employeeOptions";
 import TagAutocomplete from "@/components/ui/TagAutocomplete";
-import { SKILL_SUGGESTIONS, CERT_SUGGESTIONS, PROJECT_SUGGESTIONS } from "@/lib/employeeOptions";
 
 const toList = (s: string) => (s ? s.split(",").map(v => v.trim()).filter(Boolean) : []);
 
 export default function ProfilePage() {
   const { user } = useAuth();
 
+  const [toast, setToast] = useState<{ msg: string; type: "success" | "error" } | null>(null);
+
+  // 2026-09-01: PATCH /api/users/me/change-password/ 신규 추가 — 이전엔 PM 초기화만 가능했다.
   const [passwordModalOpen, setPasswordModalOpen] = useState(false);
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState("");
-  const [toast, setToast] = useState<{ msg: string; type: "success" | "error" } | null>(null);
+  const [passwordError, setPasswordError] = useState("");
+  const [changingPassword, setChangingPassword] = useState(false);
 
   // 내 정보 (온보딩 때 입력한 항목들 — 언제든 수정 가능해야 함)
+  // 기술 스택/자격증은 Django에서 CommonCode를 참조하는 구조화된 데이터(UserSkill/UserCertification)라
+  // 여기서 자유 텍스트로 바로 수정할 수 없다 — 직원관리(members) 화면과 동일하게 읽기 전용으로만 보여준다.
   const [infoLoading, setInfoLoading] = useState(true);
   const [phone, setPhone] = useState("");
   const [techStack, setTechStack] = useState<string[]>([]);
@@ -30,16 +35,14 @@ export default function ProfilePage() {
 
   useEffect(() => {
     if (!user) return;
-    fetch(`/api/users/${user.id}/profile`)
-      .then(r => r.json())
+    apiFetch<any>("/api/users/me/")
       .then(data => {
-        if (data.success) {
-          setPhone(data.data.phone || "");
-          setTechStack(toList(data.data.techStack || ""));
-          setCertifications(toList(data.data.certifications || ""));
-          setPastProjects(toList(data.data.pastProjects || ""));
-        }
+        setPhone(data.phone || "");
+        setTechStack((data.skills ?? []).map((s: any) => s.skill_name));
+        setCertifications((data.certifications ?? []).map((c: any) => c.cert_name));
+        setPastProjects(toList(data.past_projects || ""));
       })
+      .catch(() => showToast("내 정보를 불러오지 못했습니다.", "error"))
       .finally(() => setInfoLoading(false));
   }, [user]);
 
@@ -48,63 +51,50 @@ export default function ProfilePage() {
     setTimeout(() => setToast(null), 3000);
   };
 
-  const handleSaveInfo = async () => {
-    if (!user) return;
-    setSavingInfo(true);
-    try {
-      const res = await fetch(`/api/users/${user.id}/profile`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          phone,
-          techStack: techStack.join(", "),
-          certifications: certifications.join(", "),
-          pastProjects: pastProjects.join(", "),
-        }),
-      });
-      const data = await res.json();
-      if (data.success) showToast("내 정보가 저장되었습니다.");
-      else showToast(data.error || "저장에 실패했습니다.", "error");
-    } catch {
-      showToast("서버 오류가 발생했습니다.", "error");
-    } finally {
-      setSavingInfo(false);
-    }
-  };
-
   const closePasswordModal = () => {
     setPasswordModalOpen(false);
-    setError("");
+    setPasswordError("");
     setCurrentPassword(""); setNewPassword(""); setConfirmPassword("");
   };
 
   const handleChangePassword = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError("");
-
+    setPasswordError("");
     if (newPassword !== confirmPassword) {
-      return setError("새 비밀번호가 일치하지 않습니다.");
+      setPasswordError("새 비밀번호가 일치하지 않습니다.");
+      return;
     }
-    if (!user) return;
-
-    setSaving(true);
+    setChangingPassword(true);
     try {
-      const res = await fetch(`/api/users/${user.id}/change-password`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ currentPassword, newPassword }),
+      await apiFetch("/api/users/me/change-password/", {
+        method: "PATCH",
+        body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }),
       });
-      const data = await res.json();
-      if (data.success) {
-        closePasswordModal();
-        showToast("비밀번호가 변경되었습니다.");
-      } else {
-        setError(data.error || "비밀번호 변경에 실패했습니다.");
-      }
-    } catch {
-      setError("서버 오류가 발생했습니다.");
+      closePasswordModal();
+      showToast("비밀번호가 변경되었습니다.");
+    } catch (err: any) {
+      setPasswordError(err.message || "비밀번호 변경에 실패했습니다.");
     } finally {
-      setSaving(false);
+      setChangingPassword(false);
+    }
+  };
+
+  const handleSaveInfo = async () => {
+    if (!user) return;
+    setSavingInfo(true);
+    try {
+      await apiFetch(`/api/users/${user.id}/`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          phone,
+          past_projects: pastProjects.join(", "),
+        }),
+      });
+      showToast("내 정보가 저장되었습니다.");
+    } catch (err: any) {
+      showToast(err.message || "저장에 실패했습니다.", "error");
+    } finally {
+      setSavingInfo(false);
     }
   };
 
@@ -183,13 +173,27 @@ export default function ProfilePage() {
                   className="w-full px-4 py-2.5 bg-black/5 dark:bg-white/5 border border-border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
                 />
               </div>
+              {/* 기술 스택/자격증은 직원관리 화면에서 PM이 관리하는 구조화된 데이터라 여기서는
+                  읽기 전용으로만 보여준다(members/page.tsx와 동일한 처리). */}
               <div>
                 <label className="block text-sm font-medium mb-1">기술 스택</label>
-                <TagAutocomplete value={techStack} onChange={setTechStack} suggestions={SKILL_SUGGESTIONS} placeholder="목록에서 선택" allowCustom={false} />
+                <div className="flex flex-wrap gap-1.5">
+                  {techStack.length === 0 ? (
+                    <span className="text-sm text-muted-foreground">등록된 기술 스택이 없습니다.</span>
+                  ) : techStack.map((s, i) => (
+                    <span key={i} className="px-2.5 py-1 rounded-lg bg-black/5 dark:bg-white/5 text-xs font-medium">{s}</span>
+                  ))}
+                </div>
               </div>
               <div>
                 <label className="block text-sm font-medium mb-1">자격증</label>
-                <TagAutocomplete value={certifications} onChange={setCertifications} suggestions={CERT_SUGGESTIONS} placeholder="목록에서 선택" allowCustom={false} />
+                <div className="flex flex-wrap gap-1.5">
+                  {certifications.length === 0 ? (
+                    <span className="text-sm text-muted-foreground">등록된 자격증이 없습니다.</span>
+                  ) : certifications.map((c, i) => (
+                    <span key={i} className="px-2.5 py-1 rounded-lg bg-black/5 dark:bg-white/5 text-xs font-medium">{c}</span>
+                  ))}
+                </div>
               </div>
               <div>
                 <label className="block text-sm font-medium mb-1">주요 프로젝트 경험</label>
@@ -217,8 +221,8 @@ export default function ProfilePage() {
               <button onClick={closePasswordModal} className="p-1.5 rounded-lg hover:bg-black/5 dark:hover:bg-white/5"><X className="w-4 h-4" /></button>
             </div>
 
-            {error && (
-              <div className="p-3 mb-4 rounded-lg bg-red-500/10 text-red-500 text-sm">{error}</div>
+            {passwordError && (
+              <div className="p-3 mb-4 rounded-lg bg-red-500/10 text-red-500 text-sm">{passwordError}</div>
             )}
 
             <form className="space-y-4" onSubmit={handleChangePassword}>
@@ -238,6 +242,7 @@ export default function ProfilePage() {
                 <input
                   type="password"
                   required
+                  minLength={4}
                   value={newPassword}
                   onChange={e => setNewPassword(e.target.value)}
                   className="w-full px-4 py-2.5 bg-black/5 dark:bg-white/5 border border-border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
@@ -257,10 +262,10 @@ export default function ProfilePage() {
                 <button type="button" onClick={closePasswordModal} className="flex-1 py-2.5 rounded-xl border border-border text-sm font-semibold hover:bg-black/5 dark:hover:bg-white/5">취소</button>
                 <button
                   type="submit"
-                  disabled={saving}
+                  disabled={changingPassword}
                   className="flex-1 flex justify-center items-center gap-2 py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-bold hover:bg-primary/90 disabled:opacity-50 transition-colors"
                 >
-                  {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : "변경하기"}
+                  {changingPassword ? <Loader2 className="w-4 h-4 animate-spin" /> : "변경하기"}
                 </button>
               </div>
             </form>

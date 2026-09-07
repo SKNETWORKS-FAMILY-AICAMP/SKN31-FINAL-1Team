@@ -1,48 +1,42 @@
-import type { ProposalDoc, ProposalFeature, ProposalMilestone } from "@/lib/documentTemplates";
-import { Trash2, Plus } from "lucide-react";
+import type { ProposalDoc } from "@/lib/documentTemplates";
 
 const inputCls = "w-full bg-black/5 border border-black/10 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40";
 
 export function ProposalTemplate({
-  doc, title, dateLabel, editable, onChange,
+  doc, title, dateLabel, editable, onChange, periodEditable, onPeriodChange,
 }: {
   doc: ProposalDoc; title: string; dateLabel: string;
   editable?: boolean; onChange?: (doc: ProposalDoc) => void;
+  // 기간은 본문 섹션들과 달리 "직접 수정" 모드에 들어가지 않아도 항상 바로 입력할 수 있어야
+  // 한다(회의록에 범위가 없으면 AI가 채울 수 없는 값이라 매번 수정 모드까지 탈 필요가 없음).
+  // 그래서 본문 편집 여부(editable)와 별도로 periodEditable을 둔다.
+  periodEditable?: boolean; onPeriodChange?: (period: { start: string; end: string }) => void;
 }) {
   const set = <K extends keyof ProposalDoc>(key: K, value: ProposalDoc[K]) => onChange?.({ ...doc, [key]: value });
-
-  const setFeature = (i: number, patch: Partial<ProposalFeature>) => {
-    set("features", doc.features.map((f, idx) => (idx === i ? { ...f, ...patch } : f)));
+  const setPeriod = (period: { start: string; end: string }) => {
+    onPeriodChange?.(period);
+    if (editable) set("projectPeriod", period);
   };
-  const addFeature = () => set("features", [...(doc.features ?? []), { name: "", description: "" }]);
-  const removeFeature = (i: number) => set("features", doc.features.filter((_, idx) => idx !== i));
-
-  const setMilestone = (i: number, patch: Partial<ProposalMilestone>) => {
-    set("milestones", doc.milestones.map((m, idx) => (idx === i ? { ...m, ...patch } : m)));
-  };
-  const addMilestone = () => set("milestones", [...(doc.milestones ?? []), { name: "", date: "" }]);
-  const removeMilestone = (i: number) => set("milestones", doc.milestones.filter((_, idx) => idx !== i));
 
   return (
     <div className="bg-white text-black p-10 w-full shadow-sm print:shadow-none print:p-0">
       <div className="text-center border-b-2 border-black pb-6 mb-8">
         <h1 className="text-3xl font-bold">{title}</h1>
         <p className="text-sm text-gray-500 mt-2">작성일 {dateLabel}</p>
-        {/* 원본에 명시된 프로젝트 기간 — 업무분배 탭에서 오늘 날짜 대신 이 시작일부터 WBS 일정을 잡는 데 쓰인다 */}
-        {editable ? (
+        {editable || periodEditable ? (
           <div className="flex items-center justify-center gap-2 mt-3 text-sm">
             <span className="text-gray-500">프로젝트 기간</span>
             <input
               type="date"
               value={doc.projectPeriod?.start ?? ""}
-              onChange={e => set("projectPeriod", { start: e.target.value, end: doc.projectPeriod?.end ?? "" })}
+              onChange={e => setPeriod({ start: e.target.value, end: doc.projectPeriod?.end ?? "" })}
               className={`${inputCls} w-auto`}
             />
             <span className="text-gray-400">~</span>
             <input
               type="date"
               value={doc.projectPeriod?.end ?? ""}
-              onChange={e => set("projectPeriod", { start: doc.projectPeriod?.start ?? "", end: e.target.value })}
+              onChange={e => setPeriod({ start: doc.projectPeriod?.start ?? "", end: e.target.value })}
               className={`${inputCls} w-auto`}
             />
           </div>
@@ -53,19 +47,31 @@ export function ProposalTemplate({
         ) : null}
       </div>
 
-      <Section num="1" title="배경 및 목적">
+      <Section num="1" title="프로젝트 개요">
         {editable ? (
           <textarea
-            value={doc.background}
-            onChange={e => set("background", e.target.value)}
+            value={doc.projectOverview}
+            onChange={e => set("projectOverview", e.target.value)}
             className={`${inputCls} h-24 resize-none whitespace-pre-wrap`}
           />
         ) : (
-          <p className="whitespace-pre-wrap leading-relaxed">{doc.background || "-"}</p>
+          <p className="whitespace-pre-wrap leading-relaxed">{doc.projectOverview || "-"}</p>
         )}
       </Section>
 
-      <Section num="2" title="타겟 사용자">
+      <Section num="2" title="문제 정의">
+        {editable ? (
+          <textarea
+            value={doc.problemDefinition}
+            onChange={e => set("problemDefinition", e.target.value)}
+            className={`${inputCls} h-24 resize-none whitespace-pre-wrap`}
+          />
+        ) : (
+          <p className="whitespace-pre-wrap leading-relaxed">{doc.problemDefinition || "-"}</p>
+        )}
+      </Section>
+
+      <Section num="3" title="대상 사용자">
         {editable ? (
           <textarea
             value={doc.target}
@@ -77,105 +83,57 @@ export function ProposalTemplate({
         )}
       </Section>
 
-      <Section num="3" title="주요 기능">
-        {editable ? (
-          <div className="space-y-3">
-            {doc.features?.map((f, i) => (
-              <div key={i} className="flex gap-2 items-start p-3 rounded-lg bg-black/[0.03] border border-black/10">
-                <div className="flex-1 space-y-2">
-                  <input
-                    value={f.name}
-                    onChange={e => setFeature(i, { name: e.target.value })}
-                    placeholder="기능명"
-                    className={`${inputCls} font-semibold`}
-                  />
-                  <textarea
-                    value={f.description}
-                    onChange={e => setFeature(i, { description: e.target.value })}
-                    placeholder="설명"
-                    className={`${inputCls} h-16 resize-none`}
-                  />
-                </div>
-                <button type="button" onClick={() => removeFeature(i)} className="p-2 text-red-500 hover:bg-red-50 rounded-lg shrink-0">
-                  <Trash2 className="w-4 h-4" />
-                </button>
-              </div>
-            ))}
-            <button type="button" onClick={addFeature} className="flex items-center gap-1.5 text-sm font-semibold text-primary hover:underline">
-              <Plus className="w-4 h-4" /> 기능 추가
-            </button>
-          </div>
-        ) : doc.features?.length ? (
-          <ol className="space-y-3 list-decimal list-inside">
-            {doc.features.map((f, i) => (
-              <li key={i}>
-                <span className="font-semibold">{f.name}</span>
-                <p className="text-sm text-gray-700 mt-0.5 ml-5 whitespace-pre-wrap">{f.description}</p>
-              </li>
-            ))}
-          </ol>
-        ) : <p className="text-gray-400">-</p>}
-      </Section>
-
-      <Section num="4" title="기대 효과">
+      <Section num="4" title="주요 기능">
         {editable ? (
           <textarea
-            value={doc.expectedEffect}
-            onChange={e => set("expectedEffect", e.target.value)}
-            className={`${inputCls} h-20 resize-none whitespace-pre-wrap`}
+            value={doc.features}
+            onChange={e => set("features", e.target.value)}
+            placeholder="기능명과 설명을 자유롭게 작성하세요 (줄바꿈으로 구분)"
+            className={`${inputCls} h-28 resize-none whitespace-pre-wrap`}
           />
         ) : (
-          <p className="whitespace-pre-wrap leading-relaxed">{doc.expectedEffect || "-"}</p>
+          <p className="whitespace-pre-wrap leading-relaxed">{doc.features || "-"}</p>
         )}
       </Section>
 
-      {(editable || doc.milestones?.length > 0) && (
-        <Section num="5" title="일정 / 마일스톤">
-          {editable ? (
-            <div className="space-y-2">
-              {doc.milestones?.map((m, i) => (
-                <div key={i} className="flex gap-2 items-center">
-                  <input
-                    value={m.name}
-                    onChange={e => setMilestone(i, { name: e.target.value })}
-                    placeholder="마일스톤"
-                    className={`${inputCls} flex-1`}
-                  />
-                  <input
-                    value={m.date}
-                    onChange={e => setMilestone(i, { date: e.target.value })}
-                    placeholder="시기"
-                    className={`${inputCls} w-40`}
-                  />
-                  <button type="button" onClick={() => removeMilestone(i)} className="p-2 text-red-500 hover:bg-red-50 rounded-lg shrink-0">
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                </div>
-              ))}
-              <button type="button" onClick={addMilestone} className="flex items-center gap-1.5 text-sm font-semibold text-primary hover:underline">
-                <Plus className="w-4 h-4" /> 마일스톤 추가
-              </button>
-            </div>
-          ) : (
-            <table className="w-full border-collapse text-sm">
-              <thead>
-                <tr className="border-b border-black">
-                  <th className="text-left py-2 font-semibold">마일스톤</th>
-                  <th className="text-left py-2 font-semibold w-40">시기</th>
-                </tr>
-              </thead>
-              <tbody>
-                {doc.milestones.map((m, i) => (
-                  <tr key={i} className="border-b border-gray-200">
-                    <td className="py-2">{m.name}</td>
-                    <td className="py-2">{m.date}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </Section>
-      )}
+      <Section num="5" title="사용자 시나리오">
+        {editable ? (
+          <textarea
+            value={doc.userScenario}
+            onChange={e => set("userScenario", e.target.value)}
+            placeholder="시나리오 단계를 자유롭게 작성하세요 (줄바꿈으로 구분)"
+            className={`${inputCls} h-24 resize-none whitespace-pre-wrap`}
+          />
+        ) : (
+          <p className="whitespace-pre-wrap leading-relaxed">{doc.userScenario || "-"}</p>
+        )}
+      </Section>
+
+      <Section num="6" title="기술 스택 및 제약사항">
+        {editable ? (
+          <textarea
+            value={doc.techStackConstraints}
+            onChange={e => set("techStackConstraints", e.target.value)}
+            placeholder="기술 스택, 플랫폼, 연동 대상, 제약사항 등 (없으면 비워두세요)"
+            className={`${inputCls} h-20 resize-none whitespace-pre-wrap`}
+          />
+        ) : (
+          <p className="whitespace-pre-wrap leading-relaxed">{doc.techStackConstraints || "-"}</p>
+        )}
+      </Section>
+
+      <Section num="7" title="최종 결정사항">
+        {editable ? (
+          <textarea
+            value={doc.finalDecisions}
+            onChange={e => set("finalDecisions", e.target.value)}
+            placeholder="결정 사항을 자유롭게 작성하세요 (줄바꿈으로 구분)"
+            className={`${inputCls} h-24 resize-none whitespace-pre-wrap`}
+          />
+        ) : (
+          <p className="whitespace-pre-wrap leading-relaxed">{doc.finalDecisions || "-"}</p>
+        )}
+      </Section>
     </div>
   );
 }

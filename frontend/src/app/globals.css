@@ -146,6 +146,29 @@ select option {
   scrollbar-width: none;
 }
 
+/* 요구사항정의서 미리보기 박스처럼 상하좌우로 스크롤되는 영역은 스크롤바가 아예 안 보이면
+   "스크롤이 안 된다"는 오해를 산다(실제 보고된 문제) — 이 클래스가 붙은 곳만 예외적으로
+   스크롤바를 다시 보이게 한다. */
+.doc-scroll {
+  scrollbar-width: thin;
+  -ms-overflow-style: auto;
+}
+.doc-scroll::-webkit-scrollbar {
+  display: block;
+  width: 10px;
+  height: 10px;
+}
+.doc-scroll::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.06);
+}
+.doc-scroll::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.25);
+  border-radius: 6px;
+}
+.doc-scroll::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 0, 0, 0.4);
+}
+
 /* PDF export: print only the #print-area subtree (see documents page "PDF 다운로드") */
 @media print {
   body * {

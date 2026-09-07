@@ -19,8 +19,10 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
-      const fullEmail = `${userId}@heyzzabi.com`;
-      await login(fullEmail, password);
+      // 2026-08-31: 예전엔 "@heyzzabi.com"을 붙여 이메일 형태로 보냈는데, 실제 Django
+      // 백엔드(User.username)는 그런 변환 없이 입력한 아이디 그대로를 쓴다("pm", "newbie" 등) —
+      // 붙여 보내면 authenticate()가 항상 실패해서(400) 로그인 자체가 안 됐다.
+      await login(userId, password);
       // 로그인 성공 시 대시보드(또는 온보딩)로 강제 이동
       router.push("/");
     } catch (err: any) {
@@ -58,14 +60,11 @@ export default function LoginPage() {
               <input
                 type="text"
                 required
-                className="block w-full pl-10 pr-[130px] sm:text-sm bg-black/5 dark:bg-white/5 border border-border rounded-xl py-3 focus:ring-2 focus:ring-primary/50 focus:outline-none placeholder:text-muted-foreground"
+                className="block w-full pl-10 sm:text-sm bg-black/5 dark:bg-white/5 border border-border rounded-xl py-3 focus:ring-2 focus:ring-primary/50 focus:outline-none placeholder:text-muted-foreground"
                 placeholder="아이디"
                 value={userId}
                 onChange={(e) => setUserId(e.target.value)}
               />
-              <div className="absolute inset-y-0 right-0 pr-4 flex items-center pointer-events-none">
-                <span className="text-muted-foreground text-sm font-medium whitespace-nowrap">@heyzzabi.com</span>
-              </div>
             </div>
           </div>
 
@@ -96,12 +95,6 @@ export default function LoginPage() {
             </button>
           </div>
         </form>
-
-        <div className="mt-6 text-center text-xs text-muted-foreground bg-black/5 dark:bg-white/5 p-4 rounded-xl border border-border">
-          <p className="font-bold mb-1 text-foreground">테스트 계정 안내</p>
-          <p>PM (관리자): 아이디 <b>pm</b> / 비번 <b>admin</b></p>
-          <p>MEMBER (신규): 아이디 <b>newbie</b> / 비번 <b>temp</b></p>
-        </div>
       </div>
     </div>
   );

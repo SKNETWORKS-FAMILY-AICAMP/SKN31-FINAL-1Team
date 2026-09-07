@@ -19,12 +19,15 @@ export async function exportReqSpecPptx(doc: ReqSpecDoc, title: string) {
   titleSlide.addText(title, { x: 0.5, y: 2.1, w: 9, h: 1, fontSize: 32, bold: true, color: TITLE_COLOR });
   titleSlide.addText("요구사항정의서", { x: 0.5, y: 3.0, w: 9, h: 0.5, fontSize: 18, color: ACCENT });
 
+  // 슬라이드 폭(9.2in)에는 10개 전체 컬럼(엑셀/화면 기준)을 다 넣으면 글자가 뭉개지므로,
+  // 의사결정에 가장 중요한 우선순위만 추가하고 입력/처리/출력·수용기준은 화면·엑셀에서 확인하도록 뺀다.
   const headerRow = [
     { text: "ID", options: { bold: true, fill: { color: HEADER_FILL } } },
     { text: "대분류", options: { bold: true, fill: { color: HEADER_FILL } } },
     { text: "중분류", options: { bold: true, fill: { color: HEADER_FILL } } },
     { text: "요구사항명", options: { bold: true, fill: { color: HEADER_FILL } } },
     { text: "기능설명", options: { bold: true, fill: { color: HEADER_FILL } } },
+    { text: "우선순위", options: { bold: true, fill: { color: HEADER_FILL } } },
     { text: "비고", options: { bold: true, fill: { color: HEADER_FILL } } },
   ];
 
@@ -49,13 +52,14 @@ export async function exportReqSpecPptx(doc: ReqSpecDoc, title: string) {
         { text: item.subCategory, options: { fontSize: 9 } },
         { text: item.name, options: { fontSize: 9, bold: true } },
         { text: item.description, options: { fontSize: 8 } },
+        { text: item.priority, options: { fontSize: 9, bold: true } },
         { text: item.note, options: { fontSize: 8, color: "64748B" } },
-      ]) : [[{ text: "항목이 없습니다.", options: { colspan: 6, align: "center", color: "94A3B8" } }]]),
+      ]) : [[{ text: "항목이 없습니다.", options: { colspan: 7, align: "center", color: "94A3B8" } }]]),
     ];
     slide.addTable(rows, {
       x: 0.4, y: 1.0, w: 9.2,
-      // ID/대분류/중분류/요구사항명/기능설명/비고 순서대로, 내용이 긴 컬럼(기능설명)에 더 넓은 폭을 배분.
-      colW: [1.0, 0.9, 0.9, 1.7, 3.4, 1.3],
+      // ID/대분류/중분류/요구사항명/기능설명/우선순위/비고 순서대로, 내용이 긴 컬럼(기능설명)에 더 넓은 폭을 배분.
+      colW: [0.9, 0.7, 0.7, 1.5, 3.3, 0.6, 1.5],
       fontSize: 9, color: TITLE_COLOR,
       border: { type: "solid", color: "E2E8F0", pt: 1 },
       // 페이지 분할은 위에서 이미 chunk 단위로 직접 처리했으므로 라이브러리의 자동 분할은 꺼둔다.

@@ -70,10 +70,18 @@ class User(AbstractUser):
     )
 
     is_busy = models.BooleanField(
-        default=False, 
-        verbose_name="현재 작업 중 여부", 
+        default=False,
+        verbose_name="현재 작업 중 여부",
         help_text="현재 업무가 진행 중인지 여부"
     )
+
+    # 2026-08-31: 직원관리 화면(프론트 members/page.tsx) 재설계에 필요해서 추가 — 기존 모델엔
+    # 입사/퇴사일과 참여 프로젝트 이력을 담을 필드가 없었다. "참여 프로젝트"는 별도 공통코드
+    # 그룹이 아직 없어(기술/자격증처럼 코드 테이블화하지 않음) 다른 필드(phone 등)와 같은 방식으로
+    # 자유 텍스트(콤마 구분)로 둔다 — 나중에 프로젝트 마스터 데이터가 생기면 그때 정규화한다.
+    hire_date = models.DateField(null=True, blank=True, verbose_name="입사일")
+    resign_date = models.DateField(null=True, blank=True, verbose_name="퇴사일")
+    past_projects = models.TextField(null=True, blank=True, verbose_name="참여 프로젝트 이력(콤마 구분)")
 
     class Meta:
         db_table = "user"

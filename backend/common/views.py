@@ -35,5 +35,9 @@ class CommonCodeListView(generics.ListAPIView):
         queryset = CommonCode.objects.all()
         group_code = self.request.query_params.get('group_code', None)
         if group_code:
-            queryset = queryset.filter(group_code=group_code)
+            # CommonCode의 실제 필드명은 group(FK, db_column="group_code")이라
+            # group_code라는 필드는 존재하지 않는다 — group_code= 로 필터하면
+            # FieldError가 났었다(2026-08-31에 발견해서 고침). FK의 PK가 곧
+            # group_code 값(CommonCodeGroup.group_code가 PK)이라 group_id로 비교한다.
+            queryset = queryset.filter(group_id=group_code)
         return queryset

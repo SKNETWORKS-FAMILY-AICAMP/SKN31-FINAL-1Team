@@ -1,27 +1,111 @@
 """
-a1_1_meeting_analysis/schemas.py
+노드 ① 회의록 구조화 스키마.
 
-컨텍스트 설계 요약
-  - 입력: 회의록 원문 텍스트 (meeting_log 테이블 또는 S3 원문)
-  - 정적 참고자료: 구조화 인스트럭션 + few-shot 2~3건
-  - Tools: 없음
-  - 출력: 구조화 JSON (topic/decisions/action_items)
+여기가 이 노드의 계약서입니다.
+프롬프트도, 검증도, 하류 노드도 전부 이 파일을 기준으로 움직입니다.
+
+## 모델이 두 개인 이유
+
+MeetingExtraction : LLM이 생성하는 부분만
+MeetingStructured : 위 + 파이프라인이 채우는 필드
+
+Instructor에 response_model로 넘기는 건 MeetingExtraction입니다.
+validation_notes 같은 시스템 필드를 LLM 스키마에 넣으면
+모델이 "이것도 채워야 하나?" 하고 뭔가 써넣습니다.
+아예 보여주지 않는 게 안전합니다.
 """
 
-from typing import List, Optional
+from typing import Optional
 
 from pydantic import BaseModel, Field
 
-
-class ActionItem(BaseModel):
-    owner: Optional[str] = Field(None, description="회의록에서 담당자가 명시된 경우만 채움")
-    task: str
-    due: Optional[str] = Field(None, description="YYYY-MM-DD, 명시 안 됐으면 null")
+from shared.schemas_base import Evidence, Priority
+from enum import Enum
 
 
-class MeetingAnalysis(BaseModel):
-    """A1-1 출력 — 다음 노드(A1-2)의 입력으로 State Passing된다."""
+class DecisionCategory(str, Enum):
+    FEATURE = "feature"
+    TECH = "tech"
+    SCOPE = "scope"
 
-    topic: str = Field(..., description="회의 주제 한 줄 요약")
-    decisions: List[str] = Field(..., description="결정된 사항 목록")
-    action_items: List[ActionItem] = Field(default_factory=list)
+
+class Project(BaseModel):
+    name: str = Field(..., description="프로젝트명")
+    background: str = Field(..., description="프로젝트 배경")
+    problem: str = Field(..., description="해결하려는 문제")
+    goals: list[str] = Field(..., min_length=1, description="프로젝트 목표")
+    evidence: Evidence
+
+
+class UserGroup(BaseModel):
+    type: str = Field(..., description="사용자 유형 (예: 서기, PM)")
+    description: str
+    needs: list[str] = Field(default_factory=list, description="이 사용자의 요구")
+    evidence: Evidence
+
+
+class RequirementItem(BaseModel):
+    content: str
+    priority: Priority = Priority.MEDIUM
+    evidence: Evidence
+
+
+class Requirements(BaseModel):
+    functional: list[RequirementItem] = Field(
+        default_factory=list, description="기능 요구사항"
+    )
+    non_functional: list[RequirementItem] = Field(
+        default_factory=list, description="성능·보안·사용성 요구사항"
+    )
+    data: list[RequirementItem] = Field(
+        default_factory=list, description="저장·연동 데이터 요구사항"
+    )
+    technical: list[RequirementItem] = Field(
+        default_factory=list, description="기술 스택·환경 요구사항"
+    )
+
+
+class Scenario(BaseModel):
+    actor: str
+    trigger: str
+    steps: list[str] = Field(..., min_length=1)
+    result: str
+    evidence: Evidence
+
+
+class Decision(BaseModel):
+    category: DecisionCategory
+    content: str
+    rationale: Optional[str] = None
+    evidence: Evidence
+
+
+class Constraint(BaseModel):
+    type: str = Field(..., description="일정 / 기술 / 범위 / 인력 / 기타")
+    content: str
+    evidence: Evidence
+
+
+class MeetingExtraction(BaseModel):
+    """LLM이 생성하는 부분. Instructor의 response_model로 씁니다."""
+
+    project: Project
+    users: list[UserGroup] = Field(default_factory=list)
+    requirements: Requirements
+    scenarios: list[Scenario] = Field(default_factory=list)
+    decisions: list[Decision] = Field(default_factory=list)
+    constraints: list[Constraint] = Field(default_factory=list)
+    unresolved: list[str] = Field(
+        default_factory=list,
+        description="회의록에 근거가 없어 채우지 못한 항목과 그 이유",
+    )
+
+
+class MeetingStructured(MeetingExtraction):
+    """저장·전달용 최종 형태. 시스템이 채우는 필드가 추가됩니다."""
+
+    meeting_id: str
+    validation_notes: list[str] = Field(
+        default_factory=list,
+        description="교차 규칙 검증에서 발견된 정합성 이슈. LLM이 채우지 않습니다.",
+    )

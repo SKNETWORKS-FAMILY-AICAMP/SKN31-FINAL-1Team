@@ -5,14 +5,17 @@ import { useRouter } from "next/navigation";
 import { Bell, CheckCircle2, AlertTriangle, XCircle, Info } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth";
+import { apiFetch } from "@/lib/api/client";
 
+// Django NotificationSerializer가 내려주는 그대로(snake_case, {success,data} 래핑 없음) 받는다 —
+// 나머지 화면들(documents/members 등)도 전부 이 방식이라 일관성을 맞춘다.
 type NotificationItem = {
-  id: string;
+  id: number;
   message: string;
   type: "info" | "success" | "warning" | "error";
   link: string | null;
   read: boolean;
-  createdAt: string;
+  created_at: string;
 };
 
 const TYPE_ICON: Record<NotificationItem["type"], any> = {
@@ -39,8 +42,8 @@ const relativeTime = (dateStr: string) => {
 };
 
 // 배분승인대기 발생/승인/반려, 문서 검토요청 같은, 당사자가 화면을 직접 열어보기 전엔 알
-// 방법이 없던 이벤트를 보여준다. 서버 세션이 없는 앱이라 다른 라우트(/api/tasks?assigneeId=)와
-// 동일하게 user.id를 쿼리로 넘긴다. 모든 탭 상단 우측(공용 헤더 바)에 고정 배치된다.
+// 방법이 없던 이벤트를 보여준다. Django가 access 쿠키의 로그인 사용자 기준으로 항상 "내 알림"만
+// 돌려주므로 user.id를 쿼리로 넘길 필요가 없다. 모든 탭 상단 우측(공용 헤더 바)에 고정 배치된다.
 export function NotificationBell() {
   const { user } = useAuth();
   const router = useRouter();
@@ -51,9 +54,8 @@ export function NotificationBell() {
   const fetchNotifications = useCallback(async () => {
     if (!user) return;
     try {
-      const res = await fetch(`/api/notifications?userId=${user.id}`);
-      const data = await res.json();
-      if (data.success) setNotifications(data.data);
+      const data = await apiFetch<NotificationItem[]>("/api/notifications/");
+      setNotifications(data);
     } catch (e) {
       console.error(e);
     }
@@ -82,11 +84,7 @@ export function NotificationBell() {
     if (!user || unreadCount === 0) return;
     setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
     try {
-      await fetch("/api/notifications/read-all", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId: user.id }),
-      });
+      await apiFetch("/api/notifications/read-all/", { method: "PATCH" });
     } catch (e) {
       console.error(e);
     }
@@ -98,7 +96,7 @@ export function NotificationBell() {
     setIsOpen(false);
     if (!n.read) {
       setNotifications((prev) => prev.map((x) => (x.id === n.id ? { ...x, read: true } : x)));
-      fetch(`/api/notifications/${n.id}`, { method: "PATCH" }).catch((e) => console.error(e));
+      apiFetch(`/api/notifications/${n.id}/read/`, { method: "PATCH" }).catch((e) => console.error(e));
     }
     if (n.link) router.push(n.link);
   };
@@ -159,7 +157,7 @@ export function NotificationBell() {
                     <Icon className={cn("w-4 h-4 mt-0.5 shrink-0", TYPE_COLOR[n.type] ?? "text-muted-foreground")} />
                     <div className="flex-1 min-w-0">
                       <p className={cn("text-sm leading-snug", !n.read && "font-semibold")}>{n.message}</p>
-                      <p className="text-[11px] text-muted-foreground mt-0.5">{relativeTime(n.createdAt)}</p>
+                      <p className="text-[11px] text-muted-foreground mt-0.5">{relativeTime(n.created_at)}</p>
                     </div>
                     {!n.read && <span className="w-2 h-2 rounded-full bg-orange-500 shrink-0 mt-1.5" />}
                   </button>

@@ -97,3 +97,38 @@ STEP 1에서 추출한 `datadump.json` 파일의 데이터를 RDS에 복원합�
 복원이 성공적으로 완료되면 "Installed X object(s) from 1 fixture(s)" 메시지가 표시됩니다.
 
 ---
+
+## DB를 변경해야 할 경우
+### 1. 초기화하고 올리는 방법(개발단계에서 추천)
+```
+# 1. db.sqlite3 삭제
+rm -f db.sqlite3
+
+# 2. 각 앱 내부의 0001_initial.py 등 마이그레이션 파일 삭제 (__init__.py는 유지)
+find . -path "*/migrations/*.py" -not -name "__init__.py" -delete
+find . -path "*/migrations/*.pyc" -delete
+
+# 3. 새로운 마이그레이션 파일 생성
+python manage.py makemigrations
+
+# 4. DB에 스키마 적용 (db.sqlite3 새로 자동 생성됨)
+python manage.py migrate
+
+# 5. 슈퍼유저 생성
+python manage.py createsuperuser
+
+# 6. 공통코드 엑셀 시드 데이터 주입
+python manage.py seed_codes
+
+```
+
+### 2. 기존 DB를 유지하는 방법
+```
+# 1. models.py 수정 사항 감지하여 차이점 마이그레이션 파일 생성
+python manage.py makemigrations
+
+# 2. 변경사항 DB 반영
+python manage.py migrate
+
+# 3. 추가/변경 데이터 업데이트를 위해 seed_codes 실행
+python manage.py seed_codes

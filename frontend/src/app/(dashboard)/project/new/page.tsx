@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { FolderPlus, Loader2 } from "lucide-react";
+import { apiFetch } from "@/lib/api/client";
 
 // 예전엔 이 화면이 "AI 기획 자동화 마법사"로, 회의록 하나로 기획서/요구사항정의서/업무까지
 // 한 번에 만들어버렸다. 하지만 그 흐름이 실제 문서생성 파이프라인(/documents)과 완전히
@@ -26,13 +27,10 @@ export default function NewProjectPage() {
     setCreating(true);
     setError("");
     try {
-      const res = await fetch("/api/projects", {
+      await apiFetch("/api/projects/", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: name.trim(), description: description.trim() || undefined }),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "프로젝트 생성에 실패했습니다.");
       router.push("/documents");
     } catch (e: any) {
       setError(e.message || "프로젝트 생성 중 오류가 발생했습니다.");
