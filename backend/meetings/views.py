@@ -144,7 +144,7 @@ class MeetingNoteAnalyzeView(APIView):
                             lines.append(f"• {f.get('title', '')}: {f.get('description', '')}")
                     content = "\n".join(lines)
 
-                sections_map[sec_key] = strip_html_tags(content)
+                sections_map[sec_key] = content
 
             # 기획서 7개 섹션 중 회의에서 실제로 논의 안 된 항목은 AI가 빈 값을 준다 — 화면에
             # 그냥 빈 칸으로 두면 "생성이 덜 됐나?" 오해를 살 수 있어서, 비어있으면 명시적으로
