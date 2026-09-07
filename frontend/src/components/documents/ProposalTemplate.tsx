@@ -2,6 +2,32 @@ import type { ProposalDoc } from "@/lib/documentTemplates";
 
 const inputCls = "w-full bg-black/5 border border-black/10 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40";
 
+// 백엔드(meetings/views.py)가 AI가 만든 content_html을 <p>/<strong>/<ul>/<li> 4종류
+// 태그로만 제한해 저장하고, 회의록에서 온 원문 텍스트는 저장 전 escape()를 거친다고
+// 확인받았다(팀원 공유 내용) — 그래도 프론트에서 dangerouslySetInnerHTML을 쓰는 이상
+// 그 4종류 외의 태그/모든 속성(예: onerror, href javascript:)은 한 번 더 걸러낸다.
+const ALLOWED_TAGS = new Set(["p", "strong", "ul", "li"]);
+function sanitizeRestrictedHtml(html: string): string {
+  if (!html) return html;
+  return html
+    .replace(/<(script|style)[\s\S]*?<\/\1>/gi, "")
+    .replace(/<\/?([a-zA-Z0-9]+)([^>]*)>/g, (match, tag: string) => {
+      const lower = tag.toLowerCase();
+      if (!ALLOWED_TAGS.has(lower)) return "";
+      return match.startsWith("</") ? `</${lower}>` : `<${lower}>`;
+    });
+}
+
+function RichText({ html }: { html: string }) {
+  if (!html) return <p className="leading-relaxed">-</p>;
+  return (
+    <div
+      className="leading-relaxed [&_p]:mb-2 [&_p:last-child]:mb-0 [&_strong]:font-bold [&_ul]:list-disc [&_ul]:pl-5 [&_li]:mb-1"
+      dangerouslySetInnerHTML={{ __html: sanitizeRestrictedHtml(html) }}
+    />
+  );
+}
+
 export function ProposalTemplate({
   doc, title, dateLabel, editable, onChange, periodEditable, onPeriodChange,
 }: {
@@ -55,7 +81,7 @@ export function ProposalTemplate({
             className={`${inputCls} h-24 resize-none whitespace-pre-wrap`}
           />
         ) : (
-          <p className="whitespace-pre-wrap leading-relaxed">{doc.projectOverview || "-"}</p>
+          <RichText html={doc.projectOverview} />
         )}
       </Section>
 
@@ -67,7 +93,7 @@ export function ProposalTemplate({
             className={`${inputCls} h-24 resize-none whitespace-pre-wrap`}
           />
         ) : (
-          <p className="whitespace-pre-wrap leading-relaxed">{doc.problemDefinition || "-"}</p>
+          <RichText html={doc.problemDefinition} />
         )}
       </Section>
 
@@ -79,7 +105,7 @@ export function ProposalTemplate({
             className={`${inputCls} h-20 resize-none whitespace-pre-wrap`}
           />
         ) : (
-          <p className="whitespace-pre-wrap leading-relaxed">{doc.target || "-"}</p>
+          <RichText html={doc.target} />
         )}
       </Section>
 
@@ -92,7 +118,7 @@ export function ProposalTemplate({
             className={`${inputCls} h-28 resize-none whitespace-pre-wrap`}
           />
         ) : (
-          <p className="whitespace-pre-wrap leading-relaxed">{doc.features || "-"}</p>
+          <RichText html={doc.features} />
         )}
       </Section>
 
@@ -105,7 +131,7 @@ export function ProposalTemplate({
             className={`${inputCls} h-24 resize-none whitespace-pre-wrap`}
           />
         ) : (
-          <p className="whitespace-pre-wrap leading-relaxed">{doc.userScenario || "-"}</p>
+          <RichText html={doc.userScenario} />
         )}
       </Section>
 
@@ -118,7 +144,7 @@ export function ProposalTemplate({
             className={`${inputCls} h-20 resize-none whitespace-pre-wrap`}
           />
         ) : (
-          <p className="whitespace-pre-wrap leading-relaxed">{doc.techStackConstraints || "-"}</p>
+          <RichText html={doc.techStackConstraints} />
         )}
       </Section>
 
@@ -131,7 +157,7 @@ export function ProposalTemplate({
             className={`${inputCls} h-24 resize-none whitespace-pre-wrap`}
           />
         ) : (
-          <p className="whitespace-pre-wrap leading-relaxed">{doc.finalDecisions || "-"}</p>
+          <RichText html={doc.finalDecisions} />
         )}
       </Section>
     </div>
