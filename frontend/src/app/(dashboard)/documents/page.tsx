@@ -894,7 +894,10 @@ function RequirementSection({
     return (
       <div className="border-t border-border pt-5 mt-2">
         <h3 className="font-bold text-sm mb-2">요구사항 정의서</h3>
-        {isPM ? (
+        {/* 기획서 생성/검토요청과 같은 패턴 — 문서를 진행시키는 건 담당자(작성자) 몫이고
+            PM은 승인만 한다. 이 섹션 자체가 이미 status === "APPROVED"(PM 승인 완료)일 때만
+            보이므로, "PM 승인 후 담당자가 생성" 흐름이 된다. */}
+        {!isPM ? (
           <button
             onClick={onCreate}
             disabled={creating}
@@ -917,7 +920,7 @@ function RequirementSection({
           <h3 className="font-bold text-sm">{reqDef.title}</h3>
           <p className="text-xs text-muted-foreground mt-0.5">{reqDef.version} · 항목 {reqDef.items.length}건</p>
         </div>
-        {isPM && (
+        {!isPM && (
           <button
             onClick={() => onExtract(reqDef.id)}
             disabled={!!extracting}
@@ -960,7 +963,7 @@ function RequirementSection({
         </div>
       )}
 
-      {isPM && (
+      {!isPM && (
         showAddForm ? (
           <div className="border border-border rounded-xl p-4 space-y-2">
             <div className="grid grid-cols-[120px_1fr] gap-2">
