@@ -23,6 +23,7 @@ from users.serializers import (
 )
 from users.permissions import IsAdminUserOnly
 from users.jwt_cookies import set_auth_cookies, clear_auth_cookies, REFRESH_COOKIE, REFRESH_COOKIE_PATH
+from users.sessions import issue_session_tokens, token_sid_matches, clear_session
 from common.models import CommonCode
 
 User = get_user_model()
@@ -70,7 +71,9 @@ class LoginView(APIView):
         serializer = LoginRequestSerializer(data=request.data)
         if serializer.is_valid():
             user = serializer.validated_data['user']
-            refresh = RefreshToken.for_user(user)
+            # 한 계정당 1개 세션만 허용 — 새 로그인은 새 session_key를 발급하므로,
+            # 같은 계정으로 다른 PC에 로그인돼 있던 세션은 다음 요청부터 거부된다.
+            access, refresh = issue_session_tokens(user, new_session=True)
 
             response = Response({
                 "message": "로그인 성공",
@@ -80,7 +83,7 @@ class LoginView(APIView):
             # XSS 한 방이면 JS가 그대로 읽어갈 수 있지만, HttpOnly 쿠키는 JS가 아예 접근할 수
             # 없다. 응답 본문에는 더 이상 access/refresh를 담지 않는다(담으면 결국 프론트가
             # 어딘가에 저장해야 하고, 그게 localStorage면 의미가 없어진다).
-            set_auth_cookies(response, str(refresh.access_token), str(refresh))
+            set_auth_cookies(response, access, refresh)
             # 로그인 직후 바로 쓰기 요청(예: 다음 화면의 POST)이 CSRF 토큰을 요구하므로,
             # 이 시점에 csrftoken 쿠키도 같이 보장해준다.
             get_token(request)
@@ -109,6 +112,9 @@ class LogoutView(APIView):
                 RefreshToken(refresh_token).blacklist()
             except Exception:
                 pass
+        # 활성 세션 표식을 지운다 — 이 계정으로는 어떤 기존 토큰도 더 이상 유효하지 않게 된다.
+        if request.user and request.user.is_authenticated:
+            clear_session(request.user)
         response = Response({"message": "로그아웃되었습니다."}, status=status.HTTP_200_OK)
         clear_auth_cookies(response)
         # DEV 계정전환 중이었다면 그 흔적도 같이 지운다.
@@ -146,15 +152,22 @@ class CookieTokenRefreshView(APIView):
         except User.DoesNotExist:
             return Response({"detail": "유효하지 않은 토큰입니다."}, status=status.HTTP_401_UNAUTHORIZED)
 
+        # 한 계정당 1개 세션 — 이 refresh 토큰의 sid가 현재 활성 세션과 다르면(다른 기기에서
+        # 새로 로그인함) 재발급을 거부하고 쿠키를 지운다. 프론트는 이 401을 받고 로그인 화면으로.
+        if not token_sid_matches(user, refresh):
+            resp = Response(
+                {"detail": "다른 기기에서 로그인되어 세션이 종료되었습니다.", "code": "session_superseded"},
+                status=status.HTTP_401_UNAUTHORIZED,
+            )
+            clear_auth_cookies(resp)
+            return resp
+
         # 활동(=API 호출로 인한 재발급)이 있을 때마다 refresh 토큰도 새로 발급해 만료 시점을
-        # 지금부터 다시 24시간으로 미룬다(슬라이딩 세션) — access만 갱신하고 refresh는 그대로
-        # 재사용하면, 로그인한 지 24시간이 지나는 순간 계속 활동 중이었어도 무조건 로그아웃된다
-        # (실제로 겪은 문제). 블랙리스트 앱은 안 붙어 있어 예전 refresh 토큰이 자기 수명이 끝날
-        # 때까지는 여전히 유효하지만, 로그아웃 처리도 지금 블랙리스트 없이 동작하는 것과 같은
-        # 수준이라 새로운 보안 저하는 아니다.
-        new_refresh = RefreshToken.for_user(user)
+        # 지금부터 다시 24시간으로 미룬다(슬라이딩 세션). session_key는 그대로 유지한다
+        # (new_session=False) — 재발급은 "같은 세션의 연장"이지 새 로그인이 아니므로.
+        access, new_refresh = issue_session_tokens(user, new_session=False)
         response = Response({"detail": "재발급 완료"}, status=status.HTTP_200_OK)
-        set_auth_cookies(response, str(new_refresh.access_token), str(new_refresh))
+        set_auth_cookies(response, access, new_refresh)
         return response
 
 
@@ -396,7 +409,10 @@ class UserImpersonateView(APIView):
         except User.DoesNotExist:
             return Response({"error": "존재하지 않는 사용자입니다."}, status=status.HTTP_404_NOT_FOUND)
 
-        refresh = RefreshToken.for_user(target)
+        # DEV 전환도 단일 세션 규칙을 따른다 — target의 session_key를 새로 발급해 sid 검사를
+        # 통과시킨다(부수효과: target 계정이 실제로 어딘가 로그인돼 있었다면 그 세션은 끊긴다.
+        # DEBUG 전용 도구라 감수).
+        access, refresh = issue_session_tokens(target, new_session=True)
         response = Response({"user": UserSimpleSerializer(target).data}, status=status.HTTP_200_OK)
 
         # 이미 다른 계정으로 전환 중인 상태에서 또 전환하면(연쇄 전환) dev_original_*을
@@ -410,7 +426,7 @@ class UserImpersonateView(APIView):
             response.set_cookie('dev_original_refresh_token', current_refresh, httponly=True,
                                  secure=not settings.DEBUG, samesite='Lax', path=REFRESH_COOKIE_PATH)
 
-        set_auth_cookies(response, str(refresh.access_token), str(refresh))
+        set_auth_cookies(response, access, refresh)
         return response
 
 
@@ -447,12 +463,14 @@ class UserStopImpersonateView(APIView):
         if not original_user:
             return Response({"error": "되돌아갈 계정 정보가 유효하지 않습니다."}, status=status.HTTP_400_BAD_REQUEST)
 
-        refresh = RefreshToken.for_user(original_user)
+        # 원래 계정으로 복귀도 새 세션으로 발급한다(전환 동안 만료됐을 수 있는 옛 토큰 대신,
+        # 그리고 sid 검사를 통과하도록).
+        access, refresh = issue_session_tokens(original_user, new_session=True)
         response = Response(
             {"user": UserSimpleSerializer(original_user).data},
             status=status.HTTP_200_OK,
         )
-        set_auth_cookies(response, str(refresh.access_token), str(refresh))
+        set_auth_cookies(response, access, refresh)
         response.delete_cookie('dev_original_access_token', path='/')
         response.delete_cookie('dev_original_refresh_token', path=REFRESH_COOKIE_PATH)
         return response
