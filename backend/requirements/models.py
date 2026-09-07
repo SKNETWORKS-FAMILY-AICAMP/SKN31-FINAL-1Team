@@ -25,6 +25,17 @@ class RequirementDefinition(models.Model):
     version = models.CharField(max_length=20, default="v1.0", verbose_name="버전")
     description = models.TextField(null=True, blank=True, verbose_name="설명")
     
+    # [추가] 승인/반려 상태 필드 (common_code의 REQSPEC_STATUS 그룹 연동)
+    status_code = models.ForeignKey(
+        CommonCode,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="req_definition_status",
+        limit_choices_to={'group_code': 'REQSPEC_STATUS'},
+        verbose_name="승인 상태"
+    )
+
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
@@ -42,7 +53,8 @@ class RequirementDefinition(models.Model):
         verbose_name_plural = "요구사항 정의서 목록"
 
     def __str__(self):
-        return f"[{self.id}] {self.title} ({self.version})"
+        status_str = self.status_code.code_name if self.status_code else "미지정"
+        return f"[{self.id}] {self.title} ({self.version}) - {status_str}"
 
 
 class RequirementItem(models.Model):
