@@ -1,3 +1,4 @@
+import DOMPurify from "isomorphic-dompurify";
 import type { ProposalDoc } from "@/lib/documentTemplates";
 
 const inputCls = "w-full bg-black/5 border border-black/10 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40";
@@ -5,17 +6,15 @@ const inputCls = "w-full bg-black/5 border border-black/10 rounded-lg px-3 py-2 
 // 백엔드(meetings/views.py)가 AI가 만든 content_html을 <p>/<strong>/<ul>/<li> 4종류
 // 태그로만 제한해 저장하고, 회의록에서 온 원문 텍스트는 저장 전 escape()를 거친다고
 // 확인받았다(팀원 공유 내용) — 그래도 프론트에서 dangerouslySetInnerHTML을 쓰는 이상
-// 그 4종류 외의 태그/모든 속성(예: onerror, href javascript:)은 한 번 더 걸러낸다.
-const ALLOWED_TAGS = new Set(["p", "strong", "ul", "li"]);
+// 그 4종류 외의 태그/속성은 실제 HTML 파서 기반 라이브러리(DOMPurify)로 한 번 더
+// 걸러낸다. 정규식으로 직접 태그를 걷어내는 방식은 중첩/손상된 태그나 인코딩 트릭에
+// 뚫릴 수 있는 알려진 안티패턴이라 피했다.
 function sanitizeRestrictedHtml(html: string): string {
   if (!html) return html;
-  return html
-    .replace(/<(script|style)[\s\S]*?<\/\1>/gi, "")
-    .replace(/<\/?([a-zA-Z0-9]+)([^>]*)>/g, (match, tag: string) => {
-      const lower = tag.toLowerCase();
-      if (!ALLOWED_TAGS.has(lower)) return "";
-      return match.startsWith("</") ? `</${lower}>` : `<${lower}>`;
-    });
+  return DOMPurify.sanitize(html, {
+    ALLOWED_TAGS: ["p", "strong", "ul", "li"],
+    ALLOWED_ATTR: [],
+  });
 }
 
 function RichText({ html }: { html: string }) {
