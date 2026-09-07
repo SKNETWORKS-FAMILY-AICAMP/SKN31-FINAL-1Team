@@ -5,6 +5,7 @@ import { X, Loader2, Save, AlignLeft, BarChart2, CalendarClock, Lock, AlertTrian
 import { isTaskOverdue } from "@/lib/taskOverdue";
 import { useAuth } from "@/lib/auth";
 import { apiFetch } from "@/lib/api/client";
+import { Toast } from "@/components/ui/Toast";
 
 const toDateInput = (iso: string | null) => (iso ? iso.slice(0, 10) : "");
 
@@ -35,6 +36,7 @@ export function TaskDetailModal({
   const [dueDate, setDueDate] = useState(toDateInput(task.end_date));
 
   const [isLoading, setIsLoading] = useState(false);
+  const [errorToast, setErrorToast] = useState<string | null>(null);
   const overdue = isTaskOverdue({ wbsEnd: task.end_date, status: task.status_code });
 
   const handleSave = async () => {
@@ -57,7 +59,7 @@ export function TaskDetailModal({
       onUpdated?.(updated);
       onClose();
     } catch (err: any) {
-      alert(err.message || "저장 중 오류가 발생했습니다.");
+      setErrorToast(err.message || "저장 중 오류가 발생했습니다.");
     } finally {
       setIsLoading(false);
     }
@@ -193,6 +195,7 @@ export function TaskDetailModal({
           </button>
         </div>
       </div>
+      <Toast message={errorToast} variant="error" onDismiss={() => setErrorToast(null)} />
     </div>
   );
 }

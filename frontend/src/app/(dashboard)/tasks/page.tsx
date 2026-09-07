@@ -9,6 +9,7 @@ import { KanbanBoard } from "@/components/layout/KanbanBoard";
 import { TaskDetailModal } from "@/components/projects/TaskDetailModal";
 import { isTaskOverdue } from "@/lib/taskOverdue";
 import { apiFetch } from "@/lib/api/client";
+import { Toast } from "@/components/ui/Toast";
 
 // Django TaskAssignmentSerializer 응답 그대로 — 2026-09-07 컬럼 재설계로 필드명이 또 바뀌었다
 // (task_title -> title, task_description -> description, due_date -> end_date, status ->
@@ -66,6 +67,7 @@ export default function TasksPage() {
   const [currentProjectId, setCurrentProjectId] = useState<string | null>(null);
   // 리스트/WBS 뷰 행을 눌러도 아무 반응이 없었다 — 칸반 카드와 동일하게 상세 모달을 연다.
   const [selectedTaskForDetail, setSelectedTaskForDetail] = useState<Task | null>(null);
+  const [toast, setToast] = useState<{ message: string; variant: "success" | "error" } | null>(null);
 
   useEffect(() => {
     fetchTasks();
@@ -119,7 +121,7 @@ export default function TasksPage() {
       });
       setTasks(tasks.map(t => t.id === taskId ? { ...t, status_code: newStatus } : t));
     } catch {
-      alert("상태 변경에 실패했습니다.");
+      setToast({ message: "상태 변경에 실패했습니다.", variant: "error" });
     } finally {
       setProcessingId(null);
     }
@@ -351,6 +353,7 @@ export default function TasksPage() {
           }}
         />
       )}
+      <Toast message={toast?.message ?? null} variant={toast?.variant} onDismiss={() => setToast(null)} />
     </div>
   );
 }

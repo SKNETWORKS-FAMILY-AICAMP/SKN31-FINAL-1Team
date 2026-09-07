@@ -1,9 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth";
-import { Loader2, User, Lock, ShieldAlert } from "lucide-react";
+import { Loader2, User, Lock, ShieldAlert, Info } from "lucide-react";
 
 export default function LoginPage() {
   const { login } = useAuth();
@@ -12,6 +12,16 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  // 세션이 강제 종료돼서(예: 다른 기기 로그인) 로그인 화면으로 밀려난 경우, auth.tsx가
+  // 사유를 sessionStorage에 남겨둔다 — 여기서 한 번만 보여주고 지운다(새로고침해도 안 남게).
+  const [logoutReason, setLogoutReason] = useState("");
+  useEffect(() => {
+    const reason = sessionStorage.getItem("hz_logout_reason");
+    if (reason) {
+      setLogoutReason(reason);
+      sessionStorage.removeItem("hz_logout_reason");
+    }
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -45,6 +55,11 @@ export default function LoginPage() {
         <div className="absolute -top-10 -right-10 w-32 h-32 bg-primary/20 blur-3xl rounded-full pointer-events-none" />
 
         <form className="space-y-6 relative z-10" onSubmit={handleSubmit}>
+          {logoutReason && !error && (
+            <div className="p-3 rounded-lg bg-blue-500/10 border border-blue-500/20 text-blue-500 text-sm flex items-center gap-2">
+              <Info className="w-4 h-4 shrink-0" /> {logoutReason}
+            </div>
+          )}
           {error && (
             <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-red-500 text-sm flex items-center gap-2">
               <ShieldAlert className="w-4 h-4 shrink-0" /> {error}

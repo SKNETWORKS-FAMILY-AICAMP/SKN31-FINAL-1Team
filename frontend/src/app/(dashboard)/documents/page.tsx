@@ -59,6 +59,36 @@ type NoteDto = {
 
 type ProjectDto = { id: number; name: string };
 
+// ── 요구사항 정의서 (Django requirements 앱) ──────────────────────
+type ReqItemDto = {
+  id: number;
+  req_def: number;
+  req_code: string;
+  req_name: string;
+  description: string;
+  priority_code: string | null;
+  priority_info: { code_id: string; code_name: string } | null;
+  difficulty: string | null;
+  category: string | null;
+  category_2: string | null;
+};
+
+type ReqDefDto = {
+  id: number;
+  spec: number;
+  spec_title: string;
+  project: number | null;
+  project_name: string;
+  title: string;
+  version: string;
+  description: string | null;
+  created_by: number | null;
+  created_by_name: string;
+  items: ReqItemDto[];
+  created_at: string;
+  updated_at: string;
+};
+
 // 백엔드가 실제로 지원하는 상태는 4가지뿐 — PROPOSAL_ 접두사는 CommonCode.code_id가 테이블
 // 전체에서 전역 유일해(REQSPEC_STATUS와 겹치지 않도록) 붙인 것이라 화면 표시에서는 벗겨서 쓴다.
 type BareStatus = "DRAFT" | "PENDING_REVIEW" | "APPROVED" | "REJECTED";
@@ -72,15 +102,28 @@ const STATUS_META: Record<BareStatus, { label: string; className: string; icon: 
   REJECTED: { label: "반려됨", className: "bg-red-500/10 text-red-500", icon: XCircle },
 };
 
+// AI가 "[기능] ... [기술] ... [범위] ..."처럼 대괄호 태그로 하위 항목을 구분해서 쓸 때가
+// 있는데, 한 문단으로 이어붙여 내려줘서 태그가 바뀌는 지점을 못 알아보게 뭉쳐 보였다
+// (실제로 팀에서 가독성 문제로 지적받음). 대괄호 태그 직전마다 줄바꿈을 넣어 항목별로
+// 문단을 나눈다 — 태그가 없는 섹션은 그대로(전체를 한 덩어리로 반환)라 부작용이 없다.
+function splitByBracketTags(text: string): string {
+  if (!text) return text;
+  return text
+    .split(/(?=\[[^\]]+\])/g)
+    .map(chunk => chunk.trim())
+    .filter(Boolean)
+    .join("\n");
+}
+
 function specToProposalDoc(spec: SpecDto): ProposalDoc {
   return {
-    projectOverview: spec.overview ?? "",
-    problemDefinition: spec.problem_definition ?? "",
-    target: spec.target_users ?? "",
-    features: spec.key_features ?? "",
-    userScenario: spec.user_scenarios ?? "",
-    techStackConstraints: spec.tech_stack ?? "",
-    finalDecisions: spec.final_decisions ?? "",
+    projectOverview: splitByBracketTags(spec.overview ?? ""),
+    problemDefinition: splitByBracketTags(spec.problem_definition ?? ""),
+    target: splitByBracketTags(spec.target_users ?? ""),
+    features: splitByBracketTags(spec.key_features ?? ""),
+    userScenario: splitByBracketTags(spec.user_scenarios ?? ""),
+    techStackConstraints: splitByBracketTags(spec.tech_stack ?? ""),
+    finalDecisions: splitByBracketTags(spec.final_decisions ?? ""),
     // 회의록 원문에 기간이 명시돼 있으면 AI 분석 시점에 자동으로 채워지고(백엔드
     // MeetingNoteAnalyzeView), 없으면 null — 화면(ProposalTemplate)에서 직접 입력할 수 있다.
     projectPeriod: { start: spec.period_start ?? "", end: spec.period_end ?? "" },
@@ -114,6 +157,7 @@ export default function DocumentsPage() {
 
   const [project, setProject] = useState<ProjectDto | null>(null);
   const [notes, setNotes] = useState<NoteDto[]>([]);
+  const [reqDefs, setReqDefs] = useState<ReqDefDto[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedNoteId, setSelectedNoteId] = useState<number | null>(null);
   const [newDocModalOpen, setNewDocModalOpen] = useState(false);
@@ -124,6 +168,7 @@ export default function DocumentsPage() {
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState("");
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [errorToast, setErrorToast] = useState<string | null>(null);
 
   const fetchAll = async (preferredProjectId?: number) => {
     setLoading(true);
@@ -137,8 +182,13 @@ export default function DocumentsPage() {
       if (current) {
         const noteList = await apiFetch<NoteDto[]>(`/api/meetings/notes/?project=${current.id}`);
         setNotes(noteList);
+        // 백엔드에 스펙별 필터 파라미터가 없어서(GET /api/requirements/가 항상 전체 목록을
+        // 반환) 전체를 받아 화면에서 spec.id로 매칭한다 — 다른 화면들과 같은 패턴.
+        const allReqDefs = await apiFetch<ReqDefDto[]>("/api/requirements/");
+        setReqDefs(allReqDefs);
       } else {
         setNotes([]);
+        setReqDefs([]);
       }
     } catch (err: any) {
       setError(err.message || "목록을 불러오지 못했습니다.");
@@ -176,7 +226,7 @@ export default function DocumentsPage() {
       await refetchNote(note.id);
       setToastMessage("기획서 생성이 완료되었습니다");
     } catch (err: any) {
-      alert(err.message || "기획서 생성에 실패했습니다.");
+      setErrorToast(err.message || "기획서 생성에 실패했습니다.");
     } finally {
       setBusy(null);
     }
@@ -191,7 +241,7 @@ export default function DocumentsPage() {
       });
       replaceNote(updated);
     } catch (err: any) {
-      alert(err.message || "저장에 실패했습니다.");
+      setErrorToast(err.message || "저장에 실패했습니다.");
     } finally {
       setBusy(null);
     }
@@ -206,7 +256,7 @@ export default function DocumentsPage() {
       });
       replaceNote({ ...note, spec_documents: note.spec_documents.map(s => s.id === updated.id ? updated : s) });
     } catch (err: any) {
-      alert(err.message || "저장에 실패했습니다.");
+      setErrorToast(err.message || "저장에 실패했습니다.");
     } finally {
       setBusy(null);
     }
@@ -221,7 +271,7 @@ export default function DocumentsPage() {
       });
       await refetchNote(note.id);
     } catch (err: any) {
-      alert(err.message || "저장에 실패했습니다.");
+      setErrorToast(err.message || "저장에 실패했습니다.");
     } finally {
       setBusy(null);
     }
@@ -234,7 +284,7 @@ export default function DocumentsPage() {
       await refetchNote(note.id);
       setToastMessage("검토요청이 완료되었습니다");
     } catch (err: any) {
-      alert(err.message || "검토 요청에 실패했습니다.");
+      setErrorToast(err.message || "검토 요청에 실패했습니다.");
     } finally {
       setBusy(null);
     }
@@ -246,7 +296,7 @@ export default function DocumentsPage() {
       await apiFetch(`/api/meetings/specs/${spec.id}/approve/`, { method: "POST" });
       await refetchNote(note.id);
     } catch (err: any) {
-      alert(err.message || "승인에 실패했습니다.");
+      setErrorToast(err.message || "승인에 실패했습니다.");
     } finally {
       setBusy(null);
     }
@@ -264,7 +314,64 @@ export default function DocumentsPage() {
       setRejectTarget(null);
       setRejectReason("");
     } catch (err: any) {
-      alert(err.message || "반려에 실패했습니다.");
+      setErrorToast(err.message || "반려에 실패했습니다.");
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  // 요구사항 정의서 생성 — POST 응답(RequirementDefinitionCreateSerializer)에 id가 안 들어있어서
+  // (spec/project/title/version/description만 반환) 생성 후 목록을 다시 받아 spec.id로 찾는다.
+  const handleCreateReqDef = async (note: NoteDto, spec: SpecDto) => {
+    setBusy(`${note.id}-create-reqdef`);
+    try {
+      await apiFetch("/api/requirements/", {
+        method: "POST",
+        body: JSON.stringify({
+          spec: spec.id,
+          project: note.project,
+          title: `${spec.title} 요구사항정의서`,
+          version: "v1.0",
+        }),
+      });
+      const allReqDefs = await apiFetch<ReqDefDto[]>("/api/requirements/");
+      setReqDefs(allReqDefs);
+      setToastMessage("요구사항 정의서가 생성되었습니다");
+    } catch (err: any) {
+      setErrorToast(err.message || "요구사항 정의서 생성에 실패했습니다.");
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  // AI 자동 추출 — 현재 백엔드(RequirementExtractView)는 기획서 내용과 무관하게 항상 같은
+  // 고정된 2개 항목(REQ-01, REQ-02)을 반환하는 모킹 상태다(실제 AI 연동 전). 실제 기획서
+  // 내용을 반영하려면 백엔드 쪽 연동이 필요 — 팀원에게 전달할 목록에 남겨둔다.
+  const handleExtractItems = async (reqDefId: number) => {
+    setBusy(`reqdef-${reqDefId}-extract`);
+    try {
+      const result = await apiFetch<{ extracted_items: ReqItemDto[] }>(`/api/requirements/${reqDefId}/extract/`, {
+        method: "POST",
+      });
+      setReqDefs(prev => prev.map(r => r.id === reqDefId ? { ...r, items: [...r.items, ...result.extracted_items] } : r));
+      setToastMessage(`요구사항 항목 ${result.extracted_items.length}건이 추출되었습니다`);
+    } catch (err: any) {
+      setErrorToast(err.message || "요구사항 추출에 실패했습니다.");
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const handleAddItem = async (reqDefId: number, item: { req_code: string; req_name: string; description: string }) => {
+    setBusy(`reqdef-${reqDefId}-additem`);
+    try {
+      const created = await apiFetch<ReqItemDto>("/api/requirements/items/", {
+        method: "POST",
+        body: JSON.stringify({ req_def: reqDefId, ...item }),
+      });
+      setReqDefs(prev => prev.map(r => r.id === reqDefId ? { ...r, items: [...r.items, created] } : r));
+    } catch (err: any) {
+      setErrorToast(err.message || "항목 추가에 실패했습니다.");
     } finally {
       setBusy(null);
     }
@@ -279,7 +386,7 @@ export default function DocumentsPage() {
       if (selectedNoteId === deleteTarget.id) setSelectedNoteId(null);
       setDeleteTarget(null);
     } catch (err: any) {
-      alert(err.message || "삭제에 실패했습니다.");
+      setErrorToast(err.message || "삭제에 실패했습니다.");
     } finally {
       setDeleting(false);
     }
@@ -425,6 +532,10 @@ export default function DocumentsPage() {
               onSubmitReview={(spec) => handleSubmitReview(selectedNote, spec)}
               onApprove={(spec) => handleApprove(selectedNote, spec)}
               onReject={(spec) => setRejectTarget({ specId: spec.id })}
+              reqDef={reqDefs.find(r => r.spec === selectedNote.spec_documents[0]?.id) ?? null}
+              onCreateReqDef={(spec) => handleCreateReqDef(selectedNote, spec)}
+              onExtractItems={handleExtractItems}
+              onAddItem={handleAddItem}
             />
           )}
         </div>
@@ -500,6 +611,7 @@ export default function DocumentsPage() {
         </div>
       )}
       <Toast message={toastMessage} onDismiss={() => setToastMessage(null)} />
+      <Toast message={errorToast} variant="error" onDismiss={() => setErrorToast(null)} />
     </div>
   );
 }
@@ -507,6 +619,7 @@ export default function DocumentsPage() {
 function NoteDetail({
   note, isPM, currentUserId, busy,
   onGenerateSpec, onSaveNoteContent, onSaveSpec, onSavePeriod, onSubmitReview, onApprove, onReject,
+  reqDef, onCreateReqDef, onExtractItems, onAddItem,
 }: {
   note: NoteDto; isPM: boolean; currentUserId: string | undefined; busy: string | null;
   onGenerateSpec: () => void;
@@ -516,6 +629,10 @@ function NoteDetail({
   onSubmitReview: (spec: SpecDto) => void;
   onApprove: (spec: SpecDto) => void;
   onReject: (spec: SpecDto) => void;
+  reqDef: ReqDefDto | null;
+  onCreateReqDef: (spec: SpecDto) => void;
+  onExtractItems: (reqDefId: number) => void;
+  onAddItem: (reqDefId: number, item: { req_code: string; req_name: string; description: string }) => void;
 }) {
   const spec = note.spec_documents[0] ?? null;
   const status = bareStatus(spec);
@@ -739,6 +856,158 @@ function NoteDetail({
           </>
         )}
       </div>
+
+      {/* 요구사항 정의서 — 기획서가 승인된 뒤에만 진행할 수 있는 다음 단계 */}
+      {spec && status === "APPROVED" && (
+        <RequirementSection
+          spec={spec}
+          reqDef={reqDef}
+          isPM={isPM}
+          busy={busy}
+          onCreate={() => onCreateReqDef(spec)}
+          onExtract={onExtractItems}
+          onAddItem={onAddItem}
+        />
+      )}
+    </div>
+  );
+}
+
+function RequirementSection({
+  spec, reqDef, isPM, busy, onCreate, onExtract, onAddItem,
+}: {
+  spec: SpecDto; reqDef: ReqDefDto | null; isPM: boolean; busy: string | null;
+  onCreate: () => void;
+  onExtract: (reqDefId: number) => void;
+  onAddItem: (reqDefId: number, item: { req_code: string; req_name: string; description: string }) => void;
+}) {
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [newCode, setNewCode] = useState("");
+  const [newName, setNewName] = useState("");
+  const [newDesc, setNewDesc] = useState("");
+
+  const creating = busy === `${spec.meeting}-create-reqdef`;
+  const extracting = reqDef && busy === `reqdef-${reqDef.id}-extract`;
+  const addingItem = reqDef && busy === `reqdef-${reqDef.id}-additem`;
+
+  if (!reqDef) {
+    return (
+      <div className="border-t border-border pt-5 mt-2">
+        <h3 className="font-bold text-sm mb-2">요구사항 정의서</h3>
+        {isPM ? (
+          <button
+            onClick={onCreate}
+            disabled={creating}
+            className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-bold hover:bg-primary/90 disabled:opacity-50"
+          >
+            {creating ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileText className="w-4 h-4" />}
+            요구사항 정의서 생성
+          </button>
+        ) : (
+          <p className="text-sm text-muted-foreground">아직 요구사항 정의서가 생성되지 않았습니다.</p>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div className="border-t border-border pt-5 mt-2 space-y-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <h3 className="font-bold text-sm">{reqDef.title}</h3>
+          <p className="text-xs text-muted-foreground mt-0.5">{reqDef.version} · 항목 {reqDef.items.length}건</p>
+        </div>
+        {isPM && (
+          <button
+            onClick={() => onExtract(reqDef.id)}
+            disabled={!!extracting}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-primary/10 text-primary text-xs font-semibold hover:bg-primary/20 disabled:opacity-50"
+            title="현재는 기획서 내용과 무관하게 고정된 예시 항목을 추가합니다 (백엔드 AI 연동 전)"
+          >
+            {extracting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Bot className="w-3.5 h-3.5" />}
+            AI 자동 추출
+          </button>
+        )}
+      </div>
+
+      {reqDef.items.length === 0 ? (
+        <p className="text-sm text-muted-foreground py-4 text-center">아직 요구사항 항목이 없습니다.</p>
+      ) : (
+        <div className="border border-border rounded-xl overflow-hidden">
+          <table className="w-full text-sm text-left">
+            <thead className="text-xs text-muted-foreground uppercase bg-black/5 dark:bg-white/5">
+              <tr>
+                <th className="px-4 py-2.5 font-bold w-24">코드</th>
+                <th className="px-4 py-2.5 font-bold">요구사항명</th>
+                <th className="px-4 py-2.5 font-bold w-40">분류</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {reqDef.items.map(item => (
+                <tr key={item.id}>
+                  <td className="px-4 py-2.5 font-mono text-xs text-muted-foreground align-top">{item.req_code}</td>
+                  <td className="px-4 py-2.5 align-top">
+                    <p className="font-semibold">{item.req_name}</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">{item.description}</p>
+                  </td>
+                  <td className="px-4 py-2.5 text-xs text-muted-foreground align-top">
+                    {item.category || "-"}{item.difficulty && ` · 난이도 ${item.difficulty}`}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {isPM && (
+        showAddForm ? (
+          <div className="border border-border rounded-xl p-4 space-y-2">
+            <div className="grid grid-cols-[120px_1fr] gap-2">
+              <input
+                value={newCode}
+                onChange={e => setNewCode(e.target.value)}
+                placeholder="REQ-03"
+                className="bg-black/5 dark:bg-white/5 border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
+              />
+              <input
+                value={newName}
+                onChange={e => setNewName(e.target.value)}
+                placeholder="요구사항명"
+                className="bg-black/5 dark:bg-white/5 border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
+              />
+            </div>
+            <textarea
+              value={newDesc}
+              onChange={e => setNewDesc(e.target.value)}
+              placeholder="상세 내용"
+              className="w-full bg-black/5 dark:bg-white/5 border border-border rounded-lg px-3 py-2 text-sm resize-none h-20 focus:outline-none focus:ring-2 focus:ring-primary/40"
+            />
+            <div className="flex justify-end gap-2">
+              <button onClick={() => setShowAddForm(false)} className="px-4 py-2 text-sm font-semibold text-muted-foreground hover:bg-black/5 dark:hover:bg-white/5 rounded-lg">취소</button>
+              <button
+                onClick={() => {
+                  if (!newCode.trim() || !newName.trim()) return;
+                  onAddItem(reqDef.id, { req_code: newCode.trim(), req_name: newName.trim(), description: newDesc.trim() });
+                  setNewCode(""); setNewName(""); setNewDesc(""); setShowAddForm(false);
+                }}
+                disabled={!newCode.trim() || !newName.trim() || !!addingItem}
+                className="flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-bold hover:bg-primary/90 disabled:opacity-50"
+              >
+                {addingItem ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+                추가
+              </button>
+            </div>
+          </div>
+        ) : (
+          <button
+            onClick={() => setShowAddForm(true)}
+            className="flex items-center gap-1.5 text-xs font-semibold text-primary hover:underline"
+          >
+            <Plus className="w-3.5 h-3.5" /> 항목 직접 추가
+          </button>
+        )
+      )}
     </div>
   );
 }
