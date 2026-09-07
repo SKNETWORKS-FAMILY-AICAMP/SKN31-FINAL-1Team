@@ -86,6 +86,14 @@ class SpecDocument(models.Model):
     tech_stack = models.TextField(null=True, blank=True, verbose_name="6. 기술 스택 및 제약사항")
     final_decisions = models.TextField(null=True, blank=True, verbose_name="7. 최종 결정사항")
 
+    # 2026-09-07: 기획서 7개 섹션 각각에 대한 근거 문장을 모아둔 데이터.
+    # 프론트가 "근거 보기" 토글을 켰을 때만 읽어서 보여주고, 기본(깔끔한) 뷰에서는
+    # 이 컬럼을 조회하지 않는다.
+    evidence_data = models.TextField(
+        null=True, blank=True,
+        verbose_name="섹션별 근거 데이터",
+    )
+
     # 2026-09-01: 회의록 원문에 "프로젝트 기간: YYYY-MM-DD ~ YYYY-MM-DD"처럼 명시된 경우 AI 분석
     # 시점에 정규식으로 추출해 자동으로 채운다(views.py MeetingNoteAnalyzeView). 원문에 없으면
     # null로 두고 화면(ProposalTemplate)에서 직접 입력하게 한다 — 지어내지 않는다는 원칙 유지.
