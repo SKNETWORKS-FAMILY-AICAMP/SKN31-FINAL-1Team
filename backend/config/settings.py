@@ -40,7 +40,7 @@ SECRET_KEY = env('SECRET_KEY')
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = env('DEBUG', default=True)
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = env.list('ALLOWED_HOSTS', default=[])
 
 
 # Application definition
@@ -115,6 +115,7 @@ if env.str('MYSQL_HOST', default=''):
             'PASSWORD': env.str('MYSQL_PASSWORD'),
             'HOST': env.str('MYSQL_HOST'),
             'PORT': env.int('MYSQL_PORT', default=3306),
+            'OPTIONS': {'sql_mode': 'STRICT_TRANS_TABLES'},
         }
     }
 else:
@@ -196,13 +197,16 @@ SPECTACULAR_SETTINGS = {
 
 # React, Vite 등 프론트엔드 개발 서버 주소 허용
 # 개발 모드에서 허용할 프론트엔드 도메인/포트 목록
-CORS_ALLOWED_ORIGINS = [
-"http://localhost:3000",   # React (Create React App, Next.js 등)
-"http://127.0.0.1:3000",
-"http://localhost:5173",   # Vite (React / Vue 등)
-"http://127.0.0.1:5173",
-"http://localhost:8080",   # Vue CLI 등
-]
+CORS_ALLOWED_ORIGINS = env.list(
+    'CORS_ALLOWED_ORIGINS', 
+    default=[
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://localhost:8080",
+    ]
+)
 
 # 인증 정보(Cookie, Authorization 헤더 등)를 포함한 요청 허용
 CORS_ALLOW_CREDENTIALS = True
@@ -210,10 +214,13 @@ CORS_ALLOW_CREDENTIALS = True
 # 2026-08-31: 쿠키 기반 인증으로 옮기면서 CSRF 검증이 다시 필요해졌다(위 CookieJWTAuthentication
 # 참고). Django의 CSRF 미들웨어는 Origin/Referer가 다른 포트(localhost:3000 → :8000)로 온
 # 요청을 기본적으로 신뢰하지 않으므로, 프론트 개발 서버 주소를 명시적으로 허용해야 한다.
-CSRF_TRUSTED_ORIGINS = [
-"http://localhost:3000",
-"http://127.0.0.1:3000",
-]
+CSRF_TRUSTED_ORIGINS = env.list(
+    'CSRF_TRUSTED_ORIGINS', 
+    default=[
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+    ]
+)
 
 CORS_ALLOW_HEADERS = [
 'accept',
