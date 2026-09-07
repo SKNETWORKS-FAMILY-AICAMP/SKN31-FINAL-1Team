@@ -12,7 +12,7 @@ type TaskDto = {
   id: number;
   project: number | null;
   assigned_user_name: string | null;
-  status: string;
+  status_code: string;
   created_at: string;
   updated_at: string;
 };
@@ -30,20 +30,20 @@ function buildAnalytics(tasks: TaskDto[], projects: ProjectDto[]) {
   }
   const weeklyCompletion = days.map(date => ({
     date: date.slice(5),
-    count: tasks.filter(t => t.status === "COMPLETED" && t.updated_at.slice(0, 10) === date).length,
+    count: tasks.filter(t => t.status_code === "COMPLETED" && t.updated_at.slice(0, 10) === date).length,
   }));
 
   const contributionMap = new Map<string, { done: number; inProgress: number }>();
   tasks.forEach(t => {
     const name = t.assigned_user_name ?? "미배정";
     const entry = contributionMap.get(name) ?? { done: 0, inProgress: 0 };
-    if (t.status === "COMPLETED") entry.done += 1;
-    if (t.status === "IN_PROGRESS") entry.inProgress += 1;
+    if (t.status_code === "COMPLETED") entry.done += 1;
+    if (t.status_code === "IN_PROGRESS") entry.inProgress += 1;
     contributionMap.set(name, entry);
   });
   const teamContribution = Array.from(contributionMap.entries()).map(([name, v]) => ({ name, ...v }));
 
-  const completedTasks = tasks.filter(t => t.status === "COMPLETED");
+  const completedTasks = tasks.filter(t => t.status_code === "COMPLETED");
   const averageProcessTime = completedTasks.length
     ? Math.round(
         (completedTasks.reduce((sum, t) => sum + (new Date(t.updated_at).getTime() - new Date(t.created_at).getTime()), 0) /
@@ -51,12 +51,12 @@ function buildAnalytics(tasks: TaskDto[], projects: ProjectDto[]) {
       ) / 10
     : 0;
 
-  const approved = tasks.filter(t => ["APPROVED", "IN_PROGRESS", "COMPLETED"].includes(t.status)).length;
-  const rejected = tasks.filter(t => t.status === "REJECTED").length;
+  const approved = tasks.filter(t => ["APPROVED", "IN_PROGRESS", "COMPLETED"].includes(t.status_code)).length;
+  const rejected = tasks.filter(t => t.status_code === "REJECTED").length;
 
   const projectBurndown = projects.map(p => ({
     name: p.name,
-    remaining: tasks.filter(t => t.project === p.id && ["PENDING_APPROVAL", "APPROVED", "IN_PROGRESS"].includes(t.status)).length,
+    remaining: tasks.filter(t => t.project === p.id && ["PENDING_APPROVAL", "APPROVED", "IN_PROGRESS"].includes(t.status_code)).length,
   }));
 
   return {

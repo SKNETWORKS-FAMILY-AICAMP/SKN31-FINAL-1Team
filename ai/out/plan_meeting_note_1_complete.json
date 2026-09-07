@@ -8,7 +8,7 @@
       "key": "overview",
       "title": "프로젝트 개요",
       "section_type": "narrative",
-      "content_html": "리테일링크는 소상공인들이 재고를 보다 효율적으로 관리할 수 있도록 돕는 프로젝트입니다. 이 프로젝트는 소상공인들이 엑셀이나 수기 장부 대신 디지털 도구를 활용하여 재고 관리의 자동화와 발주 시점 알림을 받을 수 있도록 설계되었습니다.",
+      "content_html": "<p><strong>리테일링크(RetailLink)</strong>는 소상공인들이 엑셀 또는 수기 장부로 재고를 관리하는 데서 오는 발주 시점 놓침과 과재고로 인한 손실 문제를 해결하기 위해 개발되었습니다.</p>",
       "items": [],
       "source_fields": [
         "project.name",
@@ -16,10 +16,12 @@
       ],
       "evidence": [
         {
-          "quote": "사전 사용자 인터뷰 결과, 소상공인들이 엑셀 또는 수기 장부로 재고를 관리하고 있으며, 발주 시점 놓침과 과재고로 인한 손실 문제가 있음"
+          "quote": "MVP 출시 범위에 포함할 기능을 확정하고, 기획팀이 제안한 기능에 대해 개발팀이 구현 가능성과 방식을 검토하여 최종 결정한다. 기술 스택도 이번 회의에서 확정한다.",
+          "status": "verified"
         }
       ],
       "features": [],
+      "groups": [],
       "needs_input": "",
       "is_incomplete": false,
       "edited_by_pm": false,
@@ -34,17 +36,19 @@
       "key": "problem",
       "title": "문제 정의",
       "section_type": "narrative",
-      "content_html": "발주 시점을 놓쳐 품절이 발생하고, 과재고로 인해 폐기 손실이 발생함.",
+      "content_html": "<p>발주 시점을 놓쳐 품절이 발생하고, 과재고로 인해 폐기 손실이 발생하는 문제가 있습니다.</p>",
       "items": [],
       "source_fields": [
         "project.problem"
       ],
       "evidence": [
         {
-          "quote": "발주 시점을 놓쳐 품절이 발생하고, 과재고로 인해 폐기 손실이 발생함"
+          "quote": "MVP 출시 범위에 포함할 기능을 확정하고, 기획팀이 제안한 기능에 대해 개발팀이 구현 가능성과 방식을 검토하여 최종 결정한다. 기술 스택도 이번 회의에서 확정한다.",
+          "status": "verified"
         }
       ],
       "features": [],
+      "groups": [],
       "needs_input": "",
       "is_incomplete": false,
       "edited_by_pm": false,
@@ -59,20 +63,23 @@
       "key": "users",
       "title": "대상 사용자",
       "section_type": "narrative",
-      "content_html": "<ul>\n<li><strong>소상공인 사장:</strong> 매장 1~3개를 직접 운영하며, 모바일 사용 비중이 높음. 재고 관리의 자동화, 발주 시점 알림, 모바일 우선 반응형 설계를 필요로 함.</li>\n<li><strong>매장 파트타임 직원:</strong> 입출고 등록 정도만 수행. 간편한 입출고 등록을 필요로 함.</li>\n</ul>",
+      "content_html": "<ul><li><strong>소상공인 사장:</strong> 매장 1~3개를 직접 운영하며, 모바일 사용 비중이 높습니다. 이들은 재고 관리의 자동화, 발주 시점 알림, 모바일 우선 반응형 설계를 필요로 합니다.</li><li><strong>매장 파트타임 직원:</strong> 입출고 등록 정도만 수행하며, 간편한 입출고 등록을 필요로 합니다.</li></ul>",
       "items": [],
       "source_fields": [
         "users"
       ],
       "evidence": [
         {
-          "quote": "1차 타깃은 매장 1~3개를 직접 운영하는 소상공인 사장으로, 연령대는 40~50대이며 PC보다 모바일 사용 비중이 높다."
+          "quote": "1차 타깃은 매장 1~3개를 직접 운영하는 소상공인 사장으로, 연령대는 40~50대이며 PC보다 모바일 사용 비중이 높다.",
+          "status": "verified"
         },
         {
-          "quote": "2차 사용자는 매장 파트타임 직원이며, 입출고 등록 정도만 수행한다."
+          "quote": "2차 사용자는 매장 파트타임 직원이며, 입출고 등록 정도만 수행한다.",
+          "status": "verified"
         }
       ],
       "features": [],
+      "groups": [],
       "needs_input": "",
       "is_incomplete": false,
       "edited_by_pm": false,
@@ -87,58 +94,60 @@
       "key": "features",
       "title": "주요 기능",
       "section_type": "narrative",
-      "content_html": "<p><strong>바코드 입출고 등록</strong></p><p>스마트폰 카메라로 상품 바코드를 인식해 입출고를 등록한다. 전용 스캐너 없이 사용할 수 있다.</p><p><strong>재고 임계치 알림</strong></p><p>재고가 임계치에 도달하면 자동으로 알림을 제공하여 적시에 발주할 수 있도록 돕는다.</p><p><strong>발주서 자동 생성</strong></p><p>재고 상황에 따라 발주서를 자동으로 생성하여 발주 과정을 간소화한다.</p><p><strong>거래처 관리</strong></p><p>거래처 정보를 체계적으로 관리하여 효율적인 거래를 지원한다.</p><p><strong>대시보드</strong></p><p>재고 및 판매 현황을 한눈에 파악할 수 있는 대시보드를 제공한다.</p><p><strong>권한 관리</strong></p><p>사용자별로 접근 권한을 설정하여 보안을 강화한다.</p><p><strong>추천 수량 계산</strong></p><p>최근 4주 평균 판매량을 기반으로 추천 발주 수량을 계산하여 제공한다.</p>",
+      "content_html": "<p><strong>바코드 입출고 등록</strong></p><p>스마트폰 카메라로 상품 바코드를 인식해 입출고를 등록한다.</p><p><strong>재고 임계치 알림</strong></p><p>재고가 임계치에 도달하면 알림을 제공한다.</p><p><strong>발주서 자동 생성</strong></p><p>발주서를 자동으로 생성하여 발주 시점을 놓치지 않도록 한다.</p><p><strong>거래처 관리</strong></p><p>거래처 정보를 관리할 수 있는 기능을 제공한다.</p><p><strong>대시보드</strong></p><p>재고 및 발주 현황을 한눈에 볼 수 있는 대시보드를 제공한다.</p><p><strong>권한 관리</strong></p><p>사용자별로 접근 권한을 관리할 수 있는 기능을 제공한다.</p>",
       "items": [
         "바코드 입출고 등록",
         "재고 임계치 알림",
         "발주서 자동 생성",
         "거래처 관리",
         "대시보드",
-        "권한 관리",
-        "추천 수량 계산"
+        "권한 관리"
       ],
       "source_fields": [
         "requirements.functional",
         "decisions[feature]"
       ],
-      "evidence": [],
+      "evidence": [
+        {
+          "quote": "박서연이 제안한 MVP 기능은 총 6개다. ①바코드 입출고 등록 ②재고 임계치 알림 ③발주서 자동 생성 ④거래처 관리 ⑤대시보드 ⑥권한 관리.",
+          "status": "verified"
+        },
+        {
+          "quote": "최근 4주 평균 판매량 기반 추천 수량 계산으로 대체하기로 합의했다.",
+          "status": "verified"
+        },
+        {
+          "quote": "MVP 기능은 바코드 입출고 등록, 재고 임계치 알림, 발주서 자동 생성, 거래처 관리, 대시보드, 권한 관리 총 6개로 확정한다.",
+          "status": "verified"
+        }
+      ],
       "features": [
         {
           "title": "바코드 입출고 등록",
-          "description": "스마트폰 카메라로 상품 바코드를 인식해 입출고를 등록한다. 전용 스캐너 없이 사용할 수 있다.",
-          "priority": "high"
+          "description": "스마트폰 카메라로 상품 바코드를 인식해 입출고를 등록한다."
         },
         {
           "title": "재고 임계치 알림",
-          "description": "재고가 임계치에 도달하면 자동으로 알림을 제공하여 적시에 발주할 수 있도록 돕는다.",
-          "priority": "high"
+          "description": "재고가 임계치에 도달하면 알림을 제공한다."
         },
         {
           "title": "발주서 자동 생성",
-          "description": "재고 상황에 따라 발주서를 자동으로 생성하여 발주 과정을 간소화한다.",
-          "priority": "high"
+          "description": "발주서를 자동으로 생성하여 발주 시점을 놓치지 않도록 한다."
         },
         {
           "title": "거래처 관리",
-          "description": "거래처 정보를 체계적으로 관리하여 효율적인 거래를 지원한다.",
-          "priority": "high"
+          "description": "거래처 정보를 관리할 수 있는 기능을 제공한다."
         },
         {
           "title": "대시보드",
-          "description": "재고 및 판매 현황을 한눈에 파악할 수 있는 대시보드를 제공한다.",
-          "priority": "high"
+          "description": "재고 및 발주 현황을 한눈에 볼 수 있는 대시보드를 제공한다."
         },
         {
           "title": "권한 관리",
-          "description": "사용자별로 접근 권한을 설정하여 보안을 강화한다.",
-          "priority": "high"
-        },
-        {
-          "title": "추천 수량 계산",
-          "description": "최근 4주 평균 판매량을 기반으로 추천 발주 수량을 계산하여 제공한다.",
-          "priority": "medium"
+          "description": "사용자별로 접근 권한을 관리할 수 있는 기능을 제공한다."
         }
       ],
+      "groups": [],
       "needs_input": "",
       "is_incomplete": false,
       "edited_by_pm": false,
@@ -160,6 +169,7 @@
       ],
       "evidence": [],
       "features": [],
+      "groups": [],
       "needs_input": "",
       "is_incomplete": true,
       "edited_by_pm": false,
@@ -202,52 +212,99 @@
       ],
       "evidence": [
         {
-          "quote": "이준호: 프론트엔드 React, 백엔드 Spring Boot, DB MySQL, 인프라 AWS를 제안한다."
+          "quote": "이준호: 프론트엔드 React, 백엔드 Spring Boot, DB MySQL, 인프라 AWS를 제안한다.",
+          "status": "verified"
         },
         {
-          "quote": "이준호: 프론트엔드 React, 백엔드 Spring Boot, DB MySQL, 인프라 AWS를 제안한다."
+          "quote": "이준호: 프론트엔드 React, 백엔드 Spring Boot, DB MySQL, 인프라 AWS를 제안한다.",
+          "status": "verified"
         },
         {
-          "quote": "이준호: 프론트엔드 React, 백엔드 Spring Boot, DB MySQL, 인프라 AWS를 제안한다."
+          "quote": "이준호: 프론트엔드 React, 백엔드 Spring Boot, DB MySQL, 인프라 AWS를 제안한다.",
+          "status": "verified"
         },
         {
-          "quote": "이준호: 프론트엔드 React, 백엔드 Spring Boot, DB MySQL, 인프라 AWS를 제안한다."
+          "quote": "이준호: 프론트엔드 React, 백엔드 Spring Boot, DB MySQL, 인프라 AWS를 제안한다.",
+          "status": "verified"
         },
         {
-          "quote": "김도현: 매장에서 바쁜 시간대에 사용하는 서비스이므로 응답 속도가 중요하다. 주요 화면 응답 3초 이내를 기준으로 한다."
+          "quote": "김도현: 매장에서 바쁜 시간대에 사용하는 서비스이므로 응답 속도가 중요하다. 주요 화면 응답 3초 이내를 기준으로 한다.",
+          "status": "verified"
         },
         {
-          "quote": "동시 접속은 초기 목표 고객 수를 감안해 500명 처리로 설정했다."
+          "quote": "동시 접속은 초기 목표 고객 수를 감안해 500명 처리로 설정했다.",
+          "status": "verified"
         },
         {
-          "quote": "최민아: 매장 내 모바일 사용 비중이 높으므로 모바일 우선 반응형으로 설계한다."
+          "quote": "최민아: 매장 내 모바일 사용 비중이 높으므로 모바일 우선 반응형으로 설계한다.",
+          "status": "verified"
         },
         {
-          "quote": "정우성: 40~50대 사용자 비중을 고려해 본문 폰트 최소 16px, 주요 버튼 터치 영역 44px 이상을 적용해야 한다."
+          "quote": "정우성: 40~50대 사용자 비중을 고려해 본문 폰트 최소 16px, 주요 버튼 터치 영역 44px 이상을 적용해야 한다.",
+          "status": "verified"
         },
         {
-          "quote": "한 손으로 조작하는 상황이 많으므로 주요 액션 버튼은 화면 하단에 배치한다."
+          "quote": "한 손으로 조작하는 상황이 많으므로 주요 액션 버튼은 화면 하단에 배치한다.",
+          "status": "verified"
         },
         {
-          "quote": "투입 가능 인력은 백엔드 2명, 프론트엔드 1명, 디자인 1명으로 총 4명이며 개발 기간은 3개월이다."
+          "quote": "투입 가능 인력은 백엔드 2명, 프론트엔드 1명, 디자인 1명으로 총 4명이며 개발 기간은 3개월이다.",
+          "status": "verified"
         },
         {
-          "quote": "투입 가능 인력은 백엔드 2명, 프론트엔드 1명, 디자인 1명으로 총 4명이며 개발 기간은 3개월이다."
+          "quote": "투입 가능 인력은 백엔드 2명, 프론트엔드 1명, 디자인 1명으로 총 4명이며 개발 기간은 3개월이다.",
+          "status": "verified"
         },
         {
-          "quote": "매출 예측 기능은 MVP 범위에서 제외하고, 최근 4주 평균 판매량 기반 추천 수량 계산으로 대체한다."
+          "quote": "매출 예측 기능은 MVP 범위에서 제외하고, 최근 4주 평균 판매량 기반 추천 수량 계산으로 대체한다.",
+          "status": "verified"
         },
         {
-          "quote": "POS 연동은 A사 API 1곳만 MVP에 포함하며, 나머지 벤더는 2차 개발로 이관한다."
+          "quote": "POS 연동은 A사 API 1곳만 MVP에 포함하며, 나머지 벤더는 2차 개발로 이관한다.",
+          "status": "verified"
         },
         {
-          "quote": "MVP 대상 사용자는 소상공인 사장과 매장 직원으로 한정하고, 프랜차이즈 본사 관리자는 제외한다."
+          "quote": "MVP 대상 사용자는 소상공인 사장과 매장 직원으로 한정하고, 프랜차이즈 본사 관리자는 제외한다.",
+          "status": "verified"
         },
         {
-          "quote": "기능 추가 요청은 기존 기능 제외를 전제로만 논의한다."
+          "quote": "기능 추가 요청은 기존 기능 제외를 전제로만 논의한다.",
+          "status": "verified"
         }
       ],
       "features": [],
+      "groups": [
+        {
+          "subtitle": "기술 스택",
+          "items": [
+            "프론트엔드 React",
+            "백엔드 Spring Boot",
+            "DB MySQL",
+            "인프라 AWS"
+          ]
+        },
+        {
+          "subtitle": "성능·보안 요구",
+          "items": [
+            "주요 화면 응답 3초 이내",
+            "동시 접속 500명 처리",
+            "모바일 우선 반응형 설계",
+            "본문 폰트 16px 이상, 주요 버튼 터치 영역 44px 이상",
+            "주요 액션 버튼 하단 배치"
+          ]
+        },
+        {
+          "subtitle": "제약사항",
+          "items": [
+            "[인력] 투입 가능 인력은 백엔드 2명, 프론트엔드 1명, 디자인 1명으로 총 4명",
+            "[일정] 개발 기간은 3개월",
+            "매출 예측 기능은 MVP 범위에서 제외하고, 최근 4주 평균 판매량 기반 추천 수량 계산으로 대체한다.",
+            "POS 연동은 A사 API 1곳만 MVP에 포함하며, 나머지 벤더는 2차 개발로 이관한다.",
+            "MVP 대상 사용자는 소상공인 사장과 매장 직원으로 한정하고, 프랜차이즈 본사 관리자는 제외한다.",
+            "기능 추가 요청은 기존 기능 제외를 전제로만 논의한다."
+          ]
+        }
+      ],
       "needs_input": "",
       "is_incomplete": false,
       "edited_by_pm": false,
@@ -277,28 +334,36 @@
       ],
       "evidence": [
         {
-          "quote": "MVP 기능은 바코드 입출고 등록, 재고 임계치 알림, 발주서 자동 생성, 거래처 관리, 대시보드, 권한 관리 총 6개로 확정한다."
+          "quote": "MVP 기능은 바코드 입출고 등록, 재고 임계치 알림, 발주서 자동 생성, 거래처 관리, 대시보드, 권한 관리 총 6개로 확정한다.",
+          "status": "verified"
         },
         {
-          "quote": "바코드 스캔은 웹 카메라 API(BarcodeDetector) 방식으로 구현하며, iOS 사파리 대응을 위한 ZXing 폴백을 필수로 포함한다."
+          "quote": "바코드 스캔은 웹 카메라 API(BarcodeDetector) 방식으로 구현하며, iOS 사파리 대응을 위한 ZXing 폴백을 필수로 포함한다.",
+          "status": "verified"
         },
         {
-          "quote": "매출 예측 기능은 MVP 범위에서 제외하고, 최근 4주 평균 판매량 기반 추천 수량 계산으로 대체한다."
+          "quote": "매출 예측 기능은 MVP 범위에서 제외하고, 최근 4주 평균 판매량 기반 추천 수량 계산으로 대체한다.",
+          "status": "verified"
         },
         {
-          "quote": "POS 연동은 A사 API 1곳만 MVP에 포함하며, 나머지 벤더는 2차 개발로 이관한다."
+          "quote": "POS 연동은 A사 API 1곳만 MVP에 포함하며, 나머지 벤더는 2차 개발로 이관한다.",
+          "status": "verified"
         },
         {
-          "quote": "기술 스택은 React + Spring Boot + MySQL + AWS로 확정하고 Next.js는 채택하지 않는다."
+          "quote": "기술 스택은 React + Spring Boot + MySQL + AWS로 확정하고 Next.js는 채택하지 않는다.",
+          "status": "verified"
         },
         {
-          "quote": "MVP 대상 사용자는 소상공인 사장과 매장 직원으로 한정하고, 프랜차이즈 본사 관리자는 제외한다."
+          "quote": "MVP 대상 사용자는 소상공인 사장과 매장 직원으로 한정하고, 프랜차이즈 본사 관리자는 제외한다.",
+          "status": "verified"
         },
         {
-          "quote": "기능 추가 요청은 기존 기능 제외를 전제로만 논의한다."
+          "quote": "기능 추가 요청은 기존 기능 제외를 전제로만 논의한다.",
+          "status": "verified"
         }
       ],
       "features": [],
+      "groups": [],
       "needs_input": "",
       "is_incomplete": false,
       "edited_by_pm": false,

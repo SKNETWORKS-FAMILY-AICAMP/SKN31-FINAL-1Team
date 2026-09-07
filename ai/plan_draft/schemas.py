@@ -34,7 +34,7 @@ from typing import Optional
 
 from pydantic import BaseModel, Field
 
-from shared.schemas_base import Evidence, Priority, ReviewStatus
+from shared.schemas_base import Evidence, ReviewStatus
 
 
 class SectionType(str, Enum):
@@ -92,16 +92,14 @@ class Feature(BaseModel):
         ...,
         description="이 기능이 무엇인지 2~3문장. 원본에 없는 내용을 추가하지 말 것.",
     )
-    # 화면에는 표시하지 않지만 데이터로는 전달합니다.
+    # 2026-09-07: priority 필드를 제거했습니다.
     #
-    # 노드 ③(요구사항정의서)의 RequirementItem에 우선순위 컬럼이 있는데,
-    # 기획서에 이 값이 없으면 하류에서 근거 없이 매기게 됩니다.
-    # 구조화 JSON의 requirements.functional[].priority가 원본이며,
-    # 여러 요구사항을 묶은 항목은 그중 가장 높은 값을 씁니다.
-    priority: Priority = Field(
-        default=Priority.MEDIUM,
-        description="묶인 요구사항 중 가장 높은 우선순위. 원본에 없으면 medium.",
-    )
+    # 예전엔 "노드③이 근거 없이 매기지 않도록" 여기서 넘겨주려 했지만,
+    # 이 값 자체가 노드①/②에서 기준 없이(프롬프트에 판단 규칙 없이) 매겨진
+    # 근거 없는 값이었습니다. 게다가 노드③(requirement_draft)은 이미
+    # 자체 판단 기준(requirements_template.yaml의 [priority 판단 규칙])으로
+    # priority를 독립적으로 매기고 있어 이 필드를 참조하지 않습니다.
+    # 쓰이지 않는 근거 없는 값을 굳이 들고 다닐 이유가 없어 삭제합니다.
 
 
 class NarrativeSection(BaseModel):
@@ -146,6 +144,39 @@ class Review(BaseModel):
     reject_type: Optional[str] = None   # 사실 오류 / 내용 부족 / 표현 문제 / 회의록 자체 문제
 
 
+class VerifiedEvidence(BaseModel):
+    """
+    저장·화면 표시용 근거. LLM 응답 스키마(NarrativeSection.evidence)와는 다른 모델입니다.
+
+    NarrativeSection.evidence는 LLM이 스스로 "이게 근거예요"라고 내놓은 것이라
+    원문과 실제로 대조된 적이 없습니다(자기 인용, 검증 안 됨). 반면 이 모델은
+    노드①이 verify_and_mark()로 이미 원문 대조를 마친 근거를 코드가 그대로
+    재사용해 채우는 것이라 status가 실제 검증 결과를 반영합니다.
+
+    status에 default를 주지 않은 이유: 코드가 항상 명시적으로 채웁니다.
+    LLM 스키마가 아니므로 "이것도 채워야 하나" 문제가 없습니다.
+    """
+    quote: str
+    status: str  # "verified" | "unverified" — ai/meeting_analysis/validators/evidence.py 값과 동일
+
+
+class TechScopeGroup(BaseModel):
+    """
+    6번(기술 및 제약사항) 전용 소제목 단위 묶음.
+
+    2026-09-07 추가: 지금까지 items는 소제목 구분 없이 전부 하나로 flat하게
+    담겨 있었습니다. 화면(읽기/수정)에서 "기술 스택 소제목 아래 항목들",
+    "제약사항 소제목 아래 항목들"처럼 구분해서 보여주고 편집하려면 이 구분이
+    필요합니다 — content_html을 HTML로 렌더링하는 대신 구조 그대로 저장·표시
+    하기로 한 결정에 따른 것입니다(프론트 전달사항 문서 참고).
+
+    회의에서 안 나온 소제목은 애초에 항목이 없으므로 groups 배열에도
+    포함되지 않습니다(list_builder.build_tech_scope의 기존 동작과 동일).
+    """
+    subtitle: str
+    items: list[str]
+
+
 class PlanSection(BaseModel):
     """저장·전달용 최종 섹션 형태."""
     no: int
@@ -160,11 +191,20 @@ class PlanSection(BaseModel):
     items: list[str] = Field(default_factory=list)
 
     source_fields: list[str] = Field(default_factory=list)
-    evidence: list[Evidence] = Field(default_factory=list)
+
+    # 2026-09-07: LLM이 자체 생성하는 NarrativeSection.evidence(Evidence, 검증 안 됨)를
+    # 그대로 쓰지 않습니다. 대신 노드①이 이미 원문 대조를 마친 근거를 source_fields
+    # 경로로 재수집합니다(list_builder.collect_source_evidence). 그래서 여기 타입은
+    # status를 갖는 VerifiedEvidence입니다 — quote만 있는 Evidence가 아닙니다.
+    evidence: list[VerifiedEvidence] = Field(default_factory=list)
 
     # 4번 주요 기능 전용. 다른 섹션은 빈 배열입니다.
     # 프론트가 항목 단위로 편집하고, 노드 ③이 파싱 없이 사용합니다.
     features: list[Feature] = Field(default_factory=list)
+
+    # 6번 기술 및 제약사항 전용. 다른 섹션은 빈 배열입니다.
+    # items를 소제목별로 묶은 것 — 프론트가 소제목 단위로 편집합니다.
+    groups: list[TechScopeGroup] = Field(default_factory=list)
 
     # 반려 사유 중 반영하지 못한 부분 (재생성 시에만 채워짐)
     needs_input: str = ""

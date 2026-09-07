@@ -24,9 +24,7 @@ PM이 "아까 있던 항목이 왜 없지?"를 겪게 됩니다.
 
 from html import escape
 
-from shared.schemas_base import Evidence
-
-from .schemas import PlanSection, SectionType
+from .schemas import PlanSection, SectionType, TechScopeGroup, VerifiedEvidence
 
 
 def _ul(lines: list[str]) -> str:
@@ -38,12 +36,103 @@ def _norm(text: str) -> str:
     return "".join(text.split())
 
 
-def _ev(items: list[dict]) -> list[Evidence]:
-    out = []
+def _ev(items: list[dict]) -> list[VerifiedEvidence]:
+    """
+    항목 dict들에서 evidence를 뽑습니다.
+
+    evidence_status는 verify_and_mark()가 item에 직접 붙인 값(evidence와
+    나란히 있는 형제 키)입니다. 예전엔 quote만 가져가고 이 값을 버렸는데,
+    그러면 verified/unverified 구분이 사라져서 화면에서 근거를 신뢰할 수
+    있는지 알 수 없었습니다. 지금은 status까지 같이 옮깁니다.
+    """
+    out: list[VerifiedEvidence] = []
     for i in items:
         e = i.get("evidence")
-        if e:
-            out.append(Evidence(**e) if isinstance(e, dict) else e)
+        quote = e.get("quote", "") if isinstance(e, dict) else getattr(e, "quote", "")
+        if not quote:
+            continue
+        status = i.get("evidence_status", "unverified")
+        out.append(VerifiedEvidence(quote=quote, status=status))
+    return out
+
+
+def collect_source_evidence(structured: dict, source_fields: list[str]) -> list[VerifiedEvidence]:
+    """
+    서술형 섹션(1~5번, 주요기능 포함)의 근거를 노드①이 이미 검증해둔
+    원본 데이터에서 그대로 재수집합니다.
+
+    왜 필요한가: NarrativeSection.evidence는 노드②의 LLM이 문장을 쓰면서
+    스스로 인용한 것이라, 원문과 실제로 대조된 적이 없습니다(unverified가
+    아니라 아예 검증 자체가 없음). 반면 requirements.functional, users,
+    scenarios, decisions, project 같은 원본 항목들은 verify_and_mark()가
+    이미 evidence_status를 붙여둔 상태입니다. LLM에게 근거를 다시 찾게
+    시키는 대신(모델이 더 그럴듯한 인용을 지어냄 — evidence.py 주석 참조),
+    agent.py가 SECTION_SPEC의 source_fields 경로를 그대로 따라가서 이
+    검증된 근거를 가져다 씁니다.
+
+    source_fields 예시와 처리 방식:
+      "project.name" / "project.background"
+          → background_evidence를 가져옵니다.
+      "project.problem"
+          → problem_evidence를 가져옵니다.
+            (project는 background_evidence/problem_evidence로 근거가 나뉘어
+            있습니다 — meeting_analysis/schemas.py Project 참고)
+      "users" / "scenarios" / "requirements.functional"
+          → 배열입니다. 각 항목의 evidence를 전부 모읍니다.
+      "decisions[feature]"
+          → decisions 중 category가 "feature"인 것만 모읍니다
+            (_source_is_empty()와 같은 대괄호 표기 규칙).
+    """
+    out: list[VerifiedEvidence] = []
+    seen_quotes: set[str] = set()
+
+    def add(item: dict, evidence_key: str = "evidence", status_key: str = "evidence_status") -> None:
+        if not isinstance(item, dict):
+            return
+        e = item.get(evidence_key)
+        quote = e.get("quote", "") if isinstance(e, dict) else getattr(e, "quote", "") if e else ""
+        if not quote or quote in seen_quotes:
+            return
+        seen_quotes.add(quote)
+        status = item.get(status_key, "unverified")
+        out.append(VerifiedEvidence(quote=quote, status=status))
+
+    for field in source_fields:
+        if "[" in field:                       # decisions[feature] 형태
+            base, cat = field.split("[")
+            cat = cat.rstrip("]")
+            for d in structured.get(base, []):
+                if isinstance(d, dict) and d.get("category") == cat:
+                    add(d)
+            continue
+
+        if field.startswith("project."):
+            # 2026-09-07: project.evidence가 background_evidence/problem_evidence로
+            # 나뉘었습니다(schemas.py Project 참고). project.problem을 가리키면
+            # problem_evidence를, 그 외(project.name, project.background)는
+            # background_evidence를 가져옵니다 — name은 따로 근거가 없고
+            # background와 함께 1번 개요 섹션에 쓰이기 때문입니다.
+            sub = field.split(".", 1)[1]
+            proj = structured.get("project") or {}
+            if sub == "problem":
+                add(proj, "problem_evidence", "problem_evidence_status")
+            else:
+                add(proj, "background_evidence", "background_evidence_status")
+            continue
+
+        # "requirements.functional" 같은 점 경로를 따라갑니다.
+        cur = structured
+        for part in field.split("."):
+            cur = cur.get(part) if isinstance(cur, dict) else None
+            if cur is None:
+                break
+
+        if isinstance(cur, list):
+            for item in cur:
+                add(item)
+        elif isinstance(cur, dict):
+            add(cur)
+
     return out
 
 
@@ -64,7 +153,8 @@ def build_tech_scope(structured: dict) -> PlanSection:
 
     parts: list[str] = []
     items: list[str] = []
-    evidence: list[Evidence] = []
+    groups: list[TechScopeGroup] = []
+    evidence: list[VerifiedEvidence] = []
 
     # 한 섹션 안에서 같은 문장이 두 번 나오지 않게 추적합니다.
     #
@@ -94,6 +184,7 @@ def build_tech_scope(structured: dict) -> PlanSection:
             return
         parts.append(f"<p><strong>{title}</strong></p>" + _ul(lines))
         items.extend(lines)
+        groups.append(TechScopeGroup(subtitle=title, items=lines))
         evidence.extend(_ev(used))
 
     # ── 기술 스택 ────────────────────────────────────────────
@@ -122,6 +213,7 @@ def build_tech_scope(structured: dict) -> PlanSection:
         section_type=SectionType.LIST,
         content_html="".join(parts),
         items=items,
+        groups=groups,
         source_fields=[
             "requirements.technical", "requirements.non_functional",
             "requirements.data", "decisions[tech]",

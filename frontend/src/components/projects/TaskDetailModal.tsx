@@ -5,6 +5,7 @@ import { X, Loader2, Save, AlignLeft, BarChart2, CalendarClock, Lock, AlertTrian
 import { isTaskOverdue } from "@/lib/taskOverdue";
 import { useAuth } from "@/lib/auth";
 import { apiFetch } from "@/lib/api/client";
+import { Toast } from "@/components/ui/Toast";
 
 const toDateInput = (iso: string | null) => (iso ? iso.slice(0, 10) : "");
 
@@ -26,16 +27,17 @@ export function TaskDetailModal({
 }) {
   const { user } = useAuth();
   const isPM = user?.role === "PM";
-  const [title, setTitle] = useState(task.task_title);
-  const [description, setDescription] = useState(task.task_description || "");
+  const [title, setTitle] = useState(task.title);
+  const [description, setDescription] = useState(task.description || "");
   const [progress, setProgress] = useState(task.progress || 0);
   const [assigneeId, setAssigneeId] = useState(task.assigned_user ? String(task.assigned_user) : "");
   // 일정 조율은 다른 화면(프로젝트 WBS 뷰)과 동일하게 PM 권한으로 취급한다.
   const [startDate, setStartDate] = useState(toDateInput(task.start_date));
-  const [dueDate, setDueDate] = useState(toDateInput(task.due_date));
+  const [dueDate, setDueDate] = useState(toDateInput(task.end_date));
 
   const [isLoading, setIsLoading] = useState(false);
-  const overdue = isTaskOverdue({ wbsEnd: task.due_date, status: task.status });
+  const [errorToast, setErrorToast] = useState<string | null>(null);
+  const overdue = isTaskOverdue({ wbsEnd: task.end_date, status: task.status_code });
 
   const handleSave = async () => {
     setIsLoading(true);
@@ -43,21 +45,21 @@ export function TaskDetailModal({
       const updated = await apiFetch<any>(`/api/tasks/assignments/${task.id}/`, {
         method: "PATCH",
         body: JSON.stringify({
-          task_title: title,
-          task_description: description,
+          title,
+          description,
           // 진행률은 담당자 본인이 갱신하는 게 자연스러워 PM 제한 없이 항상 저장
           progress,
           ...(isPM ? {
             assigned_user: assigneeId || null,
             start_date: startDate || null,
-            due_date: dueDate || null,
+            end_date: dueDate || null,
           } : {}),
         }),
       });
       onUpdated?.(updated);
       onClose();
     } catch (err: any) {
-      alert(err.message || "저장 중 오류가 발생했습니다.");
+      setErrorToast(err.message || "저장 중 오류가 발생했습니다.");
     } finally {
       setIsLoading(false);
     }
@@ -77,7 +79,7 @@ export function TaskDetailModal({
             />
             <div className="text-sm text-muted-foreground mt-1">
               {task.req_code && <span className="mr-2">{task.req_code}</span>}
-              상태: <span className="font-semibold">{STATUS_LABEL[task.status] ?? task.status}</span>
+              상태: <span className="font-semibold">{task.status_info?.code_name ?? STATUS_LABEL[task.status_code] ?? task.status_code}</span>
             </div>
           </div>
           <button onClick={onClose} className="p-2 hover:bg-black/5 dark:hover:bg-white/5 rounded-lg transition-colors shrink-0">
@@ -160,7 +162,7 @@ export function TaskDetailModal({
             </div>
           </div>
 
-          {task.status === "REJECTED" && task.reject_reason && (
+          {task.status_code === "REJECTED" && task.reject_reason && (
             <div className="p-3 rounded-lg bg-red-500/10 text-red-400 text-sm">
               반려 사유: {task.reject_reason}
             </div>
@@ -193,6 +195,7 @@ export function TaskDetailModal({
           </button>
         </div>
       </div>
+      <Toast message={errorToast} variant="error" onDismiss={() => setErrorToast(null)} />
     </div>
   );
 }

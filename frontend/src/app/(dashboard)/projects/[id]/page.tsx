@@ -10,15 +10,17 @@ import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth";
 import { apiFetch } from "@/lib/api/client";
 import { KanbanBoard } from "@/components/layout/KanbanBoard";
+import { Toast } from "@/components/ui/Toast";
 
 type User = { id: string; name: string; email: string; role: string };
-// Django TaskAssignmentSerializer 응답 그대로 — heyzzabi2 시절 Task와 필드명이 다르다
-// (title -> task_title, assigneeId -> assigned_user, wbsStart/wbsEnd -> start_date/due_date).
+// Django TaskAssignmentSerializer 응답 그대로 — 2026-09-07 컬럼 재설계로 필드명이 또 바뀌었다
+// (task_title -> title, task_description -> description, due_date -> end_date, status ->
+// status_code).
 type Task = {
-  id: number; task_title: string; task_description: string | null;
+  id: number; title: string; description: string | null;
   req_code: string; req_name: string;
-  status: string; progress: number;
-  start_date: string | null; due_date: string | null;
+  status_code: string; status_info: { code_id: string; code_name: string } | null; progress: number;
+  start_date: string | null; end_date: string | null;
   assigned_user: number | null; assigned_user_name: string | null;
   reject_reason: string | null;
 };
@@ -53,6 +55,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   const [settingsDescription, setSettingsDescription] = useState("");
   const [savingSettings, setSavingSettings] = useState(false);
   const [settingsSaved, setSettingsSaved] = useState(false);
+  const [toast, setToast] = useState<{ message: string; variant: "success" | "error" } | null>(null);
 
   useEffect(() => {
     // TaskAssignment는 project를 직접 참조하지 않아서(req_item->req_def->spec->meeting->project
@@ -103,7 +106,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
       setSettingsSaved(true);
       setTimeout(() => setSettingsSaved(false), 2000);
     } catch (err: any) {
-      alert(err.message || "저장에 실패했습니다.");
+      setToast({ message: err.message || "저장에 실패했습니다.", variant: "error" });
     } finally {
       setSavingSettings(false);
     }
@@ -111,15 +114,15 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
 
   const handleStatusChange = async (taskId: number, newStatus: string) => {
     const oldTasks = tasks;
-    setTasks(tasks.map(t => t.id === taskId ? { ...t, status: newStatus } : t));
+    setTasks(tasks.map(t => t.id === taskId ? { ...t, status_code: newStatus } : t));
     try {
       await apiFetch(`/api/tasks/assignments/${taskId}/status/`, {
         method: "PATCH",
-        body: JSON.stringify({ status: newStatus }),
+        body: JSON.stringify({ status_code: newStatus }),
       });
     } catch (err: any) {
       setTasks(oldTasks);
-      alert(err.message || "상태 변경에 실패했습니다.");
+      setToast({ message: err.message || "상태 변경에 실패했습니다.", variant: "error" });
     }
   };
 
@@ -133,7 +136,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
       });
     } catch (err: any) {
       setTasks(oldTasks);
-      alert(err.message || "저장에 실패했습니다.");
+      setToast({ message: err.message || "저장에 실패했습니다.", variant: "error" });
     }
   };
 
@@ -155,11 +158,11 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   }
 
   const filteredTasks = tasks.filter(t =>
-    !search || t.task_title.toLowerCase().includes(search.toLowerCase()) ||
+    !search || t.title.toLowerCase().includes(search.toLowerCase()) ||
     (t.assigned_user_name || "").toLowerCase().includes(search.toLowerCase())
   );
 
-  const doneTasks = tasks.filter(t => t.status === "COMPLETED").length;
+  const doneTasks = tasks.filter(t => t.status_code === "COMPLETED").length;
   const totalTasks = tasks.length;
   const progressPct = totalTasks > 0 ? Math.round((doneTasks / totalTasks) * 100) : 0;
 
@@ -259,13 +262,13 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                 </thead>
                 <tbody className="divide-y divide-border">
                   {filteredTasks.map(task => {
-                    const statusMeta = STATUSES.find(s => s.id === task.status);
+                    const statusMeta = STATUSES.find(s => s.id === task.status_code);
                     const SIcon = statusMeta?.icon || Clock;
                     // 승인대기/반려는 칸반의 승인·반려 버튼으로만 바뀐다 — 여기 드롭다운으로는 못 바꾼다.
-                    const statusLocked = task.status === "PENDING_APPROVAL" || task.status === "REJECTED" || !canEditTask(task);
+                    const statusLocked = task.status_code === "PENDING_APPROVAL" || task.status_code === "REJECTED" || !canEditTask(task);
                     return (
                       <tr key={task.id} className="hover:bg-black/5 dark:hover:bg-white/5 transition-colors group">
-                        <td className="px-4 py-3 font-medium min-w-[200px]">{task.task_title}</td>
+                        <td className="px-4 py-3 font-medium min-w-[200px]">{task.title}</td>
                         <td className="px-4 py-3">
                           {statusLocked ? (
                             <span className={cn("inline-flex items-center gap-1 text-xs font-semibold px-2 py-1 rounded border", statusMeta?.color, "border-orange-400/30")}>
@@ -273,7 +276,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                             </span>
                           ) : (
                             <select
-                              value={task.status}
+                              value={task.status_code}
                               onChange={e => handleStatusChange(task.id, e.target.value)}
                               className={cn(
                                 "appearance-none bg-transparent border rounded px-2 py-1 text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-primary cursor-pointer",
@@ -321,13 +324,13 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                           {isPM ? (
                             <input
                               type="date"
-                              value={task.due_date ? task.due_date.slice(0, 10) : ""}
-                              onChange={e => handleTaskUpdate(task.id, { due_date: e.target.value || null })}
+                              value={task.end_date ? task.end_date.slice(0, 10) : ""}
+                              onChange={e => handleTaskUpdate(task.id, { end_date: e.target.value || null })}
                               className="bg-transparent border border-transparent hover:border-black/10 dark:hover:border-white/10 rounded px-1 py-1 text-xs focus:outline-none text-muted-foreground"
                             />
                           ) : (
                             <span title="일정 조율은 PM만 할 수 있습니다" className="inline-flex items-center gap-1 px-1 py-1 text-xs text-muted-foreground">
-                              <Lock className="w-3 h-3 opacity-50" /> {task.due_date ? task.due_date.slice(0, 10) : "-"}
+                              <Lock className="w-3 h-3 opacity-50" /> {task.end_date ? task.end_date.slice(0, 10) : "-"}
                             </span>
                           )}
                         </td>
@@ -412,6 +415,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
           </div>
         )}
       </div>
+      <Toast message={toast?.message ?? null} variant={toast?.variant} onDismiss={() => setToast(null)} />
     </div>
   );
 }

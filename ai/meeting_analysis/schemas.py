@@ -1,5 +1,5 @@
 """
-노드 1 회의록 구조화 스키마.
+노드 ① 회의록 구조화 스키마.
 
 여기가 이 노드의 계약서입니다.
 프롬프트도, 검증도, 하류 노드도 전부 이 파일을 기준으로 움직입니다.
@@ -19,37 +19,57 @@ from typing import Optional
 
 from pydantic import BaseModel, Field
 
-from shared.schemas_base import Evidence, Priority
+from shared.schemas_base import Evidence
 from enum import Enum
 
-# 회의에서 결정된 내용의 종류를 정의
-class DecisionCategory(str, Enum):
-    FEATURE = "feature"  # 어떤 기능을 만들기로 했는가
-    TECH = "tech"        # 어떤 기술을 사용하기로 했는가 
-    SCOPE = "scope"      # 무엇을 포함/제외하기로 했는가
 
-# 프로젝트 관련 정보
+class DecisionCategory(str, Enum):
+    FEATURE = "feature"
+    TECH = "tech"
+    SCOPE = "scope"
+
+
 class Project(BaseModel):
+    """
+    2026-09-07: evidence를 background_evidence/problem_evidence로 분리했습니다.
+
+    예전엔 evidence 하나가 name+background+problem+goals 전체를 대표했습니다.
+    문제는 이 넷 중 원문과 가장 잘 매칭되는 문장 하나로 evidence가 쏠린다는
+    점입니다 — 실제 사례(리테일링크 기획안)에서 project.evidence가 goals
+    쪽 문장으로 매칭됐는데, 노드②가 이걸 그대로 "개요"와 "문제 정의" 두
+    섹션의 근거로 보여줘서 내용과 무관한 근거가 화면에 뜨는 문제가
+    있었습니다. background와 problem은 노드②에서 서로 다른 섹션(1번 개요,
+    2번 문제 정의)의 근거로 쓰이므로 각자 자기 근거를 가져야 합니다.
+
+    goals는 아직 하류(노드②)가 근거로 쓰지 않아 분리하지 않았습니다.
+    나중에 goals를 근거와 함께 보여줘야 하면 그때 추가하십시오.
+    """
     name: str = Field(..., description="프로젝트명")
     background: str = Field(..., description="프로젝트 배경")
     problem: str = Field(..., description="해결하려는 문제")
     goals: list[str] = Field(..., min_length=1, description="프로젝트 목표")
-    evidence: Evidence # 해당 내용의 근거가 되는 회의록 내용 보관
+    background_evidence: Evidence = Field(..., description="background 문장의 근거")
+    problem_evidence: Evidence = Field(..., description="problem 문장의 근거")
 
-# 누가 사용하는지
+
 class UserGroup(BaseModel):
     type: str = Field(..., description="사용자 유형 (예: 서기, PM)")
-    description: str  # 해당 사용자의 설명
-    needs: list[str] = Field(default_factory=list, description="이 사용자의 요구") 
-    evidence: Evidence # 회의록 근거
+    description: str
+    needs: list[str] = Field(default_factory=list, description="이 사용자의 요구")
+    evidence: Evidence
 
-# 요구사항 하나를 표현하는 단위
+
 class RequirementItem(BaseModel):
-    content: str   # 요구 사항 내용
-    priority: Priority = Priority.MEDIUM  # 요구사항의 중요도(우선순위)
-    evidence: Evidence  # 회의록 근거
+    """
+    2026-09-07: priority 필드를 제거했습니다. 이 노드의 판단 기준이 프롬프트에
+    없어 근거 없는 값이었고, 실제로 쓰는 하류는 노드③(requirement_draft)인데
+    그쪽은 이미 자체 판단 기준(requirements_template.yaml)으로 priority를
+    독립적으로 매기고 있어 이 필드를 참조하지 않습니다. 죽은 필드라 삭제합니다.
+    """
+    content: str
+    evidence: Evidence
 
-# 요구사항을 묶는놓은 구조
+
 class Requirements(BaseModel):
     functional: list[RequirementItem] = Field(
         default_factory=list, description="기능 요구사항"
@@ -64,39 +84,38 @@ class Requirements(BaseModel):
         default_factory=list, description="기술 스택·환경 요구사항"
     )
 
-# 사용자 시나리오
+
 class Scenario(BaseModel):
-    actor: str  # 행동하는 사용자
-    trigger: str # 행동을 시작하게 된 상황
-    steps: list[str] = Field(..., min_length=1) # 실제 행동 순서
-    result: str  # 최종 결과
-    evidence: Evidence # 회의록 근거
-
-# 회의에서 실제로 결정 된 것.
-class Decision(BaseModel):
-    category: DecisionCategory    # 결정의 종류  # feature / tech / scope 사용 (만 허용)
-    content: str    # 실제 결정 내용
-    rationale: Optional[str] = None       # 왜 그렇게 결정했는지 (선택)
-    evidence: Evidence   # 결정의 근거
-
-# 제약조건
-class Constraint(BaseModel):
-    type: str = Field(..., description="일정 / 기술 / 범위 / 인력 / 기타")
-    content: str  # ex) "3개월 안에 개발 해야 한다" 같은 내용
+    actor: str
+    trigger: str
+    steps: list[str] = Field(..., min_length=1)
+    result: str
     evidence: Evidence
 
-# LLM이 만들어야하는 답안지
+
+class Decision(BaseModel):
+    category: DecisionCategory
+    content: str
+    rationale: Optional[str] = None
+    evidence: Evidence
+
+
+class Constraint(BaseModel):
+    type: str = Field(..., description="일정 / 기술 / 범위 / 인력 / 기타")
+    content: str
+    evidence: Evidence
+
+
 class MeetingExtraction(BaseModel):
     """LLM이 생성하는 부분. Instructor의 response_model로 씁니다."""
-    # 데이터 규칙 (결과를 MeetingExtraction 구조에 맞춰서 만들어라)
-    project: Project 
+
+    project: Project
     users: list[UserGroup] = Field(default_factory=list)
     requirements: Requirements
     scenarios: list[Scenario] = Field(default_factory=list)
     decisions: list[Decision] = Field(default_factory=list)
     constraints: list[Constraint] = Field(default_factory=list)
-    # 회의에서 논의했지만 결론을 내리지 못한 내용을 기록
-    unresolved: list[str] = Field( 
+    unresolved: list[str] = Field(
         default_factory=list,
         description="회의록에 근거가 없어 채우지 못한 항목과 그 이유",
     )
@@ -105,8 +124,8 @@ class MeetingExtraction(BaseModel):
 class MeetingStructured(MeetingExtraction):
     """저장·전달용 최종 형태. 시스템이 채우는 필드가 추가됩니다."""
 
-    meeting_id: str    # 어떤 회의록에서 만들어 졌는지 식별을 위한 ID
-    validation_notes: list[str] = Field(  # 검증 과정에서 발견된 문제 기록
+    meeting_id: str
+    validation_notes: list[str] = Field(
         default_factory=list,
         description="교차 규칙 검증에서 발견된 정합성 이슈. LLM이 채우지 않습니다.",
     )

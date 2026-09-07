@@ -23,3 +23,5 @@ data/raw/
 *:Zone.Identifier
 .gstack/
 .env.example
+*.tsbuildinfo
+coverage/

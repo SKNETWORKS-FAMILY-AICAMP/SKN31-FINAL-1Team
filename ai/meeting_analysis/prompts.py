@@ -1,5 +1,5 @@
 """
-노드 1 회의록 구조화 프롬프트.
+노드 ① 회의록 구조화 프롬프트.
 
 프롬프트를 코드에 두는 이유:
   - git diff로 변경 이력을 추적할 수 있다
@@ -18,6 +18,9 @@ SYSTEM_PROMPT = """당신은 회의록에서 프로젝트 정보를 추출하는
 2. 모든 항목에 evidence.quote가 있어야 합니다.
    quote는 회의록 원문에 그대로 존재하는 문장이어야 하며,
    요약·의역·조사 변경 없이 복사하십시오.
+   project는 background_evidence와 problem_evidence를 각각 따로 채웁니다.
+   두 값이 같은 문장일 필요는 없습니다 — background는 배경을 설명하는
+   문장에서, problem은 문제 상황을 설명하는 문장에서 각각 인용하십시오.
 3. 근거를 찾을 수 없는 항목은 비워두고, unresolved 배열에
    "무엇이 없어서 채우지 못했는지"를 적으십시오.
 4. requirements는 4개 하위 분류에만 넣습니다.
@@ -83,7 +86,8 @@ FEWSHOT_OUTPUT = """{
     "background": "회의록 작성 부담으로 인해 실제 사용이 저조할 수 있다는 문제 인식",
     "problem": "서기 부담이 크면 아무도 사용하지 않는다",
     "goals": ["서기가 최소 항목만 입력해도 동작하는 회의록 입력 방식 확보"],
-    "evidence": {"quote": "서기 부담이 크면 아무도 안 쓴다"}
+    "background_evidence": {"quote": "서기 부담이 크면 아무도 안 쓴다"},
+    "problem_evidence": {"quote": "서기 부담이 크면 아무도 안 쓴다"}
   },
   "users": [
     {"type": "서기", "description": "회의 내용을 직접 텍스트로 입력하는 담당자",
@@ -92,10 +96,9 @@ FEWSHOT_OUTPUT = """{
   ],
   "requirements": {
     "functional": [
-      {"content": "회의록을 텍스트로 입력받는다", "priority": "high",
+      {"content": "회의록을 텍스트로 입력받는다",
        "evidence": {"quote": "서기가 회의록을 직접 텍스트로 입력하는 방식으로 간다"}},
       {"content": "입력 항목은 기본정보, 목적, 내용, 결정사항 4개로 한정한다",
-       "priority": "high",
        "evidence": {"quote": "기본정보, 목적, 내용, 결정사항 네 개"}}
     ],
     "non_functional": [], "data": [], "technical": []

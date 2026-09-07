@@ -1,8 +1,11 @@
-#requirements/views.py
+# requirements/views.py
+
+import logging
+from django.db import transaction
+from django.shortcuts import get_object_or_404
 from rest_framework import generics, status, permissions
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from django.shortcuts import get_object_or_404
 from drf_spectacular.utils import (
     extend_schema,
     extend_schema_view,
@@ -18,13 +21,36 @@ from requirements.serializers import (
     RequirementItemSerializer,
 )
 from meetings.models import SpecDocument
+from common.models import CommonCode
+
+# AI 에이전트 및 Pydantic 스키마 임포트
+from requirement_draft.agent import generate_requirements
+from requirement_draft.schemas import PlanDocument
+
+logger = logging.getLogger(__name__)
 
 
 @extend_schema_view(
     get=extend_schema(
         tags=['2단계 - 요구사항 정의서'],
         summary='요구사항 정의서 목록 조회',
-        description='등록된 전체 요구사항 정의서 목록과 포함된 세부 항목들을 함께 조회합니다.',
+        description='등록된 전체 요구사항 정의서 목록을 조회합니다. `spec` 또는 `project` ID 쿼리 파라미터를 이용해 특정 기획서/프로젝트별 필터링이 가능합니다.',
+        parameters=[
+            OpenApiParameter(
+                name='spec',
+                type=OpenApiTypes.INT,
+                location=OpenApiParameter.QUERY,
+                description='기획서 ID (SpecDocument ID)로 필터링',
+                required=False
+            ),
+            OpenApiParameter(
+                name='project',
+                type=OpenApiTypes.INT,
+                location=OpenApiParameter.QUERY,
+                description='프로젝트 ID (Project ID)로 필터링',
+                required=False
+            ),
+        ],
         responses={200: RequirementDefinitionSerializer(many=True)}
     ),
     post=extend_schema(
@@ -39,15 +65,30 @@ class RequirementDefinitionListCreateView(generics.ListCreateAPIView):
     """
     요구사항 정의서 목록 조회 및 신규 작성 API
     GET /api/requirements/
+    GET /api/requirements/?spec=1
+    GET /api/requirements/?project=2
     POST /api/requirements/
     """
-    queryset = RequirementDefinition.objects.all()
     permission_classes = [permissions.IsAuthenticated]
 
     def get_serializer_class(self):
         if self.request.method == 'POST':
             return RequirementDefinitionCreateSerializer
         return RequirementDefinitionSerializer
+
+    def get_queryset(self):
+        queryset = RequirementDefinition.objects.all().select_related('spec', 'project', 'status_code', 'created_by')
+        
+        # 쿼리 파라미터 필터링 추가
+        spec_id = self.request.query_params.get('spec')
+        project_id = self.request.query_params.get('project')
+
+        if spec_id:
+            queryset = queryset.filter(spec_id=spec_id)
+        if project_id:
+            queryset = queryset.filter(project_id=project_id)
+
+        return queryset
 
     def perform_create(self, serializer):
         serializer.save(created_by=self.request.user)
@@ -91,72 +132,135 @@ class RequirementDefinitionDetailView(generics.RetrieveUpdateDestroyAPIView):
 
 class RequirementExtractView(APIView):
     """
-    기획서(SpecDocument) 기반 AI 요구사항 항목 자동 추출 API
-    POST /api/requirements/{id}/extract/
+    POST /api/requirements/{spec_id}/extract/
+    기획서(SpecDocument) 데이터를 AI 에이전트로 분석하여 요구사항 정의서 및 세부 항목(RequirementItem)을 생성합니다.
     """
     permission_classes = [permissions.IsAuthenticated]
 
     @extend_schema(
         tags=['2단계 - 요구사항 정의서'],
-        summary='기획서 기반 AI 세부 요구사항 추출',
-        description='연관된 기획서(`SpecDocument`)의 내용을 분석하여 REQ 코드별 세부 요구사항 항목(`RequirementItem`)을 자동 생성 및 바인딩합니다.',
-        parameters=[
-            OpenApiParameter(
-                name='pk',
-                type=OpenApiTypes.INT,
-                location=OpenApiParameter.PATH,
-                description='요구사항 추출을 실행할 요구사항 정의서 ID'
-            )
-        ],
+        summary='기획서 기반 AI 요구사항 자동 추출',
+        description='특정 기획서(SpecDocument) 원문을 AI 에이전트가 분석하여 요구사항 정의서와 세부 항목(RequirementItem)들을 생성합니다.',
         responses={
-            201: OpenApiResponse(
-                description='AI 요구사항 항목 추출 완료',
-                response=RequirementItemSerializer(many=True)
-            ),
-            404: OpenApiResponse(description='존재하지 않는 요구사항 정의서')
+            201: RequirementDefinitionSerializer,
+            400: OpenApiResponse(description="잘못된 기획서 데이터 구조"),
+            500: OpenApiResponse(description="AI 연동 또는 DB 저장 오류")
         }
     )
-    def post(self, request, pk):
-        req_def = get_object_or_404(RequirementDefinition, pk=pk)
-        spec = req_def.spec
+    def post(self, request, spec_id):
+        # 1. 대상 기획서 조회
+        spec_document = get_object_or_404(SpecDocument, id=spec_id)
 
-        # -------------------------------------------------------------
-        # [AI 요구사항 추출 로직 모킹/연동 영역]
-        # 기획서(spec) 텍스트를 파싱하여 REQ 코드별 항목 자동 작성
-        # -------------------------------------------------------------
-        extracted_items = [
-            {
-                "req_code": "REQ-01",
-                "req_name": "사용자 인증 및 권한 관리",
-                "description": f"기획서 '{spec.title}' 기준: AbstractUser 확장 기반 JWT API 구현",
-                "difficulty": "중",
-                "category": "보안/인증"
-            },
-            {
-                "req_code": "REQ-02",
-                "req_name": "파이프라인 이력 자동 로깅",
-                "description": "기획서 검토 및 업무 배정 시 PipelineHistory 테이블 기록",
-                "difficulty": "하",
-                "category": "데이터베이스"
-            }
-        ]
+        # 2. SpecDocument DB 객체 -> PlanDocument Pydantic 스키마 변환 데이터 구성
+        plan_dict = {
+            "project_id": str(spec_document.project.id) if hasattr(spec_document, "project") and spec_document.project else "DEFAULT_PROJECT",
+            "title": getattr(spec_document, "title", "기획서 초안"),
+            "overview": getattr(spec_document, "overview", ""),
+            "background": getattr(spec_document, "background", ""),
+            "goals": getattr(spec_document, "goals", []),
+            "target_users": getattr(spec_document, "target_users", []),
+            "key_features": getattr(spec_document, "key_features", []),
+            "tech_constraints": getattr(spec_document, "tech_constraints", []),
+        }
 
-        created_objs = []
-        for item in extracted_items:
-            obj = RequirementItem.objects.create(
-                req_def=req_def,
-                req_code=item["req_code"],
-                req_name=item["req_name"],
-                description=item["description"],
-                difficulty=item["difficulty"],
-                category=item["category"]
+        # 3. PlanDocument 스키마 검증
+        try:
+            plan_input = PlanDocument.model_validate(plan_dict)
+        except Exception as e:
+            logger.error(f"PlanDocument 변환 실패 (spec_id: {spec_id}): {e}")
+            return Response(
+                {
+                    "error": "INVALID_SPEC_STRUCTURE",
+                    "details": f"기획서 데이터를 AI 입력 규격으로 변환할 수 없습니다: {str(e)}"
+                },
+                status=status.HTTP_400_BAD_REQUEST
             )
-            created_objs.append(obj)
 
-        return Response({
-            "message": f"기획서 기반으로 {len(created_objs)}개의 요구사항 항목이 성공적으로 추출되었습니다.",
-            "extracted_items": RequirementItemSerializer(created_objs, many=True).data
-        }, status=status.HTTP_201_CREATED)
+        # 4. AI 에이전트 실행 (generate_requirements)
+        try:
+            ai_output = generate_requirements(
+                plan=plan_input,
+                plan_id=str(spec_document.id)
+            )
+        except Exception as e:
+            logger.exception(f"AI 요구사항 추출 실패 (spec_id: {spec_id}): {e}")
+            return Response(
+                {
+                    "error": "AI_GENERATION_FAILED",
+                    "details": f"AI 요구사항 추출 중 오류가 발생했습니다: {str(e)}"
+                },
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+        # 5. DB 저장 및 기존 요구사항 정의서 연동 (트랜잭션)
+        try:
+            with transaction.atomic():
+                # 초기 승인 상태(PENDING/검토대기) 공통 코드 조회
+                pending_status = CommonCode.objects.filter(
+                    group_code='REQSPEC_STATUS',
+                    code_value='PENDING'
+                ).first()
+
+                # 기획서와 1:1 대응되는 RequirementDefinition 생성 또는 조회
+                req_def, created = RequirementDefinition.objects.get_or_create(
+                    spec=spec_document,
+                    defaults={
+                        'project': spec_document.project if hasattr(spec_document, "project") else None,
+                        'title': f"{spec_document.title} - 요구사항 정의서",
+                        'status_code': pending_status,
+                        'created_by': request.user
+                    }
+                )
+
+                # 재추출 시 상태를 다시 PENDING으로 초기화
+                if not created and pending_status:
+                    req_def.status_code = pending_status
+                    req_def.save()
+
+                # 기존 생성 항목 초기화 (재추출 시 중복 방지)
+                RequirementItem.objects.filter(req_def=req_def).delete()
+
+                # AI 추출 결과를 RequirementItem 모델에 매핑 및 저장
+                saved_items = []
+                for index, req_item in enumerate(ai_output.requirements, start=1):
+                    # 우선순위 CommonCode 매핑 (기본값: MEDIUM)
+                    priority_str = getattr(req_item, "priority", "MEDIUM")
+                    if isinstance(priority_str, str):
+                        priority_str = priority_str.upper()
+                    
+                    priority_code_obj = CommonCode.objects.filter(
+                        group_code='REQ_PRIORITY',
+                        code_value=priority_str
+                    ).first()
+
+                    item_obj = RequirementItem.objects.create(
+                        req_def=req_def,
+                        req_code=getattr(req_item, "id", f"REQ-{index:02d}"),
+                        req_name=getattr(req_item, "title", f"요구사항 {index}"),
+                        description=getattr(req_item, "description", ""),
+                        priority_code=priority_code_obj,
+                        difficulty=getattr(req_item, "difficulty", "중"),
+                        category=getattr(req_item, "category_1", getattr(req_item, "category", "기타")),
+                        category_2=getattr(req_item, "category_2", None),
+                    )
+                    saved_items.append(item_obj)
+
+            # 6. 생성된 RequirementDefinition 결과를 Serializer로 반환
+            serializer = RequirementDefinitionSerializer(req_def)
+            return Response(
+                serializer.data,
+                status=status.HTTP_201_CREATED
+            )
+
+        except Exception as e:
+            logger.exception(f"DB 저장 중 오류 발생 (spec_id: {spec_id}): {e}")
+            return Response(
+                {
+                    "error": "DB_SAVE_FAILED",
+                    "details": f"추출된 요구사항 DB 저장 실패: {str(e)}"
+                },
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
 
 @extend_schema_view(

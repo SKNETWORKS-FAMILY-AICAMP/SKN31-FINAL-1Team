@@ -9,20 +9,21 @@ import { KanbanBoard } from "@/components/layout/KanbanBoard";
 import { TaskDetailModal } from "@/components/projects/TaskDetailModal";
 import { isTaskOverdue } from "@/lib/taskOverdue";
 import { apiFetch } from "@/lib/api/client";
+import { Toast } from "@/components/ui/Toast";
 
-// Django TaskAssignmentSerializer 응답 그대로 — heyzzabi2 시절 Task와 필드명이 다르다
-// (title -> task_title, assigneeId -> assigned_user, wbsStart/wbsEnd -> start_date/due_date,
-// gitStatus/estimatedHours/difficulty는 이 프로젝트 백엔드에 애초에 없는 필드라 표시하지 않는다).
+// Django TaskAssignmentSerializer 응답 그대로 — 2026-09-07 컬럼 재설계로 필드명이 또 바뀌었다
+// (task_title -> title, task_description -> description, due_date -> end_date, status ->
+// status_code). Git 연동/에픽/난이도 등 새 필드는 이 화면에서 아직 안 씀.
 type Task = {
   id: number;
   project: number | null;
-  task_title: string;
-  task_description: string | null;
-  status: string;
-  status_display: string;
+  title: string;
+  description: string | null;
+  status_code: string;
+  status_info: { code_id: string; code_name: string } | null;
   progress: number;
   start_date: string | null;
-  due_date: string | null;
+  end_date: string | null;
   assigned_user: number | null;
   assigned_user_name: string | null;
   reject_reason: string | null;
@@ -66,6 +67,7 @@ export default function TasksPage() {
   const [currentProjectId, setCurrentProjectId] = useState<string | null>(null);
   // 리스트/WBS 뷰 행을 눌러도 아무 반응이 없었다 — 칸반 카드와 동일하게 상세 모달을 연다.
   const [selectedTaskForDetail, setSelectedTaskForDetail] = useState<Task | null>(null);
+  const [toast, setToast] = useState<{ message: string; variant: "success" | "error" } | null>(null);
 
   useEffect(() => {
     fetchTasks();
@@ -115,11 +117,11 @@ export default function TasksPage() {
     try {
       await apiFetch(`/api/tasks/assignments/${taskId}/status/`, {
         method: "PATCH",
-        body: JSON.stringify({ status: newStatus }),
+        body: JSON.stringify({ status_code: newStatus }),
       });
-      setTasks(tasks.map(t => t.id === taskId ? { ...t, status: newStatus } : t));
+      setTasks(tasks.map(t => t.id === taskId ? { ...t, status_code: newStatus } : t));
     } catch {
-      alert("상태 변경에 실패했습니다.");
+      setToast({ message: "상태 변경에 실패했습니다.", variant: "error" });
     } finally {
       setProcessingId(null);
     }
@@ -131,12 +133,12 @@ export default function TasksPage() {
       filtered = filtered.filter(t => String(t.assigned_user) === String(user.id));
     }
     if (statusFilter) {
-      filtered = filtered.filter(t => t.status === statusFilter);
+      filtered = filtered.filter(t => t.status_code === statusFilter);
     }
     if (search.trim()) {
       const q = search.toLowerCase();
       filtered = filtered.filter(t =>
-        t.task_title.toLowerCase().includes(q) ||
+        t.title.toLowerCase().includes(q) ||
         (t.assigned_user_name || "").toLowerCase().includes(q)
       );
     }
@@ -269,8 +271,8 @@ export default function TasksPage() {
                     </tr>
                   ) : (
                     pagedTasks.map(task => {
-                      const statusInfo = STATUSES.find(s => s.id === task.status) || STATUSES[0];
-                      const overdue = isTaskOverdue({ wbsEnd: task.due_date, status: task.status });
+                      const statusInfo = STATUSES.find(s => s.id === task.status_code) || STATUSES[0];
+                      const overdue = isTaskOverdue({ wbsEnd: task.end_date, status: task.status_code });
                       return (
                         <tr
                           key={task.id}
@@ -278,17 +280,17 @@ export default function TasksPage() {
                           className="hover:bg-black/5 dark:hover:bg-white/5 transition-colors group relative cursor-pointer"
                         >
                           <td className="px-6 py-4">
-                            <div className="font-bold mb-1">{task.task_title}</div>
-                            {task.task_description && <div className="text-xs text-muted-foreground line-clamp-1 max-w-md">{task.task_description}</div>}
+                            <div className="font-bold mb-1">{task.title}</div>
+                            {task.description && <div className="text-xs text-muted-foreground line-clamp-1 max-w-md">{task.description}</div>}
                           </td>
                           <td className="px-6 py-4" onClick={e => e.stopPropagation()}>
-                            {task.status === "PENDING_APPROVAL" ? (
+                            {task.status_code === "PENDING_APPROVAL" ? (
                               <span className={cn("inline-block text-xs font-bold px-2.5 py-1.5 rounded-lg", statusInfo.bg, statusInfo.color)}>
                                 {statusInfo.label} · PM 승인 대기
                               </span>
                             ) : (
                               <select
-                                value={task.status}
+                                value={task.status_code}
                                 onChange={e => handleStatusChange(task.id, e.target.value)}
                                 disabled={processingId === task.id}
                                 className={cn(
@@ -315,7 +317,7 @@ export default function TasksPage() {
                           <td className={cn("px-6 py-4 text-[13px]", overdue ? "text-red-500 font-semibold" : "text-muted-foreground")}>
                             <div className="flex items-center gap-1">
                               {overdue && <AlertTriangle className="w-3.5 h-3.5 shrink-0" />}
-                              {task.due_date ? new Date(task.due_date).toLocaleDateString() : "-"}
+                              {task.end_date ? new Date(task.end_date).toLocaleDateString() : "-"}
                             </div>
                           </td>
                           <td className="px-6 py-4">
@@ -351,6 +353,7 @@ export default function TasksPage() {
           }}
         />
       )}
+      <Toast message={toast?.message ?? null} variant={toast?.variant} onDismiss={() => setToast(null)} />
     </div>
   );
 }
@@ -362,7 +365,7 @@ export default function TasksPage() {
 function WbsBoardView({ tasks, onRowClick }: { tasks: Task[]; onRowClick: (task: Task) => void }) {
   const total = tasks.length;
   const counts = STATUSES.reduce((acc, s) => {
-    acc[s.id] = tasks.filter(t => t.status === s.id).length;
+    acc[s.id] = tasks.filter(t => t.status_code === s.id).length;
     return acc;
   }, {} as Record<string, number>);
   const doneCount = counts["COMPLETED"] ?? 0;
@@ -412,8 +415,8 @@ function WbsBoardView({ tasks, onRowClick }: { tasks: Task[]; onRowClick: (task:
               <tr><td colSpan={5} className="px-6 py-12 text-center text-muted-foreground">조건에 맞는 업무가 없습니다.</td></tr>
             ) : (
               pagedTasks.map(task => {
-                const statusInfo = STATUSES.find(s => s.id === task.status) || STATUSES[0];
-                const overdue = isTaskOverdue({ wbsEnd: task.due_date, status: task.status });
+                const statusInfo = STATUSES.find(s => s.id === task.status_code) || STATUSES[0];
+                const overdue = isTaskOverdue({ wbsEnd: task.end_date, status: task.status_code });
                 return (
                   <tr
                     key={task.id}
@@ -422,7 +425,7 @@ function WbsBoardView({ tasks, onRowClick }: { tasks: Task[]; onRowClick: (task:
                   >
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-1.5">
-                        <span className="font-bold">{task.task_title}</span>
+                        <span className="font-bold">{task.title}</span>
                         {overdue && (
                           <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-red-500/10 text-red-500 shrink-0">
                             <AlertTriangle className="w-3 h-3" /> 지연
@@ -445,7 +448,7 @@ function WbsBoardView({ tasks, onRowClick }: { tasks: Task[]; onRowClick: (task:
                       </div>
                     </td>
                     <td className="px-6 py-4 text-[13px] text-muted-foreground">
-                      {task.due_date ? new Date(task.due_date).toLocaleDateString() : "-"}
+                      {task.end_date ? new Date(task.end_date).toLocaleDateString() : "-"}
                     </td>
                   </tr>
                 );

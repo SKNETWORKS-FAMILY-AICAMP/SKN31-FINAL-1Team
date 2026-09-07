@@ -75,7 +75,7 @@ function SortableTask({ task, members, onAssign, onClick, isPM, onApprove, onRej
   // 칸반 카드를 드래그해 상태를 바꾸는 것도 "내 업무" 아니면 PM만 — 예전엔 아무 카드나 아무나 옮길 수 있었다.
   const canManage = isPM || String(task.assigned_user) === String(currentUserId);
   // 승인대기/반려 상태는 드래그로 옮길 수 없다 — 승인/반려 버튼으로만 상태가 바뀐다.
-  const draggable = canManage && task.status !== "PENDING_APPROVAL" && task.status !== "REJECTED";
+  const draggable = canManage && task.status_code !== "PENDING_APPROVAL" && task.status_code !== "REJECTED";
   const {
     attributes,
     listeners,
@@ -90,8 +90,8 @@ function SortableTask({ task, members, onAssign, onClick, isPM, onApprove, onRej
     transition,
   };
 
-  const showApprovalActions = isPM && task.status === "PENDING_APPROVAL";
-  const overdue = isTaskOverdue({ wbsEnd: task.due_date, status: task.status });
+  const showApprovalActions = isPM && task.status_code === "PENDING_APPROVAL";
+  const overdue = isTaskOverdue({ wbsEnd: task.end_date, status: task.status_code });
 
   return (
     <div
@@ -118,10 +118,10 @@ function SortableTask({ task, members, onAssign, onClick, isPM, onApprove, onRej
           <MoreHorizontal className="w-4 h-4" />
         </button>
       </div>
-      <h4 className="font-medium text-sm leading-tight mb-1">{task.task_title}</h4>
+      <h4 className="font-medium text-sm leading-tight mb-1">{task.title}</h4>
       <p className="text-[11px] text-muted-foreground mb-3">{task.req_code} {task.req_name}</p>
 
-      {task.status === "REJECTED" && task.reject_reason && (
+      {task.status_code === "REJECTED" && task.reject_reason && (
         <p className="text-[11px] text-red-400 mb-3 line-clamp-2">반려됨: {task.reject_reason}</p>
       )}
 
@@ -205,6 +205,7 @@ export function KanbanBoard({ initialTasks, members = [], onTaskChange }: { proj
   const [rejectTarget, setRejectTarget] = useState<any | null>(null);
   const [rejectReason, setRejectReason] = useState("");
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [errorToast, setErrorToast] = useState<string | null>(null);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } })
@@ -230,17 +231,17 @@ export function KanbanBoard({ initialTasks, members = [], onTaskChange }: { proj
 
   const commitStatusChange = async (taskId: number, newStatus: string) => {
     const prev = tasks;
-    setTasks((cur) => cur.map((t) => t.id === taskId ? { ...t, status: newStatus } : t));
-    onTaskChange?.(taskId, { status: newStatus });
+    setTasks((cur) => cur.map((t) => t.id === taskId ? { ...t, status_code: newStatus } : t));
+    onTaskChange?.(taskId, { status_code: newStatus });
     try {
       await apiFetch(`/api/tasks/assignments/${taskId}/status/`, {
         method: "PATCH",
-        body: JSON.stringify({ status: newStatus }),
+        body: JSON.stringify({ status_code: newStatus }),
       });
     } catch (e) {
       console.error("상태 변경 실패", e);
       setTasks(prev);
-      onTaskChange?.(taskId, { status: prev.find((t) => t.id === taskId)?.status });
+      onTaskChange?.(taskId, { status_code: prev.find((t) => t.id === taskId)?.status_code });
     }
   };
 
@@ -260,8 +261,8 @@ export function KanbanBoard({ initialTasks, members = [], onTaskChange }: { proj
     if (activeId === overId) return;
 
     const draggedTask = tasks.find((t) => t.id === activeId);
-    const overColumnId = COLUMNS.find((c) => c.id === overId)?.id || tasks.find((t) => t.id === overId)?.status;
-    if (!draggedTask || !overColumnId || draggedTask.status === overColumnId) return;
+    const overColumnId = COLUMNS.find((c) => c.id === overId)?.id || tasks.find((t) => t.id === overId)?.status_code;
+    if (!draggedTask || !overColumnId || draggedTask.status_code === overColumnId) return;
     // useSortable의 disabled로 이미 막지만, 한 번 더 확인 — 남의 업무는 PM이 아니면 옮길 수 없다
     if (!isPM && String(draggedTask.assigned_user) !== String(user?.id)) return;
     // 승인대기/반려로는 드래그로 못 들어간다 — 승인/반려 버튼 또는 서버 로직으로만 전이된다
@@ -275,13 +276,13 @@ export function KanbanBoard({ initialTasks, members = [], onTaskChange }: { proj
     try {
       await apiFetch(`/api/tasks/assignments/${task.id}/status/`, {
         method: "PATCH",
-        body: JSON.stringify({ status: "APPROVED" }),
+        body: JSON.stringify({ status_code: "APPROVED" }),
       });
-      setTasks((prev) => prev.map((t) => t.id === task.id ? { ...t, status: "APPROVED", reject_reason: null } : t));
-      onTaskChange?.(task.id, { status: "APPROVED", reject_reason: null });
+      setTasks((prev) => prev.map((t) => t.id === task.id ? { ...t, status_code: "APPROVED", reject_reason: null } : t));
+      onTaskChange?.(task.id, { status_code: "APPROVED", reject_reason: null });
       setToastMessage("업무가 승인되었습니다");
     } catch (e: any) {
-      alert(e.message || "승인에 실패했습니다.");
+      setErrorToast(e.message || "승인에 실패했습니다.");
     } finally {
       setProcessing(null);
     }
@@ -293,15 +294,15 @@ export function KanbanBoard({ initialTasks, members = [], onTaskChange }: { proj
     try {
       await apiFetch(`/api/tasks/assignments/${rejectTarget.id}/status/`, {
         method: "PATCH",
-        body: JSON.stringify({ status: "REJECTED", reject_reason: rejectReason }),
+        body: JSON.stringify({ status_code: "REJECTED", reject_reason: rejectReason }),
       });
-      setTasks((prev) => prev.map((t) => t.id === rejectTarget.id ? { ...t, status: "REJECTED", reject_reason: rejectReason } : t));
-      onTaskChange?.(rejectTarget.id, { status: "REJECTED", reject_reason: rejectReason });
+      setTasks((prev) => prev.map((t) => t.id === rejectTarget.id ? { ...t, status_code: "REJECTED", reject_reason: rejectReason } : t));
+      onTaskChange?.(rejectTarget.id, { status_code: "REJECTED", reject_reason: rejectReason });
       setRejectTarget(null);
       setRejectReason("");
       setToastMessage("업무가 반려되었습니다");
     } catch (e: any) {
-      alert(e.message || "반려에 실패했습니다.");
+      setErrorToast(e.message || "반려에 실패했습니다.");
     } finally {
       setProcessing(null);
     }
@@ -314,11 +315,12 @@ export function KanbanBoard({ initialTasks, members = [], onTaskChange }: { proj
   // 아직 진행 상태로 안 옮겨진 업무가 승인대기 칸에도 진행 칸에도 안 보여 사라진 것처럼 보이는
   // 문제를 피하기 위함(담당자가 드래그로 직접 진행 중으로 옮기기 전까지의 과도 상태).
   const columnTasks = (columnId: string) =>
-    tasks.filter((t) => columnId === "IN_PROGRESS" ? (t.status === "IN_PROGRESS" || t.status === "APPROVED") : t.status === columnId);
+    tasks.filter((t) => columnId === "IN_PROGRESS" ? (t.status_code === "IN_PROGRESS" || t.status_code === "APPROVED") : t.status_code === columnId);
 
   return (
     <>
       <Toast message={toastMessage} onDismiss={() => setToastMessage(null)} />
+      <Toast message={errorToast} variant="error" onDismiss={() => setErrorToast(null)} />
       <DndContext sensors={sensors} collisionDetection={closestCorners} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
         {/* 컬럼 4개가 가로 스크롤 없이 화면 폭에 맞춰 균등하게 나뉘도록 grid로 배치 — 완료 컬럼까지 한 화면에 다 보이게.
             높이를 여기서 가두지 않는다 — 예전엔 부모가 h-[70vh]로 고정하고 각 컬럼이 그 안에서 따로
@@ -373,7 +375,7 @@ export function KanbanBoard({ initialTasks, members = [], onTaskChange }: { proj
               <button onClick={() => setRejectTarget(null)} className="p-1.5 rounded-lg hover:bg-black/5 dark:hover:bg-white/5"><X className="w-4 h-4" /></button>
             </div>
             <p className="text-sm text-muted-foreground mb-4">
-              <span className="font-semibold text-foreground">"{rejectTarget.task_title}"</span> 업무를 반려합니다.
+              <span className="font-semibold text-foreground">"{rejectTarget.title}"</span> 업무를 반려합니다.
             </p>
             <div className="relative mb-4">
               <MessageSquare className="w-4 h-4 absolute left-3 top-3.5 text-muted-foreground" />

@@ -11,9 +11,9 @@ import { apiFetch } from "@/lib/api/client";
 
 type Task = {
   id: number;
-  task_title: string;
-  status: string;
-  task_description?: string | null;
+  title: string;
+  status_code: string;
+  description?: string | null;
   reject_reason?: string | null;
   progress: number;
   assigned_user_name: string | null;
@@ -59,7 +59,7 @@ export default function ApprovalsPage() {
     try {
       await apiFetch(`/api/tasks/assignments/${taskId}/status/`, {
         method: "PATCH",
-        body: JSON.stringify({ status: "APPROVED" }),
+        body: JSON.stringify({ status_code: "APPROVED" }),
       });
       setTasks(prev => prev.filter(t => t.id !== taskId));
     } catch (e) {
@@ -75,7 +75,7 @@ export default function ApprovalsPage() {
     try {
       await apiFetch(`/api/tasks/assignments/${rejectModal.id}/status/`, {
         method: "PATCH",
-        body: JSON.stringify({ status: "REJECTED", reject_reason: rejectReason }),
+        body: JSON.stringify({ status_code: "REJECTED", reject_reason: rejectReason }),
       });
       setTasks(prev => prev.filter(t => t.id !== rejectModal.id));
       setRejectModal(null);
@@ -156,7 +156,7 @@ export default function ApprovalsPage() {
                   </div>
 
                   {/* Title */}
-                  <h3 className="font-bold text-lg leading-tight mb-1">{task.task_title}</h3>
+                  <h3 className="font-bold text-lg leading-tight mb-1">{task.title}</h3>
 
                   {/* Assignee (PM view) */}
                   {isPM && task.assigned_user_name && (
@@ -196,7 +196,7 @@ export default function ApprovalsPage() {
                       승인
                     </button>
                     <button
-                      onClick={() => setRejectModal({ id: task.id, title: task.task_title })}
+                      onClick={() => setRejectModal({ id: task.id, title: task.title })}
                       disabled={processingId === task.id}
                       className="flex items-center gap-2 px-4 py-2 bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-red-400 rounded-xl text-sm font-semibold transition-colors disabled:opacity-50"
                     >

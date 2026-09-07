@@ -12,6 +12,8 @@ from django.middleware.csrf import CsrfViewMiddleware
 from rest_framework import exceptions
 from rest_framework_simplejwt.authentication import JWTAuthentication
 
+from users.sessions import token_sid_matches, touch_session
+
 
 class _CsrfCheck(CsrfViewMiddleware):
     def _reject(self, request, reason):
@@ -32,6 +34,20 @@ class CookieJWTAuthentication(JWTAuthentication):
 
         validated_token = self.get_validated_token(raw_token)
         user = self.get_user(validated_token)
+
+        # TODO: 데모/개발 편의로 중복 로그인 차단을 임시 해제. 복구하려면 아래 sid 검사 주석을 풀 것.
+        #       (views.py LoginView 의 is_session_active 차단도 함께 주석 처리돼 있으니 같이 복구)
+        # 한 계정당 1개 세션만 허용 — 다른 기기에서 새로 로그인하면 이 토큰의 sid가
+        # 더 이상 user.session_key와 맞지 않으므로 여기서 거부된다.
+        # if not token_sid_matches(user, validated_token):
+        #     raise exceptions.AuthenticationFailed(
+        #         '다른 기기에서 로그인되어 이 세션은 종료되었습니다.',
+        #         code='session_superseded',
+        #     )
+
+        # 이 세션이 아직 살아있음을 기록 — 유휴 자동해제 판정 기준.
+        touch_session(user)
+
         self.enforce_csrf(request)
         return (user, validated_token)
 
