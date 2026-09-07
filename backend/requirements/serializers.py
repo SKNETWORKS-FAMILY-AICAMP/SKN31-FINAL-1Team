@@ -40,6 +40,7 @@ class RequirementItemSerializer(serializers.ModelSerializer):
             'priority_info',
             'difficulty',
             'category',
+            'category_2',
         ]
         read_only_fields = ['id']
 
@@ -51,6 +52,7 @@ class RequirementDefinitionSerializer(serializers.ModelSerializer):
     """
     created_by_name = serializers.CharField(source='created_by.username', read_only=True)
     spec_title = serializers.CharField(source='spec.title', read_only=True)
+    project_name = serializers.CharField(source='project.name', read_only=True)
     items = RequirementItemSerializer(many=True, read_only=True)
 
     class Meta:
@@ -59,6 +61,8 @@ class RequirementDefinitionSerializer(serializers.ModelSerializer):
             'id',
             'spec',
             'spec_title',
+            'project',
+            'project_name',
             'title',
             'version',
             'description',
@@ -77,4 +81,4 @@ class RequirementDefinitionCreateSerializer(serializers.ModelSerializer):
     """
     class Meta:
         model = RequirementDefinition
-        fields = ['spec', 'title', 'version', 'description']
+        fields = ['spec', 'project', 'title', 'version', 'description']
