@@ -40,9 +40,9 @@ type TaskDto = {
   id: number;
   project: number | null;
   assigned_user_name: string | null;
-  task_title: string;
-  status: string;
-  status_display: string;
+  title: string;
+  status_code: string;
+  status_info: { code_id: string; code_name: string } | null;
   updated_at: string;
 };
 
@@ -64,7 +64,7 @@ const STATUS_CHART_COLOR: Record<string, string> = {
   REJECTED: "#ef4444",
 };
 
-// statusChart를 그릴 때 한글 라벨(status_display)로 이름을 쓰는데, 클릭 시 /tasks로 보내려면
+// statusChart를 그릴 때 한글 라벨(status_info.code_name)로 이름을 쓰는데, 클릭 시 /tasks로 보내려면
 // 원래 상태 코드가 필요해서 여기서 역매핑한다.
 const STATUS_CODE_BY_LABEL: Record<string, string> = {
   "승인 대기": "PENDING_APPROVAL",
@@ -80,16 +80,16 @@ function buildStats(tasks: TaskDto[], projects: ProjectDto[], isPM: boolean) {
   const projectNameById = new Map(projects.map(p => [p.id, p.name]));
 
   const totalTasks = tasks.length;
-  const inProgress = tasks.filter(t => t.status === "IN_PROGRESS").length;
-  const pendingApproval = tasks.filter(t => t.status === "PENDING_APPROVAL").length;
-  const done = tasks.filter(t => t.status === "COMPLETED").length;
+  const inProgress = tasks.filter(t => t.status_code === "IN_PROGRESS").length;
+  const pendingApproval = tasks.filter(t => t.status_code === "PENDING_APPROVAL").length;
+  const done = tasks.filter(t => t.status_code === "COMPLETED").length;
   const completionRate = totalTasks ? Math.round((done / totalTasks) * 100) : 0;
 
   const statusOrder = ["PENDING_APPROVAL", "APPROVED", "IN_PROGRESS", "COMPLETED", "REJECTED"];
   const statusChart = statusOrder
     .map(code => ({
-      name: tasks.find(t => t.status === code)?.status_display ?? code,
-      value: tasks.filter(t => t.status === code).length,
+      name: tasks.find(t => t.status_code === code)?.status_info?.code_name ?? code,
+      value: tasks.filter(t => t.status_code === code).length,
       color: STATUS_CHART_COLOR[code],
     }))
     .filter(d => d.value > 0);
@@ -107,9 +107,9 @@ function buildStats(tasks: TaskDto[], projects: ProjectDto[], isPM: boolean) {
     .map(t => ({
       projectId: String(t.project ?? ""),
       projectName: (t.project != null ? projectNameById.get(t.project) : undefined) ?? "",
-      taskTitle: t.task_title,
-      status: t.status,
-      statusLabel: t.status_display,
+      taskTitle: t.title,
+      status: t.status_code,
+      statusLabel: t.status_info?.code_name ?? t.status_code,
       assigneeName: t.assigned_user_name,
       updatedAt: t.updated_at,
     }));
@@ -121,7 +121,7 @@ function buildStats(tasks: TaskDto[], projects: ProjectDto[], isPM: boolean) {
     .map(p => {
       const projectTasks = tasks.filter(t => t.project === p.id);
       const totalTasks = projectTasks.length;
-      const doneTasks = projectTasks.filter(t => t.status === "COMPLETED").length;
+      const doneTasks = projectTasks.filter(t => t.status_code === "COMPLETED").length;
       return {
         id: String(p.id),
         name: p.name,
