@@ -205,6 +205,7 @@ export function KanbanBoard({ initialTasks, members = [], onTaskChange }: { proj
   const [rejectTarget, setRejectTarget] = useState<any | null>(null);
   const [rejectReason, setRejectReason] = useState("");
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [errorToast, setErrorToast] = useState<string | null>(null);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } })
@@ -281,7 +282,7 @@ export function KanbanBoard({ initialTasks, members = [], onTaskChange }: { proj
       onTaskChange?.(task.id, { status_code: "APPROVED", reject_reason: null });
       setToastMessage("업무가 승인되었습니다");
     } catch (e: any) {
-      alert(e.message || "승인에 실패했습니다.");
+      setErrorToast(e.message || "승인에 실패했습니다.");
     } finally {
       setProcessing(null);
     }
@@ -301,7 +302,7 @@ export function KanbanBoard({ initialTasks, members = [], onTaskChange }: { proj
       setRejectReason("");
       setToastMessage("업무가 반려되었습니다");
     } catch (e: any) {
-      alert(e.message || "반려에 실패했습니다.");
+      setErrorToast(e.message || "반려에 실패했습니다.");
     } finally {
       setProcessing(null);
     }
@@ -319,6 +320,7 @@ export function KanbanBoard({ initialTasks, members = [], onTaskChange }: { proj
   return (
     <>
       <Toast message={toastMessage} onDismiss={() => setToastMessage(null)} />
+      <Toast message={errorToast} variant="error" onDismiss={() => setErrorToast(null)} />
       <DndContext sensors={sensors} collisionDetection={closestCorners} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
         {/* 컬럼 4개가 가로 스크롤 없이 화면 폭에 맞춰 균등하게 나뉘도록 grid로 배치 — 완료 컬럼까지 한 화면에 다 보이게.
             높이를 여기서 가두지 않는다 — 예전엔 부모가 h-[70vh]로 고정하고 각 컬럼이 그 안에서 따로

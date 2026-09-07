@@ -10,6 +10,7 @@ import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth";
 import { apiFetch } from "@/lib/api/client";
 import { KanbanBoard } from "@/components/layout/KanbanBoard";
+import { Toast } from "@/components/ui/Toast";
 
 type User = { id: string; name: string; email: string; role: string };
 // Django TaskAssignmentSerializer 응답 그대로 — 2026-09-07 컬럼 재설계로 필드명이 또 바뀌었다
@@ -54,6 +55,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   const [settingsDescription, setSettingsDescription] = useState("");
   const [savingSettings, setSavingSettings] = useState(false);
   const [settingsSaved, setSettingsSaved] = useState(false);
+  const [toast, setToast] = useState<{ message: string; variant: "success" | "error" } | null>(null);
 
   useEffect(() => {
     // TaskAssignment는 project를 직접 참조하지 않아서(req_item->req_def->spec->meeting->project
@@ -104,7 +106,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
       setSettingsSaved(true);
       setTimeout(() => setSettingsSaved(false), 2000);
     } catch (err: any) {
-      alert(err.message || "저장에 실패했습니다.");
+      setToast({ message: err.message || "저장에 실패했습니다.", variant: "error" });
     } finally {
       setSavingSettings(false);
     }
@@ -120,7 +122,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
       });
     } catch (err: any) {
       setTasks(oldTasks);
-      alert(err.message || "상태 변경에 실패했습니다.");
+      setToast({ message: err.message || "상태 변경에 실패했습니다.", variant: "error" });
     }
   };
 
@@ -134,7 +136,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
       });
     } catch (err: any) {
       setTasks(oldTasks);
-      alert(err.message || "저장에 실패했습니다.");
+      setToast({ message: err.message || "저장에 실패했습니다.", variant: "error" });
     }
   };
 
@@ -413,6 +415,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
           </div>
         )}
       </div>
+      <Toast message={toast?.message ?? null} variant={toast?.variant} onDismiss={() => setToast(null)} />
     </div>
   );
 }

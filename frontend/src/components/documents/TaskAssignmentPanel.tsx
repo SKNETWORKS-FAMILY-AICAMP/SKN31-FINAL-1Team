@@ -89,6 +89,7 @@ export function TaskAssignmentPanel({
   const [reassigning, setReassigning] = useState<string | null>(null);
   const [expandedReason, setExpandedReason] = useState<string | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [errorToast, setErrorToast] = useState<string | null>(null);
 
   // 담당자 변경 드롭다운에 쓸 팀원 목록은 배정 실행 여부와 무관하게 항상 필요하다.
   // 온보딩 전이라 이름이 비어있는 계정은 드롭다운에 빈 옵션으로 뜨니 제외한다.
@@ -120,13 +121,13 @@ export function TaskAssignmentPanel({
       if (extractedNewTasks) {
         const res = await fetch(`/api/projects/${projectId}/documents/${doc.id}/extract-tasks`, { method: "POST" });
         const data = await res.json();
-        if (!res.ok) { alert(data.error || "업무 생성에 실패했습니다."); return; }
+        if (!res.ok) { setErrorToast(data.error || "업무 생성에 실패했습니다."); return; }
       }
 
       const res = await fetch(`/api/projects/${projectId}/documents/${doc.id}/assign-tasks`, { method: "POST" });
       const data = await res.json();
       if (!res.ok) {
-        alert(data.error || "배정 추천 생성에 실패했습니다.");
+        setErrorToast(data.error || "배정 추천 생성에 실패했습니다.");
         // 방금 추출한 업무가 이미 DB에 있는데 prop이 여전히 0건이면, 사용자가 재시도할 때
         // "업무 배분 시작" 분기로 다시 들어가 extract-tasks를 중복 호출하게 된다 — 실패
         // 시에만 여기서 새로고침해 prop을 DB 상태와 맞춘다.
@@ -155,7 +156,7 @@ export function TaskAssignmentPanel({
       );
       setToastMessage("업무 배분 생성이 완료되었습니다");
     } catch {
-      alert("네트워크 오류가 발생했습니다.");
+      setErrorToast("네트워크 오류가 발생했습니다.");
     } finally {
       setGenerating(false);
     }
@@ -214,6 +215,7 @@ export function TaskAssignmentPanel({
     return (
       <div className="space-y-4">
         <Toast message={toastMessage} onDismiss={() => setToastMessage(null)} />
+        <Toast message={errorToast} variant="error" onDismiss={() => setErrorToast(null)} />
         <p className="text-sm text-muted-foreground">
           AI가 추천한 담당자와 일정입니다. 필요하면 담당자·일정을 직접 바꾼 뒤 확정하세요.
         </p>
@@ -321,6 +323,7 @@ export function TaskAssignmentPanel({
   if (tasks.length === 0 || unassigned.length > 0) {
     return (
       <div className="space-y-5">
+        <Toast message={errorToast} variant="error" onDismiss={() => setErrorToast(null)} />
         {tasks.length > 0 && <AssignedList tasks={tasks} members={members} isPM={isPM} expandedReason={expandedReason} setExpandedReason={setExpandedReason} reassign={reassign} reassigning={reassigning} />}
         {isPM ? (
           <div className="p-10 text-center border border-dashed border-border rounded-xl">
