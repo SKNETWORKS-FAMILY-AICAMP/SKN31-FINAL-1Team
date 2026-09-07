@@ -63,7 +63,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         try {
           await apiFetch("/api/users/me/");
           return; // refresh로 살아났으면 그냥 계속 진행
-        } catch {
+        } catch (err: any) {
+          // 2026-09-07: "동시 로그인 1개만 허용" 기능이 추가되면서, 다른 곳에서 같은 계정으로
+          // 로그인하면 이 세션이 강제 종료된다 — 아무 설명 없이 로그인 화면으로 튕기면 사용자는
+          // 왜 로그아웃됐는지 알 방법이 없다(실제로 겪음). 백엔드가 이미 detail 메시지로 사유를
+          // 내려주므로(예: "다른 기기에서 로그인되어 세션이 종료되었습니다"), 그걸 로그인
+          // 화면에 전달해서 보여준다.
+          if (err?.message) {
+            sessionStorage.setItem("hz_logout_reason", err.message);
+          }
           setUser(null);
           localStorage.removeItem("hz_session");
           window.location.href = "/login";
