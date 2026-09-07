@@ -5,6 +5,7 @@ from .views import (
     LogoutView,
     CookieTokenRefreshView,
     CurrentUserProfileView,
+    ChangePasswordView,
     UserListView,
     UserManageView,
     UserPasswordResetView,
@@ -14,6 +15,7 @@ from .views import (
 
 urlpatterns = [
     path('me/', CurrentUserProfileView.as_view(), name='user-me'),
+    path('me/change-password/', ChangePasswordView.as_view(), name='user-change-password'),
     path('', UserListView.as_view(), name='user-list'),
     path('csrf/', CsrfCookieView.as_view(), name='csrf-cookie'),
     path('login/', LoginView.as_view(), name='login'),

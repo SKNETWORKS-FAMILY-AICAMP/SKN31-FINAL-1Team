@@ -127,7 +127,9 @@ class CookieTokenRefreshView(APIView):
     @extend_schema(
         tags=['0단계 - 사용자 관리'],
         summary='access 토큰 재발급',
-        description='refresh_token 쿠키로 새 access 토큰을 발급해 쿠키로 내려줍니다.',
+        description='refresh_token 쿠키로 새 access 토큰을 발급해 쿠키로 내려줍니다. 활동이 있는 '
+                     '동안은 refresh 토큰도 매번 새로 발급해(슬라이딩) 세션이 계속 연장되게 합니다 — '
+                     '그렇지 않으면 로그인 시점 기준 24시간 뒤 활동 중이어도 무조건 로그아웃됩니다.',
         responses={200: OpenApiTypes.OBJECT, 401: OpenApiTypes.OBJECT}
     )
     def post(self, request):
@@ -139,8 +141,20 @@ class CookieTokenRefreshView(APIView):
         except TokenError as e:
             return Response({"detail": str(e)}, status=status.HTTP_401_UNAUTHORIZED)
 
+        try:
+            user = User.objects.get(pk=refresh.payload.get('user_id'))
+        except User.DoesNotExist:
+            return Response({"detail": "유효하지 않은 토큰입니다."}, status=status.HTTP_401_UNAUTHORIZED)
+
+        # 활동(=API 호출로 인한 재발급)이 있을 때마다 refresh 토큰도 새로 발급해 만료 시점을
+        # 지금부터 다시 24시간으로 미룬다(슬라이딩 세션) — access만 갱신하고 refresh는 그대로
+        # 재사용하면, 로그인한 지 24시간이 지나는 순간 계속 활동 중이었어도 무조건 로그아웃된다
+        # (실제로 겪은 문제). 블랙리스트 앱은 안 붙어 있어 예전 refresh 토큰이 자기 수명이 끝날
+        # 때까지는 여전히 유효하지만, 로그아웃 처리도 지금 블랙리스트 없이 동작하는 것과 같은
+        # 수준이라 새로운 보안 저하는 아니다.
+        new_refresh = RefreshToken.for_user(user)
         response = Response({"detail": "재발급 완료"}, status=status.HTTP_200_OK)
-        set_auth_cookies(response, str(refresh.access_token))
+        set_auth_cookies(response, str(new_refresh.access_token), str(new_refresh))
         return response
 
 
@@ -160,6 +174,36 @@ class CurrentUserProfileView(APIView):
     def get(self, request):
         serializer = UserDetailSerializer(request.user)
         return Response(serializer.data)
+
+
+class ChangePasswordView(APIView):
+    """
+    본인 비밀번호 변경 API — 지금까지는 PM이 초기화(UserPasswordResetView)해주는 방법만
+    있었고, 사용자 본인이 직접 바꾸는 엔드포인트가 없었다.
+    PATCH /api/users/me/change-password/
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    @extend_schema(
+        tags=['0단계 - 사용자 관리'],
+        summary='본인 비밀번호 변경',
+        description='현재 비밀번호 확인 후 새 비밀번호로 변경합니다.',
+        responses={200: None, 400: None},
+    )
+    def patch(self, request):
+        current_password = request.data.get('current_password')
+        new_password = request.data.get('new_password')
+
+        if not current_password or not new_password:
+            return Response({"error": "현재 비밀번호와 새 비밀번호를 모두 입력해주세요."}, status=status.HTTP_400_BAD_REQUEST)
+        if not request.user.check_password(current_password):
+            return Response({"error": "현재 비밀번호가 올바르지 않습니다."}, status=status.HTTP_400_BAD_REQUEST)
+        if len(new_password) < 4:
+            return Response({"error": "새 비밀번호는 4자 이상이어야 합니다."}, status=status.HTTP_400_BAD_REQUEST)
+
+        request.user.set_password(new_password)
+        request.user.save(update_fields=['password'])
+        return Response({"message": "비밀번호가 변경되었습니다."}, status=status.HTTP_200_OK)
 
 
 class UserListView(generics.ListCreateAPIView):
@@ -389,17 +433,26 @@ class UserStopImpersonateView(APIView):
         if not original_access:
             return Response({"error": "되돌아갈 계정 정보가 없습니다."}, status=status.HTTP_400_BAD_REQUEST)
 
+        # 저장해둔 원본 토큰을 그대로 되돌려주면, 전환해 있던 동안 시간이 흘러 그 토큰(특히
+        # refresh, 수명 1일 고정)까지 함께 만료돼 있는 경우가 생긴다 — 그러면 복귀 직후 다음
+        # API 호출에서 refresh까지 실패해 실제로 로그아웃당한다(재현됨: DEV 전환을 오래 켜둔 채
+        # 왔다갔다 하다 로그아웃). user_id만 꺼내서 그 사람 몫으로 새 토큰을 발급하면 전환해
+        # 있던 시간과 무관하게 항상 복귀가 성공한다.
         try:
             user_id = RefreshToken(original_refresh).payload.get('user_id') if original_refresh else None
             original_user = User.objects.get(pk=user_id) if user_id else None
         except (TokenError, User.DoesNotExist):
             original_user = None
 
+        if not original_user:
+            return Response({"error": "되돌아갈 계정 정보가 유효하지 않습니다."}, status=status.HTTP_400_BAD_REQUEST)
+
+        refresh = RefreshToken.for_user(original_user)
         response = Response(
-            {"user": UserSimpleSerializer(original_user).data if original_user else None},
+            {"user": UserSimpleSerializer(original_user).data},
             status=status.HTTP_200_OK,
         )
-        set_auth_cookies(response, original_access, original_refresh)
+        set_auth_cookies(response, str(refresh.access_token), str(refresh))
         response.delete_cookie('dev_original_access_token', path='/')
         response.delete_cookie('dev_original_refresh_token', path=REFRESH_COOKIE_PATH)
         return response

@@ -8,8 +8,8 @@ import TagAutocomplete from "@/components/ui/TagAutocomplete";
 type ProjectOption = { id: number; name: string };
 const NEW_PROJECT_VALUE = "__new__";
 
-// 2026-09-01: /api/meetings/notes/parse-file/ (.docx/.pdf/.txt만 지원 — .hwp는 안정적인
-// 순수 파이썬 파서가 없어서 제외) 로 파일을 올리면 텍스트를 추출해 "원본 내용" 칸을 채운다.
+// 2026-09-01: /api/meetings/notes/parse-file/ (.docx/.pdf/.txt/.hwp 지원 — .hwp는 hwp5txt
+// CLI를 서브프로세스로 호출) 로 파일을 올리면 텍스트를 추출해 "원본 내용" 칸을 채운다.
 const SAMPLE_NOTES = [
   `[신규 쇼핑몰 프로젝트 킥오프 회의록]
 일자: 2026-08-19
@@ -112,19 +112,17 @@ export function NewDocumentModal({
     return null;
   };
 
+  // 참석자는 수동 입력만 받는다 — 예전엔 원본 내용에 등록된 팀원 이름이 보이면 자동으로
+  // 참석자 태그에 추가했는데, 본문에 이름이 언급됐다고 실제 참석자인 건 아니라서(예: "OOO팀장
+  // 요청으로") 잘못 채워지는 경우가 있었다(사용자가 실제로 겪음). 회의 일시는 원본에 "일자:"
+  // 같은 명시적 표기가 있으면 그대로 옮겨적는 것뿐이라 오탐 여지가 적어 자동 추출을 유지한다.
   useEffect(() => {
     if (!content.trim()) return;
     const timer = setTimeout(() => {
       setMeetingDate(prev => prev || extractMeetingDate(content) || "");
-      if (memberNames.length > 0) {
-        const found = memberNames.filter(name => content.includes(name));
-        if (found.length > 0) {
-          setAttendees(prev => Array.from(new Set([...prev, ...found])));
-        }
-      }
     }, 600);
     return () => clearTimeout(timer);
-  }, [content, memberNames]);
+  }, [content]);
 
   const handleLoadSample = () => {
     const randomIndex = Math.floor(Math.random() * SAMPLE_NOTES.length);
@@ -292,7 +290,7 @@ export function NewDocumentModal({
                   <input
                     ref={fileInputRef}
                     type="file"
-                    accept=".docx,.pdf,.txt"
+                    accept=".docx,.pdf,.txt,.hwp,.md"
                     onChange={handleFileSelected}
                     className="hidden"
                   />
@@ -301,7 +299,7 @@ export function NewDocumentModal({
                     onClick={() => fileInputRef.current?.click()}
                     disabled={uploadingFile}
                     className="flex items-center gap-1 text-xs font-semibold text-primary hover:text-primary/80 bg-primary/10 px-3 py-1 rounded-full transition-colors disabled:opacity-50"
-                    title="지원 형식: .docx, .pdf, .txt"
+                    title="지원 형식: .docx, .pdf, .txt, .hwp, .md"
                   >
                     {uploadingFile ? <Loader2 className="w-3 h-3 animate-spin" /> : <Paperclip className="w-3 h-3" />}
                     {uploadingFile ? "추출 중..." : "파일에서 불러오기"}

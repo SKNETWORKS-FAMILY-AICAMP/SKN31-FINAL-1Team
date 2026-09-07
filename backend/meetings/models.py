@@ -86,6 +86,12 @@ class SpecDocument(models.Model):
     tech_stack = models.TextField(null=True, blank=True, verbose_name="6. 기술 스택 및 제약사항")
     final_decisions = models.TextField(null=True, blank=True, verbose_name="7. 최종 결정사항")
 
+    # 2026-09-01: 회의록 원문에 "프로젝트 기간: YYYY-MM-DD ~ YYYY-MM-DD"처럼 명시된 경우 AI 분석
+    # 시점에 정규식으로 추출해 자동으로 채운다(views.py MeetingNoteAnalyzeView). 원문에 없으면
+    # null로 두고 화면(ProposalTemplate)에서 직접 입력하게 한다 — 지어내지 않는다는 원칙 유지.
+    period_start = models.DateField(null=True, blank=True, verbose_name="프로젝트 시작일")
+    period_end = models.DateField(null=True, blank=True, verbose_name="프로젝트 종료일")
+
     # background/target_scope: 이 7섹션 템플릿 이전에 쓰이던 필드 — 새 화면에서는 안 쓰지만
     # 기존 데이터 호환을 위해 그대로 남겨둔다.
     background = models.TextField(null=True, blank=True, verbose_name="추진 배경 (구 필드, 미사용)")

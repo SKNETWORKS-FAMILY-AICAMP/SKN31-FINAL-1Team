@@ -8,6 +8,9 @@ from rest_framework.response import Response
 from drf_spectacular.utils import extend_schema, OpenApiParameter, OpenApiResponse, OpenApiTypes
 
 import docx
+from docx.table import Table
+from docx.text.paragraph import Paragraph
+
 from pypdf import PdfReader
 
 from meetings.models import MeetingNote, SpecDocument
@@ -105,34 +108,75 @@ class MeetingNoteAnalyzeView(APIView):
             meeting.status = MeetingNote.Status.REVIEWED
             meeting.save()
 
-            # 5. 파싱 함수: 리스트/디렉토리 형태도 텍스트 줄바꿈으로 파싱
-            def parse_section(val):
-                if not val:
+            # AI가 내용을 <p>/<strong>/<ul><li> 같은 HTML 태그를 섞어서 줄 때가 있는데, 화면은
+            # 이걸 그냥 일반 텍스트로 보여주므로 태그가 그대로 노출된다(실제로 사용자가 발견한 문제).
+            # fe6a95c에서 이 제거 함수 자체가 삭제됐던 걸 복구 — html/re는 여전히 import되어 있다.
+            def strip_html_tags(text):
+                if not text:
                     return ""
-                if isinstance(val, list):
-                    # 리스트 원소가 dict인 경우와 일반 문자열인 경우 처리
-                    lines = []
-                    for item in val:
-                        if isinstance(item, dict):
-                            lines.append(json.dumps(item, ensure_ascii=False))
-                        else:
-                            lines.append(f"- {item}")
-                    return "\n".join(lines)
-                if isinstance(val, dict):
-                    return json.dumps(val, ensure_ascii=False, indent=2)
-                return str(val)
+                text_str = str(text)
+                decoded_text = html.unescape(text_str)
+                clean_text = re.sub(r'<[^>]+>', ' ', decoded_text)
+                clean_text = re.sub(r'[ \t]+', ' ', clean_text)
+                clean_text = re.sub(r'\n\s*\n', '\n', clean_text)
+                return clean_text.strip()
 
-            # AI 에이전트 스키마 변수명 대응 (다양한 key 명칭 감지)
+            # 실제 AI 응답 구조 확인 결과(2026-09-01 재확인): 위쪽 레벨에 overview/features 같은
+            # 키가 바로 있는 게 아니라, plan_dict["sections"]가 [{key, title, content_html, items}, ...]
+            # 형태의 리스트로 온다. 팀원 커밋(fe6a95c)이 이걸 top-level 키 매칭으로 바꿔놓는 바람에
+            # 실제로는 전부 매칭 실패 -> "회의에서 논의되지 않았습니다"로만 표시되고 있었다
+            # (내용이 있어도 안 보이는데, 폴백 문구가 그럴듯해서 눈치채기 어려웠다).
+            sections_map = {}
+            for sec in (plan_dict.get('sections') or []):
+                if not isinstance(sec, dict):
+                    continue
+                sec_key = sec.get('key')
+                if not sec_key or not isinstance(sec_key, str):
+                    continue
+
+                content = sec.get('content_html') or ""
+                if not content and isinstance(sec.get('items'), list):
+                    content = "\n".join(f"- {item}" for item in sec['items'] if isinstance(item, (str, int)))
+                if not content and isinstance(sec.get('features'), list):
+                    lines = []
+                    for f in sec['features']:
+                        if isinstance(f, dict):
+                            lines.append(f"• {f.get('title', '')}: {f.get('description', '')}")
+                    content = "\n".join(lines)
+
+                sections_map[sec_key] = strip_html_tags(content)
+
+            # 기획서 7개 섹션 중 회의에서 실제로 논의 안 된 항목은 AI가 빈 값을 준다 — 화면에
+            # 그냥 빈 칸으로 두면 "생성이 덜 됐나?" 오해를 살 수 있어서, 비어있으면 명시적으로
+            # "회의에서 논의되지 않았습니다"를 채운다(내용을 지어내지 않는다는 원칙은 그대로 유지).
+            NOT_DISCUSSED = "회의에서 논의되지 않았습니다."
+
+            def section_or_not_discussed(key):
+                val = sections_map.get(key, "")
+                return val if val.strip() else NOT_DISCUSSED
+
             spec_defaults = {
                 'title': f"{meeting.title} - 기획 초안",
-                'overview': parse_section(plan_dict.get('overview') or plan_dict.get('project_overview') or plan_dict.get('summary')),
-                'problem_definition': parse_section(plan_dict.get('problem_definition') or plan_dict.get('problem') or plan_dict.get('background')),
-                'target_users': parse_section(plan_dict.get('target_users') or plan_dict.get('target_user') or plan_dict.get('target_audience')),
-                'key_features': parse_section(plan_dict.get('key_features') or plan_dict.get('features') or plan_dict.get('main_features')),
-                'user_scenarios': parse_section(plan_dict.get('user_scenarios') or plan_dict.get('scenarios') or plan_dict.get('user_story')),
-                'tech_stack': parse_section(plan_dict.get('tech_stack') or plan_dict.get('technology') or plan_dict.get('constraints')),
-                'final_decisions': parse_section(plan_dict.get('final_decisions') or plan_dict.get('decisions') or plan_dict.get('next_steps')),
+                'overview': section_or_not_discussed('overview'),
+                'problem_definition': section_or_not_discussed('problem'),
+                'target_users': section_or_not_discussed('users'),
+                'key_features': section_or_not_discussed('features'),
+                'user_scenarios': section_or_not_discussed('scenarios'),
+                'tech_stack': section_or_not_discussed('tech_scope'),
+                'final_decisions': section_or_not_discussed('decisions'),
             }
+
+            # 회의록 원문에 "프로젝트 기간: 2026-08-25 ~ 2026-10-24"처럼 명시적인 날짜 범위가
+            # 있으면 정규식으로 추출해 자동으로 채운다. 못 찾으면 spec_defaults에 아예 키를 안 넣어서
+            # (update_or_create는 defaults에 있는 필드만 덮어쓴다) 이미 사용자가 화면에서 직접
+            # 입력해둔 기간이 재생성할 때마다 날아가지 않게 한다.
+            period_match = re.search(
+                r'(\d{4}-\d{2}-\d{2})\s*(?:~|-|부터)\s*(\d{4}-\d{2}-\d{2})',
+                meeting.content or "",
+            )
+            if period_match:
+                spec_defaults['period_start'] = period_match.group(1)
+                spec_defaults['period_end'] = period_match.group(2)
 
             # 6. 기존 기획서가 있다면 필드 값 업데이트 (get_or_create 대신 update_or_create 적용)
             spec, created = SpecDocument.objects.update_or_create(
@@ -253,7 +297,7 @@ class MeetingNoteParseFileView(APIView):
     """
     회의록 첨부 파일에서 텍스트를 추출해 반환 (저장은 하지 않음 — 프론트가 "원본 내용" 칸을 채우는 용도)
     POST /api/meetings/notes/parse-file/  (multipart/form-data, key: file)
-    지원 형식: .docx, .pdf, .txt — .hwp는 안정적인 순수 파이썬 파서가 없어 지원하지 않는다.
+    지원 형식: .docx, .pdf, .txt, .md, .hwp(HWPv5 바이너리 포맷 — pyhwp의 hwp5txt CLI를 서브프로세스로 호출)
     """
     permission_classes = [permissions.IsAuthenticated]
     parser_classes = [parsers.MultiPartParser]
@@ -263,7 +307,7 @@ class MeetingNoteParseFileView(APIView):
     @extend_schema(
         tags=['1단계 - 회의록'],
         summary='회의록 첨부 파일 텍스트 추출',
-        description='.docx/.pdf/.txt 파일을 업로드하면 텍스트를 추출해서 돌려준다. DB에 저장하지 않는다.',
+        description='.docx/.pdf/.txt/.md/.hwp 파일을 업로드하면 텍스트를 추출해서 돌려준다. DB에 저장하지 않는다.',
         request={'multipart/form-data': {'type': 'object', 'properties': {'file': {'type': 'string', 'format': 'binary'}}}},
         responses={200: OpenApiResponse(description='추출된 텍스트')},
     )
@@ -278,15 +322,17 @@ class MeetingNoteParseFileView(APIView):
         try:
             if name.endswith('.docx'):
                 document = docx.Document(f)
-                text = "\n".join(para.text for para in document.paragraphs)
+                text = self._extract_docx_text(document)
             elif name.endswith('.pdf'):
                 reader = PdfReader(f)
                 text = "\n".join((page.extract_text() or "") for page in reader.pages)
-            elif name.endswith('.txt'):
+            elif name.endswith('.txt') or name.endswith('.md'):
                 text = f.read().decode('utf-8', errors='ignore')
+            elif name.endswith('.hwp'):
+                text = self._extract_hwp_text(f)
             else:
                 return Response(
-                    {"error": "지원하지 않는 파일 형식입니다. .docx, .pdf, .txt 파일만 업로드해주세요."},
+                    {"error": "지원하지 않는 파일 형식입니다. .docx, .pdf, .txt, .md, .hwp 파일만 업로드해주세요."},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
         except Exception as e:
@@ -297,3 +343,58 @@ class MeetingNoteParseFileView(APIView):
             return Response({"error": "파일에서 텍스트를 추출하지 못했습니다."}, status=status.HTTP_400_BAD_REQUEST)
 
         return Response({"content": text, "filename": f.name}, status=status.HTTP_200_OK)
+
+    @staticmethod
+    def _extract_docx_text(document):
+        """
+        기존엔 document.paragraphs만 이어붙였는데, 이건 표(Table)는 아예 건너뛴다 — python-docx가
+        표와 문단을 별도 컬렉션으로 나눠 두기 때문(표 안의 텍스트는 document.paragraphs에 없다).
+        회의록에 표가 있으면 통째로 사라지던 문제(실제 겪음)를 고치려고, body를 원래 문서 순서
+        그대로 순회하면서 문단은 그대로, 표는 마크다운 파이프 표 형태(| a | b |)로 바꿔 끼워 넣는다
+        — AI 분석 단계도 이 텍스트를 그대로 읽으므로, 표를 없애는 것보다 마크다운으로라도 남기는
+        편이 정보 손실이 적다.
+        """
+        lines = []
+        for child in document.element.body.iterchildren():
+            if child.tag.endswith('}p'):
+                text = Paragraph(child, document).text
+                if text.strip():
+                    lines.append(text)
+            elif child.tag.endswith('}tbl'):
+                table = Table(child, document)
+                rows = [[cell.text.strip() for cell in row.cells] for row in table.rows]
+                if not rows:
+                    continue
+                lines.append("| " + " | ".join(rows[0]) + " |")
+                lines.append("| " + " | ".join("---" for _ in rows[0]) + " |")
+                for row in rows[1:]:
+                    lines.append("| " + " | ".join(row) + " |")
+        return "\n".join(lines)
+
+    @staticmethod
+    def _extract_hwp_text(uploaded_file):
+        """
+        .hwp(HWPv5)는 바이너리 OLE 복합 문서 포맷이라 python-docx/pypdf 같은 순수 파이썬
+        라이브러리로는 못 읽는다 — pyhwp 패키지가 설치하는 hwp5txt CLI를 서브프로세스로
+        불러서 변환한다(파이썬 API가 내부 구현 세부사항이라 CLI가 더 안정적).
+        """
+        import subprocess
+        import tempfile
+        import os
+
+        with tempfile.NamedTemporaryFile(suffix='.hwp', delete=False) as tmp:
+            for chunk in uploaded_file.chunks():
+                tmp.write(chunk)
+            tmp_path = tmp.name
+
+        try:
+            result = subprocess.run(
+                ['hwp5txt', tmp_path],
+                capture_output=True,
+                timeout=30,
+            )
+            if result.returncode != 0:
+                raise ValueError(result.stderr.decode('utf-8', errors='ignore') or "hwp5txt 변환 실패")
+            return result.stdout.decode('utf-8', errors='ignore')
+        finally:
+            os.unlink(tmp_path)

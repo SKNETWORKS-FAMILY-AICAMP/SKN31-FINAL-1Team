@@ -3,9 +3,8 @@
 import { useState, useEffect, use } from "react";
 import { useRouter } from "next/navigation";
 import {
-  FolderKanban, CalendarDays, Settings, Plus, MoreHorizontal,
-  Clock, CheckCircle2, PlayCircle, ShieldAlert, Lock,
-  Loader2, Search, ArrowRight, User as UserIcon, CalendarIcon
+  FolderKanban, CalendarDays, Settings, Clock, CheckCircle2, PlayCircle, ShieldAlert, XCircle, Lock,
+  Loader2, Search,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth";
@@ -13,25 +12,25 @@ import { apiFetch } from "@/lib/api/client";
 import { KanbanBoard } from "@/components/layout/KanbanBoard";
 
 type User = { id: string; name: string; email: string; role: string };
+// Django TaskAssignmentSerializer 응답 그대로 — heyzzabi2 시절 Task와 필드명이 다르다
+// (title -> task_title, assigneeId -> assigned_user, wbsStart/wbsEnd -> start_date/due_date).
 type Task = {
-  id: string; title: string; description: string | null;
+  id: number; task_title: string; task_description: string | null;
+  req_code: string; req_name: string;
   status: string; progress: number;
-  wbsStart: string | null; wbsEnd: string | null;
-  assigneeId: string | null;
-  assignee: { id: string; name: string; email: string } | null;
-  createdAt: string;
+  start_date: string | null; due_date: string | null;
+  assigned_user: number | null; assigned_user_name: string | null;
+  reject_reason: string | null;
 };
-type Project = {
-  id: string; name: string; description: string | null;
-  startDate: string | null; endDate: string | null;
-  tasks: Task[];
-};
+type Project = { id: string; name: string; description: string | null };
 
+// Django TaskAssignment.Status 실제 값 — 예전 BACKLOG/DONE은 없고 REJECTED가 추가됐다.
 const STATUSES = [
-  { id: "BACKLOG", label: "대기", icon: Clock, color: "text-gray-400" },
-  { id: "PENDING_APPROVAL", label: "배분승인대기", icon: ShieldAlert, color: "text-orange-400" },
+  { id: "PENDING_APPROVAL", label: "승인 대기", icon: ShieldAlert, color: "text-orange-400" },
+  { id: "APPROVED", label: "승인됨", icon: CheckCircle2, color: "text-sky-400" },
   { id: "IN_PROGRESS", label: "진행 중", icon: PlayCircle, color: "text-amber-400" },
-  { id: "DONE", label: "완료", icon: CheckCircle2, color: "text-emerald-400" }
+  { id: "COMPLETED", label: "완료", icon: CheckCircle2, color: "text-emerald-400" },
+  { id: "REJECTED", label: "반려됨", icon: XCircle, color: "text-red-400" },
 ];
 
 export default function ProjectPage({ params }: { params: Promise<{ id: string }> }) {
@@ -40,10 +39,10 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   const { user } = useAuth();
   const isPM = user?.role === "PM";
   // 담당자 재배정/일정 조율은 PM의 권한이고, 상태·진행률은 "내 업무면 내가 갱신"이 자연스럽다.
-  // 지금까지는 이 화면에 아무 권한 구분이 없어서 일반 유저가 남의 업무 진행률까지 바꿀 수 있었다.
-  const canEditTask = (task: Task) => isPM || task.assigneeId === user?.id;
+  const canEditTask = (task: Task) => isPM || String(task.assigned_user) === String(user?.id);
 
   const [project, setProject] = useState<Project | null>(null);
+  const [tasks, setTasks] = useState<Task[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<"KANBAN" | "WBS" | "SETTINGS">("KANBAN");
@@ -55,28 +54,16 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   const [savingSettings, setSavingSettings] = useState(false);
   const [settingsSaved, setSettingsSaved] = useState(false);
 
-  // Add Task Modal
-  const [addModal, setAddModal] = useState(false);
-  const [newTask, setNewTask] = useState({ title: "", description: "", assigneeId: "", wbsStart: "", wbsEnd: "" });
-  const [adding, setAdding] = useState(false);
-
   useEffect(() => {
-    // 2026-09-01: Django ProjectSerializer는 name/description만 주고 tasks를 내려주지 않는다
-    // (TaskAssignment가 project를 직접 참조하지 않아서 — req_item→req_def→spec→meeting→project로
-    // 이어지는 체인을 타야 함). 칸반/WBS 업무 연동은 백엔드 모델 확장(진행률 필드, 반려 상태 등)이
-    // 먼저 필요해서 이번엔 프로젝트 이름/설명만 재배선하고 업무 목록은 빈 배열로 둔다.
+    // TaskAssignment는 project를 직접 참조하지 않아서(req_item->req_def->spec->meeting->project
+    // 체인을 탐) 백엔드가 ?project= 쿼리 파라미터로 필터링을 지원한다(tasks/views.py 참고).
     Promise.all([
       apiFetch<any>(`/api/projects/${id}/`),
       apiFetch<any[]>("/api/users/"),
-    ]).then(([proj, allUsers]) => {
-      setProject({
-        id: String(proj.id),
-        name: proj.name,
-        description: proj.description,
-        startDate: null,
-        endDate: null,
-        tasks: [],
-      });
+      apiFetch<Task[]>(`/api/tasks/assignments/?project=${id}`),
+    ]).then(([proj, allUsers, taskList]) => {
+      setProject({ id: String(proj.id), name: proj.name, description: proj.description });
+      setTasks(taskList);
       // 칸반의 담당자 드롭다운에는 실제로 업무를 받을 수 있는 사람만 나와야 한다 —
       // PM(is_staff)은 배정 대상이 아니고, 온보딩 전이라 이름이 비어있는 계정도 빈 옵션으로 보이니 제외한다.
       setUsers(
@@ -108,90 +95,45 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
     setSavingSettings(true);
     setSettingsSaved(false);
     try {
-      const res = await fetch(`/api/projects/${id}`, {
+      const updated = await apiFetch<any>(`/api/projects/${id}/`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: settingsName.trim(), description: settingsDescription }),
       });
-      const data = await res.json();
-      if (data.success) {
-        setProject({ ...project, name: data.data.name, description: data.data.description });
-        setSettingsSaved(true);
-        setTimeout(() => setSettingsSaved(false), 2000);
-      }
+      setProject({ ...project, name: updated.name, description: updated.description });
+      setSettingsSaved(true);
+      setTimeout(() => setSettingsSaved(false), 2000);
+    } catch (err: any) {
+      alert(err.message || "저장에 실패했습니다.");
     } finally {
       setSavingSettings(false);
     }
   };
 
-  const handleStatusChange = async (taskId: string, newStatus: string) => {
-    if (!project) return;
-    // Optimistic UI
-    const oldTasks = [...project.tasks];
-    setProject({
-      ...project,
-      tasks: project.tasks.map(t => t.id === taskId ? { ...t, status: newStatus } : t)
-    });
-
+  const handleStatusChange = async (taskId: number, newStatus: string) => {
+    const oldTasks = tasks;
+    setTasks(tasks.map(t => t.id === taskId ? { ...t, status: newStatus } : t));
     try {
-      const res = await fetch(`/api/tasks/${taskId}`, {
+      await apiFetch(`/api/tasks/assignments/${taskId}/status/`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: newStatus })
+        body: JSON.stringify({ status: newStatus }),
       });
-      if (!res.ok) throw new Error("Failed");
-    } catch {
-      setProject({ ...project, tasks: oldTasks });
+    } catch (err: any) {
+      setTasks(oldTasks);
+      alert(err.message || "상태 변경에 실패했습니다.");
     }
   };
 
-  const handleTaskUpdate = async (taskId: string, updates: Partial<Task>) => {
-    if (!project) return;
-    const oldTasks = [...project.tasks];
-    setProject({
-      ...project,
-      tasks: project.tasks.map(t => t.id === taskId ? { ...t, ...updates } : t)
-    });
-
+  const handleTaskUpdate = async (taskId: number, updates: Partial<Task>) => {
+    const oldTasks = tasks;
+    setTasks(tasks.map(t => t.id === taskId ? { ...t, ...updates } : t));
     try {
-      await fetch(`/api/tasks/${taskId}`, {
+      await apiFetch(`/api/tasks/assignments/${taskId}/`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(updates)
+        body: JSON.stringify(updates),
       });
-    } catch {
-      setProject({ ...project, tasks: oldTasks });
-    }
-  };
-
-  const handleAddTask = async () => {
-    if (!newTask.title.trim() || !project) return;
-    setAdding(true);
-    
-    try {
-      const res = await fetch("/api/tasks", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          projectId: id,
-          title: newTask.title,
-          description: newTask.description,
-          assigneeId: newTask.assigneeId || null,
-          wbsStart: newTask.wbsStart || null,
-          wbsEnd: newTask.wbsEnd || null,
-          status: "BACKLOG"
-        })
-      });
-      const data = await res.json();
-      if (res.ok) {
-        // Find assignee details if set
-        const assignee = users.find(u => u.id === data.assigneeId) || null;
-        setProject({ ...project, tasks: [{ ...data, assignee }, ...project.tasks] });
-        setAddModal(false);
-        setNewTask({ title: "", description: "", assigneeId: "", wbsStart: "", wbsEnd: "" });
-      }
-    } finally {
-      setAdding(false);
+    } catch (err: any) {
+      setTasks(oldTasks);
+      alert(err.message || "저장에 실패했습니다.");
     }
   };
 
@@ -212,22 +154,20 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
     );
   }
 
-  const filteredTasks = project.tasks.filter(t => 
-    !search || t.title.toLowerCase().includes(search.toLowerCase()) || 
-    (t.assignee?.name || "").toLowerCase().includes(search.toLowerCase())
+  const filteredTasks = tasks.filter(t =>
+    !search || t.task_title.toLowerCase().includes(search.toLowerCase()) ||
+    (t.assigned_user_name || "").toLowerCase().includes(search.toLowerCase())
   );
 
-  const doneTasks = project.tasks.filter(t => t.status === "DONE").length;
-  const totalTasks = project.tasks.length;
+  const doneTasks = tasks.filter(t => t.status === "COMPLETED").length;
+  const totalTasks = tasks.length;
   const progressPct = totalTasks > 0 ? Math.round((doneTasks / totalTasks) * 100) : 0;
 
   return (
     <div className="w-full max-w-7xl mx-auto space-y-6 pb-20 animate-in fade-in duration-500">
-      
+
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
-        {/* min-w-0이 없으면 옆의 통계 박스가 flex의 기본 shrink 동작 때문에 밀려서 찌그러지고,
-            그 안의 "완료 업무" 같은 한글 텍스트가 글자 단위로 세로 줄바꿈되는 문제가 있었다. */}
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2 mb-1">
             <FolderKanban className="w-5 h-5 text-primary" />
@@ -276,31 +216,30 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
           </button>
         </div>
 
-        <div className="flex items-center gap-3">
-          <div className="relative group">
-            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground group-focus-within:text-primary transition-colors" />
-            <input
-              type="text"
-              placeholder="업무 검색..."
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              className="pl-9 pr-4 py-2.5 bg-black/5 dark:bg-white/5 border border-transparent hover:border-black/10 dark:hover:border-white/10 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-transparent focus:bg-background w-48 transition-all focus:w-64"
-            />
-          </div>
-          <button
-            onClick={() => setAddModal(true)}
-            className="flex items-center gap-2 px-4 py-2.5 bg-primary text-primary-foreground rounded-xl text-sm font-bold shadow-md hover:bg-primary/90 hover:shadow-lg transition-all active:scale-95"
-          >
-            <Plus className="w-4 h-4" /> 새 업무
-          </button>
+        <div className="relative group">
+          <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground group-focus-within:text-primary transition-colors" />
+          <input
+            type="text"
+            placeholder="업무 검색..."
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            className="pl-9 pr-4 py-2.5 bg-black/5 dark:bg-white/5 border border-transparent hover:border-black/10 dark:hover:border-white/10 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-transparent focus:bg-background w-48 transition-all focus:w-64"
+          />
         </div>
+        {/* "새 업무 추가"는 여기서 뺐다 — Django TaskAssignment는 req_item(요구사항 항목) FK가
+            필수라 제목만으로 즉석 생성이 안 된다. 업무는 요구사항정의서 단계에서 자동배정
+            (auto-assign)으로 만들어진다 — 요구사항 선택 UI가 생기면 이 자리에 다시 붙이면 된다. */}
       </div>
 
       {/* Tab Content */}
       <div className="pt-2">
         {activeTab === "KANBAN" && (
           <div className="flex">
-            <KanbanBoard projectId={id} initialTasks={filteredTasks} members={users} />
+            <KanbanBoard
+              initialTasks={filteredTasks}
+              members={users}
+              onTaskChange={(taskId, patch) => setTasks(prev => prev.map(t => t.id === taskId ? { ...t, ...patch } : t))}
+            />
           </div>
         )}
 
@@ -322,11 +261,13 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                   {filteredTasks.map(task => {
                     const statusMeta = STATUSES.find(s => s.id === task.status);
                     const SIcon = statusMeta?.icon || Clock;
+                    // 승인대기/반려는 칸반의 승인·반려 버튼으로만 바뀐다 — 여기 드롭다운으로는 못 바꾼다.
+                    const statusLocked = task.status === "PENDING_APPROVAL" || task.status === "REJECTED" || !canEditTask(task);
                     return (
                       <tr key={task.id} className="hover:bg-black/5 dark:hover:bg-white/5 transition-colors group">
-                        <td className="px-4 py-3 font-medium min-w-[200px]">{task.title}</td>
+                        <td className="px-4 py-3 font-medium min-w-[200px]">{task.task_title}</td>
                         <td className="px-4 py-3">
-                          {task.status === "PENDING_APPROVAL" || !canEditTask(task) ? (
+                          {statusLocked ? (
                             <span className={cn("inline-flex items-center gap-1 text-xs font-semibold px-2 py-1 rounded border", statusMeta?.color, "border-orange-400/30")}>
                               <SIcon className="w-3.5 h-3.5" /> {statusMeta?.label}
                             </span>
@@ -340,7 +281,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                                 statusMeta?.color
                               )}
                             >
-                              {STATUSES.filter(s => s.id !== "PENDING_APPROVAL").map(s => <option key={s.id} value={s.id} className="text-foreground">{s.label}</option>)}
+                              {STATUSES.filter(s => s.id === "APPROVED" || s.id === "IN_PROGRESS" || s.id === "COMPLETED").map(s => <option key={s.id} value={s.id} className="text-foreground">{s.label}</option>)}
                             </select>
                           )}
                         </td>
@@ -348,8 +289,8 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                         <td className="px-4 py-3">
                           {isPM ? (
                             <select
-                              value={task.assigneeId || ""}
-                              onChange={e => handleTaskUpdate(task.id, { assigneeId: e.target.value || null })}
+                              value={task.assigned_user ? String(task.assigned_user) : ""}
+                              onChange={e => handleTaskUpdate(task.id, { assigned_user: e.target.value ? Number(e.target.value) : null })}
                               className="bg-transparent border border-transparent hover:border-black/10 dark:hover:border-white/10 rounded px-1 py-1 text-xs focus:outline-none"
                             >
                               <option value="">담당자 없음</option>
@@ -357,22 +298,22 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                             </select>
                           ) : (
                             <span title="담당자 재배정은 PM만 할 수 있습니다" className="inline-flex items-center gap-1 px-1 py-1 text-xs text-muted-foreground">
-                              <Lock className="w-3 h-3 opacity-50" /> {task.assignee?.name || "담당자 없음"}
+                              <Lock className="w-3 h-3 opacity-50" /> {task.assigned_user_name || "담당자 없음"}
                             </span>
                           )}
                         </td>
-                        {/* 일정(WBS 시작/종료일) 조율도 PM의 권한 */}
+                        {/* 일정(시작/종료일) 조율도 PM의 권한 */}
                         <td className="px-4 py-3">
                           {isPM ? (
                             <input
                               type="date"
-                              value={task.wbsStart ? new Date(task.wbsStart).toISOString().split('T')[0] : ""}
-                              onChange={e => handleTaskUpdate(task.id, { wbsStart: e.target.value ? new Date(e.target.value).toISOString() : null })}
+                              value={task.start_date ? task.start_date.slice(0, 10) : ""}
+                              onChange={e => handleTaskUpdate(task.id, { start_date: e.target.value || null })}
                               className="bg-transparent border border-transparent hover:border-black/10 dark:hover:border-white/10 rounded px-1 py-1 text-xs focus:outline-none text-muted-foreground"
                             />
                           ) : (
                             <span title="일정 조율은 PM만 할 수 있습니다" className="inline-flex items-center gap-1 px-1 py-1 text-xs text-muted-foreground">
-                              <Lock className="w-3 h-3 opacity-50" /> {task.wbsStart ? new Date(task.wbsStart).toISOString().split('T')[0] : "-"}
+                              <Lock className="w-3 h-3 opacity-50" /> {task.start_date ? task.start_date.slice(0, 10) : "-"}
                             </span>
                           )}
                         </td>
@@ -380,18 +321,17 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                           {isPM ? (
                             <input
                               type="date"
-                              value={task.wbsEnd ? new Date(task.wbsEnd).toISOString().split('T')[0] : ""}
-                              onChange={e => handleTaskUpdate(task.id, { wbsEnd: e.target.value ? new Date(e.target.value).toISOString() : null })}
+                              value={task.due_date ? task.due_date.slice(0, 10) : ""}
+                              onChange={e => handleTaskUpdate(task.id, { due_date: e.target.value || null })}
                               className="bg-transparent border border-transparent hover:border-black/10 dark:hover:border-white/10 rounded px-1 py-1 text-xs focus:outline-none text-muted-foreground"
                             />
                           ) : (
                             <span title="일정 조율은 PM만 할 수 있습니다" className="inline-flex items-center gap-1 px-1 py-1 text-xs text-muted-foreground">
-                              <Lock className="w-3 h-3 opacity-50" /> {task.wbsEnd ? new Date(task.wbsEnd).toISOString().split('T')[0] : "-"}
+                              <Lock className="w-3 h-3 opacity-50" /> {task.due_date ? task.due_date.slice(0, 10) : "-"}
                             </span>
                           )}
                         </td>
-                        {/* 진행률은 "내 업무"일 때만(+PM은 전체) 움직일 수 있다 — 예전엔 아무나 남의 업무
-                            진행률까지 바꿀 수 있었다(사용자가 실제로 발견한 버그) */}
+                        {/* 진행률은 "내 업무"일 때만(+PM은 전체) 움직일 수 있다 */}
                         <td className="px-4 py-3">
                           {canEditTask(task) ? (
                             <div className="flex items-center gap-2 group-hover:opacity-100">
@@ -472,84 +412,6 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
           </div>
         )}
       </div>
-
-      {/* Add Task Modal */}
-      {addModal && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in">
-          <div className="bg-background border border-border rounded-2xl p-6 shadow-2xl max-w-md w-full mx-4">
-            <h3 className="text-xl font-bold mb-5 flex items-center gap-2">
-              <Plus className="w-5 h-5 text-primary" /> 새 업무 추가
-            </h3>
-            
-            <div className="space-y-4">
-              <div>
-                <label className="text-sm font-semibold mb-1.5 block">업무명 *</label>
-                <input
-                  type="text"
-                  placeholder="UI 디자인 시안 작성"
-                  value={newTask.title}
-                  onChange={e => setNewTask({...newTask, title: e.target.value})}
-                  className="w-full px-4 py-2.5 bg-black/5 dark:bg-white/5 border border-border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
-                />
-              </div>
-              <div>
-                <label className="text-sm font-semibold mb-1.5 block">설명 (선택)</label>
-                <textarea
-                  placeholder="세부 내용..."
-                  value={newTask.description}
-                  onChange={e => setNewTask({...newTask, description: e.target.value})}
-                  className="w-full px-4 py-2.5 bg-black/5 dark:bg-white/5 border border-border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
-                  rows={3}
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="text-sm font-semibold mb-1.5 block">시작일</label>
-                  <input
-                    type="date"
-                    value={newTask.wbsStart}
-                    onChange={e => setNewTask({...newTask, wbsStart: e.target.value})}
-                    className="w-full px-4 py-2.5 bg-black/5 dark:bg-white/5 border border-border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
-                  />
-                </div>
-                <div>
-                  <label className="text-sm font-semibold mb-1.5 block">마감일</label>
-                  <input
-                    type="date"
-                    value={newTask.wbsEnd}
-                    onChange={e => setNewTask({...newTask, wbsEnd: e.target.value})}
-                    className="w-full px-4 py-2.5 bg-black/5 dark:bg-white/5 border border-border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
-                  />
-                </div>
-              </div>
-              <div>
-                <label className="text-sm font-semibold mb-1.5 block">담당자</label>
-                <select
-                  value={newTask.assigneeId}
-                  onChange={e => setNewTask({...newTask, assigneeId: e.target.value})}
-                  className="w-full px-4 py-2.5 bg-black/5 dark:bg-white/5 border border-border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 appearance-none"
-                >
-                  <option value="">할당하지 않음</option>
-                  {users.map(u => (
-                    <option key={u.id} value={u.id}>{u.name} ({u.email})</option>
-                  ))}
-                </select>
-              </div>
-            </div>
-
-            <div className="flex gap-3 mt-8">
-              <button onClick={() => setAddModal(false)} className="flex-1 py-2.5 rounded-xl border border-border text-sm font-semibold hover:bg-black/5 dark:hover:bg-white/5 transition-colors">취소</button>
-              <button
-                onClick={handleAddTask}
-                disabled={!newTask.title.trim() || adding}
-                className="flex-1 py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
-              >
-                {adding ? <Loader2 className="w-4 h-4 animate-spin" /> : "추가하기"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

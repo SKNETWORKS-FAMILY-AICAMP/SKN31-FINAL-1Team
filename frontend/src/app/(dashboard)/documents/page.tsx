@@ -29,6 +29,8 @@ type SpecDto = {
   user_scenarios: string | null;
   tech_stack: string | null;
   final_decisions: string | null;
+  period_start: string | null;
+  period_end: string | null;
   status_code: string | null;
   status_info: { code_id: SpecStatusCode; code_name: string } | null;
   reviewer: number | null;
@@ -79,6 +81,9 @@ function specToProposalDoc(spec: SpecDto): ProposalDoc {
     userScenario: spec.user_scenarios ?? "",
     techStackConstraints: spec.tech_stack ?? "",
     finalDecisions: spec.final_decisions ?? "",
+    // 회의록 원문에 기간이 명시돼 있으면 AI 분석 시점에 자동으로 채워지고(백엔드
+    // MeetingNoteAnalyzeView), 없으면 null — 화면(ProposalTemplate)에서 직접 입력할 수 있다.
+    projectPeriod: { start: spec.period_start ?? "", end: spec.period_end ?? "" },
   };
 }
 function proposalDocToPatch(doc: ProposalDoc) {
@@ -90,6 +95,8 @@ function proposalDocToPatch(doc: ProposalDoc) {
     user_scenarios: doc.userScenario,
     tech_stack: doc.techStackConstraints,
     final_decisions: doc.finalDecisions,
+    period_start: doc.projectPeriod?.start || null,
+    period_end: doc.projectPeriod?.end || null,
   };
 }
 
@@ -183,6 +190,21 @@ export default function DocumentsPage() {
         body: JSON.stringify({ content }),
       });
       replaceNote(updated);
+    } catch (err: any) {
+      alert(err.message || "저장에 실패했습니다.");
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const handleSavePeriod = async (note: NoteDto, spec: SpecDto, period: { start: string; end: string }) => {
+    setBusy(`${note.id}-save-period`);
+    try {
+      const updated = await apiFetch<SpecDto>(`/api/meetings/specs/${spec.id}/`, {
+        method: "PATCH",
+        body: JSON.stringify({ period_start: period.start || null, period_end: period.end || null }),
+      });
+      replaceNote({ ...note, spec_documents: note.spec_documents.map(s => s.id === updated.id ? updated : s) });
     } catch (err: any) {
       alert(err.message || "저장에 실패했습니다.");
     } finally {
@@ -399,6 +421,7 @@ export default function DocumentsPage() {
               onGenerateSpec={() => handleGenerateSpec(selectedNote)}
               onSaveNoteContent={(content) => handleSaveNoteContent(selectedNote, content)}
               onSaveSpec={(spec, doc) => handleSaveSpec(selectedNote, spec, doc)}
+              onSavePeriod={(spec, period) => handleSavePeriod(selectedNote, spec, period)}
               onSubmitReview={(spec) => handleSubmitReview(selectedNote, spec)}
               onApprove={(spec) => handleApprove(selectedNote, spec)}
               onReject={(spec) => setRejectTarget({ specId: spec.id })}
@@ -483,12 +506,13 @@ export default function DocumentsPage() {
 
 function NoteDetail({
   note, isPM, currentUserId, busy,
-  onGenerateSpec, onSaveNoteContent, onSaveSpec, onSubmitReview, onApprove, onReject,
+  onGenerateSpec, onSaveNoteContent, onSaveSpec, onSavePeriod, onSubmitReview, onApprove, onReject,
 }: {
   note: NoteDto; isPM: boolean; currentUserId: string | undefined; busy: string | null;
   onGenerateSpec: () => void;
   onSaveNoteContent: (content: string) => void;
   onSaveSpec: (spec: SpecDto, doc: ProposalDoc) => void;
+  onSavePeriod: (spec: SpecDto, period: { start: string; end: string }) => void;
   onSubmitReview: (spec: SpecDto) => void;
   onApprove: (spec: SpecDto) => void;
   onReject: (spec: SpecDto) => void;
@@ -505,12 +529,31 @@ function NoteDetail({
   useEffect(() => { setRawDraft(note.content ?? ""); }, [note.id, note.content]);
   const rawDirty = rawDraft !== (note.content ?? "");
   const rawSaving = busy === busyKey("save-raw");
-  const rawLocked = status === "PENDING_REVIEW" || status === "APPROVED";
+  // 기획서가 한 번이라도 생성되면 그 순간의 회의록 내용을 근거로 AI가 만든 것이므로, 이후에
+  // 원본을 고치면 기획서와 내용이 어긋난다 — 그래서 검토중/승인됨뿐 아니라 기획서가 존재하는
+  // 한(초안/반려 포함) 항상 잠근다(수정 화면 자체가 없도록 — 저장 버튼도 자동으로 숨겨짐).
+  const rawLocked = !!spec;
+  // 기획서 자체(직접수정 모드/기간)의 잠금은 검토중/승인됨일 때만 — 이건 원본 회의록과 별개다.
+  const specLocked = status === "PENDING_REVIEW" || status === "APPROVED";
 
   const [editMode, setEditMode] = useState(false);
   const [editDraft, setEditDraft] = useState<ProposalDoc | null>(null);
   useEffect(() => { setEditMode(false); setEditDraft(null); }, [note.id]);
   const editSaving = busy === busyKey("save-spec");
+
+  // 기간은 "직접 수정" 모드를 켜지 않아도 항상 바로 입력할 수 있다 — 검토중/승인됨일 때만
+  // 잠근다(원본 회의록 잠금과 같은 기준). 값이 바뀌는 즉시 저장한다(날짜 선택은 텍스트
+  // 입력과 달리 클릭 한 번짜리 이산적인 동작이라 별도 저장 버튼 없이 바로 반영해도 된다).
+  const [periodDraft, setPeriodDraft] = useState({ start: spec?.period_start ?? "", end: spec?.period_end ?? "" });
+  useEffect(() => {
+    setPeriodDraft({ start: spec?.period_start ?? "", end: spec?.period_end ?? "" });
+  }, [note.id, spec?.period_start, spec?.period_end]);
+  const periodEditable = !!spec && !specLocked && !editMode;
+  const handlePeriodChange = (period: { start: string; end: string }) => {
+    if (!spec) return;
+    setPeriodDraft(period);
+    onSavePeriod(spec, period);
+  };
 
   const startEdit = () => {
     if (!spec) return;
@@ -523,7 +566,9 @@ function NoteDetail({
     setEditMode(false);
   };
 
-  const parsedContent: ProposalDoc | null = editMode ? editDraft : (spec ? specToProposalDoc(spec) : null);
+  const parsedContent: ProposalDoc | null = editMode
+    ? editDraft
+    : (spec ? { ...specToProposalDoc(spec), projectPeriod: periodDraft } : null);
 
   const handlePrint = () => window.print();
   const handlePptx = async () => {
@@ -559,7 +604,7 @@ function NoteDetail({
             원본 회의록 / 메모
             {rawLocked && (
               <span className="flex items-center gap-1 text-[11px] text-muted-foreground/70">
-                <Lock className="w-3 h-3" /> 검토 중에는 수정할 수 없습니다
+                <Lock className="w-3 h-3" /> 기획서 생성 후에는 수정할 수 없습니다
               </span>
             )}
           </p>
@@ -595,6 +640,7 @@ function NoteDetail({
                 doc={parsedContent}
                 title={note.title} dateLabel={dateLabel}
                 editable={editMode} onChange={setEditDraft}
+                periodEditable={periodEditable} onPeriodChange={handlePeriodChange}
               />
             </div>
           </div>
@@ -639,7 +685,7 @@ function NoteDetail({
           </button>
         )}
 
-        {spec && status === "REJECTED" && !editMode && (
+        {spec && (status === "REJECTED" || status === "DRAFT") && !editMode && (
           <button
             onClick={startEdit}
             className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 text-sm font-bold transition-colors"
@@ -648,7 +694,7 @@ function NoteDetail({
           </button>
         )}
 
-        {spec && status === "REJECTED" && editMode && (
+        {spec && (status === "REJECTED" || status === "DRAFT") && editMode && (
           <>
             <button
               onClick={() => setEditMode(false)}

@@ -88,6 +88,7 @@ langgraph-checkpoint==4.2.0
 langgraph-prebuilt==1.1.0
 langgraph-sdk==0.4.3
 langsmith==0.11.1
+lxml==6.1.2
 markdown-it-py==4.2.0
 markupsafe==3.0.3
 matplotlib-inline==0.2.2
@@ -118,12 +119,20 @@ pydantic-core==2.46.4
 pydantic-settings==2.15.0
 pygments==2.21.0
 pygraphviz==2.0.1
+# .hwp(HWPv5) 회의록 첨부파일 텍스트 추출용 — hwp5txt CLI를 서브프로세스로 호출 (2026-09-01 추가)
+pyhwp==0.1b15
+cffi==2.1.1
+cryptography==50.0.1
+olefile==0.47
+pycparser==3.0
 pyjwt==2.13.0
 pymysql==1.2.0
+pypdf==6.16.2
 pytest==9.1.1
 pytest-asyncio==1.4.0
 pytest-django==4.14.0
 python-dateutil==2.9.0.post0
+python-docx==1.2.0
 python-dotenv==1.2.3
 pyyaml==6.0.3
 pyzmq==27.2.0
@@ -161,7 +170,3 @@ websockets==16.1.1
 xxhash==4.0.1
 yarl==1.24.5
 zstandard==0.25.0
-
-# 회의록 파일 첨부(.docx/.pdf) 텍스트 추출용 — 2026-09-01 추가
-python-docx==1.2.0
-pypdf==6.16.2
