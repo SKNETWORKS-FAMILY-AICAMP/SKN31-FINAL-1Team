@@ -12,7 +12,7 @@ from drf_spectacular.utils import (
     OpenApiResponse,
 )
 
-from tasks.models import TaskAssignment
+from tasks.models import TaskAssignment, TaskStatusCode
 from tasks.serializers import (
     TaskAssignmentSerializer,
     TaskAssignmentCreateSerializer,
@@ -66,7 +66,7 @@ class TaskAssignmentListCreateView(generics.ListCreateAPIView):
         if assignee_id:
             qs = qs.filter(assigned_user_id=assignee_id)
         if status_param:
-            qs = qs.filter(status=status_param)
+            qs = qs.filter(status_code_id=status_param)
         return qs
 
 
@@ -148,16 +148,17 @@ class AutoTaskAssignView(APIView):
         task = TaskAssignment.objects.create(
             req_item=req_item,
             assigned_user=assigned_user,
-            task_title=f"[{req_item.req_code}] {req_item.req_name} 개발",
-            task_description=req_item.description,
-            status=TaskAssignment.Status.PENDING_APPROVAL
+            project_id=project_id or None,
+            title=f"[{req_item.req_code}] {req_item.req_name} 개발",
+            description=req_item.description,
+            status_code_id=TaskStatusCode.PENDING_APPROVAL,
         )
 
         # 개발자 작업중 상태 업데이트
         assigned_user.is_busy = True
         assigned_user.save()
 
-        notify_user(assigned_user, f"'{task.task_title}' 업무가 배정되었습니다.", type='info', link='/tasks')
+        notify_user(assigned_user, f"'{task.title}' 업무가 배정되었습니다.", type='info', link='/tasks')
 
         # 파이프라인 이력 로그 생성
         if project_id:
@@ -167,7 +168,7 @@ class AutoTaskAssignView(APIView):
                 requirement=req_item.req_def,
                 task=task,
                 step_type='TASK_ASSIGNED',
-                title=f"업무 자동 배정: {task.task_title}",
+                title=f"업무 자동 배정: {task.title}",
                 description=f"담당자: {assigned_user.username} 사원 (승인 대기)",
                 actor=request.user
             )
@@ -209,35 +210,36 @@ class TaskStatusUpdateView(APIView):
     )
     def patch(self, request, pk):
         task = get_object_or_404(TaskAssignment, pk=pk)
-        new_status = request.data.get('status')
+        # status_code 는 common_code(group_code='TASK_STATUS') 의 code_id 문자열
+        new_status = request.data.get('status_code') or request.data.get('status')
 
-        if new_status not in TaskAssignment.Status.values:
-            return Response({"error": "유효하지 않은 status 값입니다."}, status=status.HTTP_400_BAD_REQUEST)
+        if new_status not in TaskStatusCode.VALUES:
+            return Response({"error": "유효하지 않은 status_code 값입니다."}, status=status.HTTP_400_BAD_REQUEST)
 
         # 반려는 승인 대기 상태에서만 사유와 함께 — 담당자를 다시 배정 없이 그냥 되돌리면
         # 사유가 안 남아 왜 반려됐는지 알 방법이 없다.
-        if new_status == TaskAssignment.Status.REJECTED:
+        if new_status == TaskStatusCode.REJECTED:
             reason = request.data.get('reject_reason', '').strip()
             if not reason:
                 return Response({"error": "반려 사유를 입력해주세요."}, status=status.HTTP_400_BAD_REQUEST)
             task.reject_reason = reason
-        elif new_status != task.status:
+        elif new_status != task.status_code_id:
             task.reject_reason = None
 
-        task.status = new_status
+        task.status_code_id = new_status
         task.save()
 
         # 업무가 완료(COMPLETED)되면 개발자의 is_busy 해제
-        if new_status == TaskAssignment.Status.COMPLETED:
+        if new_status == TaskStatusCode.COMPLETED:
             user = task.assigned_user
             user.is_busy = False
             user.save()
 
         # 담당자에게 승인/반려 결과를 알린다 (검토요청/승인/반려 알림 패턴과 동일)
-        if new_status == TaskAssignment.Status.APPROVED:
-            notify_user(task.assigned_user, f"'{task.task_title}' 업무가 승인되었습니다.", type='success', link='/tasks')
-        elif new_status == TaskAssignment.Status.REJECTED:
-            notify_user(task.assigned_user, f"'{task.task_title}' 업무가 반려되었습니다: {task.reject_reason}", type='error', link='/tasks')
+        if new_status == TaskStatusCode.APPROVED:
+            notify_user(task.assigned_user, f"'{task.title}' 업무가 승인되었습니다.", type='success', link='/tasks')
+        elif new_status == TaskStatusCode.REJECTED:
+            notify_user(task.assigned_user, f"'{task.title}' 업무가 반려되었습니다: {task.reject_reason}", type='error', link='/tasks')
 
         return Response({
             "message": "업무 상태가 성공적으로 변경되었습니다.",
