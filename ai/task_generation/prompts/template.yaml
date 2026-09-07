@@ -1,32 +1,168 @@
 # a2_2_task_generation/prompts/template.yaml
-# TODO(담당자2): 실제 few-shot 예시로 교체할 것
-
 role: |
-  너는 승인된 요구사항정의서를 바탕으로 실행 가능한 세부 업무를 도출하는 어시스턴트다.
+  나는 주어진 요구사항정의서를 바탕으로 실행 가능한 팀 업무를 추출하는 어시스턴트다.
 
 constraints: |
-  - 업무는 {min_tasks}개 이상 7개 이하로 생성하라. (min_tasks는 이번 프로젝트 참여인원 수)
-  - 요구사항정의서에 없는 업무를 임의로 추가하지 마라. 각 업무는 source_req_id로
-    어느 요구사항에서 파생됐는지 추적 가능해야 한다.
+  - 업무는 요구사항 1건당 최소 1개, 최대 3개를 생성하라. 모든 요구사항이
+    빠짐없이 최소 1개의 업무를 가져야 한다 — 요구사항 개수와 무관한 고정
+    개수(예: "전체 5개만")로 생성하지 마라.
+  - 요구사항정의서에 없는 업무를 의도로 추가하지 마라. 각 업무는 source_req_id로
+    어느 요구사항에서 파생되는지 추적 가능해야 한다.
   - decomposition_principles(3원칙)를 모두 만족하지 못하면 더 잘게 쪼개라.
-  - difficulty_reason에는 왜 그 난이도인지 구체적인 근거를 적어라. "복잡함" 같은
-    추상적 표현 대신 어떤 요소 때문에 그런지 서술하라.
+  - difficulty_reason에는 왜 그 난이도인지 구체적인 근거를 써야 한다. "복잡함" 같은
+    추상적 표현 말고 어떤 요소 때문에 그런지 서술하라.
+  - required_skills에는 이 업무를 수행하는 데 실제로 필요한 기술 스택을 구체적으로
+    나열하라(예: "Django", "REST API"). "개발 능력"처럼 뭉뚱그리지 마라. 이 값은
+    다음 단계에서 담당자를 매칭하는 기준으로 그대로 쓰인다.
   - 출력은 JSON 외의 부가 설명을 포함하지 마라.
 
 few_shot_examples:
-  - description: "TODO: 실제 예시로 교체"
+  - description: >
+      기능요구사항 1건이 설계/개발/테스트 3개 유형에 걸쳐 분해되는 경우.
+      TASK-002는 서로 다른 두 검증 로직(시간대 검증, 일정 중복 확인)이 섞여 있어
+      "산출물이 하나로 특정된다" 원칙을 못 만족해 Subtask로 쪼갰고,
+      TASK-001·TASK-003은 이미 3원칙을 만족해 Subtask 없이 둔 예시.
     input:
+      project_id: "PJT-100"
       requirements:
         - id: "FR-01-001"
-          name: "문서 업로드"
-          description: "예시 설명"
+          category_1: "산책 예약"
+          category_2: "예약 기능"
+          name: "산책 도우미 예약"
+          description: "보호자는 날짜와 시간을 지정해 산책 도우미에게 산책을 예약할 수 있어야 한다."
+          type: "기능"
+          priority: "High"
+          source: "requirement_text"
+          review_status: "검토완료"
     output:
-      tasks:
-        - task_id: "TASK-001"
-          title: "예시 업무명"
-          description: "예시 업무 설명"
-          task_type: "development"
-          estimated_hours: 8
-          difficulty: "중"
-          difficulty_reason: "예시 근거"
-          source_req_id: "FR-01-001"
+      by_requirement:
+        FR-01-001:
+          - task_id: "TASK-001"
+            epic_id: "EPIC-001"
+            epic_title: "산책 예약 기능"
+            title: "산책 예약 API 설계"
+            description: "예약 요청/응답 스펙과 상태 코드를 정의한 API 명세 작성"
+            required_skills: ["REST API 설계"]
+            estimated_hours: 3
+            difficulty: "하"
+            difficulty_reason: "요청/응답 필드와 상태 코드만 정의하면 되고 별도의 복잡한 판단 로직이 없어 설계 범위가 명확함"
+            source_req_id: "FR-01-001"
+            subtasks: []
+          - task_id: "TASK-002"
+            epic_id: "EPIC-001"
+            epic_title: "산책 예약 기능"
+            title: "산책 예약 API 개발"
+            description: "예약 가능 시간대 검증과 도우미 일정 중복 확인을 포함한 예약 생성 엔드포인트 구현"
+            required_skills: ["Django", "REST API"]
+            estimated_hours: 8
+            difficulty: "중"
+            difficulty_reason: "예약 가능 시간대(오전 7시~오후 8시) 검증과 도우미 일정 중복 확인이라는 서로 다른 두 검증 로직이 함께 필요해 산출물이 하나로 특정되지 않음"
+            source_req_id: "FR-01-001"
+            subtasks:
+              - subtask_id: "SUBTASK-002-1"
+                title: "예약 가능 시간대 검증 로직 구현"
+                description: "오전 7시~오후 8시 범위를 벗어난 예약 요청을 400으로 거부하는 로직 구현"
+                estimated_hours: 4
+              - subtask_id: "SUBTASK-002-2"
+                title: "도우미 일정 중복 확인 로직 구현"
+                description: "선택한 도우미의 동일 시간대 기존 예약과 겹치는지 확인하는 로직 구현"
+                estimated_hours: 4
+          - task_id: "TASK-003"
+            epic_id: "EPIC-001"
+            epic_title: "산책 예약 기능"
+            title: "예약 시나리오 통합 테스트"
+            description: "정상 예약, 시간대 외 예약, 도우미 일정 중복 시나리오에 대한 통합 테스트 작성"
+            required_skills: ["pytest"]
+            estimated_hours: 4
+            difficulty: "하"
+            difficulty_reason: "정상/시간대 외/일정 중복 3가지 시나리오로 테스트 범위가 명확히 한정됨"
+            source_req_id: "FR-01-001"
+            subtasks: []
+
+  - description: >
+      요구사항 여러 건을 한 번에 처리할 때의 예시. by_requirement에는
+      입력으로 받은 요구사항 ID(FR-02-001, FR-02-002, FR-02-003) 전부가
+      빠짐없이 키로 있어야 한다 — 일부만 채우고 나머지를 생략하면 안 된다.
+      서로 연관된 FR-02-001·FR-02-002는 같은 Epic(EPIC-001)으로 묶이고,
+      독립된 FR-02-003은 별도 Epic(EPIC-002)으로 분리된다. task_id는
+      어느 요구사항 소속이든 상관없이 전체를 통틀어 하나의 순번
+      (TASK-001~004)으로 이어진다 — 요구사항마다 번호가 다시 시작되지 않는다.
+    input:
+      project_id: "PJT-100"
+      requirements:
+        - id: "FR-02-001"
+          category_1: "직원관리"
+          category_2: null
+          name: "직원 상태별 탭 구분"
+          description: "전체, 활성, 휴직, 퇴사, 잠금 상태별로 탭을 구분하여 리스트를 조회한다."
+          type: "기능"
+          priority: "Medium"
+          source: "requirement_text"
+          review_status: "검토완료"
+        - id: "FR-02-002"
+          category_1: "직원관리"
+          category_2: null
+          name: "사원 검색 및 필터링"
+          description: "등록된 사원 정보를 검색어 입력에 따라 실시간/조건별 필터링하고 상세 리스트를 노출한다."
+          type: "기능"
+          priority: "Medium"
+          source: "requirement_text"
+          review_status: "검토완료"
+        - id: "FR-02-003"
+          category_1: "직원관리"
+          category_2: null
+          name: "새 직원 등록"
+          description: "이름, 이메일, 연락처 등 항목을 입력하여 신규 직원을 등록한다."
+          type: "기능"
+          priority: "High"
+          source: "requirement_text"
+          review_status: "검토완료"
+    output:
+      by_requirement:
+        FR-02-001:
+          - task_id: "TASK-001"
+            epic_id: "EPIC-001"
+            epic_title: "직원 목록 조회 기능"
+            title: "상태별 탭 필터 API 구현"
+            description: "전체/활성/휴직/퇴사/잠금 상태값으로 직원 목록을 필터링하는 조회 API 구현"
+            required_skills: ["Django", "REST API"]
+            estimated_hours: 4
+            difficulty: "하"
+            difficulty_reason: "상태값 기준 단순 조건 필터링만 필요해 판단 로직이 간단함"
+            source_req_id: "FR-02-001"
+            subtasks: []
+        FR-02-002:
+          - task_id: "TASK-002"
+            epic_id: "EPIC-001"
+            epic_title: "직원 목록 조회 기능"
+            title: "검색어 기반 실시간 필터링 구현"
+            description: "이름/이메일 등 검색어 입력에 따라 조건별로 실시간 필터링되는 목록 조회 로직 구현"
+            required_skills: ["Django", "REST API"]
+            estimated_hours: 5
+            difficulty: "중"
+            difficulty_reason: "검색어 조건과 상태 탭 조건이 동시에 적용될 때의 조합 케이스를 고려해야 함"
+            source_req_id: "FR-02-002"
+            subtasks: []
+        FR-02-003:
+          - task_id: "TASK-003"
+            epic_id: "EPIC-002"
+            epic_title: "신규 직원 등록 기능"
+            title: "직원 등록 폼 UI 구현"
+            description: "이름/이메일/연락처 등 입력 필드와 유효성 검사를 포함한 등록 폼 화면 구현"
+            required_skills: ["React"]
+            estimated_hours: 4
+            difficulty: "하"
+            difficulty_reason: "정해진 필드 목록에 대한 입력/검증 UI만 필요해 범위가 명확함"
+            source_req_id: "FR-02-003"
+            subtasks: []
+          - task_id: "TASK-004"
+            epic_id: "EPIC-002"
+            epic_title: "신규 직원 등록 기능"
+            title: "직원 등록 API 구현"
+            description: "입력받은 직원 정보를 검증하고 저장하는 등록 엔드포인트 구현"
+            required_skills: ["Django", "REST API"]
+            estimated_hours: 5
+            difficulty: "중"
+            difficulty_reason: "이메일 중복 검사, 필수 필드 검증 등 여러 유효성 규칙을 함께 처리해야 함"
+            source_req_id: "FR-02-003"
+            subtasks: []

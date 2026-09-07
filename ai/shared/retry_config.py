@@ -7,6 +7,14 @@
 
 """
 
+DEFAULT_MODEL = "gpt-4o"
+
+# gpt-4o의 실제 최대 출력 토큰 상한 — 2026-09-03 확인.
+DEFAULT_MAX_TOKENS = 16384
+
+# 구조화 생성(JSON 출력) 노드는 0.0, 자연어 답변 생성 노드는 0.3
+TEMPERATURE_STRUCTURED = 0.0
+TEMPERATURE_GENERATIVE = 0.3
 import os
 
 from dotenv import load_dotenv

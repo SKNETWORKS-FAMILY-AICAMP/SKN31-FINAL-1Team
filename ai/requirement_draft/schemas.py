@@ -1,5 +1,5 @@
 """
-a2_1_requirement_draft/schemas.py
+requirement_draft/schemas.py
 
 컨텍스트 설계 요약
   - 입력: A1-2 출력(기획서 JSON), State Passing
