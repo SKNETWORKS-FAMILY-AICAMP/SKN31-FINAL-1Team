@@ -23,7 +23,10 @@ from users.serializers import (
 )
 from users.permissions import IsAdminUserOnly
 from users.jwt_cookies import set_auth_cookies, clear_auth_cookies, REFRESH_COOKIE, REFRESH_COOKIE_PATH
-from users.sessions import issue_session_tokens, token_sid_matches, clear_session
+from users.sessions import (
+    issue_session_tokens, token_sid_matches, clear_session,
+    is_session_active, touch_session, SESSION_IDLE_LIMIT,
+)
 from common.models import CommonCode
 
 User = get_user_model()
@@ -71,8 +74,22 @@ class LoginView(APIView):
         serializer = LoginRequestSerializer(data=request.data)
         if serializer.is_valid():
             user = serializer.validated_data['user']
-            # 한 계정당 1개 세션만 허용 — 새 로그인은 새 session_key를 발급하므로,
-            # 같은 계정으로 다른 PC에 로그인돼 있던 세션은 다음 요청부터 거부된다.
+
+            # 한 계정당 1개 세션 — 이미 다른 기기에서 로그인 중이면(그 세션이 최근까지
+            # 활동 중이면) 이 로그인을 거부한다. 그 세션이 SESSION_IDLE_LIMIT(30분) 넘게
+            # 조용했으면 자리를 비운 것으로 보고 통과시켜 새로 발급한다.
+            if is_session_active(user):
+                mins = int(SESSION_IDLE_LIMIT.total_seconds() // 60)
+                return Response(
+                    {
+                        "detail": f"이미 다른 기기에서 로그인되어 있습니다. "
+                                  f"기존 기기에서 로그아웃하거나, 활동이 없으면 약 {mins}분 후 다시 시도하세요.",
+                        "code": "already_logged_in",
+                    },
+                    status=status.HTTP_409_CONFLICT,
+                )
+
+            # 자리가 비어 있음(첫 로그인이거나 기존 세션이 유휴) → 새 세션 발급.
             access, refresh = issue_session_tokens(user, new_session=True)
 
             response = Response({
@@ -162,9 +179,10 @@ class CookieTokenRefreshView(APIView):
             clear_auth_cookies(resp)
             return resp
 
-        # 활동(=API 호출로 인한 재발급)이 있을 때마다 refresh 토큰도 새로 발급해 만료 시점을
-        # 지금부터 다시 24시간으로 미룬다(슬라이딩 세션). session_key는 그대로 유지한다
-        # (new_session=False) — 재발급은 "같은 세션의 연장"이지 새 로그인이 아니므로.
+        # 이 세션이 살아있음을 기록(유휴 자동해제 방지) + 슬라이딩 재발급.
+        touch_session(user)
+        # session_key는 그대로 유지한다(new_session=False) — 재발급은 "같은 세션의 연장"이지
+        # 새 로그인이 아니므로. refresh 토큰도 새로 발급해 만료를 지금부터 다시 24시간으로 민다.
         access, new_refresh = issue_session_tokens(user, new_session=False)
         response = Response({"detail": "재발급 완료"}, status=status.HTTP_200_OK)
         set_auth_cookies(response, access, new_refresh)

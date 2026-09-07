@@ -84,6 +84,13 @@ class User(AbstractUser):
         max_length=32, null=True, blank=True, editable=False,
         verbose_name="현재 활성 세션 키",
     )
+    # 그 세션이 마지막으로 요청을 보낸 시각. 로그인 차단 방식에서 "유휴 세션 자동 해제"에 쓴다 —
+    # 이 값이 일정 시간(SESSION_IDLE_LIMIT) 넘게 갱신 안 됐으면 자리를 비운 것으로 보고
+    # 다른 기기의 로그인을 허용한다(로그아웃 없이 브라우저만 닫아 계정이 영구 잠기는 것 방지).
+    session_last_seen = models.DateTimeField(
+        null=True, blank=True, editable=False,
+        verbose_name="활성 세션 마지막 활동 시각",
+    )
 
     # 2026-08-31: 직원관리 화면(프론트 members/page.tsx) 재설계에 필요해서 추가 — 기존 모델엔
     # 입사/퇴사일과 참여 프로젝트 이력을 담을 필드가 없었다. "참여 프로젝트"는 별도 공통코드

@@ -12,7 +12,7 @@ from django.middleware.csrf import CsrfViewMiddleware
 from rest_framework import exceptions
 from rest_framework_simplejwt.authentication import JWTAuthentication
 
-from users.sessions import token_sid_matches
+from users.sessions import token_sid_matches, touch_session
 
 
 class _CsrfCheck(CsrfViewMiddleware):
@@ -42,6 +42,9 @@ class CookieJWTAuthentication(JWTAuthentication):
                 '다른 기기에서 로그인되어 이 세션은 종료되었습니다.',
                 code='session_superseded',
             )
+
+        # 이 세션이 아직 살아있음을 기록 — 유휴 자동해제 판정 기준.
+        touch_session(user)
 
         self.enforce_csrf(request)
         return (user, validated_token)
