@@ -4,7 +4,9 @@ assignee_mapping/schemas.py
 컨텍스트 설계 요약
   - 입력: 사원 원본 데이터 — User + UserSkill + UserCertification, SQL 조회
           (User.past_projects(TEXT, 경력기술서 원문)만 비구조화 데이터 — 나머지는
-          이미 구조화되어 있어 LLM이 관여할 필요가 없다)
+          이미 구조화되어 있어 LLM이 관여할 필요가 없다). 필터링 이전 상태 그대로
+          받는다 — 후보를 거르는 것 자체는 이 에이전트(코드 단계)의 책임이다
+          (rule_filter.py 참고, 2026-09-02 결정).
   - 정적 참고자료: few-shot(경력기술서 원문 → 유사 경험 태그 추출 패턴)
   - Tools: 없음
   - 출력: A2-3(assignee_recommend)의 get_project_members() 자리를 그대로
@@ -20,15 +22,18 @@ from pydantic import BaseModel, Field
 
 class RawEmployeeProfile(BaseModel):
     """
-    User + UserSkill + UserCertification 조회 결과 1인분.
-    실제 '사원 테이블 User' 컬럼 기준 — id, employee_no, past_projects만 사용하고
-    email/password/slack_email/github_email/role_code_id 등 배정 적합성과 무관한
-    컬럼은 여기 담지 않는다.
+    User + UserSkill + UserCertification 조회 결과 1인분. 필터링 전 원본 그대로다 —
+    "이 사람이 이번 프로젝트에 적합한 후보인가"는 SQL WHERE절이 아니라 이 에이전트의
+    rule_filter.filter_candidates()가 코드로 판단한다.
     """
 
     employee_id: str = Field(..., description="User.id (UUID, PK)")
     employee_no: str = Field(..., description="User.employee_no — 사람이 읽는 사번")
     name: str = Field(..., description="User.name")
+    job_role: str = Field(..., description="User.job_role_code_id — 직무 코드(예: BACKEND, FRONTEND)")
+    is_active: bool = Field(
+        ..., description="재직 중인지 — User.status_code_id=='ACTIVE'이고 resignation_date가 없는지"
+    )
     skills: List[str] = Field(
         default_factory=list,
         description="UserSkill 조회 결과(skill_code_id → CommonCode.code_name) — 이미 구조화됨, LLM 필요 없음",
@@ -45,6 +50,8 @@ class RawEmployeeProfile(BaseModel):
     # 기준으로 SUM해서 "현재 부하"를 실시간으로 구하는 게 정확하고, 별도 필드를 매번
     # 갱신할 필요도 없다. 이 계산은 순수 SQL 집계라 LLM이 필요 없어 이 에이전트가
     # 아니라 A2-3(assignee_recommend)의 책임으로 옮겼다 — rule_filter.py 참고.
+    # 프로젝트를 한 번에 하나만 진행한다는 전제라, 담당자매핑 시점엔 가용시간 필터를
+    # 별도로 두지 않는다(2026-09-02 결정) — 실제 상한 초과 여부는 A2-3이 걸러준다.
 
 
 class ExtractedExperienceTags(BaseModel):

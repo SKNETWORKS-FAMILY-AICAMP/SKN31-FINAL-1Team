@@ -57,7 +57,6 @@ INSTALLED_APPS = [
     'tasks',
     'projects',
     'requirements',
-    'plans',
 ]
 
 MIDDLEWARE = [

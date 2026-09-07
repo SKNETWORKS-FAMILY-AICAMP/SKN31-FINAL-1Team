@@ -32,15 +32,13 @@ def _render_few_shots(examples: list) -> str:
     return "\n\n".join(blocks)
 
 
-def build_system_prompt(requirement_doc: Dict[str, Any], participant_count: int) -> str:
+def build_system_prompt(requirement_doc: Dict[str, Any]) -> str:
     t = load_template()
     tt = load_decomposition_rules()
 
-    constraints = t["constraints"].format(min_tasks=participant_count)
-
     return f"""{t['role']}
 
-{constraints}
+{t['constraints']}
 
 [업무 분해 원칙]
 {tt['decomposition_principles']}
@@ -53,7 +51,7 @@ Depth: {tt['depth']}
 {_render_few_shots(t['few_shot_examples'])}
 
 ---
-아래는 이번에 처리할 실제 요구사항정의서다. (참여인원: {participant_count}명)
+아래는 이번에 처리할 실제 요구사항정의서다.
 
 [요구사항정의서]
 {json.dumps(requirement_doc, ensure_ascii=False, indent=2)}

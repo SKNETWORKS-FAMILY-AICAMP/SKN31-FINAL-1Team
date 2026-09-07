@@ -28,12 +28,12 @@ class PipelineState(TypedDict, total=False):
     requirement_doc: Dict[str, Any]
     requirement_rejection_reason: Optional[str]
 
-    # ---- A2-2 입력(호출부가 미리 조회해 채움) / 출력 ----
-    participant_count: int   # SELECT COUNT(*) FROM member WHERE project_id = %s — 호출부 책임
+    # ---- A2-2 출력 ----
     tasks: List[Dict[str, Any]]
 
     # ---- 담당자 매핑 입력(호출부가 미리 조회해 채움) / 출력 (신규, A2-2와 A2-3 사이) ----
-    raw_employee_profiles: List[Dict[str, Any]]  # User+UserSkill+UserCertification 조회 결과
+    raw_employee_profiles: List[Dict[str, Any]]  # User+UserSkill+UserCertification 조회 결과, 필터링 전 원본
+    needed_roles: List[str]  # team_sizing.estimate_team_size() 출력의 by_role[].role 목록 — 후보 필터링에 씀
     member_profiles: List[Dict[str, Any]]
 
     # ---- A2-3 입력(호출부가 미리 조회해 채움) / 출력 ----

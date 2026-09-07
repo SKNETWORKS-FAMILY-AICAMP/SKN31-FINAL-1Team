@@ -7,7 +7,7 @@ current_workload, project_start_date/end_date)은 실제 DB가 아직 없어
 mock 값으로 대신 채운다 — 실제 조회 로직이 준비되면 이 부분만 교체하면 된다.
 
 사전 준비:
-  1. ai/.env 에 OPENAI_API_KEY(필수), ANTHROPIC_API_KEY(선택, 폴백용) 설정
+  1. ai/.env 에 OPENAI_API_KEY(필수) 설정
   2. shared/retry_config.py의 DEFAULT_MODEL이 실제 호출 가능한 모델인지 확인
 
 실행:
@@ -26,11 +26,11 @@ from assignee_recommend.agent import assignee_recommend_node
 from requirement_draft.agent import requirement_draft_node
 from requirement_draft.schemas import PlanDocument
 from task_generation.agent import task_generation_node
+from team_sizing import estimate_team_size
 
 DEFAULT_FIXTURE = Path(__file__).parent / "fixtures" / "sample_plan_test.json"
 
 # ---- mock: 실제 DB 연동 전까지 사용할 값들 (백엔드 완료 시 이 블록만 교체) ----
-MOCK_PARTICIPANT_COUNT = 3
 MOCK_PROJECT_START_DATE = "2026-09-01"
 MOCK_PROJECT_END_DATE = "2026-09-30"
 
@@ -41,6 +41,8 @@ def _mock_raw_employee_profiles(all_skills: list) -> list:
             "employee_id": "EMP-001",
             "employee_no": "24001",
             "name": "김주현",
+            "job_role": "BACKEND",
+            "is_active": True,
             "skills": all_skills,
             "certifications": [],
             "career_history_text": (
@@ -52,7 +54,31 @@ def _mock_raw_employee_profiles(all_skills: list) -> list:
             "employee_id": "EMP-002",
             "employee_no": "24002",
             "name": "이수민",
+            "job_role": "BACKEND",
+            "is_active": True,
             "skills": all_skills[:1] if all_skills else [],
+            "certifications": [],
+            "career_history_text": "",
+        },
+        # 아래 둘은 필터링이 실제로 걸러내는지 보여주기 위한 케이스 —
+        # 담당자 매핑 결과에 안 나타나야 정상이다.
+        {
+            "employee_id": "EMP-003",
+            "employee_no": "24003",
+            "name": "박지훈",
+            "job_role": "UIUX_DESIGNER",  # 이번 프로젝트에 필요 없는 직무 → 제외돼야 함
+            "is_active": True,
+            "skills": all_skills,
+            "certifications": [],
+            "career_history_text": "",
+        },
+        {
+            "employee_id": "EMP-004",
+            "employee_no": "24004",
+            "name": "최은지",
+            "job_role": "BACKEND",
+            "is_active": False,  # 퇴사자 → 제외돼야 함
+            "skills": all_skills,
             "certifications": [],
             "career_history_text": "",
         },
@@ -78,21 +104,26 @@ def main() -> None:
     run("A2-1", requirement_draft_node)
     print(f"[A2-1] {len(state['requirement_doc']['requirements'])}건 요구사항 생성", file=sys.stderr)
 
-    # A2-2 — participant_count는 호출부(Django)가 미리 채우는 값, 여기선 mock
-    state["participant_count"] = MOCK_PARTICIPANT_COUNT
+    # A2-2
     run("A2-2", task_generation_node)
     print(f"[A2-2] {len(state['tasks'])}건 업무 생성", file=sys.stderr)
 
-    # 담당자 매핑 — raw_employee_profiles는 호출부가 미리 채우는 값, 여기선 mock
+    # 팀 규모 추정 — 담당자 매핑의 필터링(needed_roles)에 그대로 씀
+    team_size = estimate_team_size(state["tasks"], MOCK_PROJECT_START_DATE, MOCK_PROJECT_END_DATE)
+    needed_roles = [r["role"] for r in team_size["team_size_estimate"]["by_role"]]
+    print(f"[team_sizing] 필요 역할: {needed_roles}", file=sys.stderr)
+
+    # 담당자 매핑 — raw_employee_profiles/tasks/needed_roles는 호출부가 채우는 값, 여기선 mock
     all_skills = sorted({s for t in state["tasks"] for s in t.get("required_skills", [])})
     state["raw_employee_profiles"] = _mock_raw_employee_profiles(all_skills)
+    state["needed_roles"] = needed_roles
     run("담당자 매핑", assignee_mapping_node)
-    print(f"[담당자 매핑] {len(state['member_profiles'])}명 프로필 생성", file=sys.stderr)
+    print(f"[담당자 매핑] {len(state['member_profiles'])}명 프로필 생성 (필터 통과자만)", file=sys.stderr)
     for p in state["member_profiles"]:
         print(f"   - {p['employee_id']} tags: {p['past_similar_tasks']}", file=sys.stderr)
 
     # A2-3 — current_workload/프로젝트 기간은 호출부가 채우는 값, 여기선 mock
-    state["current_workload"] = {m["employee_id"]: 0.0 for m in state["raw_employee_profiles"]}
+    state["current_workload"] = {m["employee_id"]: 0.0 for m in state["member_profiles"]}
     state["project_start_date"] = MOCK_PROJECT_START_DATE
     state["project_end_date"] = MOCK_PROJECT_END_DATE
     run("A2-3", assignee_recommend_node)
