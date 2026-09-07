@@ -75,21 +75,23 @@ class LoginView(APIView):
         if serializer.is_valid():
             user = serializer.validated_data['user']
 
+            # TODO: 데모/개발 편의로 중복 로그인 차단을 임시 해제. 복구하려면 아래 블록의 주석을 풀 것.
+            #       (authentication.py 의 sid 검사도 함께 주석 처리돼 있으니 같이 복구)
             # 한 계정당 1개 세션 — 이미 다른 기기에서 로그인 중이면(그 세션이 최근까지
             # 활동 중이면) 이 로그인을 거부한다. 그 세션이 SESSION_IDLE_LIMIT(30분) 넘게
             # 조용했으면 자리를 비운 것으로 보고 통과시켜 새로 발급한다.
-            if is_session_active(user):
-                mins = int(SESSION_IDLE_LIMIT.total_seconds() // 60)
-                return Response(
-                    {
-                        "detail": f"이미 다른 기기에서 로그인되어 있습니다. "
-                                  f"기존 기기에서 로그아웃하거나, 활동이 없으면 약 {mins}분 후 다시 시도하세요.",
-                        "code": "already_logged_in",
-                    },
-                    status=status.HTTP_409_CONFLICT,
-                )
+            # if is_session_active(user):
+            #     mins = int(SESSION_IDLE_LIMIT.total_seconds() // 60)
+            #     return Response(
+            #         {
+            #             "detail": f"이미 다른 기기에서 로그인되어 있습니다. "
+            #                       f"기존 기기에서 로그아웃하거나, 활동이 없으면 약 {mins}분 후 다시 시도하세요.",
+            #             "code": "already_logged_in",
+            #         },
+            #         status=status.HTTP_409_CONFLICT,
+            #     )
 
-            # 자리가 비어 있음(첫 로그인이거나 기존 세션이 유휴) → 새 세션 발급.
+            # 새 세션 발급.
             access, refresh = issue_session_tokens(user, new_session=True)
 
             response = Response({
