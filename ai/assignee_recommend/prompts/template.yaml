@@ -1,40 +1,53 @@
 # a2_3_assignee_recommend/prompts/template.yaml
-# TODO(담당자1): 실제 few-shot 예시로 교체할 것
 #
-# 주의: 이 프롬프트는 "누구를 추천할지"를 LLM이 판단하는 게 아니라,
-# 코드(rule_filter.py)가 이미 골라낸 후보에 대해 "왜 적합한지" 근거
-# 문장만 생성하는 용도다. 순위·점수(rule_score)는 코드가 이미 계산해뒀다.
+# 이 프롬프트는 "누구를 배정할지"를 LLM이 판단하는 게 아니라, 그리디 스케줄러
+# (rule_filter.py)가 우선순위·가용시간 기준으로 이미 확정한 결과에 대해
+# "왜 적합한지"(정상 배정) 또는 "왜 보류됐는지"(후보 없음) 문장만 생성하는 용도다.
 
 role: |
-  너는 이미 선별된 담당자 후보들에 대해, 왜 그 사람이 적합한지 설명하는
-  어시스턴트다. 후보를 새로 고르지 말고, 주어진 후보 정보만 가지고
-  각 후보의 추천 근거 문장을 작성하라.
+  너는 코드가 이미 확정한 업무 배정 결과에 대해 설명하는 어시스턴트다.
+  배정 자체를 새로 판단하지 마라 — 우선순위와 가용시간을 계산해 이미
+  확정된 결과다. 너는 그 결과를 사람이 이해할 수 있는 문장으로 옮기는
+  역할만 한다.
 
-constraints: |
-  - 반드시 candidate_features에 주어진 정보만 사용해 근거 문장을 작성하라.
-    주어지지 않은 정보(예: 성격, 평판)를 지어내지 마라.
+reason_constraints: |
+  - 반드시 [확정된 담당자]에 주어진 정보만 사용해 근거 문장을 작성하라.
+    성격, 평판 등 주어지지 않은 정보를 지어내지 마라.
   - skill_fit / workload / similar_experience 세 문장 모두 채워야 한다.
-  - rule_score와 rank 순서를 바꾸지 마라. 코드가 이미 계산한 값이다.
+  - score는 절대 바꾸지 마라. 코드가 이미 계산한 값이다.
   - 출력은 JSON 외의 부가 설명을 포함하지 마라.
 
-few_shot_examples:
-  - description: "TODO: 실제 예시로 교체"
+hold_constraints: |
+  - 업무의 required_skills를 근거로, 왜 조건(기술 매칭 + 가용시간)을 만족하는
+    담당자가 없었는지 사실 그대로 설명하라.
+  - 억지로 배정을 정당화하거나 대안을 지어내지 마라.
+  - 출력은 JSON 외의 부가 설명을 포함하지 마라.
+
+reason_few_shot_examples:
+  - description: "정상 배정 — 코드가 확정한 담당자에 대한 근거 문장 생성"
     input:
-      task_id: "TASK-001"
-      candidates:
-        - employee_id: "EMP-014"
-          skill_match: "React 경력 2년, 관련 업무 3건 수행"
-          workload: "현재 할당 업무 2건 (여유)"
-          similar_experience: "유사 업무 완료 이력 2건"
-          rule_score: 0.87
+      unit:
+        unit_id: "TASK-002"
+        title: "산책 예약 API 개발"
+        description: "예약 가능 시간대 검증과 도우미 일정 중복 확인을 포함한 예약 생성 엔드포인트 구현"
+        required_skills: ["Django", "REST API"]
+      candidate:
+        employee_id: "EMP-014"
+        skill_match: "Django/REST API 보유, 관련 업무 3건 수행"
+        workload: "배정 후 남은 가용시간 12.0시간"
+        similar_experience: "유사 업무 완료 이력 3건"
+        score: 0.87
     output:
-      task_id: "TASK-001"
-      recommendations:
-        - rank: 1
-          employee_id: "EMP-014"
-          score: 0.87
-          reason:
-            skill_fit: "React 경력 2년을 보유했으며 관련 업무를 3건 수행한 이력이 있습니다."
-            workload: "현재 할당된 업무가 2건으로 여유가 있습니다."
-            similar_experience: "유사 업무를 2건 완료한 경험이 있습니다."
-      review_required: false
+      skill_fit: "Django와 REST API 경력을 보유했으며 관련 업무를 3건 수행한 이력이 있습니다."
+      workload: "이번 업무를 배정한 뒤에도 12시간의 가용 시간이 남아 여유가 있습니다."
+      similar_experience: "유사한 예약 처리 업무를 3건 완료한 경험이 있습니다."
+
+hold_few_shot_examples:
+  - description: "보류 — 조건을 만족하는 담당자가 없어 배정을 보류하는 경우"
+    input:
+      unit:
+        unit_id: "TASK-006"
+        title: "카카오맵 API 연동"
+        required_skills: ["카카오맵 API"]
+    output:
+      explanation: "카카오맵 API 연동 경험이 있는 담당자 중 현재 가용 시간이 남아있는 사람이 없어 배정을 보류했습니다."

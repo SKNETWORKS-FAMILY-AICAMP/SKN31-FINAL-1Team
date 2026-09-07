@@ -11,10 +11,18 @@ https://docs.djangoproject.com/en/6.0/ref/settings/
 """
 import os
 import environ
+import sys
 from pathlib import Path
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
+
+# SKN31-FINAL-1Team/ai 디렉토리
+AI_DIR = BASE_DIR.parent / "ai"
+
+# ai 디렉토리를 파이썬 모듈 검색 경로 최상단(0번 index)에 등록
+if str(AI_DIR) not in sys.path:
+    sys.path.insert(0, str(AI_DIR))
 
 # --- env 설정 추가 ---
 env = environ.Env(
@@ -58,6 +66,7 @@ INSTALLED_APPS = [
     'tasks',
     'projects',
     'requirements',
+    'notifications',
 ]
 
 MIDDLEWARE = [
@@ -94,23 +103,27 @@ WSGI_APPLICATION = 'config.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/6.0/ref/settings/#databases
 
-# DATABASES = {
-#     'default': {
-#         'ENGINE': 'django.db.backends.sqlite3',
-#         'NAME': BASE_DIR / 'db.sqlite3',
-#     }
-# }
-
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.mysql',
-        'NAME': env.str('MYSQL_DB'),
-        'USER': env.str('MYSQL_USER'),
-        'PASSWORD': env.str('MYSQL_PASSWORD'),
-        'HOST': env.str('MYSQL_HOST'),
-        'PORT': env.int('MYSQL_PORT', default=3306),
+# .env에 MYSQL_HOST가 채워져 있으면(팀 공용 RDS 접속 정보를 아는 사람) MySQL을 쓰고,
+# 없으면(.env.example 그대로 두거나 MYSQL_* 항목을 아예 안 채운 팀원) SQLite로 자동 전환된다.
+# MySQL을 하드 요구하면 RDS 접속 정보가 없는 팀원은 서버 자체가 안 켜지므로 이 폴백이 필요하다.
+if env.str('MYSQL_HOST', default=''):
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.mysql',
+            'NAME': env.str('MYSQL_DB'),
+            'USER': env.str('MYSQL_USER'),
+            'PASSWORD': env.str('MYSQL_PASSWORD'),
+            'HOST': env.str('MYSQL_HOST'),
+            'PORT': env.int('MYSQL_PORT', default=3306),
+        }
     }
-}
+else:
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': BASE_DIR / 'db.sqlite3',
+        }
+    }
 
 # Password validation
 # https://docs.djangoproject.com/en/6.0/ref/settings/#auth-password-validators

@@ -1,0 +1,98 @@
+{
+  "project": {
+    "name": "리테일링크",
+    "background": "기능 관련 논의 및 정리",
+    "problem": "기능 관련 논의 및 정리",
+    "goals": [
+      "기능 관련 논의 및 정리"
+    ],
+    "evidence": {
+      "quote": "기능 관련 논의 및 정리"
+    },
+    "evidence_status": "verified"
+  },
+  "users": [],
+  "requirements": {
+    "functional": [
+      {
+        "content": "발주서 기본 양식 1개로 시작",
+        "priority": "medium",
+        "evidence": {
+          "quote": "발주서 양식은 거래처마다 다를 수 있다고 함. 일단 기본 양식 하나 만들고 나중에 늘리는 쪽으로 얘기됨."
+        },
+        "evidence_status": "verified"
+      },
+      {
+        "content": "대시보드에 재고 현황, 알림 목록 포함",
+        "priority": "medium",
+        "evidence": {
+          "quote": "대시보드에 뭘 넣을지 얘기했는데 이것저것 나왔음. 재고 현황이랑 알림 목록은 확실히 넣기로 함."
+        },
+        "evidence_status": "verified"
+      }
+    ],
+    "non_functional": [
+      {
+        "content": "속도는 너무 느리지 않게 해달라고 요청함.",
+        "priority": "medium",
+        "evidence": {
+          "quote": "속도는 너무 느리지 않게 해달라고 요청함."
+        },
+        "evidence_status": "verified"
+      }
+    ],
+    "data": [],
+    "technical": []
+  },
+  "scenarios": [],
+  "decisions": [
+    {
+      "category": "feature",
+      "content": "발주서 기본 양식 1개로 시작",
+      "rationale": null,
+      "evidence": {
+        "quote": "발주서 기본 양식 1개로 시작"
+      },
+      "evidence_status": "verified"
+    },
+    {
+      "category": "feature",
+      "content": "대시보드에 재고 현황, 알림 목록 포함",
+      "rationale": null,
+      "evidence": {
+        "quote": "대시보드에 재고 현황, 알림 목록 포함"
+      },
+      "evidence_status": "verified"
+    },
+    {
+      "category": "scope",
+      "content": "알림 기준은 보류",
+      "rationale": null,
+      "evidence": {
+        "quote": "알림 기준은 보류"
+      },
+      "evidence_status": "verified"
+    }
+  ],
+  "constraints": [
+    {
+      "type": "일정",
+      "content": "개발 쪽에서 일정이 빠듯함",
+      "evidence": {
+        "quote": "개발 쪽에서 일정이 빠듯하다는 얘기를 계속 함. 지금 인원으로는 어렵다는 뉘앙스였음."
+      },
+      "evidence_status": "verified"
+    }
+  ],
+  "unresolved": [
+    "사용자 유형 및 요구사항이 논의되지 않았습니다.",
+    "데이터 저장 및 연동 요구사항이 논의되지 않았습니다.",
+    "기술 스택 및 환경이 논의되지 않았습니다.",
+    "서버 관련 내용이 명확하지 않습니다."
+  ],
+  "meeting_id": "meeting_note_2_vague",
+  "validation_notes": [
+    "결정사항이 요구사항과 동일합니다: 발주서 기본 양식 1개로 시작 (하류에서 한쪽만 사용하세요)",
+    "결정사항이 요구사항과 동일합니다: 대시보드에 재고 현황, 알림 목록 포함 (하류에서 한쪽만 사용하세요)"
+  ]
+}

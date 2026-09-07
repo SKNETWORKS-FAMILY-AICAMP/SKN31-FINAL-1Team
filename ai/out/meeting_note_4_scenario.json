@@ -1,0 +1,193 @@
+{
+  "project": {
+    "name": "리테일링크(RetailLink)",
+    "background": "앞선 회의에서 MVP 기능은 확정했으나, 사용자가 실제로 어떤 순서로 서비스를 사용하는지는 정하지 않았다.",
+    "problem": "사용자가 실제로 어떤 순서로 서비스를 사용하는지 정하지 않음",
+    "goals": [
+      "주요 사용자별 이용 흐름을 확정하고 화면 설계의 기준으로 삼는다"
+    ],
+    "evidence": {
+      "quote": "이번 회의에서 주요 사용자별 이용 흐름을 확정하고 화면 설계의 기준으로 삼는다."
+    },
+    "evidence_status": "verified"
+  },
+  "users": [
+    {
+      "type": "사장",
+      "description": "매장 운영을 책임지는 사용자로, 발주 작업을 수행한다.",
+      "needs": [
+        "발주 작업을 5분 안에 끝내야 한다",
+        "발주서 생성까지 5단계 이내로 유지"
+      ],
+      "evidence": {
+        "quote": "사장이 바쁜 시간대라 단계가 많으면 안 쓴다."
+      },
+      "evidence_status": "verified"
+    },
+    {
+      "type": "직원",
+      "description": "매장에서 입고 처리와 재고 확인을 담당하는 사용자",
+      "needs": [
+        "한 손 조작이 가능해야 한다",
+        "입고 등록 시 여러 상품을 일괄 저장"
+      ],
+      "evidence": {
+        "quote": "직원은 한 손에 상품을 들고 있어서 한 손 조작이 가능해야 한다."
+      },
+      "evidence_status": "verified"
+    }
+  ],
+  "requirements": {
+    "functional": [
+      {
+        "content": "사장은 대시보드에서 발주 필요 품목 수를 확인하고 발주서를 생성한다.",
+        "priority": "high",
+        "evidence": {
+          "quote": "사장의 발주 흐름은 대시보드 확인 → 품목 목록 → 수량 조정 → 발주서 생성 → PDF 다운로드 순서로 한다."
+        },
+        "evidence_status": "verified"
+      },
+      {
+        "content": "직원은 입고 등록 시 여러 상품을 연속 스캔한 뒤 일괄 저장한다.",
+        "priority": "high",
+        "evidence": {
+          "quote": "직원의 입고 등록은 여러 상품을 연속 스캔한 뒤 일괄 저장하는 방식으로 한다."
+        },
+        "evidence_status": "verified"
+      },
+      {
+        "content": "알림에서 발주 필요 품목 목록까지 두 번의 터치로 이동한다.",
+        "priority": "high",
+        "evidence": {
+          "quote": "알림에서 발주까지 두 번의 터치로 도달해야 한다."
+        },
+        "evidence_status": "verified"
+      }
+    ],
+    "non_functional": [
+      {
+        "content": "직원 화면은 한 손 조작이 가능하도록 설계한다.",
+        "priority": "high",
+        "evidence": {
+          "quote": "직원 화면은 한 손 조작이 가능하도록 설계한다."
+        },
+        "evidence_status": "verified"
+      }
+    ],
+    "data": [
+      {
+        "content": "직원 화면에서는 매입가를 마스킹한다.",
+        "priority": "high",
+        "evidence": {
+          "quote": "직원 화면에서는 매입가가 보이면 안 된다. 이전 회의에서 정한 대로 마스킹한다."
+        },
+        "evidence_status": "verified"
+      }
+    ],
+    "technical": []
+  },
+  "scenarios": [
+    {
+      "actor": "사장",
+      "trigger": "앱을 열면 대시보드에서 오늘 발주가 필요한 품목 수를 본다.",
+      "steps": [
+        "대시보드 확인",
+        "품목 목록 확인",
+        "수량 조정",
+        "발주서 생성",
+        "PDF 다운로드"
+      ],
+      "result": "발주서가 생성되어 PDF로 다운로드된다.",
+      "evidence": {
+        "quote": "사장의 발주 흐름은 대시보드 확인 → 품목 목록 → 수량 조정 → 발주서 생성 → PDF 다운로드 순서로 한다."
+      },
+      "evidence_status": "verified"
+    },
+    {
+      "actor": "직원",
+      "trigger": "납품 트럭이 도착하면 매장 뒤편에서 스마트폰으로 작업한다.",
+      "steps": [
+        "입고 등록 메뉴 선택",
+        "상품 바코드 스캔",
+        "수량 입력",
+        "여러 상품 연속 스캔",
+        "일괄 저장"
+      ],
+      "result": "입고 등록이 완료된다.",
+      "evidence": {
+        "quote": "직원의 입고 등록은 여러 상품을 연속 스캔한 뒤 일괄 저장하는 방식으로 한다."
+      },
+      "evidence_status": "verified"
+    },
+    {
+      "actor": "직원",
+      "trigger": "손님이 특정 상품을 찾을 때 재고를 확인한다.",
+      "steps": [
+        "상품명 입력 또는 바코드 스캔",
+        "현재 재고 수량과 최근 입고일 확인"
+      ],
+      "result": "재고 정보가 표시된다.",
+      "evidence": {
+        "quote": "손님이 특정 상품을 찾을 때 직원이 재고를 확인한다."
+      },
+      "evidence_status": "verified"
+    },
+    {
+      "actor": "사장",
+      "trigger": "오전 9시에 발주 필요 알림이 도착한다.",
+      "steps": [
+        "알림 확인",
+        "발주 필요 품목 목록으로 이동"
+      ],
+      "result": "발주 필요 품목 목록이 표시된다.",
+      "evidence": {
+        "quote": "사장이 알림을 누르면 바로 발주 필요 품목 목록으로 이동한다."
+      },
+      "evidence_status": "verified"
+    }
+  ],
+  "decisions": [
+    {
+      "category": "feature",
+      "content": "사장의 발주 흐름은 대시보드 확인 → 품목 목록 → 수량 조정 → 발주서 생성 → PDF 다운로드 순서로 한다.",
+      "rationale": null,
+      "evidence": {
+        "quote": "사장의 발주 흐름은 대시보드 확인 → 품목 목록 → 수량 조정 → 발주서 생성 → PDF 다운로드 순서로 한다."
+      },
+      "evidence_status": "verified"
+    },
+    {
+      "category": "feature",
+      "content": "직원의 입고 등록은 여러 상품을 연속 스캔한 뒤 일괄 저장하는 방식으로 한다.",
+      "rationale": null,
+      "evidence": {
+        "quote": "직원의 입고 등록은 여러 상품을 연속 스캔한 뒤 일괄 저장하는 방식으로 한다."
+      },
+      "evidence_status": "verified"
+    },
+    {
+      "category": "feature",
+      "content": "알림에서 발주 필요 품목 목록까지 두 번의 터치로 이동한다.",
+      "rationale": null,
+      "evidence": {
+        "quote": "알림에서 발주까지 두 번의 터치로 도달해야 한다."
+      },
+      "evidence_status": "verified"
+    },
+    {
+      "category": "scope",
+      "content": "로그인 유지 기간과 온보딩 화면 여부는 다음 회의에서 결정한다.",
+      "rationale": null,
+      "evidence": {
+        "quote": "로그인 유지 기간과 온보딩 화면 여부는 다음 회의에서 결정한다."
+      },
+      "evidence_status": "verified"
+    }
+  ],
+  "constraints": [],
+  "unresolved": [
+    "로그인 유지 기간과 온보딩 화면 여부가 결정되지 않았습니다."
+  ],
+  "meeting_id": "meeting_note_4_scenario",
+  "validation_notes": []
+}

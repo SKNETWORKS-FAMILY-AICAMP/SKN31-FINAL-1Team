@@ -1,16 +1,15 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { X, Loader2, FileText, Users, CalendarIcon, FolderKanban } from "lucide-react";
+import { useState, useEffect, useRef } from "react";
+import { X, Loader2, FileText, Users, CalendarIcon, FolderKanban, Paperclip } from "lucide-react";
 import { apiFetch } from "@/lib/api/client";
 import TagAutocomplete from "@/components/ui/TagAutocomplete";
 
 type ProjectOption = { id: number; name: string };
 const NEW_PROJECT_VALUE = "__new__";
 
-// 2026-08-31: Django 백엔드(MeetingNote)로 재배선하면서 파일 첨부(.docx/.pdf/.hwp 텍스트 추출)는
-// 뺐다 — heyzzabi2에는 /api/documents/parse-file 로컬 라우트가 있었지만 Django엔 대응 API가
-// 없다. 직접 입력만 지원한다(범위 밖 — 필요해지면 별도로 구현).
+// 2026-09-01: /api/meetings/notes/parse-file/ (.docx/.pdf/.txt/.hwp 지원 — .hwp는 hwp5txt
+// CLI를 서브프로세스로 호출) 로 파일을 올리면 텍스트를 추출해 "원본 내용" 칸을 채운다.
 const SAMPLE_NOTES = [
   `[신규 쇼핑몰 프로젝트 킥오프 회의록]
 일자: 2026-08-19
@@ -61,6 +60,8 @@ export function NewDocumentModal({
   const [content, setContent] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
+  const [uploadingFile, setUploadingFile] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [projects, setProjects] = useState<ProjectOption[]>([]);
   const [loadingProjects, setLoadingProjects] = useState(true);
@@ -111,25 +112,46 @@ export function NewDocumentModal({
     return null;
   };
 
+  // 참석자는 수동 입력만 받는다 — 예전엔 원본 내용에 등록된 팀원 이름이 보이면 자동으로
+  // 참석자 태그에 추가했는데, 본문에 이름이 언급됐다고 실제 참석자인 건 아니라서(예: "OOO팀장
+  // 요청으로") 잘못 채워지는 경우가 있었다(사용자가 실제로 겪음). 회의 일시는 원본에 "일자:"
+  // 같은 명시적 표기가 있으면 그대로 옮겨적는 것뿐이라 오탐 여지가 적어 자동 추출을 유지한다.
   useEffect(() => {
     if (!content.trim()) return;
     const timer = setTimeout(() => {
       setMeetingDate(prev => prev || extractMeetingDate(content) || "");
-      if (memberNames.length > 0) {
-        const found = memberNames.filter(name => content.includes(name));
-        if (found.length > 0) {
-          setAttendees(prev => Array.from(new Set([...prev, ...found])));
-        }
-      }
     }, 600);
     return () => clearTimeout(timer);
-  }, [content, memberNames]);
+  }, [content]);
 
   const handleLoadSample = () => {
     const randomIndex = Math.floor(Math.random() * SAMPLE_NOTES.length);
     const sample = SAMPLE_NOTES[randomIndex];
     setContent(sample);
     if (!title.trim()) setTitle(deriveTitleFromContent(sample));
+  };
+
+  const handleFileSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = ""; // 같은 파일을 다시 선택해도 onChange가 다시 뜨도록 초기화
+    if (!file) return;
+
+    setError("");
+    setUploadingFile(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const result = await apiFetch<{ content: string; filename: string }>(
+        "/api/meetings/notes/parse-file/",
+        { method: "POST", body: formData }
+      );
+      setContent(result.content);
+      if (!title.trim()) setTitle(deriveTitleFromContent(result.content));
+    } catch (err: any) {
+      setError(err.message || "파일에서 텍스트를 추출하지 못했습니다.");
+    } finally {
+      setUploadingFile(false);
+    }
   };
 
   const isCreatingNewProject = selectedProjectId === NEW_PROJECT_VALUE;
@@ -264,13 +286,32 @@ export function NewDocumentModal({
             <div className="flex flex-col">
               <div className="flex justify-between items-center mb-1">
                 <label className="block text-sm font-medium">원본 내용 (회의록/메모)</label>
-                <button
-                  type="button"
-                  onClick={handleLoadSample}
-                  className="text-xs font-semibold text-blue-500 hover:text-blue-600 bg-blue-500/10 px-3 py-1 rounded-full transition-colors"
-                >
-                  랜덤 샘플 불러오기
-                </button>
+                <div className="flex items-center gap-2">
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept=".docx,.pdf,.txt,.hwp,.md"
+                    onChange={handleFileSelected}
+                    className="hidden"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={uploadingFile}
+                    className="flex items-center gap-1 text-xs font-semibold text-primary hover:text-primary/80 bg-primary/10 px-3 py-1 rounded-full transition-colors disabled:opacity-50"
+                    title="지원 형식: .docx, .pdf, .txt, .hwp, .md"
+                  >
+                    {uploadingFile ? <Loader2 className="w-3 h-3 animate-spin" /> : <Paperclip className="w-3 h-3" />}
+                    {uploadingFile ? "추출 중..." : "파일에서 불러오기"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleLoadSample}
+                    className="text-xs font-semibold text-blue-500 hover:text-blue-600 bg-blue-500/10 px-3 py-1 rounded-full transition-colors"
+                  >
+                    랜덤 샘플 불러오기
+                  </button>
+                </div>
               </div>
               <textarea
                 required

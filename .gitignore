@@ -21,3 +21,4 @@ data/raw/
 *.tfstate
 *.tfstate.backup
 *:Zone.Identifier
+.gstack/

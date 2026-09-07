@@ -2,50 +2,42 @@
 
 import React, { useState, useEffect, useMemo } from "react";
 import { useAuth } from "@/lib/auth";
-import { FolderKanban, Search, LayoutGrid, MoreVertical, Loader2, ArrowRight, ChevronLeft, ChevronRight, ClipboardList, GitBranch, GitPullRequest, GitMerge, X, AlertTriangle } from "lucide-react";
+import { FolderKanban, Search, LayoutGrid, Loader2, ChevronLeft, ChevronRight, ClipboardList, AlertTriangle } from "lucide-react";
 import { cn } from "@/lib/utils";
-import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { KanbanBoard } from "@/components/layout/KanbanBoard";
 import { TaskDetailModal } from "@/components/projects/TaskDetailModal";
 import { isTaskOverdue } from "@/lib/taskOverdue";
-import { DifficultyBadge } from "@/components/ui/DifficultyBadge";
+import { apiFetch } from "@/lib/api/client";
 
+// Django TaskAssignmentSerializer 응답 그대로 — heyzzabi2 시절 Task와 필드명이 다르다
+// (title -> task_title, assigneeId -> assigned_user, wbsStart/wbsEnd -> start_date/due_date,
+// gitStatus/estimatedHours/difficulty는 이 프로젝트 백엔드에 애초에 없는 필드라 표시하지 않는다).
 type Task = {
-  id: string;
-  title: string;
-  description: string | null;
+  id: number;
+  project: number | null;
+  task_title: string;
+  task_description: string | null;
   status: string;
-  estimatedHours: number | null;
-  difficulty: string | null;
-  difficultyReason: string | null;
-  gitStatus: string;
-  wbsStart: string | null;
-  wbsEnd: string | null;
+  status_display: string;
   progress: number;
-  project: { id: string; name: string };
-  assigneeId: string | null;
-  assignee: { id: string; name: string } | null;
-  rejectReason?: string | null;
-  assignmentReason?: string | null;
+  start_date: string | null;
+  due_date: string | null;
+  assigned_user: number | null;
+  assigned_user_name: string | null;
+  reject_reason: string | null;
 };
 
 type Member = { id: string; name: string; email: string; role: string };
 
+// Django TaskAssignment.Status 실제 값 — 예전 BACKLOG/DONE은 없고 REJECTED가 추가됐다.
 const STATUSES = [
-  { id: "BACKLOG", label: "대기", color: "text-muted-foreground", bg: "bg-muted" },
   { id: "PENDING_APPROVAL", label: "배분승인대기", color: "text-orange-500", bg: "bg-orange-500/10" },
+  { id: "APPROVED", label: "승인됨", color: "text-sky-500", bg: "bg-sky-500/10" },
   { id: "IN_PROGRESS", label: "진행 중", color: "text-amber-500", bg: "bg-amber-500/10" },
-  { id: "DONE", label: "완료", color: "text-emerald-500", bg: "bg-emerald-500/10" },
+  { id: "COMPLETED", label: "완료", color: "text-emerald-500", bg: "bg-emerald-500/10" },
+  { id: "REJECTED", label: "반려됨", color: "text-red-500", bg: "bg-red-500/10" },
 ];
-
-// FR-07-003: 업무 항목별 Git 상태 배지 (실제 Git 연동 전까지는 수동 표시 — FR-08에서 자동화 예정)
-const GIT_STATUSES: Record<string, { label: string; color: string; bg: string; icon: any }> = {
-  NONE: { label: "미연동", color: "text-muted-foreground", bg: "bg-muted", icon: GitBranch },
-  PENDING: { label: "대기", color: "text-gray-500", bg: "bg-gray-500/10", icon: GitBranch },
-  IN_REVIEW: { label: "PR리뷰중", color: "text-orange-500", bg: "bg-orange-500/10", icon: GitPullRequest },
-  MERGED: { label: "완료", color: "text-emerald-500", bg: "bg-emerald-500/10", icon: GitMerge },
-};
 
 export default function TasksPage() {
   const { user } = useAuth();
@@ -61,15 +53,14 @@ export default function TasksPage() {
     if (s) setStatusFilter(s);
   }, [searchParams]);
 
-  // 일반유저는 "내 업무"가 기본값 — 전체 업무 조회는 PM만 필요하다는 판단(FR-01-005 팀 전체 요약은 PM용)
+  // 일반유저는 "내 업무"가 기본값 — 전체 업무 조회는 PM만 필요하다는 판단
   const [filterScope, setFilterScope] = useState<"ME" | "ALL">("ME");
   const [viewMode, setViewMode] = useState<"KANBAN" | "LIST" | "WBS">("LIST");
-  const [processingId, setProcessingId] = useState<string | null>(null);
+  const [processingId, setProcessingId] = useState<number | null>(null);
   const [page, setPage] = useState(1);
   const PAGE_SIZE = 10;
 
-  // 칸반 뷰(KanbanBoard 컴포넌트)는 담당자 배정에 프로젝트 멤버 목록이 필요하고,
-  // 신규 업무 생성에는 프로젝트 id가 필요하다 — 이 앱은 단일 프로젝트 전제이므로
+  // 칸반 뷰는 담당자 배정에 프로젝트 멤버 목록이 필요하다 — 이 앱은 단일 프로젝트 전제이므로
   // 다른 화면들과 같은 방식으로 가장 최근(첫 번째) 프로젝트를 기본값으로 쓴다.
   const [members, setMembers] = useState<Member[]>([]);
   const [currentProjectId, setCurrentProjectId] = useState<string | null>(null);
@@ -79,13 +70,22 @@ export default function TasksPage() {
   useEffect(() => {
     fetchTasks();
     Promise.all([
-      fetch("/api/projects").then(r => r.json()),
-      fetch("/api/users").then(r => r.json()),
-    ]).then(([projectsRes, usersRes]) => {
-      const projects = Array.isArray(projectsRes) ? projectsRes : projectsRes.data || [];
-      setCurrentProjectId(projects[0]?.id ?? null);
-      // PM은 배정 대상이 아니고, 온보딩 전이라 이름이 비어있는 계정은 제외한다 (projects/[id] 페이지와 동일한 기준).
-      if (usersRes.success) setMembers(usersRes.data.filter((u: Member) => u.role !== "PM" && u.name?.trim()));
+      apiFetch<any[]>("/api/projects/"),
+      apiFetch<any[]>("/api/users/"),
+    ]).then(([projects, allUsers]) => {
+      setCurrentProjectId(projects[0] ? String(projects[0].id) : null);
+      // 칸반 담당자 드롭다운엔 실제로 업무를 받을 수 있는 사람만 — PM(is_staff)은 배정 대상이
+      // 아니고, 온보딩 전이라 이름이 비어있는 계정도 빈 옵션으로 보이니 제외한다.
+      setMembers(
+        allUsers
+          .filter((u: any) => !u.is_staff && (u.first_name || u.last_name))
+          .map((u: any) => ({
+            id: String(u.id),
+            name: `${u.last_name ?? ""}${u.first_name ?? ""}`.trim() || u.username,
+            email: u.email,
+            role: u.is_staff ? "PM" : "MEMBER",
+          }))
+      );
     }).catch(error => console.error(error));
   }, []);
 
@@ -101,9 +101,8 @@ export default function TasksPage() {
   const fetchTasks = async (silent = false) => {
     if (!silent) setLoading(true);
     try {
-      const res = await fetch("/api/tasks");
-      const json = await res.json();
-      if (json.success) setTasks(json.data);
+      const data = await apiFetch<Task[]>("/api/tasks/assignments/");
+      setTasks(data);
     } catch (error) {
       console.error(error);
     } finally {
@@ -111,58 +110,34 @@ export default function TasksPage() {
     }
   };
 
-  const handleStatusChange = async (taskId: string, newStatus: string) => {
+  const handleStatusChange = async (taskId: number, newStatus: string) => {
     setProcessingId(taskId);
     try {
-      const res = await fetch(`/api/tasks/${taskId}`, {
+      await apiFetch(`/api/tasks/assignments/${taskId}/status/`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status: newStatus }),
       });
-      if (res.ok) {
-        setTasks(tasks.map(t => t.id === taskId ? { ...t, status: newStatus } : t));
-      } else {
-        alert("상태 변경에 실패했습니다.");
-      }
+      setTasks(tasks.map(t => t.id === taskId ? { ...t, status: newStatus } : t));
     } catch {
-      alert("네트워크 오류로 상태 변경에 실패했습니다.");
+      alert("상태 변경에 실패했습니다.");
     } finally {
       setProcessingId(null);
-    }
-  };
-
-  const handleGitStatusChange = async (taskId: string, gitStatus: string) => {
-    const prevStatus = tasks.find(t => t.id === taskId)?.gitStatus;
-    setTasks(prev => prev.map(t => t.id === taskId ? { ...t, gitStatus } : t));
-    try {
-      const res = await fetch(`/api/tasks/${taskId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ gitStatus }),
-      });
-      if (!res.ok) throw new Error("failed");
-    } catch (e) {
-      console.error(e);
-      // 저장 실패 시 화면이 실제 상태와 어긋난 채로 남지 않도록 되돌린다
-      if (prevStatus !== undefined) setTasks(prev => prev.map(t => t.id === taskId ? { ...t, gitStatus: prevStatus } : t));
-      alert("Git 상태 변경에 실패했습니다.");
     }
   };
 
   const filteredTasks = useMemo(() => {
     let filtered = tasks;
     if (filterScope === "ME" && user) {
-      filtered = filtered.filter(t => t.assignee?.id === user.id);
+      filtered = filtered.filter(t => String(t.assigned_user) === String(user.id));
     }
     if (statusFilter) {
       filtered = filtered.filter(t => t.status === statusFilter);
     }
     if (search.trim()) {
       const q = search.toLowerCase();
-      filtered = filtered.filter(t => 
-        t.title.toLowerCase().includes(q) || 
-        t.project.name.toLowerCase().includes(q) ||
-        (t.assignee?.name || "").toLowerCase().includes(q)
+      filtered = filtered.filter(t =>
+        t.task_title.toLowerCase().includes(q) ||
+        (t.assigned_user_name || "").toLowerCase().includes(q)
       );
     }
     return filtered;
@@ -208,13 +183,13 @@ export default function TasksPage() {
             <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground group-focus-within:text-primary transition-colors" />
             <input
               type="text"
-              placeholder="업무명, 프로젝트, 담당자 검색..."
+              placeholder="업무명, 담당자 검색..."
               value={search}
               onChange={e => setSearch(e.target.value)}
               className="pl-9 pr-4 py-2.5 bg-card border border-transparent hover:border-black/10 dark:hover:border-white/10 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 focus:bg-background w-64 lg:w-80 transition-all shadow-sm"
             />
           </div>
-          
+
           <div className="flex items-center gap-1 p-1 bg-black/5 dark:bg-white/5 rounded-xl">
             <button
               onClick={() => setViewMode("KANBAN")}
@@ -230,7 +205,6 @@ export default function TasksPage() {
             >
               <LayoutGrid className="w-4 h-4" />
             </button>
-            {/* 업무보드(WBS) 뷰 — FR-07: 전체 진행상황 요약 + Git 상태 배지가 포함된 표 형태 뷰 */}
             <button
               onClick={() => setViewMode("WBS")}
               className={cn("p-2.5 rounded-lg transition-all", viewMode === "WBS" ? "bg-white dark:bg-white/10 text-primary shadow-sm" : "text-muted-foreground hover:text-foreground")}
@@ -242,14 +216,13 @@ export default function TasksPage() {
         </div>
       </div>
 
-      {/* 대시보드 "업무 상태 분포"에서 상태를 지정해 들어왔을 때만 보이는 필터 표시 — 지금 뭘로
-          좁혀서 보고 있는지 알려주고, 눌러서 지울 수 있게 한다. */}
+      {/* 대시보드 "업무 상태 분포"에서 상태를 지정해 들어왔을 때만 보이는 필터 표시 */}
       {statusFilter && (
         <div className="flex items-center gap-2">
           <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold bg-primary/10 text-primary">
             상태: {STATUSES.find(s => s.id === statusFilter)?.label ?? statusFilter}
             <button onClick={() => setStatusFilter(null)} className="hover:opacity-70 transition-opacity" aria-label="필터 해제">
-              <X className="w-3 h-3" />
+              ×
             </button>
           </span>
         </div>
@@ -263,10 +236,12 @@ export default function TasksPage() {
         <>
           {viewMode === "KANBAN" ? (
             currentProjectId ? (
-              // FR-05: 업무분배 승인/반려는 KanbanBoard 컴포넌트로 통일한다 — 이전에는 이 화면이
-              // 자체 칸반 마크업을 따로 갖고 있어서 PENDING_APPROVAL 카드에 승인/반려 버튼이 없었고,
-              // 팀원이 매일 쓰는 이 화면에서는 승인함(/approvals)이나 프로젝트 상세 페이지로 가야만 승인할 수 있었다.
-              <KanbanBoard projectId={currentProjectId} initialTasks={filteredTasks} members={members} />
+              <KanbanBoard
+                projectId={currentProjectId}
+                initialTasks={filteredTasks}
+                members={members}
+                onTaskChange={(taskId, patch) => setTasks(prev => prev.map(t => t.id === taskId ? { ...t, ...patch } : t))}
+              />
             ) : (
               <div className="flex flex-col items-center justify-center h-64 text-center gap-3">
                 <FolderKanban className="w-10 h-10 text-muted-foreground/30" />
@@ -295,6 +270,7 @@ export default function TasksPage() {
                   ) : (
                     pagedTasks.map(task => {
                       const statusInfo = STATUSES.find(s => s.id === task.status) || STATUSES[0];
+                      const overdue = isTaskOverdue({ wbsEnd: task.due_date, status: task.status });
                       return (
                         <tr
                           key={task.id}
@@ -302,8 +278,8 @@ export default function TasksPage() {
                           className="hover:bg-black/5 dark:hover:bg-white/5 transition-colors group relative cursor-pointer"
                         >
                           <td className="px-6 py-4">
-                            <div className="font-bold mb-1">{task.title}</div>
-                            {task.description && <div className="text-xs text-muted-foreground line-clamp-1 max-w-md">{task.description}</div>}
+                            <div className="font-bold mb-1">{task.task_title}</div>
+                            {task.task_description && <div className="text-xs text-muted-foreground line-clamp-1 max-w-md">{task.task_description}</div>}
                           </td>
                           <td className="px-6 py-4" onClick={e => e.stopPropagation()}>
                             {task.status === "PENDING_APPROVAL" ? (
@@ -320,26 +296,26 @@ export default function TasksPage() {
                                   statusInfo.bg, statusInfo.color
                                 )}
                               >
-                                {STATUSES.filter(s => s.id !== "PENDING_APPROVAL").map(s => <option key={s.id} value={s.id} className="bg-background text-foreground">{s.label}</option>)}
+                                {STATUSES.filter(s => s.id !== "PENDING_APPROVAL" && s.id !== "REJECTED").map(s => <option key={s.id} value={s.id} className="bg-background text-foreground">{s.label}</option>)}
                               </select>
                             )}
                           </td>
                           <td className="px-6 py-4">
-                            {task.assignee ? (
+                            {task.assigned_user_name ? (
                               <div className="flex items-center gap-2">
                                 <div className="w-6 h-6 rounded-full bg-primary/20 text-primary flex items-center justify-center text-[10px] font-bold">
-                                  {task.assignee.name.charAt(0)}
+                                  {task.assigned_user_name.charAt(0)}
                                 </div>
-                                <span className="font-medium text-[13px]">{task.assignee.name}</span>
+                                <span className="font-medium text-[13px]">{task.assigned_user_name}</span>
                               </div>
                             ) : (
                               <span className="text-muted-foreground text-[13px]">미배정</span>
                             )}
                           </td>
-                          <td className={cn("px-6 py-4 text-[13px]", isTaskOverdue(task) ? "text-red-500 font-semibold" : "text-muted-foreground")}>
+                          <td className={cn("px-6 py-4 text-[13px]", overdue ? "text-red-500 font-semibold" : "text-muted-foreground")}>
                             <div className="flex items-center gap-1">
-                              {isTaskOverdue(task) && <AlertTriangle className="w-3.5 h-3.5 shrink-0" />}
-                              {task.wbsEnd ? new Date(task.wbsEnd).toLocaleDateString() : "-"}
+                              {overdue && <AlertTriangle className="w-3.5 h-3.5 shrink-0" />}
+                              {task.due_date ? new Date(task.due_date).toLocaleDateString() : "-"}
                             </div>
                           </td>
                           <td className="px-6 py-4">
@@ -359,8 +335,7 @@ export default function TasksPage() {
               <Pagination page={page} totalPages={totalPages} onChange={setPage} />
             </div>
           ) : (
-            // 업무보드(WBS) 뷰 (FR-07-001~003): 전체 진행상황 요약 + Git 상태 배지가 포함된 통합 표
-            <WbsBoardView tasks={filteredTasks} onGitStatusChange={handleGitStatusChange} onRowClick={setSelectedTaskForDetail} />
+            <WbsBoardView tasks={filteredTasks} onRowClick={setSelectedTaskForDetail} />
           )}
         </>
       )}
@@ -369,7 +344,11 @@ export default function TasksPage() {
         <TaskDetailModal
           task={selectedTaskForDetail}
           members={members}
-          onClose={() => { setSelectedTaskForDetail(null); fetchTasks(true); }}
+          onClose={() => setSelectedTaskForDetail(null)}
+          onUpdated={(updated) => {
+            setTasks(prev => prev.map(t => t.id === updated.id ? { ...t, ...updated } : t));
+            setSelectedTaskForDetail(null);
+          }}
         />
       )}
     </div>
@@ -377,18 +356,16 @@ export default function TasksPage() {
 }
 
 /**
- * 업무보드(WBS) 뷰 — FR-07-003 "조회 상단 WBS: 전체 진행사항을 파악할 수 있는 차트 +
- * Git 상태 배지"를 담당한다. 상단에는 상태별 카운트/전체 진행률 요약 바를,
- * 아래에는 업무별 Git 상태(FR-08 연동 전까지는 수동 표시)를 포함한 표를 그린다.
+ * 업무보드(WBS) 뷰 — 상단에는 상태별 카운트/전체 진행률 요약 바를, 아래에는 업무별 표를 그린다.
+ * Git 상태 배지/예상 소요시간/난이도는 heyzzabi2 시절 필드로 이 프로젝트 백엔드엔 없어서 제외했다.
  */
-function WbsBoardView({ tasks, onGitStatusChange, onRowClick }: { tasks: Task[]; onGitStatusChange: (taskId: string, gitStatus: string) => void; onRowClick: (task: Task) => void }) {
-  // 상태별 집계 — 진행률 요약 바에 사용 (페이지네이션과 무관하게 항상 전체 tasks 기준)
+function WbsBoardView({ tasks, onRowClick }: { tasks: Task[]; onRowClick: (task: Task) => void }) {
   const total = tasks.length;
   const counts = STATUSES.reduce((acc, s) => {
     acc[s.id] = tasks.filter(t => t.status === s.id).length;
     return acc;
   }, {} as Record<string, number>);
-  const doneCount = counts["DONE"] ?? 0;
+  const doneCount = counts["COMPLETED"] ?? 0;
   const overallProgress = total > 0 ? Math.round((doneCount / total) * 100) : 0;
 
   const PAGE_SIZE = 10;
@@ -399,7 +376,7 @@ function WbsBoardView({ tasks, onGitStatusChange, onRowClick }: { tasks: Task[];
 
   return (
     <div className="space-y-4">
-      {/* 전체 진행상황 요약 (FR-07-003) */}
+      {/* 전체 진행상황 요약 */}
       <div className="bg-card rounded-2xl border border-border p-5 shadow-sm">
         <div className="flex items-center justify-between mb-3">
           <h3 className="text-sm font-bold text-muted-foreground">전체 진행률</h3>
@@ -408,7 +385,7 @@ function WbsBoardView({ tasks, onGitStatusChange, onRowClick }: { tasks: Task[];
         <div className="w-full h-2.5 bg-black/10 dark:bg-white/10 rounded-full overflow-hidden mb-4">
           <div className="h-full bg-primary rounded-full transition-all" style={{ width: `${overallProgress}%` }} />
         </div>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
           {STATUSES.map(s => (
             <div key={s.id} className={cn("rounded-xl p-3", s.bg)}>
               <p className={cn("text-xs font-bold", s.color)}>{s.label}</p>
@@ -418,7 +395,7 @@ function WbsBoardView({ tasks, onGitStatusChange, onRowClick }: { tasks: Task[];
         </div>
       </div>
 
-      {/* 업무별 WBS 표 + Git 상태 배지 */}
+      {/* 업무별 WBS 표 */}
       <div className="bg-card rounded-2xl border border-border overflow-hidden shadow-sm">
         <table className="w-full text-sm text-left">
           <thead className="text-xs text-muted-foreground uppercase bg-black/5 dark:bg-white/5">
@@ -427,7 +404,7 @@ function WbsBoardView({ tasks, onGitStatusChange, onRowClick }: { tasks: Task[];
               <th className="px-6 py-4 font-bold">담당자</th>
               <th className="px-6 py-4 font-bold">상태</th>
               <th className="px-6 py-4 font-bold text-center">진행률</th>
-              <th className="px-6 py-4 font-bold">Git 상태</th>
+              <th className="px-6 py-4 font-bold">마감일</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-black/5 dark:divide-white/5">
@@ -436,8 +413,7 @@ function WbsBoardView({ tasks, onGitStatusChange, onRowClick }: { tasks: Task[];
             ) : (
               pagedTasks.map(task => {
                 const statusInfo = STATUSES.find(s => s.id === task.status) || STATUSES[0];
-                const gitInfo = GIT_STATUSES[task.gitStatus] ?? GIT_STATUSES.NONE;
-                const GitIcon = gitInfo.icon;
+                const overdue = isTaskOverdue({ wbsEnd: task.due_date, status: task.status });
                 return (
                   <tr
                     key={task.id}
@@ -446,21 +422,15 @@ function WbsBoardView({ tasks, onGitStatusChange, onRowClick }: { tasks: Task[];
                   >
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-1.5">
-                        <span className="font-bold">{task.title}</span>
-                        {isTaskOverdue(task) && (
+                        <span className="font-bold">{task.task_title}</span>
+                        {overdue && (
                           <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-red-500/10 text-red-500 shrink-0">
                             <AlertTriangle className="w-3 h-3" /> 지연
                           </span>
                         )}
                       </div>
-                      <div className="flex items-center gap-1.5 mt-0.5">
-                        {task.estimatedHours != null && (
-                          <span className="text-[11px] text-muted-foreground">예상 소요 {task.estimatedHours}시간</span>
-                        )}
-                        <DifficultyBadge difficulty={task.difficulty} reason={task.difficultyReason} />
-                      </div>
                     </td>
-                    <td className="px-6 py-4 text-[13px]">{task.assignee ? task.assignee.name : <span className="text-muted-foreground">미배정</span>}</td>
+                    <td className="px-6 py-4 text-[13px]">{task.assigned_user_name ? task.assigned_user_name : <span className="text-muted-foreground">미배정</span>}</td>
                     <td className="px-6 py-4">
                       <span className={cn("inline-block text-xs font-bold px-2.5 py-1.5 rounded-lg", statusInfo.bg, statusInfo.color)}>
                         {statusInfo.label}
@@ -474,20 +444,8 @@ function WbsBoardView({ tasks, onGitStatusChange, onRowClick }: { tasks: Task[];
                         <span className="text-xs font-semibold w-8 text-right">{task.progress}%</span>
                       </div>
                     </td>
-                    <td className="px-6 py-4" onClick={e => e.stopPropagation()}>
-                      {/* FR-08 Git 연동 전까지는 팀원이 직접 상태를 표시 */}
-                      <select
-                        value={task.gitStatus}
-                        onChange={e => onGitStatusChange(task.id, e.target.value)}
-                        className={cn(
-                          "inline-flex items-center gap-1 text-xs font-bold px-2.5 py-1.5 rounded-lg border border-transparent hover:border-black/10 dark:hover:border-white/10 focus:outline-none cursor-pointer appearance-none",
-                          gitInfo.bg, gitInfo.color
-                        )}
-                      >
-                        {Object.entries(GIT_STATUSES).map(([key, meta]) => (
-                          <option key={key} value={key} className="bg-background text-foreground">{meta.label}</option>
-                        ))}
-                      </select>
+                    <td className="px-6 py-4 text-[13px] text-muted-foreground">
+                      {task.due_date ? new Date(task.due_date).toLocaleDateString() : "-"}
                     </td>
                   </tr>
                 );
