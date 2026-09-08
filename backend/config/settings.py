@@ -126,6 +126,54 @@ else:
         }
     }
 
+# 로그 저장
+LOG_DIR = BASE_DIR / "logs"
+os.makedirs(LOG_DIR, exist_ok=True)
+
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,  # 기존 로거(우리 코드의 logger = logging.getLogger(name))를 끄지 않음
+
+    "formatters": {
+        "verbose": {
+            "format": "[{asctime}] {levelname} {name}: {message}",
+            "style": "{",
+        },
+    },
+
+    "handlers": {
+        "console": {
+            "class": "logging.StreamHandler",
+            "formatter": "verbose",
+        },
+        "file": {
+            "class": "logging.handlers.RotatingFileHandler",
+            "filename": LOG_DIR / "django.log",
+            "maxBytes": 10 * 1024 * 1024,  # 10MB — 넘으면 자동으로 새 파일로 교체
+            "backupCount": 5,               # 최근 5개 파일까지만 보관
+            "formatter": "verbose",
+            "encoding": "utf-8",
+        },
+    },
+
+    "root": {
+        # 프로젝트 전체(우리 views.py, ai/ 모듈 로거 포함)가 기본적으로
+        # 이 설정을 상속받는다 — 개별 앱마다 따로 설정 안 해도 됨
+        "handlers": ["console", "file"],
+        "level": "INFO",
+    },
+
+    "loggers": {
+        # Django가 처리 못한 예외(500 에러)는 이걸로 잡힌다 —
+        # 지금 겪은 "터미널에 한 번 찍히고 사라지는" 에러가 여기 해당
+        "django.request": {
+            "handlers": ["console", "file"],
+            "level": "ERROR",
+            "propagate": False,
+        },
+    },
+}
+
 # Password validation
 # https://docs.djangoproject.com/en/6.0/ref/settings/#auth-password-validators
 
