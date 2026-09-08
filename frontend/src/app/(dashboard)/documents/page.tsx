@@ -1079,6 +1079,11 @@ function NoteDetail({
   const meta = STATUS_META[status];
   const canGenerate = String(note.created_by) === currentUserId;
   const dateLabel = new Date(note.updated_at).toLocaleDateString("ko-KR");
+  // 확정된 업무배분 목록 — PM은 전체를 보고, 일반 유저는 본인에게 배정된 업무만 본다
+  // (heyzzabi2와 동일한 접근 제어 — 다른 사람 업무까지 보이면 안 된다는 요청).
+  const visibleTaskAssignments = isPM
+    ? taskAssignments
+    : taskAssignments.filter(t => String(t.assigned_user) === currentUserId);
 
   const busyKey = (action: string) => `${note.id}-${action}`;
 
@@ -1381,10 +1386,12 @@ function NoteDetail({
       </div>
 
       {/* 업무배분 탭 — heyzzabi2의 TaskAssignmentPanel과 동일한 2단계(제안 검토→확정) 흐름.
-          taskDrafts가 있으면(생성 직후, 아직 미저장) 편집 가능한 리뷰 화면, 없으면 이미
-          확정된 taskAssignments를 보여준다. */}
+          taskDrafts는 서버에 저장되는 게 아니라 PM 브라우저의 로컬 상태일 뿐이라 원래
+          다른 사람 화면엔 안 뜨는 게 맞지만, 이 화면 자체가 isPM을 체크하지 않고 있어서
+          같은 브라우저에서 계정을 바꾸는 등의 경우 일반 유저도 편집 화면을 보고 담당자/
+          일정을 바꿀 수 있는 실제 문제가 있었다 — PM만 검토/확정 화면을 보게 막는다. */}
       <div className={cn(activeTab !== "taskAssignment" && "hidden")}>
-        {taskDrafts && taskDrafts.length > 0 ? (
+        {taskDrafts && taskDrafts.length > 0 && isPM ? (
           <TaskDraftReview
             drafts={taskDrafts}
             setDrafts={setTaskDrafts}
@@ -1393,7 +1400,12 @@ function NoteDetail({
             onCancel={onCancelTaskDrafts}
             onConfirm={() => spec && onConfirmTasks(spec)}
           />
-        ) : taskAssignments.length === 0 ? (
+        ) : taskDrafts && taskDrafts.length > 0 && !isPM ? (
+          <div className="border border-dashed border-border rounded-xl p-10 flex flex-col items-center gap-3 text-center">
+            <Clock className="w-8 h-8 text-muted-foreground/40" />
+            <p className="text-sm text-muted-foreground">배분 확정 전입니다. PM이 검토를 마치고 확정하면 여기에 표시됩니다.</p>
+          </div>
+        ) : visibleTaskAssignments.length === 0 ? (
           <div className="border border-dashed border-border rounded-xl p-10 flex flex-col items-center gap-3 text-center">
             {generatingTasks ? (
               <div className="flex flex-col items-center gap-4 py-6">
@@ -1404,7 +1416,9 @@ function NoteDetail({
               <>
                 <Briefcase className="w-8 h-8 text-muted-foreground/40" />
                 <p className="text-sm text-muted-foreground">
-                  {reqDef?.status_info?.code_id === "APPROVED"
+                  {!isPM && taskAssignments.length > 0
+                    ? "본인에게 배정된 업무가 없습니다."
+                    : reqDef?.status_info?.code_id === "APPROVED"
                     ? "요구사항정의서 탭에서 \"업무 배분 실행\"을 누르면 여기에 결과가 표시됩니다."
                     : "요구사항정의서가 승인되면 업무 배분을 실행할 수 있습니다."}
                 </p>
@@ -1413,7 +1427,7 @@ function NoteDetail({
           </div>
         ) : (
           <TaskAssignmentList
-            tasks={taskAssignments}
+            tasks={visibleTaskAssignments}
             members={members}
             isPM={isPM}
             reassigningTaskId={reassigningTaskId}
