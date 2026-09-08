@@ -142,6 +142,7 @@ export default function DocumentsPage() {
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState("");
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [errorToast, setErrorToast] = useState<string | null>(null);
 
   const fetchAll = async (preferredProjectId?: number) => {
     setLoading(true);
@@ -199,7 +200,7 @@ export default function DocumentsPage() {
       await refetchNote(note.id);
       setToastMessage("기획서 생성이 완료되었습니다");
     } catch (err: any) {
-      alert(err.message || "기획서 생성에 실패했습니다.");
+      setErrorToast(err.message || "기획서 생성에 실패했습니다.");
     } finally {
       setBusy(null);
     }
@@ -214,7 +215,7 @@ export default function DocumentsPage() {
       });
       replaceNote(updated);
     } catch (err: any) {
-      alert(err.message || "저장에 실패했습니다.");
+      setErrorToast(err.message || "저장에 실패했습니다.");
     } finally {
       setBusy(null);
     }
@@ -229,7 +230,7 @@ export default function DocumentsPage() {
       });
       replaceNote({ ...note, spec_documents: note.spec_documents.map(s => s.id === updated.id ? updated : s) });
     } catch (err: any) {
-      alert(err.message || "저장에 실패했습니다.");
+      setErrorToast(err.message || "저장에 실패했습니다.");
     } finally {
       setBusy(null);
     }
@@ -244,7 +245,7 @@ export default function DocumentsPage() {
       });
       await refetchNote(note.id);
     } catch (err: any) {
-      alert(err.message || "저장에 실패했습니다.");
+      setErrorToast(err.message || "저장에 실패했습니다.");
     } finally {
       setBusy(null);
     }
@@ -257,7 +258,7 @@ export default function DocumentsPage() {
       await refetchNote(note.id);
       setToastMessage("검토요청이 완료되었습니다");
     } catch (err: any) {
-      alert(err.message || "검토 요청에 실패했습니다.");
+      setErrorToast(err.message || "검토 요청에 실패했습니다.");
     } finally {
       setBusy(null);
     }
@@ -269,7 +270,7 @@ export default function DocumentsPage() {
       await apiFetch(`/api/meetings/specs/${spec.id}/approve/`, { method: "POST" });
       await refetchNote(note.id);
     } catch (err: any) {
-      alert(err.message || "승인에 실패했습니다.");
+      setErrorToast(err.message || "승인에 실패했습니다.");
     } finally {
       setBusy(null);
     }
@@ -287,7 +288,7 @@ export default function DocumentsPage() {
       setRejectTarget(null);
       setRejectReason("");
     } catch (err: any) {
-      alert(err.message || "반려에 실패했습니다.");
+      setErrorToast(err.message || "반려에 실패했습니다.");
     } finally {
       setBusy(null);
     }
@@ -302,7 +303,7 @@ export default function DocumentsPage() {
       if (selectedNoteId === deleteTarget.id) setSelectedNoteId(null);
       setDeleteTarget(null);
     } catch (err: any) {
-      alert(err.message || "삭제에 실패했습니다.");
+      setErrorToast(err.message || "삭제에 실패했습니다.");
     } finally {
       setDeleting(false);
     }
@@ -325,7 +326,7 @@ export default function DocumentsPage() {
       setReqDefs(allReqDefs);
       setToastMessage("요구사항 정의서가 생성되었습니다");
     } catch (err: any) {
-      alert(err.message || "요구사항 정의서 생성에 실패했습니다.");
+      setErrorToast(err.message || "요구사항 정의서 생성에 실패했습니다.");
     } finally {
       setBusy(null);
     }
@@ -341,7 +342,7 @@ export default function DocumentsPage() {
       const itemCount = updatedReqDef.items?.length || 0;
       setToastMessage(`요구사항 항목 ${itemCount}건이 추출되었습니다`);
     } catch (err: any) {
-      alert(err.message || "요구사항 추출에 실패했습니다.");
+      setErrorToast(err.message || "요구사항 추출에 실패했습니다.");
     } finally {
       setBusy(null);
     }
@@ -357,7 +358,7 @@ export default function DocumentsPage() {
       setReqDefs(prev => prev.map(r => r.id === reqDefId ? { ...r, items: [...r.items, newItem] } : r));
       setToastMessage("요구사항 항목이 추가되었습니다");
     } catch (err: any) {
-      alert(err.message || "항목 추가에 실패했습니다.");
+      setErrorToast(err.message || "항목 추가에 실패했습니다.");
     } finally {
       setBusy(null);
     }
@@ -583,6 +584,7 @@ export default function DocumentsPage() {
         </div>
       )}
       <Toast message={toastMessage} onDismiss={() => setToastMessage(null)} />
+      <Toast message={errorToast} variant="error" onDismiss={() => setErrorToast(null)} />
     </div>
   );
 }
