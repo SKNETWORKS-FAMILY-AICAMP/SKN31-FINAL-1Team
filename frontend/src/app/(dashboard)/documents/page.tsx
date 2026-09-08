@@ -47,20 +47,33 @@ type SpecDto = {
 
 type ReqItemDto = {
   id: number;
+  req_def: number;
   req_code: string;
   req_name: string;
   description: string;
-  category?: string;
-  difficulty?: string;
+  priority_code: string | null;
+  priority_info: { code_id: string; code_name: string } | null;
+  category?: string | null;
+  category_2?: string | null;
+  difficulty?: string | null;
 };
+
+type ReqDefStatusCode = "DRAFT" | "PENDING_REVIEW" | "APPROVED" | "REJECTED";
 
 type ReqDefDto = {
   id: number;
   spec: number;
+  spec_id: number;
+  spec_title: string;
   project: number;
+  project_name: string;
   title: string;
   version: string;
-  description?: string;
+  description?: string | null;
+  status_code: string | null;
+  status_info: { code_id: ReqDefStatusCode; code_name: string } | null;
+  created_by: number | null;
+  created_by_name: string;
   items: ReqItemDto[];
   created_at: string;
   updated_at: string;
@@ -92,6 +105,9 @@ const STATUS_META: Record<BareStatus, { label: string; className: string; icon: 
   REJECTED: { label: "반려됨", className: "bg-red-500/10 text-red-500", icon: XCircle },
 };
 
+// 요구사항 항목의 우선순위(CommonCode REQ_PRIORITY 그룹, code_name 기준) 한글 표시.
+const PRIORITY_LABEL: Record<string, string> = { HIGH: "상", MEDIUM: "중", LOW: "하" };
+
 function specToProposalDoc(spec: SpecDto): ProposalDoc {
   return {
     projectOverview: spec.overview ?? "",
@@ -119,7 +135,10 @@ function proposalDocToPatch(doc: ProposalDoc) {
   };
 }
 
-const isNoteDeletable = (note: NoteDto) => {
+// "기획서 생성"/"검토요청" 버튼은 작성자 본인만 보이는데, 삭제 버튼엔 그 체크가 빠져있었다
+// (실제로 다른 사람이 시작한 초안도 지울 수 있는 상태였음) — PM은 검토 권한상 예외로 허용.
+const isNoteDeletable = (note: NoteDto, currentUserId: string | undefined, isPM: boolean) => {
+  if (!isPM && String(note.created_by) !== currentUserId) return false;
   const spec = note.spec_documents[0];
   if (!spec) return true;
   const s = bareStatus(spec);
@@ -380,6 +399,57 @@ export default function DocumentsPage() {
     }
   };
 
+  // 백엔드에 방금 추가된 엔드포인트(/api/requirements/items/{id}/ PATCH/DELETE) — 팀원이
+  // 실제로 구현·배포한 걸 확인하고 연동한다.
+  const handleUpdateItem = async (reqDefId: number, itemId: number, patch: { req_name: string; description: string }) => {
+    setBusy(`reqitem-${itemId}-update`);
+    try {
+      const updated = await apiFetch<ReqItemDto>(`/api/requirements/items/${itemId}/`, {
+        method: "PATCH",
+        body: JSON.stringify(patch),
+      });
+      setReqDefs(prev => prev.map(r => r.id === reqDefId ? { ...r, items: r.items.map(it => it.id === itemId ? updated : it) } : r));
+      setToastMessage("요구사항 항목이 수정되었습니다");
+    } catch (err: any) {
+      setErrorToast(err.message || "항목 수정에 실패했습니다.");
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const handleDeleteItem = async (reqDefId: number, itemId: number) => {
+    setBusy(`reqitem-${itemId}-delete`);
+    try {
+      await apiFetch(`/api/requirements/items/${itemId}/`, { method: "DELETE" });
+      setReqDefs(prev => prev.map(r => r.id === reqDefId ? { ...r, items: r.items.filter(it => it.id !== itemId) } : r));
+      setToastMessage("요구사항 항목이 삭제되었습니다");
+    } catch (err: any) {
+      setErrorToast(err.message || "항목 삭제에 실패했습니다.");
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  // 요구사항정의서 승인/반려 — 전용 엔드포인트는 아직 없어서(기획서 쪽처럼 /approve/,
+  // /reject/가 따로 없음) 일반 PATCH로 status_code만 바꾼다. 반려 사유를 저장할 필드가
+  // 모델에 아직 없어서(기획서의 review_comment 같은 것) 반려 사유 입력 UI는 이번엔 생략한다
+  // — 팀원 전달 목록에 추가해야 함.
+  const handleReqDefStatusChange = async (spec: SpecDto, reqDefId: number, statusCode: "APPROVED" | "REJECTED") => {
+    setBusy(`reqdef-${reqDefId}-${statusCode.toLowerCase()}`);
+    try {
+      const updated = await apiFetch<ReqDefDto>(`/api/requirements/${spec.id}/`, {
+        method: "PATCH",
+        body: JSON.stringify({ status_code: statusCode }),
+      });
+      setReqDefs(prev => prev.map(r => r.id === reqDefId ? updated : r));
+      setToastMessage(statusCode === "APPROVED" ? "요구사항 정의서가 승인되었습니다" : "요구사항 정의서가 반려되었습니다");
+    } catch (err: any) {
+      setErrorToast(err.message || "상태 변경에 실패했습니다.");
+    } finally {
+      setBusy(null);
+    }
+  };
+
   if (loading) {
     return <div className="flex items-center justify-center h-[60vh]"><Loader2 className="w-8 h-8 animate-spin text-primary" /></div>;
   }
@@ -510,6 +580,7 @@ export default function DocumentsPage() {
                     )}
                   >
                     <button onClick={() => selectNote(note)} className="flex-1 min-w-0 text-left">
+                      <p className="text-[10px] font-mono text-muted-foreground/70">문서번호 {note.id}</p>
                       <p className="font-semibold text-sm truncate mb-1.5">{note.title}</p>
                       {/* 미니 파이프라인 — 이 문서가 지금 3단계 중 어디에 있는지 한눈에 */}
                       <div className="flex items-center gap-1 mb-1.5">
@@ -535,7 +606,7 @@ export default function DocumentsPage() {
                         <span className="truncate">작성자 {note.created_by_name || "알 수 없음"}</span>
                       </p>
                     </button>
-                    {isNoteDeletable(note) ? (
+                    {isNoteDeletable(note, user?.id, isPM) ? (
                       <button
                         onClick={() => setDeleteTarget({ id: note.id, title: note.title })}
                         title="문서 삭제"
@@ -580,6 +651,9 @@ export default function DocumentsPage() {
               onCreateReqDef={(spec) => handleCreateReqDef(selectedNote, spec)}
               onExtractItems={handleExtractItems}
               onAddItem={handleAddItem}
+              onUpdateItem={handleUpdateItem}
+              onDeleteItem={handleDeleteItem}
+              onReqDefStatusChange={handleReqDefStatusChange}
             />
           )}
         </div>
@@ -663,7 +737,7 @@ export default function DocumentsPage() {
 function NoteDetail({
   note, spec, reqDef, activeTab, isPM, currentUserId, busy,
   onGenerateSpec, onSaveNoteContent, onSaveSpec, onSavePeriod, onSubmitReview, onApprove, onReject,
-  onCreateReqDef, onExtractItems, onAddItem,
+  onCreateReqDef, onExtractItems, onAddItem, onUpdateItem, onDeleteItem, onReqDefStatusChange,
 }: {
   note: NoteDto; spec: SpecDto | null; reqDef: ReqDefDto | null; activeTab: PipelineTab; isPM: boolean; currentUserId: string | undefined; busy: string | null;
   onGenerateSpec: () => void;
@@ -676,6 +750,9 @@ function NoteDetail({
   onCreateReqDef: (spec: SpecDto) => void;
   onExtractItems: (specId: number, reqDefId: number) => void;
   onAddItem: (reqDefId: number, item: { req_code: string; req_name: string; description: string }) => void;
+  onUpdateItem: (reqDefId: number, itemId: number, patch: { req_name: string; description: string }) => void;
+  onDeleteItem: (reqDefId: number, itemId: number) => void;
+  onReqDefStatusChange: (spec: SpecDto, reqDefId: number, statusCode: "APPROVED" | "REJECTED") => void;
 }) {
   const status = bareStatus(spec);
   const meta = STATUS_META[status];
@@ -690,6 +767,9 @@ function NoteDetail({
   const rawSaving = busy === busyKey("save-raw");
   const rawLocked = !!spec;
   const specLocked = status === "PENDING_REVIEW" || status === "APPROVED";
+  // "기획서 생성"과 같은 기준 — 작성자 본인이 아니면 원본 회의록도 못 고친다(PM은 예외).
+  // 이 체크가 빠져있어서 다른 사람이 시작한 회의록도 아무나 고칠 수 있는 상태였다.
+  const canEditRaw = canGenerate || isPM;
 
   const [editMode, setEditMode] = useState(false);
   const [editDraft, setEditDraft] = useState<ProposalDoc | null>(null);
@@ -737,6 +817,7 @@ function NoteDetail({
     <div className="space-y-5">
       <div className="flex items-center justify-between">
         <div>
+          <p className="text-xs font-mono text-muted-foreground/70">문서번호 {note.id}</p>
           <h2 className="font-bold text-lg">{note.title}</h2>
           <p className="text-xs text-muted-foreground mt-0.5">
             작성자 {note.created_by_name || "알 수 없음"}
@@ -769,7 +850,7 @@ function NoteDetail({
               </span>
             )}
           </p>
-          {!rawLocked && rawDirty && (
+          {!rawLocked && canEditRaw && rawDirty && (
             <button
               onClick={() => onSaveNoteContent(rawDraft)}
               disabled={rawSaving}
@@ -782,12 +863,13 @@ function NoteDetail({
         </div>
         <textarea
           value={rawDraft}
-          onChange={e => !rawLocked && setRawDraft(e.target.value)}
-          readOnly={rawLocked}
+          onChange={e => !rawLocked && canEditRaw && setRawDraft(e.target.value)}
+          readOnly={rawLocked || !canEditRaw}
           placeholder="내용이 없습니다."
+          title={!rawLocked && !canEditRaw ? "다른 사용자가 시작한 회의록입니다. 작성자 본인만 수정할 수 있습니다." : undefined}
           className={cn(
             "w-full h-48 bg-black/5 dark:bg-white/5 border border-border rounded-xl p-4 whitespace-pre-wrap overflow-y-auto text-muted-foreground resize-none focus:outline-none transition-all",
-            rawLocked ? "cursor-default" : "focus:ring-2 focus:ring-primary/40"
+            (rawLocked || !canEditRaw) ? "cursor-default" : "focus:ring-2 focus:ring-primary/40"
           )}
         />
       </div>
@@ -846,7 +928,9 @@ function NoteDetail({
           </button>
         )}
 
-        {spec && (status === "REJECTED" || status === "DRAFT") && !editMode && (
+        {/* "기획서 생성"/"검토요청"과 같은 기준(작성자 본인, PM은 예외)으로 맞춘다 —
+            이 체크가 빠져있어서 다른 사람이 시작한 초안도 고칠 수 있는 상태였다. */}
+        {spec && (status === "REJECTED" || status === "DRAFT") && (canGenerate || isPM) && !editMode && (
           <button
             onClick={startEdit}
             className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 text-sm font-bold transition-colors"
@@ -945,6 +1029,9 @@ function NoteDetail({
             onCreate={() => onCreateReqDef(spec!)}
             onExtract={onExtractItems}
             onAddItem={onAddItem}
+            onUpdateItem={onUpdateItem}
+            onDeleteItem={onDeleteItem}
+            onStatusChange={(statusCode) => onReqDefStatusChange(spec!, reqDef!.id, statusCode)}
           />
         )}
       </div>
@@ -962,21 +1049,34 @@ function NoteDetail({
 }
 
 function RequirementSection({
-  spec, reqDef, isPM, busy, onCreate, onExtract, onAddItem,
+  spec, reqDef, isPM, busy, onCreate, onExtract, onAddItem, onUpdateItem, onDeleteItem, onStatusChange,
 }: {
   spec: SpecDto; reqDef: ReqDefDto | null; isPM: boolean; busy: string | null;
   onCreate: () => void;
   onExtract: (specId: number, reqDefId: number) => void;
   onAddItem: (reqDefId: number, item: { req_code: string; req_name: string; description: string }) => void;
+  onUpdateItem: (reqDefId: number, itemId: number, patch: { req_name: string; description: string }) => void;
+  onDeleteItem: (reqDefId: number, itemId: number) => void;
+  onStatusChange: (statusCode: "APPROVED" | "REJECTED") => void;
 }) {
   const [showAddForm, setShowAddForm] = useState(false);
   const [newCode, setNewCode] = useState("");
   const [newName, setNewName] = useState("");
   const [newDesc, setNewDesc] = useState("");
+  const [editingItemId, setEditingItemId] = useState<number | null>(null);
+  const [editName, setEditName] = useState("");
+  const [editDesc, setEditDesc] = useState("");
 
   const creating = busy === `${spec.id}-create-reqdef`;
   const extracting = reqDef && busy === `reqdef-${reqDef.id}-extract`;
   const addingItem = reqDef && busy === `reqdef-${reqDef.id}-additem`;
+  const reqStatus = reqDef?.status_info?.code_id ?? null;
+  const approving = reqDef && busy === `reqdef-${reqDef.id}-approved`;
+  const rejecting = reqDef && busy === `reqdef-${reqDef.id}-rejected`;
+  // 승인(APPROVED) 후에는 기획서와 마찬가지로 항목을 잠근다 — 이미 승인된 내용이 뒤에서
+  // 바뀌면 안 되기 때문(백엔드 RequirementItemDetailView는 아직 이 체크가 없어서 API 직접
+  // 호출로는 우회 가능 — 팀원 전달 목록에 추가 필요).
+  const itemsLocked = reqStatus === "APPROVED";
 
   if (!reqDef) {
     return (
@@ -1002,20 +1102,65 @@ function RequirementSection({
     <div className="border-t border-border pt-5 mt-2 space-y-4">
       <div className="flex items-center justify-between">
         <div>
-          <h3 className="font-bold text-sm">{reqDef.title}</h3>
+          <div className="flex items-center gap-2">
+            <h3 className="font-bold text-sm">{reqDef.title}</h3>
+            {/* 전용 승인/반려 엔드포인트가 없어서(기획서와 달리) 상태 배지 스타일도 로컬로
+                따로 둔다 — 문서 전체의 STATUS_META를 그대로 쓰면 REQSPEC_STATUS 그룹의
+                실제 값(PENDING_REVIEW 등)과 안 맞는 경우가 생길 수 있어 최소한만 표시. */}
+            {reqStatus && (
+              <span className={cn(
+                "inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold",
+                reqStatus === "APPROVED" ? "bg-emerald-500/10 text-emerald-500"
+                  : reqStatus === "REJECTED" ? "bg-red-500/10 text-red-500"
+                  : "bg-orange-500/10 text-orange-500"
+              )}>
+                {reqDef.status_info?.code_name ?? reqStatus}
+              </span>
+            )}
+          </div>
           <p className="text-xs text-muted-foreground mt-0.5">{reqDef.version} · 항목 {reqDef.items.length}건</p>
         </div>
-        {!isPM && (
-          <button
-            onClick={() => onExtract(spec.id, reqDef.id)}
-            disabled={!!extracting}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-primary/10 text-primary text-xs font-semibold hover:bg-primary/20 disabled:opacity-50"
-            title="기획서를 분석하여 요구사항 항목을 자동으로 추출합니다."
-          >
-            {extracting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Bot className="w-3.5 h-3.5" />}
-            AI 자동 추출
-          </button>
-        )}
+        <div className="flex items-center gap-2">
+          {!isPM && !itemsLocked && (
+            <button
+              onClick={() => onExtract(spec.id, reqDef.id)}
+              disabled={!!extracting}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-primary/10 text-primary text-xs font-semibold hover:bg-primary/20 disabled:opacity-50"
+              title="기획서를 분석하여 요구사항 항목을 자동으로 추출합니다."
+            >
+              {extracting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Bot className="w-3.5 h-3.5" />}
+              AI 자동 추출
+            </button>
+          )}
+          {itemsLocked && (
+            <span className="flex items-center gap-1 text-[11px] text-muted-foreground/70">
+              <Lock className="w-3 h-3" /> 승인되어 항목이 잠겼습니다
+            </span>
+          )}
+          {/* 요구사항정의서 승인/반려 — 기획서처럼 검토요청 단계가 따로 없어서 PM이 언제든
+              바로 승인/반려할 수 있게 뒀다. 반려 사유를 저장할 필드가 모델에 없어서(팀원
+              전달 목록에 추가 필요) 사유 입력 없이 상태만 바뀐다. */}
+          {isPM && reqStatus !== "APPROVED" && (
+            <>
+              <button
+                onClick={() => onStatusChange("REJECTED")}
+                disabled={!!rejecting || !!approving}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-red-500/10 border border-red-500/30 text-red-400 text-xs font-semibold hover:bg-red-500/20 disabled:opacity-50"
+              >
+                {rejecting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <XCircle className="w-3.5 h-3.5" />}
+                반려
+              </button>
+              <button
+                onClick={() => onStatusChange("APPROVED")}
+                disabled={!!approving || !!rejecting}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-emerald-500 text-white text-xs font-semibold hover:bg-emerald-600 disabled:opacity-50"
+              >
+                {approving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
+                승인
+              </button>
+            </>
+          )}
+        </div>
       </div>
 
       {reqDef.items.length === 0 ? (
@@ -1029,33 +1174,101 @@ function RequirementSection({
                 <th className="px-4 py-2.5 font-bold w-24">분류</th>
                 <th className="px-4 py-2.5 font-bold w-24">코드</th>
                 <th className="px-4 py-2.5 font-bold">요구사항명</th>
+                {!isPM && !itemsLocked && <th className="px-4 py-2.5 font-bold w-20 text-right">관리</th>}
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {reqDef.items.map((item, index) => (
-                <tr key={item.id}>
-                  <td className="px-4 py-2.5 text-xs text-muted-foreground align-top">{index + 1}</td>
-                  <td className="px-4 py-2.5 text-xs text-muted-foreground align-top">
-                    {/* req_code 접두사(FR/NFR)로 기능·비기능을 구분한다 — category 필드는
-                        도메인 세부분류(재고 관리, 보안성 등)라 기능/비기능 여부와는 다르다. */}
-                    {item.req_code?.startsWith("NFR") ? "비기능" : item.req_code?.startsWith("FR") ? "기능" : "-"}
-                  </td>
-                  <td className="px-4 py-2.5 font-mono text-xs text-muted-foreground align-top">{item.req_code}</td>
-                  <td className="px-4 py-2.5 align-top">
-                    <p className="font-semibold">{item.req_name}</p>
-                    <p className="text-xs text-muted-foreground mt-0.5">{item.description}</p>
-                    <p className="text-xs text-muted-foreground/70 mt-0.5">
-                      {item.category || "-"}{item.difficulty && ` · 난이도 ${item.difficulty}`}
-                    </p>
-                  </td>
-                </tr>
-              ))}
+              {reqDef.items.map((item, index) => {
+                const isEditing = editingItemId === item.id;
+                const deleting = busy === `reqitem-${item.id}-delete`;
+                const updating = busy === `reqitem-${item.id}-update`;
+                return (
+                  <tr key={item.id}>
+                    <td className="px-4 py-2.5 text-xs text-muted-foreground align-top">{index + 1}</td>
+                    <td className="px-4 py-2.5 text-xs text-muted-foreground align-top">
+                      {/* req_code 접두사(FR/NFR)로 기능·비기능을 구분한다 — category 필드는
+                          도메인 세부분류(재고 관리, 보안성 등)라 기능/비기능 여부와는 다르다. */}
+                      {item.req_code?.startsWith("NFR") ? "비기능" : item.req_code?.startsWith("FR") ? "기능" : "-"}
+                    </td>
+                    <td className="px-4 py-2.5 font-mono text-xs text-muted-foreground align-top">{item.req_code}</td>
+                    <td className="px-4 py-2.5 align-top">
+                      {isEditing ? (
+                        <div className="space-y-1.5">
+                          <input
+                            value={editName}
+                            onChange={e => setEditName(e.target.value)}
+                            className="w-full bg-black/5 dark:bg-white/5 border border-border rounded-lg px-2 py-1.5 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-primary/40"
+                          />
+                          <textarea
+                            value={editDesc}
+                            onChange={e => setEditDesc(e.target.value)}
+                            className="w-full bg-black/5 dark:bg-white/5 border border-border rounded-lg px-2 py-1.5 text-xs resize-none h-16 focus:outline-none focus:ring-2 focus:ring-primary/40"
+                          />
+                        </div>
+                      ) : (
+                        <>
+                          <p className="font-semibold">{item.req_name}</p>
+                          <p className="text-xs text-muted-foreground mt-0.5">{item.description}</p>
+                        </>
+                      )}
+                      {/* 분류(기능/비기능)는 왼쪽 열에 이미 나와서 여기서 또 보여줄 필요가 없고,
+                          난이도는 안 쓰기로 해서 우선순위(DB의 priority_info)로 대체했다. */}
+                      <p className="text-xs text-muted-foreground/70 mt-0.5">
+                        우선순위 {PRIORITY_LABEL[item.priority_info?.code_name ?? ""] ?? "미지정"}
+                      </p>
+                    </td>
+                    {!isPM && !itemsLocked && (
+                      <td className="px-4 py-2.5 align-top">
+                        {isEditing ? (
+                          <div className="flex items-center justify-end gap-1">
+                            <button
+                              onClick={() => setEditingItemId(null)}
+                              className="p-1.5 rounded-lg text-muted-foreground hover:bg-black/5 dark:hover:bg-white/5"
+                            >
+                              취소
+                            </button>
+                            <button
+                              onClick={() => {
+                                if (!editName.trim()) return;
+                                onUpdateItem(reqDef.id, item.id, { req_name: editName.trim(), description: editDesc.trim() });
+                                setEditingItemId(null);
+                              }}
+                              disabled={!editName.trim() || updating}
+                              className="p-1.5 rounded-lg text-primary hover:bg-primary/10 disabled:opacity-50"
+                            >
+                              {updating ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "저장"}
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="flex items-center justify-end gap-1">
+                            <button
+                              onClick={() => { setEditingItemId(item.id); setEditName(item.req_name); setEditDesc(item.description); }}
+                              title="항목 수정"
+                              className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-black/5 dark:hover:bg-white/5"
+                            >
+                              <Pencil className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              onClick={() => onDeleteItem(reqDef.id, item.id)}
+                              disabled={deleting}
+                              title="항목 삭제"
+                              className="p-1.5 rounded-lg text-muted-foreground hover:text-red-400 hover:bg-red-500/10 disabled:opacity-50"
+                            >
+                              {deleting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+                            </button>
+                          </div>
+                        )}
+                      </td>
+                    )}
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
       )}
 
-      {!isPM && (
+      {!isPM && !itemsLocked && (
         showAddForm ? (
           <div className="border border-border rounded-xl p-4 space-y-2">
             <div className="grid grid-cols-[120px_1fr] gap-2">
