@@ -1409,13 +1409,13 @@ function RequirementSection({
                 return (
                   <Fragment key={item.id}>
                   <tr>
-                    <td className="px-4 py-2.5 text-xs text-muted-foreground align-top">{index + 1}</td>
-                    <td className="px-4 py-2.5 text-xs text-muted-foreground align-top">
+                    <td className="px-4 py-2.5 text-xs text-muted-foreground align-middle">{index + 1}</td>
+                    <td className="px-4 py-2.5 text-xs text-muted-foreground align-middle">
                       {/* req_code 접두사(FR/NFR)로 기능·비기능을 구분한다 — category 필드는
                           도메인 세부분류(재고 관리, 보안성 등)라 기능/비기능 여부와는 다르다. */}
                       {item.req_code?.startsWith("NFR") ? "비기능" : item.req_code?.startsWith("FR") ? "기능" : "-"}
                     </td>
-                    <td className="px-4 py-2.5 font-mono text-xs text-muted-foreground align-top">{item.req_code}</td>
+                    <td className="px-4 py-2.5 font-mono text-xs text-muted-foreground align-middle">{item.req_code}</td>
                     <td className="px-4 py-2.5 align-top">
                       {isEditing ? (
                         <div className="space-y-1.5">
@@ -1440,9 +1440,10 @@ function RequirementSection({
                     <td className="px-4 py-2.5 align-middle">
                       {/* 설명 아래 회색 텍스트로만 있던 우선순위를 별도 컬럼 + 상/중/하 색
                           배지로 바꿨다(가독성 피드백) — 신호등처럼 급함(상)=빨강,
-                          보통(중)=주황, 낮음(하)=회색. 다른 컬럼은 다 위쪽(align-top)
-                          정렬인데 이 배지만 세로 중앙에 오게 해달라는 요청. 수정 모드에서는
-                          AI가 생성한 항목이라도 드롭박스로 우선순위를 바꿀 수 있다(요청). */}
+                          보통(중)=주황, 낮음(하)=회색. 요구사항명만 내용이 길어서 위쪽
+                          정렬, 나머지 컬럼(순번/분류/코드/우선순위/관리)은 세로 중앙
+                          정렬로 맞췄다(요청). 수정 모드에서는 AI가 생성한 항목이라도
+                          드롭박스로 우선순위를 바꿀 수 있다(요청). */}
                       {isEditing ? (
                         <select
                           value={editPriority}
@@ -1468,7 +1469,7 @@ function RequirementSection({
                       })()}
                     </td>
                     {!isPM && !itemsLocked && (
-                      <td className="px-4 py-2.5 align-top">
+                      <td className="px-4 py-2.5 align-middle">
                         {isEditing ? (
                           <div className="flex items-center justify-end gap-1">
                             <button
