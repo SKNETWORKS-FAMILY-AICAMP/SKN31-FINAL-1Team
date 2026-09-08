@@ -1,12 +1,12 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, Fragment } from "react";
 import { useAuth } from "@/lib/auth";
 import { apiFetch } from "@/lib/api/client";
 import {
   FileText, Plus, Bot, Loader2, Send, CheckCircle2, XCircle,
   AlertCircle, Clock, RotateCcw, MessageSquare, X, FolderKanban,
-  Download, Printer, Trash2, Save, Pencil, Lock,
+  Download, Printer, Trash2, Save, Pencil, Lock, ChevronDown, Briefcase,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { NewDocumentModal } from "@/components/projects/NewDocumentModal";
@@ -91,6 +91,24 @@ const STATUS_META: Record<BareStatus, { label: string; className: string; icon: 
   REJECTED: { label: "반려됨", className: "bg-red-500/10 text-red-500", icon: XCircle },
 };
 
+// heyzzabi2(구버전 프로토타입)의 문서생성 파이프라인 UI를 그대로 따른다 — 기획서 →
+// 요구사항정의서 → 업무배분이 하나로 이어지는 파이프라인임을 상단 스테퍼로 보여주고,
+// 문서를 고르면 그 문서가 지금 있는 단계를 첫 화면으로 연다.
+type PipelineTab = "proposal" | "reqSpec" | "taskAssignment";
+const PIPELINE_STEPS: PipelineTab[] = ["proposal", "reqSpec", "taskAssignment"];
+const PIPELINE_TAB_LABEL: Record<PipelineTab, string> = {
+  proposal: "기획서", reqSpec: "요구사항정의서", taskAssignment: "업무 배분",
+};
+// 기획서는 승인 여부로 "완료"가 명확하다. 요구사항정의서·업무배분은 이 프로젝트에 아직
+// 승인 워크플로우 자체가 없어서(백엔드에 status 필드가 없음) "완료"라는 개념이 없다 —
+// heyzzabi2의 업무배분 단계와 같은 취급(항상 false, 잠기지 않음).
+const stepDone = (spec: SpecDto | null, step: PipelineTab): boolean =>
+  step === "proposal" ? bareStatus(spec) === "APPROVED" : false;
+// 문서를 고르면 "그 문서가 지금 있는 단계"를 첫 화면으로 보여준다 — 요구사항정의서
+// 승인 개념이 없으므로, 기획서가 승인되면 그 다음 할 일인 요구사항정의서 단계로 고정한다.
+const stageOf = (spec: SpecDto | null): PipelineTab =>
+  bareStatus(spec) === "APPROVED" ? "reqSpec" : "proposal";
+
 function specToProposalDoc(spec: SpecDto): ProposalDoc {
   return {
     projectOverview: spec.overview ?? "",
@@ -134,6 +152,7 @@ export default function DocumentsPage() {
   const [reqDefs, setReqDefs] = useState<ReqDefDto[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedNoteId, setSelectedNoteId] = useState<number | null>(null);
+  const [activeTab, setActiveTab] = useState<PipelineTab>("proposal");
   const [newDocModalOpen, setNewDocModalOpen] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [rejectTarget, setRejectTarget] = useState<{ specId: number } | null>(null);
@@ -184,6 +203,18 @@ export default function DocumentsPage() {
   useEffect(() => {
     if (!selectedNoteId && sortedNotes.length > 0) setSelectedNoteId(sortedNotes[0].id);
   }, [sortedNotes, selectedNoteId]);
+  // 문서를 고르면(직접 클릭이든, 등록 직후 자동이든) 항상 "그 문서가 지금 있는 단계"를
+  // 첫 화면으로 보여준다 — heyzzabi2와 동일한 동작.
+  const selectNote = (note: NoteDto) => {
+    setSelectedNoteId(note.id);
+    setActiveTab(stageOf(note.spec_documents[0] ?? null));
+  };
+  // 지금 보던 탭이 승인 등으로 잠기게 되면(방금 승인한 경우 포함) 자동으로 다음 단계로 넘어간다.
+  useEffect(() => {
+    if (!selectedNote) return;
+    const spec = selectedNote.spec_documents[0] ?? null;
+    if (stepDone(spec, activeTab)) setActiveTab(stageOf(spec));
+  }, [selectedNote?.id, selectedNote?.spec_documents[0]?.status_code, activeTab]);
 
   const replaceNote = (updated: NoteDto) => {
     setNotes(prev => prev.map(n => (n.id === updated.id ? updated : n)));
@@ -401,7 +432,7 @@ export default function DocumentsPage() {
             onClose={async (createdProjectId, createdNoteId) => {
               setNewDocModalOpen(false);
               await fetchAll(createdProjectId);
-              if (createdNoteId) setSelectedNoteId(createdNoteId);
+              if (createdNoteId) { setSelectedNoteId(createdNoteId); setActiveTab("proposal"); }
             }}
           />
         )}
@@ -421,6 +452,45 @@ export default function DocumentsPage() {
             회의록을 기반으로 기획서를 작성하고 검토·승인합니다.
           </p>
         </div>
+      </div>
+
+      {/* Pipeline stepper — 기획서 → 요구사항정의서 → 업무배분이 하나로 이어지는
+          파이프라인임을 보여준다(heyzzabi2 참고). 완료된 단계는 잠금(초록 자물쇠),
+          지금 선택한 문서가 있는 단계는 강조 링, 탭 자체는 항상 클릭 가능(과거 열람용). */}
+      <div className="flex items-center">
+        {PIPELINE_STEPS.map((step, i) => {
+          const done = stepDone(activeSpec, step);
+          const isDocStage = selectedNote ? stageOf(activeSpec) === step : false;
+          const isViewed = activeTab === step;
+          const prevDone = i > 0 ? stepDone(activeSpec, PIPELINE_STEPS[i - 1]) : false;
+          const locked = done;
+          return (
+            <Fragment key={step}>
+              {i > 0 && <div className={cn("h-0.5 w-6 md:w-10 rounded-full transition-colors", prevDone ? "bg-emerald-500/50" : "bg-black/10 dark:bg-white/10")} />}
+              <button
+                onClick={() => !locked && setActiveTab(step)}
+                disabled={locked}
+                title={locked ? "승인이 완료되어 더 이상 열람할 수 없습니다." : undefined}
+                className={cn(
+                  "flex items-center gap-2 pb-1 px-1 text-base font-medium transition-colors border-b-2",
+                  locked
+                    ? "border-transparent text-muted-foreground/50 cursor-not-allowed"
+                    : isViewed ? "border-primary text-primary font-bold" : "border-transparent text-muted-foreground hover:text-foreground"
+                )}
+              >
+                <span className={cn(
+                  "w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 transition-colors",
+                  done ? "bg-emerald-500 text-white"
+                    : isDocStage ? "bg-primary text-primary-foreground ring-4 ring-primary/20"
+                    : "bg-black/10 dark:bg-white/10 text-muted-foreground"
+                )}>
+                  {locked ? <Lock className="w-3 h-3" /> : i + 1}
+                </span>
+                {PIPELINE_TAB_LABEL[step]}
+              </button>
+            </Fragment>
+          );
+        })}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-[360px_minmax(0,1fr)] gap-6 items-start">
@@ -456,8 +526,23 @@ export default function DocumentsPage() {
                         : "border-transparent hover:bg-black/5 dark:hover:bg-white/5"
                     )}
                   >
-                    <button onClick={() => setSelectedNoteId(note.id)} className="flex-1 min-w-0 text-left">
+                    <button onClick={() => selectNote(note)} className="flex-1 min-w-0 text-left">
                       <p className="font-semibold text-sm truncate mb-1.5">{note.title}</p>
+                      {/* 미니 파이프라인 — 이 문서가 지금 3단계 중 어디에 있는지 한눈에 */}
+                      <div className="flex items-center gap-1 mb-1.5">
+                        {PIPELINE_STEPS.map((step, i) => (
+                          <Fragment key={step}>
+                            {i > 0 && <div className={cn("h-px w-3", stepDone(spec, PIPELINE_STEPS[i - 1]) ? "bg-emerald-500/40" : "bg-black/10 dark:bg-white/10")} />}
+                            <div
+                              title={PIPELINE_TAB_LABEL[step]}
+                              className={cn(
+                                "w-1.5 h-1.5 rounded-full shrink-0",
+                                step === stageOf(spec) ? "bg-primary ring-2 ring-primary/25" : stepDone(spec, step) ? "bg-emerald-500" : "bg-black/10 dark:bg-white/15"
+                              )}
+                            />
+                          </Fragment>
+                        ))}
+                      </div>
                       <span className={cn("inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold", spec ? meta.className : "bg-black/5 dark:bg-white/5 text-muted-foreground")}>
                         <Icon className="w-3 h-3" /> {spec ? meta.label : "기획서 미생성"}
                       </span>
@@ -498,6 +583,7 @@ export default function DocumentsPage() {
               note={selectedNote}
               spec={activeSpec}
               reqDef={activeReqDef}
+              activeTab={activeTab}
               isPM={isPM}
               currentUserId={user?.id}
               busy={busy}
@@ -522,7 +608,7 @@ export default function DocumentsPage() {
           onClose={async (createdProjectId, createdNoteId) => {
             setNewDocModalOpen(false);
             await fetchAll(createdProjectId);
-            if (createdNoteId) setSelectedNoteId(createdNoteId);
+            if (createdNoteId) { setSelectedNoteId(createdNoteId); setActiveTab("proposal"); }
           }}
         />
       )}
@@ -592,11 +678,11 @@ export default function DocumentsPage() {
 }
 
 function NoteDetail({
-  note, spec, reqDef, isPM, currentUserId, busy,
+  note, spec, reqDef, activeTab, isPM, currentUserId, busy,
   onGenerateSpec, onSaveNoteContent, onSaveSpec, onSavePeriod, onSubmitReview, onApprove, onReject,
   onCreateReqDef, onExtractItems, onAddItem,
 }: {
-  note: NoteDto; spec: SpecDto | null; reqDef: ReqDefDto | null; isPM: boolean; currentUserId: string | undefined; busy: string | null;
+  note: NoteDto; spec: SpecDto | null; reqDef: ReqDefDto | null; activeTab: PipelineTab; isPM: boolean; currentUserId: string | undefined; busy: string | null;
   onGenerateSpec: () => void;
   onSaveNoteContent: (content: string) => void;
   onSaveSpec: (spec: SpecDto, doc: ProposalDoc) => void;
@@ -659,6 +745,11 @@ function NoteDetail({
     await exportProposalPptx(parsedContent, note.title);
   };
 
+  // 요구사항정의서 탭 상단에 보여줄 기획서 원본 참고 박스 — heyzzabi2와 동일하게 기본은
+  // 펼친 채로 시작한다(접혀 있으면 지금 보는 게 참고 박스인지 본문인지 헷갈린다는 이유).
+  const [proposalRefOpen, setProposalRefOpen] = useState(true);
+  useEffect(() => { setProposalRefOpen(true); }, [note.id]);
+
   return (
     <div className="space-y-5">
       <div className="flex items-center justify-between">
@@ -681,6 +772,10 @@ function NoteDetail({
         </div>
       )}
 
+      {/* 세 탭을 조건부 렌더링(삼항연산자로 갈아끼우기)하면 탭을 옮길 때마다 로컬 상태(예:
+          직접수정 중이던 초안, 항목 추가 폼)가 통째로 날아간다 — 항상 mount해두고 CSS로만
+          숨겨서 안 보이는 탭의 상태도 그대로 유지되게 한다(heyzzabi2와 동일한 이유). */}
+      <div className={cn("space-y-5", activeTab !== "proposal" && "hidden")}>
       <div className="text-sm">
         <div className="flex items-center justify-between mb-2">
           <p className="text-muted-foreground font-medium flex items-center gap-1.5">
@@ -822,19 +917,63 @@ function NoteDetail({
           </>
         )}
       </div>
+      </div>
 
-      {/* 요구사항 정의서 — 기획서 승인 완료 시 표시 */}
-      {spec && status === "APPROVED" && (
-        <RequirementSection
-          spec={spec}
-          reqDef={reqDef}
-          isPM={isPM}
-          busy={busy}
-          onCreate={() => onCreateReqDef(spec)}
-          onExtract={onExtractItems}
-          onAddItem={onAddItem}
-        />
-      )}
+      {/* 요구사항정의서 탭 — heyzzabi2와 동일하게 위에는 근거가 된 기획서 원본을 접었다 폈다
+          볼 수 있게 참고 박스로 보여주고, 아래에 실제 요구사항정의서 본문/조작을 둔다. */}
+      <div className={cn("space-y-5", activeTab !== "reqSpec" && "hidden")}>
+        <div className="text-sm">
+          <button
+            type="button"
+            onClick={() => setProposalRefOpen(v => !v)}
+            className="w-full flex items-center justify-between gap-2 text-muted-foreground font-medium hover:text-foreground transition-colors"
+          >
+            <span className="flex items-center gap-1.5">
+              <ChevronDown className={cn("w-4 h-4 transition-transform", !proposalRefOpen && "-rotate-90")} />
+              기획서 원본
+            </span>
+            <span className={cn("inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold", meta.className)}>
+              <meta.icon className="w-3 h-3" /> {spec ? meta.label : "기획서 미생성"}
+            </span>
+          </button>
+          {proposalRefOpen && (
+            <div className="mt-2 border border-border rounded-xl overflow-hidden max-h-64 overflow-y-auto bg-black/5 dark:bg-black/20">
+              {spec ? (
+                <ProposalTemplate doc={specToProposalDoc(spec)} title={note.title} dateLabel={dateLabel} />
+              ) : (
+                <div className="p-6 text-center text-muted-foreground text-xs">기획서 내용이 없습니다.</div>
+              )}
+            </div>
+          )}
+        </div>
+
+        {status !== "APPROVED" ? (
+          <div className="border border-dashed border-border rounded-xl p-10 text-center text-muted-foreground text-sm">
+            {status === "DRAFT" && "기획서가 아직 작성 중입니다. 기획서를 검토요청하고 승인받아야 요구사항정의서를 생성할 수 있습니다."}
+            {status === "PENDING_REVIEW" && "기획서가 아직 검토요청 중입니다. PM 승인 후 요구사항정의서를 생성할 수 있습니다."}
+            {status === "REJECTED" && "기획서가 반려되었습니다. 기획서를 다시 작성해 승인받아야 합니다."}
+          </div>
+        ) : (
+          <RequirementSection
+            spec={spec!}
+            reqDef={reqDef}
+            isPM={isPM}
+            busy={busy}
+            onCreate={() => onCreateReqDef(spec!)}
+            onExtract={onExtractItems}
+            onAddItem={onAddItem}
+          />
+        )}
+      </div>
+
+      {/* 업무배분 탭 — AI 로직(ai/assignee_mapping, ai/task_generation)은 있지만 이를 호출하는
+          Django 엔드포인트가 아직 없어서(백엔드 전달 목록에 포함됨) 자리만 잡아둔다. */}
+      <div className={cn(activeTab !== "taskAssignment" && "hidden")}>
+        <div className="border border-dashed border-border rounded-xl p-10 flex flex-col items-center gap-3 text-center">
+          <Briefcase className="w-8 h-8 text-muted-foreground/40" />
+          <p className="text-sm text-muted-foreground">업무배분 기능은 백엔드 API 준비 중입니다.</p>
+        </div>
+      </div>
     </div>
   );
 }
@@ -903,21 +1042,28 @@ function RequirementSection({
           <table className="w-full text-sm text-left">
             <thead className="text-xs text-muted-foreground uppercase bg-black/5 dark:bg-white/5">
               <tr>
+                <th className="px-4 py-2.5 font-bold w-14">순번</th>
+                <th className="px-4 py-2.5 font-bold w-24">분류</th>
                 <th className="px-4 py-2.5 font-bold w-24">코드</th>
                 <th className="px-4 py-2.5 font-bold">요구사항명</th>
-                <th className="px-4 py-2.5 font-bold w-40">분류</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {reqDef.items.map(item => (
+              {reqDef.items.map((item, index) => (
                 <tr key={item.id}>
+                  <td className="px-4 py-2.5 text-xs text-muted-foreground align-top">{index + 1}</td>
+                  <td className="px-4 py-2.5 text-xs text-muted-foreground align-top">
+                    {/* req_code 접두사(FR/NFR)로 기능·비기능을 구분한다 — category 필드는
+                        도메인 세부분류(재고 관리, 보안성 등)라 기능/비기능 여부와는 다르다. */}
+                    {item.req_code?.startsWith("NFR") ? "비기능" : item.req_code?.startsWith("FR") ? "기능" : "-"}
+                  </td>
                   <td className="px-4 py-2.5 font-mono text-xs text-muted-foreground align-top">{item.req_code}</td>
                   <td className="px-4 py-2.5 align-top">
                     <p className="font-semibold">{item.req_name}</p>
                     <p className="text-xs text-muted-foreground mt-0.5">{item.description}</p>
-                  </td>
-                  <td className="px-4 py-2.5 text-xs text-muted-foreground align-top">
-                    {item.category || "-"}{item.difficulty && ` · 난이도 ${item.difficulty}`}
+                    <p className="text-xs text-muted-foreground/70 mt-0.5">
+                      {item.category || "-"}{item.difficulty && ` · 난이도 ${item.difficulty}`}
+                    </p>
                   </td>
                 </tr>
               ))}
