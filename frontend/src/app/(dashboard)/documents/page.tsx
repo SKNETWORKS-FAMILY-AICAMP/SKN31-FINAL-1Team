@@ -575,6 +575,15 @@ export default function DocumentsPage() {
                 const s = bareStatus(spec);
                 const meta = spec ? STATUS_META[s] : STATUS_META.DRAFT;
                 const Icon = meta.icon;
+                // 카드에 표시할 번호도 지금 이 문서가 어느 단계까지 왔는지에 맞춰 보여준다
+                // — 기획서 단계면 기획서 번호, 요구사항정의서 단계(기획서 승인 완료)로
+                // 넘어갔으면 요구사항정의서 번호, 아직 기획서도 없으면 회의록 번호.
+                const cardReqDef = spec ? reqDefs.find(r => r.spec === spec.id) ?? null : null;
+                const [numberLabel, numberValue] = !spec
+                  ? ["회의록 번호", note.id]
+                  : stageOf(spec) === "reqSpec" && cardReqDef
+                  ? ["요구사항정의서 번호", cardReqDef.id]
+                  : ["기획서 번호", spec.id];
                 return (
                   <div
                     key={note.id}
@@ -586,9 +595,7 @@ export default function DocumentsPage() {
                     )}
                   >
                     <button onClick={() => selectNote(note)} className="flex-1 min-w-0 text-left">
-                      {/* 목록 카드는 특정 탭이 아니라 문서 묶음 전체를 대표하는 행이라 항상
-                          회의록 번호(그 묶음의 시작점)로 표시한다 — 탭별 번호는 상세 패널에서. */}
-                      <p className="text-[10px] font-mono text-muted-foreground/70">회의록 번호 {note.id}</p>
+                      <p className="text-[10px] font-mono text-muted-foreground/70">{numberLabel} {numberValue}</p>
                       <p className="font-semibold text-sm truncate mb-1.5">{note.title}</p>
                       {/* 미니 파이프라인 — 이 문서가 지금 3단계 중 어디에 있는지 한눈에 */}
                       <div className="flex items-center gap-1 mb-1.5">
@@ -825,27 +832,35 @@ function NoteDetail({
     <div className="space-y-5">
       <div className="flex items-center justify-between">
         <div>
-          {/* 지금 보고 있는 탭(회의록/기획서/요구사항정의서)에 해당하는 실제 문서 번호를
-              보여준다 — 파이프라인 단계마다 별개의 레코드(MeetingNote/SpecDocument/
-              RequirementDefinition)라 번호도 그에 맞게 바뀌어야 한다는 요청. 아직 그
-              단계의 문서가 없으면(예: 요구사항정의서 탭인데 아직 미생성) 회의록 번호로
-              대체 표시한다. */}
-          {activeTab === "reqSpec" && reqDef ? (
-            <p className="text-xs font-mono text-muted-foreground/70">요구사항정의서 번호 {reqDef.id}</p>
-          ) : activeTab === "proposal" && spec ? (
-            <p className="text-xs font-mono text-muted-foreground/70">기획서 번호 {spec.id}</p>
-          ) : (
-            <p className="text-xs font-mono text-muted-foreground/70">회의록 번호 {note.id}</p>
-          )}
+          {/* 이 헤더는 note.title(회의록 제목) 바로 위라서 항상 회의록 번호로 고정한다 —
+              탭에 따라 기획서/요구사항정의서 번호로 바뀌면 "회의록" 제목 위에 다른 문서
+              번호가 떠서 헷갈린다는 피드백. 기획서/요구사항정의서 번호는 각 탭의 해당
+              내용 바로 옆에 따로 표시한다. */}
+          <p className="text-xs font-mono text-muted-foreground/70">회의록 번호 {note.id}</p>
           <h2 className="font-bold text-lg">{note.title}</h2>
           <p className="text-xs text-muted-foreground mt-0.5">
             작성자 {note.created_by_name || "알 수 없음"}
             {String(note.created_by) === currentUserId && <span className="text-primary font-medium"> (나)</span>}
           </p>
         </div>
-        <span className={cn("inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold", meta.className)}>
-          <meta.icon className="w-3.5 h-3.5" /> {spec ? meta.label : "기획서 미생성"}
-        </span>
+        <div className="flex items-center gap-2">
+          <span className={cn("inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold", meta.className)}>
+            <meta.icon className="w-3.5 h-3.5" /> {spec ? meta.label : "기획서 미생성"}
+          </span>
+          {/* 요구사항정의서 탭은 검토요청 버튼이 상단 우측(제목 옆)에 있는데 기획서 탭만
+              하단에 따로 있어서 통일감이 없다는 피드백 — 같은 위치로 옮긴다. PDF/PPTX
+              다운로드는 그대로 하단 좌측에 둔다. */}
+          {activeTab === "proposal" && spec && !isPM && canGenerate && status === "DRAFT" && (
+            <button
+              onClick={() => onSubmitReview(spec)}
+              disabled={busy === busyKey("submit")}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-primary text-primary-foreground text-xs font-bold hover:bg-primary/90 disabled:opacity-50"
+            >
+              {busy === busyKey("submit") ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
+              검토요청
+            </button>
+          )}
+        </div>
       </div>
 
       {spec?.review_comment && status === "REJECTED" && (
@@ -893,7 +908,10 @@ function NoteDetail({
         />
       </div>
 
-      <p className="text-sm text-muted-foreground font-semibold">기획서</p>
+      <p className="text-sm text-muted-foreground font-semibold flex items-center gap-2">
+        기획서
+        {spec && <span className="text-xs font-mono font-normal text-muted-foreground/70">기획서 번호 {spec.id}</span>}
+      </p>
       <div className="border border-border rounded-xl overflow-hidden bg-black/10 dark:bg-black/30 p-4 flex flex-col items-center gap-3">
         {parsedContent ? (
           <div className="w-full max-w-[840px] max-h-[1190px] overflow-y-auto bg-white dark:bg-white">
@@ -936,16 +954,7 @@ function NoteDetail({
           </button>
         )}
 
-        {spec && !isPM && canGenerate && status === "DRAFT" && (
-          <button
-            onClick={() => onSubmitReview(spec)}
-            disabled={busy === busyKey("submit")}
-            className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-bold hover:bg-primary/90 disabled:opacity-50"
-          >
-            {busy === busyKey("submit") ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-            검토요청
-          </button>
-        )}
+        {/* 검토요청 버튼은 상단 우측(제목 옆)으로 옮겼다 — 요구사항정의서 탭과 위치 통일. */}
 
         {/* "기획서 생성"/"검토요청"과 같은 기준(작성자 본인, PM은 예외)으로 맞춘다 —
             이 체크가 빠져있어서 다른 사람이 시작한 초안도 고칠 수 있는 상태였다. */}
@@ -1123,7 +1132,11 @@ function RequirementSection({
       <div className="flex items-center justify-between">
         <div>
           <div className="flex items-center gap-2">
-            <h3 className="font-bold text-sm">{reqDef.title}</h3>
+            {/* reqDef.title은 "{회의록 제목} - 요구사항 정의서" 형태라 위쪽 페이지 헤더의
+                문서 제목과 거의 그대로 겹쳐서 중복으로 보인다는 피드백 — 여기선 고정
+                라벨만 두고 제목 반복은 없앤다. */}
+            <h3 className="font-bold text-sm">요구사항 정의서</h3>
+            <span className="text-xs font-mono font-normal text-muted-foreground/70">요구사항정의서 번호 {reqDef.id}</span>
             {/* 전용 승인/반려 엔드포인트가 없어서(기획서와 달리) 상태 배지 스타일도 로컬로
                 따로 둔다 — 문서 전체의 STATUS_META를 그대로 쓰면 REQSPEC_STATUS 그룹의
                 실제 값(PENDING_REVIEW 등)과 안 맞는 경우가 생길 수 있어 최소한만 표시. */}
