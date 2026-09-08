@@ -41,10 +41,14 @@ def verify_baseline_coverage(doc: RequirementDocument) -> List[str]:
 
 
 def verify_source_consistency(doc: RequirementDocument) -> List[str]:
+    """Source Enum 구조 변경 및 AttributeError 예방을 위해 안전하게 속성 검사"""
+    baseline_val = getattr(Source, "BASELINE_DEFAULT", "baseline_default")
+    
     return [
         f"{item.id}: baseline 항목이 검토대기가 아님"
         for item in doc.requirements
-        if item.source == Source.BASELINE_DEFAULT and item.review_status != ReviewStatus.PENDING
+        if (item.source == baseline_val or str(getattr(item.source, "value", item.source)) == "baseline_default")
+        and item.review_status != ReviewStatus.PENDING
     ]
 
 

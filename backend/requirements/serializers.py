@@ -1,13 +1,3 @@
-###############################################################
-# requirements 앱은 요구사항 정의서 헤더(RequirementDefinition)와 상세 요구사항 항목(RequirementItem)을 다룸.
-# 상세 항목들을 한눈에 조회할 수 있도록 중첩(Nested) 구조를 포함하여 작성.
-#
-# RequirementItemSerializer: 
-## REQ-01, REQ-02 등 개별 요구사항 항목의 우선순위 코드명(priority_info)을 포함하여 프론트엔드에서 직관적으로 표시
-# RequirementDefinitionSerializer: 
-## 요구사항 정의서 1건을 조회할 때 연관된 기획서 제목(spec_title)과 속한 요구사항 상세 목록(items)을 한 번에 내려주도록 처리
-###############################################################
-
 from rest_framework import serializers
 from requirements.models import RequirementDefinition, RequirementItem
 from common.models import CommonCode
@@ -48,8 +38,9 @@ class RequirementItemSerializer(serializers.ModelSerializer):
 class RequirementDefinitionSerializer(serializers.ModelSerializer):
     """
     요구사항 정의서(RequirementDefinition) 상세 조회용 Serializer
-    하위에 속한 모든 요구사항 상세 항목(items)을 포함합니다.
+    하위에 속한 모든 요구사항 상세 항목(items) 및 spec_id 포함.
     """
+    spec_id = serializers.IntegerField(source='spec.id', read_only=True)  # spec_id 명시적 추가
     created_by_name = serializers.CharField(source='created_by.username', read_only=True)
     spec_title = serializers.CharField(source='spec.title', read_only=True)
     project_name = serializers.CharField(source='project.name', read_only=True)
@@ -60,6 +51,7 @@ class RequirementDefinitionSerializer(serializers.ModelSerializer):
         fields = [
             'id',
             'spec',
+            'spec_id',         # 추가된 필드
             'spec_title',
             'project',
             'project_name',
@@ -77,8 +69,22 @@ class RequirementDefinitionSerializer(serializers.ModelSerializer):
 
 class RequirementDefinitionCreateSerializer(serializers.ModelSerializer):
     """
-    요구사항 정의서 신규 생성용 Serializer
+    요구사항 정의서 신규 생성용 Serializer (spec_id를 통한 FK 매핑 보장)
     """
+    # 프론트엔드에서 'spec' 대신 'spec_id' 키로 넘어올 경우를 위해 PrimaryKeyRelatedField 설정
+    spec_id = serializers.PrimaryKeyRelatedField(
+        source='spec',
+        queryset=RequirementDefinition._meta.get_field('spec').remote_field.model.objects.all(),
+        required=False,
+        write_only=True
+    )
+
     class Meta:
         model = RequirementDefinition
-        fields = ['spec', 'project', 'title', 'version', 'description']
+        fields = ['spec', 'spec_id', 'project', 'title', 'version', 'description']
+
+    def validate(self, attrs):
+        # 'spec' 또는 'spec_id' 중 하나라도 입력되지 않았을 경우 예외 처리
+        if 'spec' not in attrs:
+            raise serializers.ValidationError({"spec_id": "요구사항 정의서 생성 시 spec_id(기획서 ID)는 필수입니다."})
+        return attrs

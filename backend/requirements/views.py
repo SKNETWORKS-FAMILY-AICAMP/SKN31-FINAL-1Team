@@ -1,5 +1,3 @@
-# requirements/views.py
-
 import logging
 from django.db import transaction
 from django.shortcuts import get_object_or_404
@@ -79,7 +77,7 @@ class RequirementDefinitionListCreateView(generics.ListCreateAPIView):
     def get_queryset(self):
         queryset = RequirementDefinition.objects.all().select_related('spec', 'project', 'status_code', 'created_by')
         
-        # 쿼리 파라미터 필터링 추가
+        # 쿼리 파라미터 필터링
         spec_id = self.request.query_params.get('spec')
         project_id = self.request.query_params.get('project')
 
@@ -125,7 +123,9 @@ class RequirementDefinitionDetailView(generics.RetrieveUpdateDestroyAPIView):
     요구사항 정의서 상세 조회 / 수정 / 삭제 API
     GET/PUT/PATCH/DELETE /api/requirements/{id}/
     """
-    queryset = RequirementDefinition.objects.all()
+    queryset = RequirementDefinition.objects.all().select_related(
+        'spec', 'project', 'status_code', 'created_by'
+    ).prefetch_related('items__priority_code')
     serializer_class = RequirementDefinitionSerializer
     permission_classes = [permissions.IsAuthenticated]
 
@@ -149,18 +149,46 @@ class RequirementExtractView(APIView):
     )
     def post(self, request, spec_id):
         # 1. 대상 기획서 조회
-        spec_document = get_object_or_404(SpecDocument, id=spec_id)
+        spec_document = get_object_or_404(SpecDocument, spec_id=spec_id)
 
         # 2. SpecDocument DB 객체 -> PlanDocument Pydantic 스키마 변환 데이터 구성
+        # 2-1) goal (단수형 문자열 필수) 변환
+        raw_goals = getattr(spec_document, "goals", [])
+        if isinstance(raw_goals, list):
+            goal_str = "\n".join([str(g) for g in raw_goals if g]) if raw_goals else getattr(spec_document, "overview", "요구사항 분석 및 기획서 도출")
+        else:
+            goal_str = str(raw_goals) if raw_goals else "요구사항 분석 및 기획서 도출"
+
+        # 2-2) requirements (최소 1개 이상 항목 리스트 필수) 구성
+        raw_features = getattr(spec_document, "key_features", [])
+        if raw_features and isinstance(raw_features, list):
+            requirements_input = [
+                {
+                    "id": f"REQ-{i+1:02d}",
+                    "title": str(feat),
+                    "description": str(feat)
+                }
+                for i, feat in enumerate(raw_features)
+            ]
+        else:
+            requirements_input = [
+                {
+                    "id": "REQ-01",
+                    "title": getattr(spec_document, "title", "기본 요구사항"),
+                    "description": getattr(spec_document, "overview", "기획서 기반 기본 기능 요구사항")
+                }
+            ]
+
         plan_dict = {
             "project_id": str(spec_document.project.id) if hasattr(spec_document, "project") and spec_document.project else "DEFAULT_PROJECT",
             "title": getattr(spec_document, "title", "기획서 초안"),
             "overview": getattr(spec_document, "overview", ""),
             "background": getattr(spec_document, "background", ""),
-            "goals": getattr(spec_document, "goals", []),
+            "goal": goal_str,
             "target_users": getattr(spec_document, "target_users", []),
             "key_features": getattr(spec_document, "key_features", []),
             "tech_constraints": getattr(spec_document, "tech_constraints", []),
+            "requirements": requirements_input,
         }
 
         # 3. PlanDocument 스키마 검증
@@ -180,7 +208,7 @@ class RequirementExtractView(APIView):
         try:
             ai_output = generate_requirements(
                 plan=plan_input,
-                plan_id=str(spec_document.id)
+                plan_id=str(spec_document.spec_id)
             )
         except Exception as e:
             logger.exception(f"AI 요구사항 추출 실패 (spec_id: {spec_id}): {e}")
@@ -195,10 +223,10 @@ class RequirementExtractView(APIView):
         # 5. DB 저장 및 기존 요구사항 정의서 연동 (트랜잭션)
         try:
             with transaction.atomic():
-                # 초기 승인 상태(PENDING/검토대기) 공통 코드 조회
+                # 초기 승인 상태(PENDING_REVIEW / 검토대기) 공통 코드 조회
                 pending_status = CommonCode.objects.filter(
-                    group_code='REQSPEC_STATUS',
-                    code_value='PENDING'
+                    group_id='REQSPEC_STATUS',
+                    code_id__in=['PENDING_REVIEW', 'PENDING', 'REQSPEC_STATUS_PENDING']
                 ).first()
 
                 # 기획서와 1:1 대응되는 RequirementDefinition 생성 또는 조회
@@ -212,7 +240,7 @@ class RequirementExtractView(APIView):
                     }
                 )
 
-                # 재추출 시 상태를 다시 PENDING으로 초기화
+                # 재추출 시 상태를 다시 PENDING_REVIEW로 초기화
                 if not created and pending_status:
                     req_def.status_code = pending_status
                     req_def.save()
@@ -220,30 +248,40 @@ class RequirementExtractView(APIView):
                 # 기존 생성 항목 초기화 (재추출 시 중복 방지)
                 RequirementItem.objects.filter(req_def=req_def).delete()
 
-                # AI 추출 결과를 RequirementItem 모델에 매핑 및 저장
-                saved_items = []
-                for index, req_item in enumerate(ai_output.requirements, start=1):
-                    # 우선순위 CommonCode 매핑 (기본값: MEDIUM)
-                    priority_str = getattr(req_item, "priority", "MEDIUM")
-                    if isinstance(priority_str, str):
-                        priority_str = priority_str.upper()
-                    
-                    priority_code_obj = CommonCode.objects.filter(
-                        group_code='REQ_PRIORITY',
-                        code_value=priority_str
-                    ).first()
+                # 공통코드 쿼리 횟수를 줄이기 위한 캐싱
+                priority_codes = {
+                    c.code_id: c for c in CommonCode.objects.filter(group_id='REQ_PRIORITY')
+                }
 
-                    item_obj = RequirementItem.objects.create(
-                        req_def=req_def,
-                        req_code=getattr(req_item, "id", f"REQ-{index:02d}"),
-                        req_name=getattr(req_item, "title", f"요구사항 {index}"),
-                        description=getattr(req_item, "description", ""),
-                        priority_code=priority_code_obj,
-                        difficulty=getattr(req_item, "difficulty", "중"),
-                        category=getattr(req_item, "category_1", getattr(req_item, "category", "기타")),
-                        category_2=getattr(req_item, "category_2", None),
+                # AI 추출 결과를 RequirementItem 모델 객체 생성
+                items_to_create = []
+                for index, req_item in enumerate(ai_output.requirements, start=1):
+                    # priority 파싱 (Enum 또는 문자열 안전 처리)
+                    raw_priority = getattr(req_item, "priority", "MEDIUM")
+                    priority_str = getattr(raw_priority, "value", raw_priority)
+                    priority_str = str(priority_str).upper() if priority_str else "MEDIUM"
+
+                    # 캐시된 공통 코드에서 우선순위 객체 매핑
+                    priority_code_obj = (
+                        priority_codes.get(priority_str) or 
+                        priority_codes.get(f"REQ_PRIORITY_{priority_str}")
                     )
-                    saved_items.append(item_obj)
+
+                    items_to_create.append(
+                        RequirementItem(
+                            req_def=req_def,
+                            req_code=getattr(req_item, "id", f"REQ-{index:02d}"),
+                            req_name=getattr(req_item, "title", f"요구사항 {index}"),
+                            description=getattr(req_item, "description", ""),
+                            priority_code=priority_code_obj,
+                            difficulty=getattr(req_item, "difficulty", "중"),
+                            category=getattr(req_item, "category_1", getattr(req_item, "category", "기타")),
+                            category_2=getattr(req_item, "category_2", None),
+                        )
+                    )
+
+                # bulk_create를 사용해 한 번의 DB INSERT 쿼리로 배치 저장
+                RequirementItem.objects.bulk_create(items_to_create)
 
             # 6. 생성된 RequirementDefinition 결과를 Serializer로 반환
             serializer = RequirementDefinitionSerializer(req_def)
@@ -282,6 +320,6 @@ class RequirementItemViewSet(generics.ListCreateAPIView):
     요구사항 세부 항목(RequirementItem) CRUD API
     GET/POST /api/requirements/items/
     """
-    queryset = RequirementItem.objects.all()
+    queryset = RequirementItem.objects.all().select_related('priority_code', 'req_def')
     serializer_class = RequirementItemSerializer
     permission_classes = [permissions.IsAuthenticated]
