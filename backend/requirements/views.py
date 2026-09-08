@@ -96,9 +96,13 @@ def process_ai_requirement_extraction(spec_document, user):
 
     # 4. DB 저장 및 기존 요구사항 정의서 연동 (트랜잭션)
     with transaction.atomic():
-        pending_status = CommonCode.objects.filter(
+        # AI 생성 직후에는 검토요청 전 초안(DRAFT) 상태로 시작한다 — 사용자가 항목을
+        # 확인/수정한 뒤 직접 "검토요청"을 눌러야 PENDING_REVIEW로 넘어간다. 추출 즉시
+        # PENDING_REVIEW로 박히면 PM이 사용자가 아직 수정 중인데도 바로 승인/반려할 수
+        # 있는 절차 문제가 생긴다(프론트 요청으로 수정).
+        draft_status = CommonCode.objects.filter(
             group_id='REQSPEC_STATUS',
-            code_id__in=['PENDING_REVIEW', 'PENDING', 'REQSPEC_STATUS_PENDING']
+            code_id='DRAFT'
         ).first()
 
         req_def, created = RequirementDefinition.objects.get_or_create(
@@ -106,13 +110,15 @@ def process_ai_requirement_extraction(spec_document, user):
             defaults={
                 'project': spec_document.project if hasattr(spec_document, "project") else None,
                 'title': f"{spec_document.title} - 요구사항 정의서",
-                'status_code': pending_status,
+                'status_code': draft_status,
                 'created_by': user
             }
         )
 
-        if not created and pending_status:
-            req_def.status_code = pending_status
+        # 재생성 시 상태를 다시 DRAFT로 초기화 — 반려/검토중이던 상태에서 다시 생성했다면
+        # 그 내용은 폐기되고 새로 검토요청을 받아야 하므로.
+        if not created and draft_status:
+            req_def.status_code = draft_status
             req_def.save()
 
         # 기존 생성 항목 초기화 (재추출 시 중복 방지)
@@ -144,6 +150,7 @@ def process_ai_requirement_extraction(spec_document, user):
                     difficulty=getattr(req_item, "difficulty", "중"),
                     category=getattr(req_item, "category_1", getattr(req_item, "category", "기타")),
                     category_2=getattr(req_item, "category_2", None),
+                    order=index,
                 )
             )
 
@@ -301,6 +308,8 @@ class RequirementExtractView(APIView):
     def post(self, request, spec_id):
         spec_document = get_object_or_404(SpecDocument, spec_id=spec_id)
         try:
+            # 공용 헬퍼로 통합 — 생성(RequirementDefinitionListCreateView.create)과 재추출이
+            # 같은 로직(DRAFT 시작, order 채우기)을 쓰도록 한다.
             req_def = process_ai_requirement_extraction(spec_document, request.user)
             serializer = RequirementDefinitionSerializer(req_def)
             return Response(serializer.data, status=status.HTTP_201_CREATED)

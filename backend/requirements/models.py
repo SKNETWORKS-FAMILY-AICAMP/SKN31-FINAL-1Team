@@ -86,10 +86,17 @@ class RequirementItem(models.Model):
     category = models.CharField(max_length=50, null=True, blank=True, verbose_name="기능 카테고리")
     category_2 = models.CharField(max_length=50, null=True, blank=True, verbose_name="기능 카테고리 2")
 
+    # 화면의 "순번" 표시 순서 — 프론트에서 특정 행 사이에 항목을 끼워 넣을 수 있도록
+    # 정수가 아닌 실수로 둔다(두 항목 사이 값 = 중간값을 매기면 다른 행의 순서를 안
+    # 건드리고 끼워넣을 수 있다). 기본값 0은 그냥 자리표시자 — 실제 값은 생성 시점에
+    # (AI 추출은 인덱스 순서대로, 수동 추가는 프론트가 넘긴 위치 기준으로) 채워진다.
+    order = models.FloatField(default=0, verbose_name="표시 순서")
+
     class Meta:
         db_table = "requirement_item"
         verbose_name = "요구사항 상세 항목"
         verbose_name_plural = "요구사항 상세 항목 목록"
+        ordering = ["order", "id"]
 
     def __str__(self):
         return f"[{self.req_code}] {self.req_name}"

@@ -31,6 +31,7 @@ class RequirementItemSerializer(serializers.ModelSerializer):
             'difficulty',
             'category',
             'category_2',
+            'order',
         ]
         read_only_fields = ['id']
 

@@ -6,6 +6,7 @@ import { Sidebar, NAV_ITEMS } from "@/components/layout/Sidebar";
 import { useSidebar } from "@/components/layout/SidebarContext";
 import { cn } from "@/lib/utils";
 import { NotificationBell } from "@/components/layout/NotificationBell";
+import { ScrollToTopButton } from "@/components/layout/ScrollToTopButton";
 
 export function DashboardContent({ children }: { children: React.ReactNode }) {
   const { isOpen } = useSidebar();
@@ -43,6 +44,7 @@ export function DashboardContent({ children }: { children: React.ReactNode }) {
           {children}
         </main>
       </div>
+      <ScrollToTopButton />
     </>
   );
 }
