@@ -1,0 +1,105 @@
+{
+  "project": {
+    "name": "인트라넷 인사관리 기능 추가",
+    "background": "현재 '연차 휴가 신청'과 '출장 보고서'를 엑셀과 이메일로 관리하고 있는데, 인사팀 기준 월평균 40건 이상의 신청을 수기로 취합하다 보니 누락·중복 승인 사고가 최근 2건 발생함.",
+    "problem": "누락·중복 승인 사고가 최근 2건 발생함",
+    "goals": [
+      "연차 신청의 자동화 및 오류 감소",
+      "출장 보고서의 효율적 관리"
+    ],
+    "background_evidence": {
+      "quote": "현재 '연차 휴가 신청'과 '출장 보고서'를 엑셀과 이메일로 관리하고 있는데, 인사팀 기준 월평균 40건 이상의 신청을 수기로 취합하다 보니 누락·중복 승인 사고가 최근 2건 발생함."
+    },
+    "problem_evidence": {
+      "quote": "누락·중복 승인 사고가 최근 2건 발생함"
+    },
+    "background_evidence_status": "verified",
+    "problem_evidence_status": "verified"
+  },
+  "users": [
+    {
+      "type": "인사팀",
+      "description": "연차 휴가 신청과 출장 보고서를 관리하는 팀",
+      "needs": [
+        "신청의 자동화",
+        "오류 감소"
+      ],
+      "evidence": {
+        "quote": "인사팀 기준 월평균 40건 이상의 신청을 수기로 취합하다 보니 누락·중복 승인 사고가 최근 2건 발생함."
+      },
+      "evidence_status": "verified"
+    }
+  ],
+  "requirements": {
+    "functional": [
+      {
+        "content": "달력 UI에서 시작일/종료일 선택 기능 제공",
+        "evidence": {
+          "quote": "달력 UI에서 시작일/종료일 선택."
+        },
+        "evidence_status": "verified"
+      },
+      {
+        "content": "주말·공휴일은 자동으로 신청 대상에서 제외",
+        "evidence": {
+          "quote": "주말·공휴일은 자동으로 신청 대상에서 제외."
+        },
+        "evidence_status": "verified"
+      },
+      {
+        "content": "반차(오전/오후) 선택 옵션 제공",
+        "evidence": {
+          "quote": "반차(오전/오후) 선택 옵션 제공."
+        },
+        "evidence_status": "verified"
+      },
+      {
+        "content": "신청 즉시 담당 팀장에게 사내 메신저 + 이메일 동시 알림 발송",
+        "evidence": {
+          "quote": "신청 즉시 담당 팀장에게 사내 메신저 + 이메일 동시 알림 발송."
+        },
+        "evidence_status": "verified"
+      },
+      {
+        "content": "출장 보고서 영수증 첨부는 이미지 파일 다중 첨부 지원",
+        "evidence": {
+          "quote": "출장 보고서 영수증 첨부는 이미지 파일 다중 첨부까지만 지원."
+        },
+        "evidence_status": "verified"
+      }
+    ],
+    "non_functional": [],
+    "data": [],
+    "technical": []
+  },
+  "scenarios": [],
+  "decisions": [
+    {
+      "category": "scope",
+      "content": "연차 신청은 반차(오전/오후) 옵션까지 포함해 이번 스코프에 반드시 넣기로 확정함",
+      "rationale": null,
+      "evidence": {
+        "quote": "연차 신청은 반차(오전/오후) 옵션까지 포함해 이번 스코프에 반드시 넣기로 확정함."
+      },
+      "evidence_status": "verified"
+    },
+    {
+      "category": "feature",
+      "content": "출장 보고서 영수증 첨부는 이미지 파일 다중 첨부까지만 지원",
+      "rationale": null,
+      "evidence": {
+        "quote": "출장 보고서 영수증 첨부는 이미지 파일 다중 첨부까지만 지원."
+      },
+      "evidence_status": "verified"
+    }
+  ],
+  "constraints": [],
+  "unresolved": [
+    "사용자 시나리오가 회의에서 구체적으로 언급되지 않았습니다.",
+    "데이터 저장 방식이 논의되지 않았습니다."
+  ],
+  "meeting_id": "hr_test",
+  "validation_notes": [
+    "unresolved 항목을 제거했습니다: \"비기능 요구사항(성능·보안)이 회의에서 논의되지 않았습니다....\" — requirements.functional에 실제로 5건이 추출되어 있어 모순입니다."
+  ]
+}

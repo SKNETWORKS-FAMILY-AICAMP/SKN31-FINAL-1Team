@@ -1,0 +1,107 @@
+{
+  "project": {
+    "name": "신규 쇼핑몰 프로젝트",
+    "background": "기존 자사몰 앱은 출시 3년 차로 최근 6개월간 재방문율이 전년 대비 18% 하락했고, 특히 야간 시간대(21시~02시) 이탈률이 높다는 데이터가 있음.",
+    "problem": "신규 회원가입 단계에서 이탈이 큰데, 설문 결과 '이메일 회원가입 절차가 번거롭다'는 응답이 가장 많았음.",
+    "goals": [
+      "재방문율 개선",
+      "야간 시간대 이탈률 감소",
+      "회원가입 절차 간소화"
+    ],
+    "background_evidence": {
+      "quote": "기존 자사몰 앱은 출시 3년 차로 최근 6개월간 재방문율이 전년 대비 18% 하락했고, 특히 야간 시간대(21시~02시) 이탈률이 높다는 데이터가 있음."
+    },
+    "problem_evidence": {
+      "quote": "신규 회원가입 단계에서 이탈이 큰데, 설문 결과 '이메일 회원가입 절차가 번거롭다'는 응답이 가장 많았음."
+    },
+    "background_evidence_status": "verified",
+    "problem_evidence_status": "verified"
+  },
+  "users": [
+    {
+      "type": "신규 사용자",
+      "description": "신규 회원가입을 시도하는 사용자",
+      "needs": [
+        "간편한 회원가입 절차"
+      ],
+      "evidence": {
+        "quote": "신규 회원가입 단계에서 이탈이 큰데, 설문 결과 '이메일 회원가입 절차가 번거롭다'는 응답이 가장 많았음."
+      },
+      "evidence_status": "verified"
+    }
+  ],
+  "requirements": {
+    "functional": [
+      {
+        "content": "다크모드 시스템 설정 연동 및 앱 내 수동 전환 스위치 지원",
+        "evidence": {
+          "quote": "다크모드: 시스템 설정 연동 + 앱 내 수동 전환 스위치 둘 다 지원."
+        },
+        "evidence_status": "verified"
+      },
+      {
+        "content": "소셜 로그인 기능 지원 (카카오, 구글, 네이버)",
+        "evidence": {
+          "quote": "소셜 로그인: 카카오·구글·네이버 3개사 우선 지원."
+        },
+        "evidence_status": "verified"
+      },
+      {
+        "content": "AI 상품 추천 기능 제공",
+        "evidence": {
+          "quote": "AI 상품 추천: 최근 30일 검색 기록 + 장바구니 데이터를 기반으로 메인 화면 하단에 노출."
+        },
+        "evidence_status": "verified"
+      }
+    ],
+    "non_functional": [],
+    "data": [
+      {
+        "content": "최근 30일 검색 기록 및 장바구니 데이터 활용",
+        "evidence": {
+          "quote": "AI 상품 추천: 최근 30일 검색 기록 + 장바구니 데이터를 기반으로 메인 화면 하단에 노출."
+        },
+        "evidence_status": "verified"
+      }
+    ],
+    "technical": []
+  },
+  "scenarios": [],
+  "decisions": [
+    {
+      "category": "feature",
+      "content": "다크모드 지원 결정",
+      "rationale": null,
+      "evidence": {
+        "quote": "다크모드: 시스템 설정 연동 + 앱 내 수동 전환 스위치 둘 다 지원."
+      },
+      "evidence_status": "verified"
+    },
+    {
+      "category": "feature",
+      "content": "소셜 로그인 지원 결정",
+      "rationale": null,
+      "evidence": {
+        "quote": "소셜 로그인: 카카오·구글·네이버 3개사 우선 지원."
+      },
+      "evidence_status": "verified"
+    },
+    {
+      "category": "feature",
+      "content": "AI 상품 추천 기능 도입 결정",
+      "rationale": null,
+      "evidence": {
+        "quote": "AI 상품 추천: 최근 30일 검색 기록 + 장바구니 데이터를 기반으로 메인 화면 하단에 노출."
+      },
+      "evidence_status": "verified"
+    }
+  ],
+  "constraints": [],
+  "unresolved": [
+    "사용자 시나리오가 회의에서 구체적으로 언급되지 않았습니다."
+  ],
+  "meeting_id": "shopping_test",
+  "validation_notes": [
+    "unresolved 항목을 제거했습니다: \"비기능 요구사항(성능·보안)이 회의에서 논의되지 않았습니다....\" — requirements.functional에 실제로 3건이 추출되어 있어 모순입니다."
+  ]
+}
