@@ -14,6 +14,11 @@ import { ProposalTemplate } from "@/components/documents/ProposalTemplate";
 import { exportProposalPptx } from "@/lib/exportProposalPptx";
 import type { ProposalDoc } from "@/lib/documentTemplates";
 import { Toast } from "@/components/ui/Toast";
+import {
+  bareStatus, stepDone, stageOf,
+  PIPELINE_STEPS, PIPELINE_TAB_LABEL,
+  type BareStatus, type PipelineTab,
+} from "@/lib/documentPipeline";
 
 // ── Django 응답 shape ──────────────────────────────────────────
 type SpecStatusCode = "PROPOSAL_DRAFT" | "PROPOSAL_PENDING_REVIEW" | "PROPOSAL_APPROVED" | "PROPOSAL_REJECTED";
@@ -80,34 +85,12 @@ type NoteDto = {
 
 type ProjectDto = { id: number; name: string };
 
-type BareStatus = "DRAFT" | "PENDING_REVIEW" | "APPROVED" | "REJECTED";
-const bareStatus = (spec: SpecDto | null): BareStatus =>
-  ((spec?.status_info?.code_id ?? "").replace(/^PROPOSAL_/, "") || "DRAFT") as BareStatus;
-
 const STATUS_META: Record<BareStatus, { label: string; className: string; icon: any }> = {
   DRAFT: { label: "초안", className: "bg-muted text-muted-foreground", icon: FileText },
   PENDING_REVIEW: { label: "검토 요청중", className: "bg-orange-500/10 text-orange-500", icon: Clock },
   APPROVED: { label: "승인됨", className: "bg-emerald-500/10 text-emerald-500", icon: CheckCircle2 },
   REJECTED: { label: "반려됨", className: "bg-red-500/10 text-red-500", icon: XCircle },
 };
-
-// heyzzabi2(구버전 프로토타입)의 문서생성 파이프라인 UI를 그대로 따른다 — 기획서 →
-// 요구사항정의서 → 업무배분이 하나로 이어지는 파이프라인임을 상단 스테퍼로 보여주고,
-// 문서를 고르면 그 문서가 지금 있는 단계를 첫 화면으로 연다.
-type PipelineTab = "proposal" | "reqSpec" | "taskAssignment";
-const PIPELINE_STEPS: PipelineTab[] = ["proposal", "reqSpec", "taskAssignment"];
-const PIPELINE_TAB_LABEL: Record<PipelineTab, string> = {
-  proposal: "기획서", reqSpec: "요구사항정의서", taskAssignment: "업무 배분",
-};
-// 기획서는 승인 여부로 "완료"가 명확하다. 요구사항정의서·업무배분은 이 프로젝트에 아직
-// 승인 워크플로우 자체가 없어서(백엔드에 status 필드가 없음) "완료"라는 개념이 없다 —
-// heyzzabi2의 업무배분 단계와 같은 취급(항상 false, 잠기지 않음).
-const stepDone = (spec: SpecDto | null, step: PipelineTab): boolean =>
-  step === "proposal" ? bareStatus(spec) === "APPROVED" : false;
-// 문서를 고르면 "그 문서가 지금 있는 단계"를 첫 화면으로 보여준다 — 요구사항정의서
-// 승인 개념이 없으므로, 기획서가 승인되면 그 다음 할 일인 요구사항정의서 단계로 고정한다.
-const stageOf = (spec: SpecDto | null): PipelineTab =>
-  bareStatus(spec) === "APPROVED" ? "reqSpec" : "proposal";
 
 function specToProposalDoc(spec: SpecDto): ProposalDoc {
   return {
