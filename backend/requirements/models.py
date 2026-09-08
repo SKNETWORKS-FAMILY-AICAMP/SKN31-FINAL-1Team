@@ -32,7 +32,7 @@ class RequirementDefinition(models.Model):
         null=True,
         blank=True,
         related_name="req_definition_status",
-        limit_choices_to={'group_code': 'REQSPEC_STATUS'},
+        limit_choices_to={'group_id': 'REQSPEC_STATUS'},
         verbose_name="승인 상태"
     )
 
