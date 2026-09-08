@@ -126,11 +126,20 @@ def generate_task_suggestions(spec_id: int) -> dict:
     needed_roles = [r["role"] for r in team_size["team_size_estimate"]["by_role"]]
 
     raw_profiles = _build_employee_profiles()
-    mapping_result = assignee_mapping_node({
-        "raw_employee_profiles": raw_profiles,
-        "tasks": tasks,
-        "needed_roles": needed_roles,
-    })
+    # task_generation과 달리 이 호출은 try/except가 없어서, OpenAI 쪽 레이트리밋(TPM)을
+    # 재시도 끝에 못 넘기면(InstructorRetryException 등) 그대로 밖으로 터져 나가
+    # Django가 500을 던졌다 — 프론트는 이걸 그냥 뭉뚱그려 "API 실패"로만 보여줘서
+    # 원인을 알 수 없었다(직원 수만큼 LLM 호출이 나가는 구조라 자주 30k TPM에 걸림).
+    # 다른 단계들처럼 잡아서 사용자에게 재시도를 유도하는 메시지로 반환한다.
+    try:
+        mapping_result = assignee_mapping_node({
+            "raw_employee_profiles": raw_profiles,
+            "tasks": tasks,
+            "needed_roles": needed_roles,
+        })
+    except Exception as e:
+        logger.exception("담당자 매핑 실패 (spec_id=%s)", spec_id)
+        return {"status": "error", "message": "담당자 매핑 중 오류가 발생했습니다(AI 서버 요청량 초과일 수 있습니다). 잠시 후 다시 시도해주세요."}
     if mapping_result.get("error"):
         return {"status": "error", "message": f"담당자 매핑 실패: {mapping_result['error']}"}
     member_profiles = mapping_result["member_profiles"]
@@ -146,14 +155,18 @@ def generate_task_suggestions(spec_id: int) -> dict:
     )
     current_workload = {str(row['assigned_user_id']): float(row['total'] or 0) for row in workload_qs}
 
-    recommend_result = assignee_recommend_node({
-        "member_profiles": member_profiles,
-        "current_workload": current_workload,
-        "project_start_date": str(start_date),
-        "project_end_date": str(end_date),
-        "tasks": tasks,
-        "requirement_doc": requirement_doc,
-    })
+    try:
+        recommend_result = assignee_recommend_node({
+            "member_profiles": member_profiles,
+            "current_workload": current_workload,
+            "project_start_date": str(start_date),
+            "project_end_date": str(end_date),
+            "tasks": tasks,
+            "requirement_doc": requirement_doc,
+        })
+    except Exception as e:
+        logger.exception("담당자 추천 실패 (spec_id=%s)", spec_id)
+        return {"status": "error", "message": "담당자 추천 중 오류가 발생했습니다(AI 서버 요청량 초과일 수 있습니다). 잠시 후 다시 시도해주세요."}
     if recommend_result.get("error"):
         return {"status": "error", "message": f"담당자 추천 실패: {recommend_result['error']}"}
     assignments = recommend_result["assignments"]
