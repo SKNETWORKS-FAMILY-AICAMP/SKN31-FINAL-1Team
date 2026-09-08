@@ -348,12 +348,14 @@ export default function DocumentsPage() {
     }
   };
 
+  // 백엔드 requirements/urls.py에는 <reqDefId>/items/ 같은 중첩 경로가 없다(items/ 하나뿐,
+  // req_def는 body로 받음) — 중첩 경로로 호출하면 404가 난다(직접 재현해서 확인).
   const handleAddItem = async (reqDefId: number, item: { req_code: string; req_name: string; description: string }) => {
     setBusy(`reqdef-${reqDefId}-additem`);
     try {
-      const newItem = await apiFetch<ReqItemDto>(`/api/requirements/${reqDefId}/items/`, {
+      const newItem = await apiFetch<ReqItemDto>(`/api/requirements/items/`, {
         method: "POST",
-        body: JSON.stringify(item),
+        body: JSON.stringify({ req_def: reqDefId, ...item }),
       });
       setReqDefs(prev => prev.map(r => r.id === reqDefId ? { ...r, items: [...r.items, newItem] } : r));
       setToastMessage("요구사항 항목이 추가되었습니다");
