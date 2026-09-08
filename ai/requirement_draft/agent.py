@@ -63,26 +63,62 @@ def verify_source_consistency(doc: RequirementDocument) -> List[str]:
 
 def generate_requirements(plan: PlanDocument, plan_id: str | None = None) -> RequirementDocumentOutput:
     messages = build_messages(plan)
+    system_prompt = messages[0]["content"]
+    user_message = messages[1]["content"]
 
     doc: RequirementDocument = create_structured(
-        system_prompt=messages[0]["content"],
-        user_message=messages[1]["content"],
+        system_prompt=system_prompt,
+        user_message=user_message,
         response_model=RequirementDocument,
         max_tokens=DEFAULT_MAX_TOKENS,
         temperature=TEMPERATURE_STRUCTURED,
         max_retries=MAX_RETRIES,
     )
+    all_items = list(doc.requirements)
 
-    missing = verify_baseline_coverage(doc)
-    if missing:
-        logger.warning("baseline 카테고리 누락: %s", ", ".join(missing))
-    for problem in verify_source_consistency(doc):
+    # baseline NFR 카테고리가 빠지면, 예전엔 로그만 남기고 그대로 넘어갔다
+    # (2026-09-08 이전). task_generation의 요구사항 커버리지 재시도와 같은
+    # 이유로 — "누락됐다"는 사실을 로그로만 남기면 아무도 안 보는 채로
+    # 불완전한 문서가 그대로 나간다 — 빠진 카테고리만 콕 집어 재요청하고
+    # 기존 결과에 병합하는 재시도를 추가한다. 이미 만든 항목은 다시
+    # 만들지 않고(재요청 메시지에 명시), 빠진 것만 추가로 받는다.
+    for attempt in range(MAX_RETRIES):
+        missing = verify_baseline_coverage(RequirementDocument(requirements=all_items))
+        if not missing:
+            break
+        logger.warning(
+            "baseline 카테고리 누락(재시도 %d/%d): %s", attempt + 1, MAX_RETRIES, ", ".join(missing)
+        )
+        retry_message = (
+            f"{user_message}\n\n"
+            f"방금 생성한 결과에 다음 비기능요구사항 카테고리가 하나도 없다: {missing}. "
+            f"이 카테고리들에 대해서만 각각 최소 1건씩 요구사항을 새로 생성하라. "
+            f"이미 만든 다른 항목이나 기능요구사항은 다시 만들지 마라."
+        )
+        try:
+            retry_doc: RequirementDocument = create_structured(
+                system_prompt=system_prompt,
+                user_message=retry_message,
+                response_model=RequirementDocument,
+                max_tokens=DEFAULT_MAX_TOKENS,
+                temperature=TEMPERATURE_STRUCTURED,
+                max_retries=MAX_RETRIES,
+            )
+        except Exception as e:
+            logger.warning("baseline 재시도 호출 실패(재시도 %d/%d): %s", attempt + 1, MAX_RETRIES, e)
+            continue
+        all_items.extend(retry_doc.requirements)
+
+    remaining = verify_baseline_coverage(RequirementDocument(requirements=all_items))
+    if remaining:
+        logger.error("재시도 소진 — baseline 카테고리 여전히 누락: %s", ", ".join(remaining))
+    for problem in verify_source_consistency(RequirementDocument(requirements=all_items)):
         logger.warning("source 일관성 문제: %s", problem)
 
     return RequirementDocumentOutput(
         project_id=plan.project_id,
         plan_id=plan_id,
-        requirements=doc.requirements,
+        requirements=all_items,
         review_status=ReviewStatus.PENDING,
     )
 
