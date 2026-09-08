@@ -450,6 +450,13 @@ export default function DocumentsPage() {
   };
 
   const handleSubmitReview = async (note: NoteDto, spec: SpecDto) => {
+    // 프로젝트 기간을 안 정하고 검토요청하면 나중에 업무배분(간트차트 일정 계산 등)이
+    // 기간을 기준으로 돌아가는데 기준 자체가 없어진다 — 검토요청 전에 반드시 채우게 막는다
+    // (사용자 요청).
+    if (!spec.period_start || !spec.period_end) {
+      setErrorToast("프로젝트 기간을 입력해주세요.");
+      return;
+    }
     setBusy(`${note.id}-submit`);
     try {
       await apiFetch(`/api/meetings/specs/${spec.id}/submit-review/`, { method: "PATCH" });
