@@ -161,7 +161,7 @@ LOGGING = {
         # 프로젝트 전체(우리 views.py, ai/ 모듈 로거 포함)가 기본적으로
         # 이 설정을 상속받는다 — 개별 앱마다 따로 설정 안 해도 됨
         "handlers": ["console", "file"],
-        "level": "INFO",
+        "level": "ERROR",
     },
 
     "loggers": {

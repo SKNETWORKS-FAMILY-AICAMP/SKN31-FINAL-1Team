@@ -29,6 +29,34 @@ paths:
                 items:
                   $ref: '#/components/schemas/CommonCode'
           description: ''
+  /api/dashboard/analytics/:
+    get:
+      operationId: dashboard_analytics_retrieve
+      description: 최근 7일 완료 추이, 팀원별 기여도, 평균 처리 시간, 승인 통과율, 프로젝트 번다운 현황을 집계합니다.
+      summary: 대시보드 성과 통계 조회 (PM 전용)
+      tags:
+      - 0단계 - 대시보드
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DashboardAnalyticsResponse'
+          description: ''
+  /api/dashboard/overview/:
+    get:
+      operationId: dashboard_overview_retrieve
+      description: 유저 권한(PM/일반)에 따라 대시보드 요약, 상태 차트, 업무량, 활동 로그, 프로젝트 목록을 집계하여 반환합니다.
+      summary: 대시보드 개요 집계 조회
+      tags:
+      - 0단계 - 대시보드
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DashboardOverviewResponse'
+          description: ''
   /api/meetings/notes/:
     get:
       operationId: meetings_notes_list
@@ -660,8 +688,9 @@ paths:
           description: ''
     post:
       operationId: requirements_create
-      description: 새로운 요구사항 정의서를 생성합니다. 작성자(`created_by`)는 현재 로그인한 유저로 자동 지정됩니다.
-      summary: 요구사항 정의서 신규 등록
+      description: 기획서 ID(`spec`)를 전달받아 요구사항 정의서 생성과 동시에 AI 에이전트가 세부 항목(RequirementItem)을
+        자동 추출 및 저장합니다.
+      summary: 요구사항 정의서 생성 (AI 세부항목 자동 추출 포함)
       tags:
       - 2단계 - 요구사항 정의서
       requestBody:
@@ -681,8 +710,12 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/RequirementDefinitionCreate'
+                $ref: '#/components/schemas/RequirementDefinition'
           description: ''
+        '400':
+          description: 잘못된 파라미터 또는 기획서 데이터
+        '500':
+          description: AI 생성 또는 저장 오류
   /api/requirements/{spec_id}/:
     get:
       operationId: requirements_retrieve
@@ -779,12 +812,29 @@ paths:
       responses:
         '204':
           description: No response body
+  /api/requirements/{spec_id}/confirm-tasks/:
+    post:
+      operationId: requirements_confirm_tasks_create
+      description: 'PM이 검토/수정한 업무 배분 제안 목록(assignments)을 확정하여 TaskAssignment로 저장합니다.
+        요청 본문: {"req_def_id": <int>, "assignments": [...]}. 같은 요구사항정의서에 대한 기존 배정은
+        삭제 후 새로 생성됩니다.'
+      summary: 업무 배분 제안 확정(DB 저장)
+      parameters:
+      - in: path
+        name: spec_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - 3단계 - 업무 배정
+      responses:
+        '200':
+          description: 업무 배정 확정 결과
   /api/requirements/{spec_id}/extract/:
     post:
       operationId: requirements_extract_create
-      description: 특정 기획서(SpecDocument) 원문을 AI 에이전트가 분석하여 요구사항 정의서와 세부 항목(RequirementItem)들을
-        생성합니다.
-      summary: 기획서 기반 AI 요구사항 자동 추출
+      description: 특정 기획서(SpecDocument) 원문을 AI 에이전트가 다시 분석하여 세부 항목을 업데이트합니다.
+      summary: 기획서 기반 AI 요구사항 재추출
       parameters:
       - in: path
         name: spec_id
@@ -800,14 +850,26 @@ paths:
               schema:
                 $ref: '#/components/schemas/RequirementDefinition'
           description: ''
-        '400':
-          description: 잘못된 기획서 데이터 구조
-        '500':
-          description: AI 연동 또는 DB 저장 오류
+  /api/requirements/{spec_id}/generate-tasks/:
+    post:
+      operationId: requirements_generate_tasks_create
+      description: 승인된 요구사항정의서를 바탕으로 AI가 업무를 생성하고 담당자를 추천합니다. DB에는 저장하지 않고 PM이 검토/수정할
+        수 있는 제안 목록만 반환합니다.
+      summary: 요구사항정의서 기반 업무 배분 제안 생성(AI, 미리보기)
+      parameters:
+      - in: path
+        name: spec_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - 3단계 - 업무 배정
+      responses:
+        '200':
+          description: 업무 배분 제안 목록 (suggestions)
   /api/requirements/items/:
     get:
       operationId: requirements_items_list
-      description: 등록된 전체 세부 요구사항 항목(`RequirementItem`) 목록을 조회합니다.
       summary: 세부 요구사항 항목 목록 조회
       tags:
       - 2단계 - 요구사항 정의서
@@ -822,7 +884,6 @@ paths:
           description: ''
     post:
       operationId: requirements_items_create
-      description: 특정 요구사항 정의서 하위에 세부 항목을 수동으로 추가합니다.
       summary: 세부 요구사항 항목 직접 추가
       tags:
       - 2단계 - 요구사항 정의서
@@ -848,7 +909,6 @@ paths:
   /api/requirements/items/{id}/:
     get:
       operationId: requirements_items_retrieve
-      description: 특정 세부 요구사항 항목(`item_id`)의 상세 정보를 조회합니다.
       summary: 세부 요구사항 항목 단건 조회
       parameters:
       - in: path
@@ -867,7 +927,6 @@ paths:
           description: ''
     put:
       operationId: requirements_items_update
-      description: 특정 세부 요구사항 항목(`item_id`)의 전체 필드를 수정합니다.
       summary: 세부 요구사항 항목 전체 수정
       parameters:
       - in: path
@@ -898,7 +957,6 @@ paths:
           description: ''
     patch:
       operationId: requirements_items_partial_update
-      description: 특정 세부 요구사항 항목(`item_id`)의 일부 필드를 수정합니다.
       summary: 세부 요구사항 항목 부분 수정
       parameters:
       - in: path
@@ -928,7 +986,6 @@ paths:
           description: ''
     delete:
       operationId: requirements_items_destroy
-      description: 특정 세부 요구사항 항목(`item_id`)을 삭제합니다.
       summary: 세부 요구사항 항목 삭제
       parameters:
       - in: path
@@ -1560,6 +1617,43 @@ paths:
           description: ''
 components:
   schemas:
+    ActivityLogItem:
+      type: object
+      properties:
+        projectId:
+          type: integer
+          nullable: true
+        projectName:
+          type: string
+        taskTitle:
+          type: string
+        status:
+          type: string
+        statusLabel:
+          type: string
+        assigneeName:
+          type: string
+        updatedAt:
+          type: string
+          nullable: true
+      required:
+      - assigneeName
+      - projectId
+      - projectName
+      - status
+      - statusLabel
+      - taskTitle
+      - updatedAt
+    ApprovalPassRate:
+      type: object
+      properties:
+        approved:
+          type: integer
+        rejected:
+          type: integer
+      required:
+      - approved
+      - rejected
     CommonCode:
       type: object
       description: 공통 코드 전체 필드 조회용 Serializer
@@ -1613,6 +1707,59 @@ components:
       required:
       - code_id
       - code_name
+    DashboardAnalyticsResponse:
+      type: object
+      properties:
+        weeklyCompletion:
+          type: array
+          items:
+            $ref: '#/components/schemas/WeeklyCompletionItem'
+        teamContribution:
+          type: array
+          items:
+            $ref: '#/components/schemas/TeamContributionItem'
+        averageProcessTime:
+          type: number
+          format: double
+        approvalPassRate:
+          $ref: '#/components/schemas/ApprovalPassRate'
+        projectBurndown:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProjectBurndownItem'
+      required:
+      - approvalPassRate
+      - averageProcessTime
+      - projectBurndown
+      - teamContribution
+      - weeklyCompletion
+    DashboardOverviewResponse:
+      type: object
+      properties:
+        summary:
+          $ref: '#/components/schemas/Summary'
+        statusChart:
+          type: array
+          items:
+            $ref: '#/components/schemas/StatusChartItem'
+        workload:
+          type: array
+          items:
+            $ref: '#/components/schemas/WorkloadItem'
+        activityLog:
+          type: array
+          items:
+            $ref: '#/components/schemas/ActivityLogItem'
+        projectList:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProjectListItem'
+      required:
+      - activityLog
+      - projectList
+      - statusChart
+      - summary
+      - workload
     LoginRequest:
       type: object
       description: 로그인 요청 시 아이디/비밀번호 검증
@@ -1927,6 +2074,10 @@ components:
           allOf:
           - $ref: '#/components/schemas/CommonCodeSimple'
           readOnly: true
+        reject_reason:
+          type: string
+          nullable: true
+          title: 반려 사유
         created_by:
           type: integer
           nullable: true
@@ -1993,6 +2144,10 @@ components:
           nullable: true
           title: 기능 카테고리 2
           maxLength: 50
+        order:
+          type: number
+          format: double
+          title: 표시 순서
     PatchedSpecDocument:
       type: object
       description: 기획서(SpecDocument) 조회 및 작성용 Serializer
@@ -2465,6 +2620,35 @@ components:
       - name
       - owner_name
       - updated_at
+    ProjectBurndownItem:
+      type: object
+      properties:
+        name:
+          type: string
+        remaining:
+          type: integer
+      required:
+      - name
+      - remaining
+    ProjectListItem:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        totalTasks:
+          type: integer
+        doneTasks:
+          type: integer
+        progress:
+          type: integer
+      required:
+      - doneTasks
+      - id
+      - name
+      - progress
+      - totalTasks
     RequirementDefinition:
       type: object
       description: |-
@@ -2510,6 +2694,10 @@ components:
           allOf:
           - $ref: '#/components/schemas/CommonCodeSimple'
           readOnly: true
+        reject_reason:
+          type: string
+          nullable: true
+          title: 반려 사유
         created_by:
           type: integer
           nullable: true
@@ -2622,6 +2810,10 @@ components:
           nullable: true
           title: 기능 카테고리 2
           maxLength: 50
+        order:
+          type: number
+          format: double
+          title: 표시 순서
       required:
       - description
       - id
@@ -2731,6 +2923,19 @@ components:
       - status_info
       - title
       - updated_at
+    StatusChartItem:
+      type: object
+      properties:
+        code_id:
+          type: string
+        code_name:
+          type: string
+        value:
+          type: integer
+      required:
+      - code_id
+      - code_name
+      - value
     StatusEnum:
       enum:
       - DRAFT
@@ -2757,6 +2962,25 @@ components:
         * `TASK_ASSIGNED` - 업무 자동 배정
         * `TASK_IN_PROGRESS` - 업무 진행 중
         * `COMPLETED` - 파이프라인 완료
+    Summary:
+      type: object
+      properties:
+        totalTasks:
+          type: integer
+        inProgress:
+          type: integer
+        pendingApproval:
+          type: integer
+        done:
+          type: integer
+        completionRate:
+          type: integer
+      required:
+      - completionRate
+      - done
+      - inProgress
+      - pendingApproval
+      - totalTasks
     TaskAssignment:
       type: object
       description: 배정된 업무(TaskAssignment) 목록 및 상세 조회용 Serializer
@@ -2994,6 +3218,19 @@ components:
       required:
       - assigned_user
       - req_item
+    TeamContributionItem:
+      type: object
+      properties:
+        name:
+          type: string
+        done:
+          type: integer
+        inProgress:
+          type: integer
+      required:
+      - done
+      - inProgress
+      - name
     TypeEnum:
       enum:
       - info
@@ -3269,6 +3506,29 @@ components:
       - skill_code
       - skill_id
       - skill_name
+    WeeklyCompletionItem:
+      type: object
+      properties:
+        date:
+          type: string
+        count:
+          type: integer
+      required:
+      - count
+      - date
+    WorkloadItem:
+      type: object
+      properties:
+        userId:
+          type: integer
+        name:
+          type: string
+        taskCount:
+          type: integer
+      required:
+      - name
+      - taskCount
+      - userId
     _CodeSimple:
       type: object
       description: CommonCode 표시용(코드ID + 코드명).
