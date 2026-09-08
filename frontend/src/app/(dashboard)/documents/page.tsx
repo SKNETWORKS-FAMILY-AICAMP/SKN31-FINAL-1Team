@@ -104,6 +104,7 @@ type ProjectDto = { id: number; name: string };
 type TaskAssignmentDto = {
   id: number;
   task_no: string | null;
+  req_item: number;
   req_code: string;
   req_name: string;
   assigned_user: number;
@@ -1080,11 +1081,17 @@ function NoteDetail({
   const meta = STATUS_META[status];
   const canGenerate = String(note.created_by) === currentUserId;
   const dateLabel = new Date(note.updated_at).toLocaleDateString("ko-KR");
+  // taskAssignments는 프로젝트 단위로 통째로 가져온다(reqDef별 조회 API가 없음) — 그대로
+  // 쓰면 "같은 프로젝트의 예전 요구사항정의서로 이미 배분한 기록"이 있을 때 방금 새로
+  // 만든 요구사항정의서에도 "이미 배분됨"으로 잘못 표시되어 배분 실행 버튼이 스킵된
+  // 것처럼 사라지는 실제 버그가 있었다 — reqDef.items에 실제로 속한 업무만 걸러낸다.
+  const reqDefItemIds = new Set((reqDef?.items ?? []).map(item => item.id));
+  const tasksForReqDef = taskAssignments.filter(t => reqDefItemIds.has(t.req_item));
   // 확정된 업무배분 목록 — PM은 전체를 보고, 일반 유저는 본인에게 배정된 업무만 본다
   // (heyzzabi2와 동일한 접근 제어 — 다른 사람 업무까지 보이면 안 된다는 요청).
   const visibleTaskAssignments = isPM
-    ? taskAssignments
-    : taskAssignments.filter(t => String(t.assigned_user) === currentUserId);
+    ? tasksForReqDef
+    : tasksForReqDef.filter(t => String(t.assigned_user) === currentUserId);
 
   const busyKey = (action: string) => `${note.id}-${action}`;
 
@@ -1382,7 +1389,7 @@ function NoteDetail({
             onGenerateTasks={() => onGenerateTasks(spec!, reqDef!.id)}
             generatingTasks={!!reqDef && busy === `reqdef-${reqDef.id}-tasks`}
             onRejectClick={() => onRejectReqDef(spec!, reqDef!.id)}
-            tasksAlreadyAssigned={taskAssignments.length > 0}
+            tasksAlreadyAssigned={tasksForReqDef.length > 0}
           />
         )}
       </div>
@@ -1418,7 +1425,7 @@ function NoteDetail({
               <>
                 <Briefcase className="w-8 h-8 text-muted-foreground/40" />
                 <p className="text-sm text-muted-foreground">
-                  {!isPM && taskAssignments.length > 0
+                  {!isPM && tasksForReqDef.length > 0
                     ? "본인에게 배정된 업무가 없습니다."
                     : reqDef?.status_info?.code_id === "APPROVED"
                     ? "요구사항정의서 탭에서 \"업무 배분 실행\"을 누르면 여기에 결과가 표시됩니다."
