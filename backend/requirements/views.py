@@ -319,6 +319,28 @@ class RequirementExtractView(APIView):
             return Response({"error": "AI_GENERATION_FAILED", "details": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
+class RequirementGenerateTasksView(APIView):
+    """
+    POST /api/requirements/{spec_id}/generate-tasks/
+    heyzzabi2의 "업무 배분 실행" 버튼 — 요구사항정의서가 승인된 뒤 PM이 눌러서
+    실제 AI 파이프라인(업무생성 -> 담당자매핑 -> 담당자추천)을 돌리고
+    TaskAssignment까지 만든다(tasks/services.run_task_generation_pipeline).
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    @extend_schema(
+        tags=['3단계 - 업무 배정'],
+        summary='요구사항정의서 기반 업무 배분 실행(AI)',
+        description='승인된 요구사항정의서를 바탕으로 AI가 업무를 생성하고 담당자를 추천·배정합니다.',
+        responses={200: OpenApiResponse(description='업무 배분 실행 결과')}
+    )
+    def post(self, request, spec_id):
+        from tasks.services import run_task_generation_pipeline
+        result = run_task_generation_pipeline(spec_id)
+        http_status = status.HTTP_200_OK if result.get("status") == "success" else status.HTTP_400_BAD_REQUEST
+        return Response(result, status=http_status)
+
+
 @extend_schema_view(
     get=extend_schema(
         tags=['2단계 - 요구사항 정의서'],

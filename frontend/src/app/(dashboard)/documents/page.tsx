@@ -99,6 +99,22 @@ type NoteDto = {
 
 type ProjectDto = { id: number; name: string };
 
+type TaskAssignmentDto = {
+  id: number;
+  task_no: string | null;
+  req_code: string;
+  req_name: string;
+  assigned_user: number;
+  assigned_user_name: string;
+  title: string;
+  description: string | null;
+  estimated_hours: number | null;
+  assignment_reason: string | null;
+  epic_no: string;
+  epic_title: string;
+  status_info: { code_id: string; code_name: string } | null;
+};
+
 const STATUS_META: Record<BareStatus, { label: string; className: string; icon: any }> = {
   DRAFT: { label: "초안", className: "bg-muted text-muted-foreground", icon: FileText },
   PENDING_REVIEW: { label: "검토 요청중", className: "bg-orange-500/10 text-orange-500", icon: Clock },
@@ -195,6 +211,7 @@ export default function DocumentsPage() {
   const [project, setProject] = useState<ProjectDto | null>(null);
   const [notes, setNotes] = useState<NoteDto[]>([]);
   const [reqDefs, setReqDefs] = useState<ReqDefDto[]>([]);
+  const [taskAssignments, setTaskAssignments] = useState<TaskAssignmentDto[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedNoteId, setSelectedNoteId] = useState<number | null>(null);
   const [activeTab, setActiveTab] = useState<PipelineTab>("proposal");
@@ -248,6 +265,13 @@ export default function DocumentsPage() {
   useEffect(() => {
     if (!selectedNoteId && sortedNotes.length > 0) setSelectedNoteId(sortedNotes[0].id);
   }, [sortedNotes, selectedNoteId]);
+  // 업무배분 탭을 열었을 때 이미 배분된 업무가 있으면 보여준다(재배분 직후뿐 아니라
+  // 문서를 다시 열었을 때도).
+  useEffect(() => {
+    if (selectedNote?.project) fetchTaskAssignments(selectedNote.project);
+    else setTaskAssignments([]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedNote?.project]);
   // 문서를 고르면(직접 클릭이든, 등록 직후 자동이든) 항상 "그 문서가 지금 있는 단계"를
   // 첫 화면으로 보여준다 — heyzzabi2와 동일한 동작.
   const selectNote = (note: NoteDto) => {
@@ -504,6 +528,39 @@ export default function DocumentsPage() {
     }
   };
 
+  const fetchTaskAssignments = async (projectId: number) => {
+    try {
+      const list = await apiFetch<TaskAssignmentDto[]>(`/api/tasks/assignments/?project=${projectId}`);
+      setTaskAssignments(list);
+    } catch (err: any) {
+      setErrorToast(err.message || "업무 목록을 불러오지 못했습니다.");
+    }
+  };
+
+  // heyzzabi2의 "업무 배분 실행" — 요구사항정의서 승인 후 PM이 눌러서 실제 AI
+  // 파이프라인(업무생성→담당자매핑→담당자추천)을 돌린다. 시간이 좀 걸릴 수 있어
+  // (LLM 여러 번 호출) busy 상태를 계속 보여준다.
+  const handleGenerateTasks = async (note: NoteDto, spec: SpecDto, reqDefId: number) => {
+    setBusy(`reqdef-${reqDefId}-tasks`);
+    try {
+      const result = await apiFetch<{ status: string; message?: string; created_count?: number; held_count?: number }>(
+        `/api/requirements/${spec.id}/generate-tasks/`,
+        { method: "POST" }
+      );
+      if (result.status !== "success") {
+        setErrorToast(result.message || "업무 배분에 실패했습니다.");
+        return;
+      }
+      setToastMessage(`업무 배분 완료 — ${result.created_count ?? 0}건 배정, ${result.held_count ?? 0}건 보류`);
+      setActiveTab("taskAssignment");
+      if (note.project) await fetchTaskAssignments(note.project);
+    } catch (err: any) {
+      setErrorToast(err.message || "업무 배분에 실패했습니다.");
+    } finally {
+      setBusy(null);
+    }
+  };
+
   if (loading) {
     return <div className="flex items-center justify-center h-[60vh]"><Loader2 className="w-8 h-8 animate-spin text-primary" /></div>;
   }
@@ -717,6 +774,8 @@ export default function DocumentsPage() {
               onUpdateItem={handleUpdateItem}
               onDeleteItem={handleDeleteItem}
               onReqDefStatusChange={handleReqDefStatusChange}
+              onGenerateTasks={(spec, reqDefId) => handleGenerateTasks(selectedNote, spec, reqDefId)}
+              taskAssignments={taskAssignments}
             />
           )}
         </div>
@@ -801,6 +860,7 @@ function NoteDetail({
   note, spec, reqDef, activeTab, isPM, currentUserId, busy,
   onGenerateSpec, onSaveNoteContent, onSaveSpec, onSavePeriod, onSubmitReview, onApprove, onReject,
   onCreateReqDef, onExtractItems, onAddItem, onUpdateItem, onDeleteItem, onReqDefStatusChange,
+  onGenerateTasks, taskAssignments,
 }: {
   note: NoteDto; spec: SpecDto | null; reqDef: ReqDefDto | null; activeTab: PipelineTab; isPM: boolean; currentUserId: string | undefined; busy: string | null;
   onGenerateSpec: () => void;
@@ -816,6 +876,8 @@ function NoteDetail({
   onUpdateItem: (reqDefId: number, itemId: number, patch: { req_name: string; description: string; priority_code?: string | null }) => void;
   onDeleteItem: (reqDefId: number, itemId: number) => void;
   onReqDefStatusChange: (spec: SpecDto, reqDefId: number, statusCode: "PENDING_REVIEW" | "APPROVED" | "REJECTED") => void;
+  onGenerateTasks: (spec: SpecDto, reqDefId: number) => void;
+  taskAssignments: TaskAssignmentDto[];
 }) {
   const status = bareStatus(spec);
   const meta = STATUS_META[status];
@@ -1113,17 +1175,60 @@ function NoteDetail({
             onUpdateItem={onUpdateItem}
             onDeleteItem={onDeleteItem}
             onStatusChange={(statusCode) => onReqDefStatusChange(spec!, reqDef!.id, statusCode)}
+            onGenerateTasks={() => onGenerateTasks(spec!, reqDef!.id)}
+            generatingTasks={!!reqDef && busy === `reqdef-${reqDef.id}-tasks`}
           />
         )}
       </div>
 
-      {/* 업무배분 탭 — AI 로직(ai/assignee_mapping, ai/task_generation)은 있지만 이를 호출하는
-          Django 엔드포인트가 아직 없어서(백엔드 전달 목록에 포함됨) 자리만 잡아둔다. */}
+      {/* 업무배분 탭 — heyzzabi2의 "업무 배분 실행"으로 만들어진 결과(TaskAssignment)를
+          보여준다. 실제 AI 파이프라인(업무생성→담당자매핑→담당자추천)까지 연결됨. */}
       <div className={cn(activeTab !== "taskAssignment" && "hidden")}>
-        <div className="border border-dashed border-border rounded-xl p-10 flex flex-col items-center gap-3 text-center">
-          <Briefcase className="w-8 h-8 text-muted-foreground/40" />
-          <p className="text-sm text-muted-foreground">업무배분 기능은 백엔드 API 준비 중입니다.</p>
-        </div>
+        {taskAssignments.length === 0 ? (
+          <div className="border border-dashed border-border rounded-xl p-10 flex flex-col items-center gap-3 text-center">
+            <Briefcase className="w-8 h-8 text-muted-foreground/40" />
+            <p className="text-sm text-muted-foreground">
+              {reqDef?.status_info?.code_id === "APPROVED"
+                ? "요구사항정의서 탭에서 \"업무 배분 실행\"을 누르면 여기에 결과가 표시됩니다."
+                : "요구사항정의서가 승인되면 업무 배분을 실행할 수 있습니다."}
+            </p>
+          </div>
+        ) : (
+          <div className="border border-border rounded-xl overflow-hidden">
+            <table className="w-full text-sm text-left">
+              <thead className="text-xs text-muted-foreground uppercase bg-black/5 dark:bg-white/5">
+                <tr>
+                  <th className="px-4 py-2.5 font-bold w-24">업무번호</th>
+                  <th className="px-4 py-2.5 font-bold">업무명</th>
+                  <th className="px-4 py-2.5 font-bold w-28">담당자</th>
+                  <th className="px-4 py-2.5 font-bold w-20 text-right">예상시간</th>
+                  <th className="px-4 py-2.5 font-bold w-24">상태</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {taskAssignments.map(t => (
+                  <tr key={t.id}>
+                    {/* task_no는 DB에서 유일해야 해서 실제 값은 "RD3-TASK-021"처럼
+                        요구사항정의서 id가 붙어있다 — 화면엔 그 뒤의 TASK-021만 보여준다. */}
+                    <td className="px-4 py-2.5 font-mono text-xs text-muted-foreground align-middle whitespace-nowrap">{t.task_no?.replace(/^RD\d+-/, "") ?? t.task_no}</td>
+                    <td className="px-4 py-2.5 align-top">
+                      <p className="font-semibold">{t.title}</p>
+                      {t.epic_title && <p className="text-xs text-muted-foreground mt-0.5">{t.epic_no} · {t.epic_title}</p>}
+                      {t.assignment_reason && <p className="text-xs text-muted-foreground/70 mt-0.5">{t.assignment_reason}</p>}
+                    </td>
+                    <td className="px-4 py-2.5 align-middle">{t.assigned_user_name}</td>
+                    <td className="px-4 py-2.5 align-middle text-right tabular-nums">{t.estimated_hours ?? "-"}h</td>
+                    <td className="px-4 py-2.5 align-middle">
+                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-orange-500/10 text-orange-500">
+                        {t.status_info?.code_name ?? "미지정"}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -1131,6 +1236,7 @@ function NoteDetail({
 
 function RequirementSection({
   spec, reqDef, isPM, busy, onCreate, onExtract, onAddItem, onUpdateItem, onDeleteItem, onStatusChange,
+  onGenerateTasks, generatingTasks,
 }: {
   spec: SpecDto; reqDef: ReqDefDto | null; isPM: boolean; busy: string | null;
   onCreate: () => void;
@@ -1139,6 +1245,8 @@ function RequirementSection({
   onUpdateItem: (reqDefId: number, itemId: number, patch: { req_name: string; description: string; priority_code?: string | null }) => void;
   onDeleteItem: (reqDefId: number, itemId: number) => void;
   onStatusChange: (statusCode: "PENDING_REVIEW" | "APPROVED" | "REJECTED") => void;
+  onGenerateTasks: () => void;
+  generatingTasks: boolean;
 }) {
   // 하단에 고정된 "항목 직접 추가" 버튼 대신, 표의 행과 행 사이에 있는 + 버튼을 눌러 그
   // 자리에 바로 추가 폼이 펼쳐지도록 바꿨다(사용자 요청). null이면 어디에도 안 열려있고,
@@ -1254,6 +1362,18 @@ function RequirementSection({
             <span className="flex items-center gap-1 text-[11px] text-muted-foreground/70">
               <Lock className="w-3 h-3" /> 승인되어 항목이 잠겼습니다
             </span>
+          )}
+          {/* heyzzabi2와 동일 — 요구사항정의서가 승인되면 PM이 다음 단계(업무분배)로
+              넘어갈 업무를 AI로 자동 추출·배정할 수 있다. */}
+          {reqStatus === "APPROVED" && isPM && (
+            <button
+              onClick={onGenerateTasks}
+              disabled={generatingTasks}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-primary text-primary-foreground text-xs font-bold hover:bg-primary/90 disabled:opacity-50"
+            >
+              {generatingTasks ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Bot className="w-3.5 h-3.5" />}
+              업무 배분 실행
+            </button>
           )}
           {reqStatus === "PENDING_REVIEW" && !isPM && (
             <span className="flex items-center gap-1 text-[11px] text-muted-foreground/70">
