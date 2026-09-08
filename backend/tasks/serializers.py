@@ -21,7 +21,9 @@ class TaskAssignmentSerializer(serializers.ModelSerializer):
     """
     배정된 업무(TaskAssignment) 목록 및 상세 조회용 Serializer
     """
-    assigned_user_name = serializers.CharField(source='assigned_user.username', read_only=True)
+    # 담당자를 아이디(demo25)가 아니라 실명으로 보여달라는 요청 — 성+이름 조합이
+    # 비어있는 계정(시드 데이터 등)만 username으로 대체한다(User.__str__과 동일 규칙).
+    assigned_user_name = serializers.SerializerMethodField()
     req_code = serializers.CharField(source='req_item.req_code', read_only=True)
     req_name = serializers.CharField(source='req_item.req_name', read_only=True)
     project_name = serializers.CharField(source='project.name', read_only=True)
@@ -29,6 +31,11 @@ class TaskAssignmentSerializer(serializers.ModelSerializer):
     status_info = _CodeSimpleSerializer(source='status_code', read_only=True)
     difficulty_info = _CodeSimpleSerializer(source='difficulty_code', read_only=True)
     git_status_info = _CodeSimpleSerializer(source='git_status_code', read_only=True)
+
+    def get_assigned_user_name(self, obj):
+        u = obj.assigned_user
+        full_name = f"{u.last_name}{u.first_name}".strip()
+        return full_name or u.username
 
     class Meta:
         model = TaskAssignment

@@ -36,6 +36,10 @@ class RequirementDefinition(models.Model):
         verbose_name="승인 상태"
     )
 
+    # 기획서(SpecDocument.review_comment)에는 있는데 요구사항정의서엔 없어서, PM이
+    # 반려해도 사유 없이 상태만 바뀌던 문제를 고친다(팀 전달 목록에 있던 항목).
+    reject_reason = models.TextField(null=True, blank=True, verbose_name="반려 사유")
+
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
