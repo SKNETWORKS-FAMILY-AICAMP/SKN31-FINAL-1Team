@@ -124,6 +124,14 @@ const PRIORITY_OPTIONS: { code_id: string; label: string }[] = [
 
 // 코드 끝의 숫자를 1 증가시킨다(FR-01-003 -> FR-01-004). 자릿수는 유지(001, 01 등).
 // 숫자로 안 끝나면 원본 그대로 반환.
+// 코드의 마지막 "-NNN" 세부번호를 뗀 그룹 부분(FR-01-003 -> FR-01). 같은 그룹 안에서는
+// +버튼으로 끼워넣지 않는다(사용자 요청 — FR-01-001과 FR-01-002 사이엔 없어야 함) —
+// 그룹이 바뀌는 경계(예: FR-01-003과 FR-02-001 사이)에서만 새 항목을 추가할 수 있다.
+function groupOf(code: string): string {
+  const m = code.match(/^(.*)-\d+$/);
+  return m ? m[1] : code;
+}
+
 function incrementCode(code: string): string {
   const m = code.match(/^(.*?)(\d+)$/);
   if (!m) return code;
@@ -1512,7 +1520,11 @@ function RequirementSection({
                       </td>
                     )}
                   </tr>
+                  {/* 같은 그룹(FR-01 등) 안에서는 +버튼을 안 보여준다 — 다음 항목이 없거나
+                      (마지막 행) 그룹이 다를 때만 표시. */}
                   {!isPM && !itemsLocked && (
+                    index === reqDef.items.length - 1 || groupOf(item.req_code) !== groupOf(reqDef.items[index + 1].req_code)
+                  ) && (
                     addFormAt === item.id ? renderAddFormRow(item.id) : renderDivider(item.id)
                   )}
                   </Fragment>
