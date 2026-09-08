@@ -47,20 +47,33 @@ type SpecDto = {
 
 type ReqItemDto = {
   id: number;
+  req_def: number;
   req_code: string;
   req_name: string;
   description: string;
-  category?: string;
-  difficulty?: string;
+  priority_code: string | null;
+  priority_info: { code_id: string; code_name: string } | null;
+  category?: string | null;
+  category_2?: string | null;
+  difficulty?: string | null;
 };
+
+type ReqDefStatusCode = "DRAFT" | "PENDING_REVIEW" | "APPROVED" | "REJECTED";
 
 type ReqDefDto = {
   id: number;
   spec: number;
+  spec_id: number;
+  spec_title: string;
   project: number;
+  project_name: string;
   title: string;
   version: string;
-  description?: string;
+  description?: string | null;
+  status_code: string | null;
+  status_info: { code_id: ReqDefStatusCode; code_name: string } | null;
+  created_by: number | null;
+  created_by_name: string;
   items: ReqItemDto[];
   created_at: string;
   updated_at: string;
@@ -91,6 +104,9 @@ const STATUS_META: Record<BareStatus, { label: string; className: string; icon: 
   APPROVED: { label: "승인됨", className: "bg-emerald-500/10 text-emerald-500", icon: CheckCircle2 },
   REJECTED: { label: "반려됨", className: "bg-red-500/10 text-red-500", icon: XCircle },
 };
+
+// 요구사항 항목의 우선순위(CommonCode REQ_PRIORITY 그룹, code_name 기준) 한글 표시.
+const PRIORITY_LABEL: Record<string, string> = { HIGH: "상", MEDIUM: "중", LOW: "하" };
 
 function specToProposalDoc(spec: SpecDto): ProposalDoc {
   return {
@@ -513,6 +529,7 @@ export default function DocumentsPage() {
                     )}
                   >
                     <button onClick={() => selectNote(note)} className="flex-1 min-w-0 text-left">
+                      <p className="text-[10px] font-mono text-muted-foreground/70">문서번호 {note.id}</p>
                       <p className="font-semibold text-sm truncate mb-1.5">{note.title}</p>
                       {/* 미니 파이프라인 — 이 문서가 지금 3단계 중 어디에 있는지 한눈에 */}
                       <div className="flex items-center gap-1 mb-1.5">
@@ -743,6 +760,7 @@ function NoteDetail({
     <div className="space-y-5">
       <div className="flex items-center justify-between">
         <div>
+          <p className="text-xs font-mono text-muted-foreground/70">문서번호 {note.id}</p>
           <h2 className="font-bold text-lg">{note.title}</h2>
           <p className="text-xs text-muted-foreground mt-0.5">
             작성자 {note.created_by_name || "알 수 없음"}
@@ -1053,8 +1071,10 @@ function RequirementSection({
                   <td className="px-4 py-2.5 align-top">
                     <p className="font-semibold">{item.req_name}</p>
                     <p className="text-xs text-muted-foreground mt-0.5">{item.description}</p>
+                    {/* 분류(기능/비기능)는 왼쪽 열에 이미 나와서 여기서 또 보여줄 필요가 없고,
+                        난이도는 안 쓰기로 해서 우선순위(DB의 priority_info)로 대체했다. */}
                     <p className="text-xs text-muted-foreground/70 mt-0.5">
-                      {item.category || "-"}{item.difficulty && ` · 난이도 ${item.difficulty}`}
+                      우선순위 {PRIORITY_LABEL[item.priority_info?.code_name ?? ""] ?? "미지정"}
                     </p>
                   </td>
                 </tr>
