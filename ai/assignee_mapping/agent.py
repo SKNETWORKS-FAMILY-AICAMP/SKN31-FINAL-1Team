@@ -17,7 +17,6 @@ EmployeeFitnessProfile을 만든다.
 """
 
 import logging
-from functools import lru_cache
 from typing import Any, Dict, List
 
 from pydantic import ValidationError
@@ -32,19 +31,12 @@ from .schemas import EmployeeFitnessProfile, ExtractedExperienceTags, RawEmploye
 logger = logging.getLogger(__name__)
 
 
-# 프롬프트에 실제로 들어가는 변수는 career_history_text 하나뿐이다(prompt_builder.py
-# 참고 - job_role/skills는 여기 관여 안 함). 그런데 같은 사원의 경력기술서는 거의
-# 안 바뀌는데도 업무 배분 실행을 누를 때마다 전체 후보를 매번 새로 LLM에 태워서
-# TPM 레이트리미트의 주범이 되었다 - 프로세스 생존 기간 동안만이라도 같은 원문이면
-# 재호출하지 않도록 캐싱한다. RawEmployeeProfile 자체는 해시 불가능하니 문자열
-# career_history_text만 키로 쓴다.
-@lru_cache(maxsize=512)
-def _extract_experience_tags_cached(career_history_text: str) -> ExtractedExperienceTags:
-    prompt_profile = RawEmployeeProfile(
-        employee_id="", employee_no="", name="", job_role="", is_active=True,
-        career_history_text=career_history_text,
-    )
-    prompt = build_extraction_prompt(prompt_profile)
+def extract_experience_tags(profile: RawEmployeeProfile) -> ExtractedExperienceTags:
+    """career_history_text가 비어있으면 LLM 호출 없이 바로 빈 태그를 반환한다."""
+    if not profile.career_history_text.strip():
+        return ExtractedExperienceTags(tags=[])
+
+    prompt = build_extraction_prompt(profile)
     return create_structured(
         system_prompt=prompt,
         user_message="위 경력기술서에서 경험 태그를 추출하라.",
@@ -53,14 +45,6 @@ def _extract_experience_tags_cached(career_history_text: str) -> ExtractedExperi
         temperature=TEMPERATURE_STRUCTURED,
         max_retries=MAX_RETRIES,
     )
-
-
-def extract_experience_tags(profile: RawEmployeeProfile) -> ExtractedExperienceTags:
-    """career_history_text가 비어있으면 LLM 호출 없이 바로 빈 태그를 반환한다."""
-    if not profile.career_history_text.strip():
-        return ExtractedExperienceTags(tags=[])
-
-    return _extract_experience_tags_cached(profile.career_history_text)
 
 
 def assignee_mapping_node(state: Dict[str, Any]) -> Dict[str, Any]:

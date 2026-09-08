@@ -50,39 +50,3 @@ class AssignmentResult(BaseModel):
 
 class AssignmentBatch(BaseModel):
     results: List[AssignmentResult] = Field(default_factory=list)
-
-
-# --- 배치 LLM 호출용 스키마 (2026-09, OpenAI TPM 레이트리밋 대응) ---
-#
-# 기존엔 확정 배정 단위(unit)마다 LLM을 한 번씩 호출해 RecommendationReason/
-# HoldExplanation을 받았다 — unit이 10~20개면 호출도 10~20번이라 OpenAI TPM
-# 한도(30,000 tokens/min)에 자주 걸렸다. 아래 두 스키마는 여러 unit을 한
-# 요청에 묶어 응답받기 위한 것으로, 기존 RecommendationReason/HoldExplanation
-# 자체는 그대로 두고(다른 코드/스키마가 그대로 참조하므로) unit_id로 매핑되는
-# 배치 래퍼만 추가한다.
-
-
-class BatchReasonItem(BaseModel):
-    """배치 응답 안에서 각 unit에 대한 근거 문장 1건."""
-
-    unit_id: str = Field(..., description="입력으로 준 [업무 목록]의 unit_id와 정확히 일치해야 함")
-    reason: RecommendationReason
-
-
-class BatchRecommendationReasons(BaseModel):
-    """여러 unit에 대한 근거 문장을 한 번에 받기 위한 배치 응답."""
-
-    results: List[BatchReasonItem] = Field(default_factory=list)
-
-
-class BatchHoldItem(BaseModel):
-    """배치 응답 안에서 각 unit에 대한 보류 사유 설명 1건."""
-
-    unit_id: str = Field(..., description="입력으로 준 [업무 목록]의 unit_id와 정확히 일치해야 함")
-    explanation: str
-
-
-class BatchHoldExplanations(BaseModel):
-    """여러 unit에 대한 보류 사유를 한 번에 받기 위한 배치 응답."""
-
-    results: List[BatchHoldItem] = Field(default_factory=list)
