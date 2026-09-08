@@ -28,8 +28,8 @@
       "evidence_status": "verified"
     },
     {
-      "type": "매장 직원",
-      "description": "매장 파트타임 직원으로 입출고 등록 정도만 수행",
+      "type": "매장 파트타임 직원",
+      "description": "입출고 등록 정도만 수행",
       "needs": [
         "간편한 입출고 등록"
       ],
@@ -96,14 +96,6 @@
           "quote": "최근 4주 평균 판매량 기반 추천 수량 계산으로 대체하기로 합의했다."
         },
         "evidence_status": "verified"
-      },
-      {
-        "content": "POS 연동 기능 제공",
-        "priority": "high",
-        "evidence": {
-          "quote": "POS 연동은 A사 API 1곳만 MVP에 포함하며, 나머지 벤더는 2차 개발로 이관한다."
-        },
-        "evidence_status": "verified"
       }
     ],
     "non_functional": [
@@ -111,7 +103,7 @@
         "content": "주요 화면 응답 3초 이내",
         "priority": "high",
         "evidence": {
-          "quote": "주요 화면 응답 3초 이내를 기준으로 한다."
+          "quote": "김도현: 매장에서 바쁜 시간대에 사용하는 서비스이므로 응답 속도가 중요하다. 주요 화면 응답 3초 이내를 기준으로 한다."
         },
         "evidence_status": "verified"
       },
@@ -127,21 +119,21 @@
         "content": "모바일 우선 반응형 설계",
         "priority": "high",
         "evidence": {
-          "quote": "매장 내 모바일 사용 비중이 높으므로 모바일 우선 반응형으로 설계한다."
+          "quote": "최민아: 매장 내 모바일 사용 비중이 높으므로 모바일 우선 반응형으로 설계한다."
         },
         "evidence_status": "verified"
       },
       {
         "content": "본문 폰트 16px 이상, 주요 버튼 터치 영역 44px 이상",
-        "priority": "high",
+        "priority": "medium",
         "evidence": {
-          "quote": "40~50대 사용자 비중을 고려해 본문 폰트 최소 16px, 주요 버튼 터치 영역 44px 이상을 적용해야 한다."
+          "quote": "정우성: 40~50대 사용자 비중을 고려해 본문 폰트 최소 16px, 주요 버튼 터치 영역 44px 이상을 적용해야 한다."
         },
         "evidence_status": "verified"
       },
       {
         "content": "주요 액션 버튼 하단 배치",
-        "priority": "high",
+        "priority": "medium",
         "evidence": {
           "quote": "한 손으로 조작하는 상황이 많으므로 주요 액션 버튼은 화면 하단에 배치한다."
         },
@@ -154,7 +146,7 @@
         "content": "프론트엔드 React",
         "priority": "high",
         "evidence": {
-          "quote": "프론트엔드 React, 백엔드 Spring Boot, DB MySQL, 인프라 AWS를 제안한다."
+          "quote": "이준호: 프론트엔드 React, 백엔드 Spring Boot, DB MySQL, 인프라 AWS를 제안한다."
         },
         "evidence_status": "verified"
       },
@@ -162,7 +154,7 @@
         "content": "백엔드 Spring Boot",
         "priority": "high",
         "evidence": {
-          "quote": "프론트엔드 React, 백엔드 Spring Boot, DB MySQL, 인프라 AWS를 제안한다."
+          "quote": "이준호: 프론트엔드 React, 백엔드 Spring Boot, DB MySQL, 인프라 AWS를 제안한다."
         },
         "evidence_status": "verified"
       },
@@ -170,7 +162,7 @@
         "content": "DB MySQL",
         "priority": "high",
         "evidence": {
-          "quote": "프론트엔드 React, 백엔드 Spring Boot, DB MySQL, 인프라 AWS를 제안한다."
+          "quote": "이준호: 프론트엔드 React, 백엔드 Spring Boot, DB MySQL, 인프라 AWS를 제안한다."
         },
         "evidence_status": "verified"
       },
@@ -178,7 +170,7 @@
         "content": "인프라 AWS",
         "priority": "high",
         "evidence": {
-          "quote": "프론트엔드 React, 백엔드 Spring Boot, DB MySQL, 인프라 AWS를 제안한다."
+          "quote": "이준호: 프론트엔드 React, 백엔드 Spring Boot, DB MySQL, 인프라 AWS를 제안한다."
         },
         "evidence_status": "verified"
       }
@@ -269,7 +261,7 @@
     }
   ],
   "unresolved": [
-    "데이터 저장 및 연동 요구사항이 논의되지 않았습니다.",
+    "데이터 저장 및 연동에 대한 구체적인 요구사항이 논의되지 않았습니다.",
     "사용자 시나리오가 구체적으로 언급되지 않았습니다."
   ],
   "meeting_id": "meeting_note_1_complete",

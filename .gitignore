@@ -22,5 +22,6 @@ data/raw/
 *.tfstate.backup
 *:Zone.Identifier
 .gstack/
+.env.example
 *.tsbuildinfo
 coverage/

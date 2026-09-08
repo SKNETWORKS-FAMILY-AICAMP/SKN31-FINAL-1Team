@@ -111,7 +111,13 @@ def run(structured: dict, proposal_id: str) -> PlanDocument:
                 features=feats,
                 items=[f.title for f in feats],
                 source_fields=spec["source_fields"],
-                evidence=[],
+                # 2026-09-07: 예전엔 evidence=[]로 고정돼 있어서 가장 중요한
+                # 섹션(주요 기능)에 근거가 하나도 안 붙었습니다. requirements.
+                # functional / decisions[feature]에 이미 검증된 근거가 있으므로
+                # 그걸 재수집합니다.
+                evidence=list_builder.collect_source_evidence(  # ⬅ 수정: 원래 evidence=[] 였음
+                    structured, spec["source_fields"]
+                ),
                 is_incomplete=not feats,
             ))
             continue
@@ -128,7 +134,13 @@ def run(structured: dict, proposal_id: str) -> PlanDocument:
             # 서술형은 문단이라 쪼갤 항목이 없습니다. 하류는 content_html을 씁니다.
             items=[],
             source_fields=spec["source_fields"],
-            evidence=gen.evidence if gen else [],
+            # 2026-09-07: gen.evidence(LLM이 스스로 인용한 근거, 원문 대조 안 됨)
+            # 대신 노드①이 이미 검증해둔 원본 근거를 source_fields로 재수집합니다.
+            # "근거 보기" 화면에서 verified/unverified를 신뢰성 있게 보여주려면
+            # LLM의 자기 인용이 아니라 코드가 대조한 값이어야 합니다.
+            evidence=list_builder.collect_source_evidence(  # ⬅ 수정: 원래 evidence=gen.evidence if gen else [] 였음
+                structured, spec["source_fields"]
+            ),
             # 원본이 비었거나 LLM이 아무것도 못 쓴 경우
             is_incomplete=_source_is_empty(structured, spec["source_fields"])
             or not content.strip(),
@@ -178,7 +190,8 @@ def regenerate_section(
         content_html=content,
         items=[],
         source_fields=spec["source_fields"],
-        evidence=gen.evidence if gen else [],
+        # run()과 동일한 이유로 gen.evidence 대신 검증된 원본 근거를 재수집합니다.
+        evidence=list_builder.collect_source_evidence(structured, spec["source_fields"]),  # ⬅ 수정: 원래 evidence=gen.evidence if gen else [] 였음
         # 반려 사유 중 원본 정보가 없어 못 채운 부분.
         # 작성자에게 그대로 보여주어 "왜 안 바뀌었는지"를 알립니다.
         needs_input=gen.needs_input if gen else "",

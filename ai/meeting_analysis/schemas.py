@@ -19,7 +19,7 @@ from typing import Optional
 
 from pydantic import BaseModel, Field
 
-from shared.schemas_base import Evidence, Priority
+from shared.schemas_base import Evidence
 from enum import Enum
 
 
@@ -30,11 +30,26 @@ class DecisionCategory(str, Enum):
 
 
 class Project(BaseModel):
+    """
+    2026-09-07: evidence를 background_evidence/problem_evidence로 분리했습니다.
+
+    예전엔 evidence 하나가 name+background+problem+goals 전체를 대표했습니다.
+    문제는 이 넷 중 원문과 가장 잘 매칭되는 문장 하나로 evidence가 쏠린다는
+    점입니다 — 실제 사례(리테일링크 기획안)에서 project.evidence가 goals
+    쪽 문장으로 매칭됐는데, 노드②가 이걸 그대로 "개요"와 "문제 정의" 두
+    섹션의 근거로 보여줘서 내용과 무관한 근거가 화면에 뜨는 문제가
+    있었습니다. background와 problem은 노드②에서 서로 다른 섹션(1번 개요,
+    2번 문제 정의)의 근거로 쓰이므로 각자 자기 근거를 가져야 합니다.
+
+    goals는 아직 하류(노드②)가 근거로 쓰지 않아 분리하지 않았습니다.
+    나중에 goals를 근거와 함께 보여줘야 하면 그때 추가하십시오.
+    """
     name: str = Field(..., description="프로젝트명")
     background: str = Field(..., description="프로젝트 배경")
     problem: str = Field(..., description="해결하려는 문제")
     goals: list[str] = Field(..., min_length=1, description="프로젝트 목표")
-    evidence: Evidence
+    background_evidence: Evidence = Field(..., description="background 문장의 근거")
+    problem_evidence: Evidence = Field(..., description="problem 문장의 근거")
 
 
 class UserGroup(BaseModel):
@@ -45,8 +60,13 @@ class UserGroup(BaseModel):
 
 
 class RequirementItem(BaseModel):
+    """
+    2026-09-07: priority 필드를 제거했습니다. 이 노드의 판단 기준이 프롬프트에
+    없어 근거 없는 값이었고, 실제로 쓰는 하류는 노드③(requirement_draft)인데
+    그쪽은 이미 자체 판단 기준(requirements_template.yaml)으로 priority를
+    독립적으로 매기고 있어 이 필드를 참조하지 않습니다. 죽은 필드라 삭제합니다.
+    """
     content: str
-    priority: Priority = Priority.MEDIUM
     evidence: Evidence
 
 

@@ -1,0 +1,247 @@
+{
+  "proposal_id": "P-shopping_test",
+  "meeting_id": "shopping_test",
+  "status": "draft",
+  "sections": [
+    {
+      "no": 1,
+      "key": "overview",
+      "title": "프로젝트 개요",
+      "section_type": "narrative",
+      "content_html": "<p><strong>신규 쇼핑몰 프로젝트</strong></p>\n<p>기존 자사몰 앱은 출시 3년 차로, 최근 6개월간 재방문율이 전년 대비 18% 하락했습니다. 특히 야간 시간대(21시~02시) 이탈률이 높다는 데이터가 있습니다.</p>",
+      "items": [],
+      "source_fields": [
+        "project.name",
+        "project.background"
+      ],
+      "evidence": [
+        {
+          "quote": "기존 자사몰 앱은 출시 3년 차로 최근 6개월간 재방문율이 전년 대비 18% 하락했고, 특히 야간 시간대(21시~02시) 이탈률이 높다는 데이터가 있음.",
+          "status": "verified"
+        }
+      ],
+      "features": [],
+      "groups": [],
+      "needs_input": "",
+      "is_incomplete": false,
+      "edited_by_pm": false,
+      "review": {
+        "state": "pending",
+        "comment": null,
+        "reject_type": null
+      }
+    },
+    {
+      "no": 2,
+      "key": "problem",
+      "title": "문제 정의",
+      "section_type": "narrative",
+      "content_html": "<p>신규 회원가입 단계에서 이탈이 큰데, 설문 결과 '이메일 회원가입 절차가 번거롭다'는 응답이 가장 많았습니다.</p>",
+      "items": [],
+      "source_fields": [
+        "project.problem"
+      ],
+      "evidence": [
+        {
+          "quote": "신규 회원가입 단계에서 이탈이 큰데, 설문 결과 '이메일 회원가입 절차가 번거롭다'는 응답이 가장 많았음.",
+          "status": "verified"
+        }
+      ],
+      "features": [],
+      "groups": [],
+      "needs_input": "",
+      "is_incomplete": false,
+      "edited_by_pm": false,
+      "review": {
+        "state": "pending",
+        "comment": null,
+        "reject_type": null
+      }
+    },
+    {
+      "no": 3,
+      "key": "users",
+      "title": "대상 사용자",
+      "section_type": "narrative",
+      "content_html": "<ul>\n<li><strong>신규 사용자:</strong> 신규 회원가입을 시도하는 사용자로, 간편한 회원가입 절차를 필요로 합니다.</li>\n</ul>",
+      "items": [],
+      "source_fields": [
+        "users"
+      ],
+      "evidence": [
+        {
+          "quote": "신규 회원가입 단계에서 이탈이 큰데, 설문 결과 '이메일 회원가입 절차가 번거롭다'는 응답이 가장 많았음.",
+          "status": "verified"
+        }
+      ],
+      "features": [],
+      "groups": [],
+      "needs_input": "",
+      "is_incomplete": false,
+      "edited_by_pm": false,
+      "review": {
+        "state": "pending",
+        "comment": null,
+        "reject_type": null
+      }
+    },
+    {
+      "no": 4,
+      "key": "features",
+      "title": "주요 기능",
+      "section_type": "narrative",
+      "content_html": "<p><strong>다크모드 지원</strong></p><p>시스템 설정과 연동되며, 앱 내에서 수동으로 전환할 수 있는 다크모드를 지원합니다.</p><p><strong>소셜 로그인 기능</strong></p><p>카카오, 구글, 네이버를 통한 소셜 로그인 기능을 지원합니다.</p><p><strong>AI 상품 추천</strong></p><p>최근 30일 검색 기록과 장바구니 데이터를 기반으로 메인 화면 하단에 AI 상품 추천을 제공합니다.</p>",
+      "items": [
+        "다크모드 지원",
+        "소셜 로그인 기능",
+        "AI 상품 추천"
+      ],
+      "source_fields": [
+        "requirements.functional",
+        "decisions[feature]"
+      ],
+      "evidence": [
+        {
+          "quote": "다크모드: 시스템 설정 연동 + 앱 내 수동 전환 스위치 둘 다 지원.",
+          "status": "verified"
+        },
+        {
+          "quote": "소셜 로그인: 카카오·구글·네이버 3개사 우선 지원.",
+          "status": "verified"
+        },
+        {
+          "quote": "AI 상품 추천: 최근 30일 검색 기록 + 장바구니 데이터를 기반으로 메인 화면 하단에 노출.",
+          "status": "verified"
+        }
+      ],
+      "features": [
+        {
+          "title": "다크모드 지원",
+          "description": "시스템 설정과 연동되며, 앱 내에서 수동으로 전환할 수 있는 다크모드를 지원합니다."
+        },
+        {
+          "title": "소셜 로그인 기능",
+          "description": "카카오, 구글, 네이버를 통한 소셜 로그인 기능을 지원합니다."
+        },
+        {
+          "title": "AI 상품 추천",
+          "description": "최근 30일 검색 기록과 장바구니 데이터를 기반으로 메인 화면 하단에 AI 상품 추천을 제공합니다."
+        }
+      ],
+      "groups": [],
+      "needs_input": "",
+      "is_incomplete": false,
+      "edited_by_pm": false,
+      "review": {
+        "state": "pending",
+        "comment": null,
+        "reject_type": null
+      }
+    },
+    {
+      "no": 5,
+      "key": "scenarios",
+      "title": "사용자 시나리오",
+      "section_type": "narrative",
+      "content_html": "",
+      "items": [],
+      "source_fields": [
+        "scenarios"
+      ],
+      "evidence": [],
+      "features": [],
+      "groups": [],
+      "needs_input": "",
+      "is_incomplete": true,
+      "edited_by_pm": false,
+      "review": {
+        "state": "pending",
+        "comment": null,
+        "reject_type": null
+      }
+    },
+    {
+      "no": 6,
+      "key": "tech_scope",
+      "title": "기술 및 제약사항",
+      "section_type": "list",
+      "content_html": "<p><strong>데이터 요구</strong></p><ul><li>최근 30일 검색 기록 및 장바구니 데이터 활용</li></ul>",
+      "items": [
+        "최근 30일 검색 기록 및 장바구니 데이터 활용"
+      ],
+      "source_fields": [
+        "requirements.technical",
+        "requirements.non_functional",
+        "requirements.data",
+        "decisions[tech]",
+        "constraints",
+        "decisions[scope]"
+      ],
+      "evidence": [
+        {
+          "quote": "AI 상품 추천: 최근 30일 검색 기록 + 장바구니 데이터를 기반으로 메인 화면 하단에 노출.",
+          "status": "verified"
+        }
+      ],
+      "features": [],
+      "groups": [
+        {
+          "subtitle": "데이터 요구",
+          "items": [
+            "최근 30일 검색 기록 및 장바구니 데이터 활용"
+          ]
+        }
+      ],
+      "needs_input": "",
+      "is_incomplete": false,
+      "edited_by_pm": false,
+      "review": {
+        "state": "pending",
+        "comment": null,
+        "reject_type": null
+      }
+    },
+    {
+      "no": 7,
+      "key": "decisions",
+      "title": "최종 결정사항",
+      "section_type": "list",
+      "content_html": "<ul><li>[기능] 다크모드 지원 결정</li><li>[기능] 소셜 로그인 지원 결정</li><li>[기능] AI 상품 추천 기능 도입 결정</li></ul>",
+      "items": [
+        "[기능] 다크모드 지원 결정",
+        "[기능] 소셜 로그인 지원 결정",
+        "[기능] AI 상품 추천 기능 도입 결정"
+      ],
+      "source_fields": [
+        "decisions"
+      ],
+      "evidence": [
+        {
+          "quote": "다크모드: 시스템 설정 연동 + 앱 내 수동 전환 스위치 둘 다 지원.",
+          "status": "verified"
+        },
+        {
+          "quote": "소셜 로그인: 카카오·구글·네이버 3개사 우선 지원.",
+          "status": "verified"
+        },
+        {
+          "quote": "AI 상품 추천: 최근 30일 검색 기록 + 장바구니 데이터를 기반으로 메인 화면 하단에 노출.",
+          "status": "verified"
+        }
+      ],
+      "features": [],
+      "groups": [],
+      "needs_input": "",
+      "is_incomplete": false,
+      "edited_by_pm": false,
+      "review": {
+        "state": "pending",
+        "comment": null,
+        "reject_type": null
+      }
+    }
+  ],
+  "unresolved": [
+    "사용자 시나리오가 회의에서 구체적으로 언급되지 않았습니다."
+  ]
+}

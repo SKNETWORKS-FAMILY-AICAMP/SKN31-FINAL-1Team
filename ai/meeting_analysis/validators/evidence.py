@@ -108,13 +108,16 @@ def verify_and_mark(data: dict, meeting_raw_text: str) -> EvidenceReport:
     report = EvidenceReport()
     source = normalize(meeting_raw_text)
 
-    def check(item: dict, path: str, content: str) -> None:
-        quote = (item.get("evidence") or {}).get("quote", "")
+    def check(
+        item: dict, path: str, content: str,
+        evidence_key: str = "evidence", status_key: str = "evidence_status",
+    ) -> None:
+        quote = (item.get(evidence_key) or {}).get("quote", "")
         report.checked += 1
 
         # 1차: 정규화 후 부분 문자열 매칭
         if quote and normalize(quote) in source:
-            item["evidence_status"] = VERIFIED
+            item[status_key] = VERIFIED
             return
 
         # 2차: 유사도 매칭 (미도입)
@@ -122,18 +125,33 @@ def verify_and_mark(data: dict, meeting_raw_text: str) -> EvidenceReport:
         # 알고리즘과 임계값 모두 미확정이므로 일단 끕니다.
         # 1차만으로 몇 %가 걸러지는지 실측한 뒤 도입 여부를 정하세요.
         # if similarity(quote, meeting_raw_text) >= THRESHOLD:
-        #     item["evidence_status"] = VERIFIED
+        #     item[status_key] = VERIFIED
         #     return
 
-        item["evidence_status"] = UNVERIFIED
+        item[status_key] = UNVERIFIED
         report.unverified.append(
             UnverifiedItem(path=path, content=content, quote=quote)
         )
 
     # project (단일 객체)
+    #
+    # 2026-09-07: evidence가 background_evidence/problem_evidence로 나뉘면서
+    # 각각 따로 검증합니다. 예전엔 project에 evidence 하나만 있어서 한 번만
+    # 검사했지만, 이제 project는 evidence를 두 개 갖고 있으므로 검사도
+    # 두 번 하고 상태도 각자의 status_key(background_evidence_status /
+    # problem_evidence_status)에 따로 붙입니다.
     project = data.get("project")
     if project:
-        check(project, "project", project.get("problem", ""))
+        check(
+            project, "project.background", project.get("background", ""),
+            evidence_key="background_evidence",
+            status_key="background_evidence_status",
+        )
+        check(
+            project, "project.problem", project.get("problem", ""),
+            evidence_key="problem_evidence",
+            status_key="problem_evidence_status",
+        )
 
     # 배열 영역
     for base in ARRAY_PATHS:

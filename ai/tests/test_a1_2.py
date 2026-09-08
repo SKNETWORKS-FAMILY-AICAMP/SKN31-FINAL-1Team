@@ -116,6 +116,56 @@ def test_scope_결정은_라벨_없이_제약사항에_들어간다():
 
 
 # ─────────────────────────────────────────────────────────────
+# 6번 — groups (소제목 단위 구조화, 프론트 구조화 편집용)
+# ─────────────────────────────────────────────────────────────
+
+def test_groups에_원본이_있는_소제목만_들어간다():
+    s = build_tech_scope(_structured())
+    subtitles = [g.subtitle for g in s.groups]
+    assert subtitles == ["기술 스택", "성능·보안 요구", "데이터 요구", "제약사항"]
+
+
+def test_groups의_items가_content_html의_해당_소제목_항목과_같다():
+    s = build_tech_scope(_structured())
+    tech_group = next(g for g in s.groups if g.subtitle == "기술 스택")
+    assert tech_group.items == ["백엔드는 Spring Boot"]
+
+    scope_group = next(g for g in s.groups if g.subtitle == "제약사항")
+    assert "[일정] 개발 기간 3개월" in scope_group.items
+    assert "매출 예측은 MVP에서 제외" in scope_group.items
+
+
+def test_원본이_없는_소제목은_groups에도_없다():
+    s = build_tech_scope(_structured(
+        requirements={
+            "functional": [],
+            "non_functional": [{"content": "속도는 느리지 않게",
+                                "evidence": {"quote": "속도는 너무 느리지 않게"}}],
+            "data": [],
+            "technical": [],
+        },
+        decisions=[], constraints=[],
+    ))
+    subtitles = [g.subtitle for g in s.groups]
+    assert subtitles == ["성능·보안 요구"]
+
+
+def test_groups의_items_총합이_flat_items와_같다():
+    """groups는 items를 소제목별로 나눈 것뿐, 내용이 달라지면 안 됩니다."""
+    s = build_tech_scope(_structured())
+    flat_from_groups = [i for g in s.groups for i in g.items]
+    assert flat_from_groups == s.items
+
+
+def test_원본이_전부_비면_groups도_빈_배열():
+    s = build_tech_scope(_structured(
+        requirements={"functional": [], "non_functional": [], "data": [], "technical": []},
+        decisions=[], constraints=[],
+    ))
+    assert s.groups == []
+
+
+# ─────────────────────────────────────────────────────────────
 # 6번 — 섹션 내 중복 제거
 # ─────────────────────────────────────────────────────────────
 
