@@ -36,17 +36,14 @@ type ActivityLog = {
   updatedAt: string;
 };
 
-type TaskDto = {
-  id: number;
-  project: number | null;
-  assigned_user_name: string | null;
-  title: string;
-  status_code: string;
-  status_info: { code_id: string; code_name: string } | null;
-  updated_at: string;
+// /api/dashboard/overview/ 응답 shape (backend/dashboard/serializers.py 참고).
+type OverviewDto = {
+  summary: { totalTasks: number; inProgress: number; pendingApproval: number; done: number; completionRate: number };
+  statusChart: { code_id: string; code_name: string; value: number }[];
+  workload: { userId: number; name: string; taskCount: number }[];
+  activityLog: { projectId: number | null; projectName: string; taskTitle: string; status: string; statusLabel: string; assigneeName: string; updatedAt: string | null }[];
+  projectList: { id: number; name: string; totalTasks: number; doneTasks: number; progress: number }[];
 };
-
-type ProjectDto = { id: number; name: string };
 
 const STATUS_COLORS: Record<string, string> = {
   PENDING_APPROVAL: "bg-orange-500",
@@ -64,93 +61,55 @@ const STATUS_CHART_COLOR: Record<string, string> = {
   REJECTED: "#ef4444",
 };
 
-// statusChart를 그릴 때 한글 라벨(status_info.code_name)로 이름을 쓰는데, 클릭 시 /tasks로 보내려면
-// 원래 상태 코드가 필요해서 여기서 역매핑한다.
-const STATUS_CODE_BY_LABEL: Record<string, string> = {
-  "승인 대기": "PENDING_APPROVAL",
-  "승인 및 알림 완료": "APPROVED",
-  "진행 중": "IN_PROGRESS",
-  "완료": "COMPLETED",
-  "반려": "REJECTED",
-};
-
-// 백엔드엔 대시보드 요약 API가 따로 없다 — 업무/프로젝트 원본 목록을 받아 화면에서 직접 집계한다
-// (다른 화면들과 동일한 패턴: KanbanBoard/projects 페이지도 원본을 받아 클라이언트에서 가공).
-function buildStats(tasks: TaskDto[], projects: ProjectDto[], isPM: boolean) {
-  const projectNameById = new Map(projects.map(p => [p.id, p.name]));
-
-  const totalTasks = tasks.length;
-  const inProgress = tasks.filter(t => t.status_code === "IN_PROGRESS").length;
-  const pendingApproval = tasks.filter(t => t.status_code === "PENDING_APPROVAL").length;
-  const done = tasks.filter(t => t.status_code === "COMPLETED").length;
-  const completionRate = totalTasks ? Math.round((done / totalTasks) * 100) : 0;
-
-  const statusOrder = ["PENDING_APPROVAL", "APPROVED", "IN_PROGRESS", "COMPLETED", "REJECTED"];
-  const statusChart = statusOrder
-    .map(code => ({
-      name: tasks.find(t => t.status_code === code)?.status_info?.code_name ?? code,
-      value: tasks.filter(t => t.status_code === code).length,
-      color: STATUS_CHART_COLOR[code],
-    }))
-    .filter(d => d.value > 0);
-
-  const workloadMap = new Map<string, number>();
-  tasks.forEach(t => {
-    const name = t.assigned_user_name ?? "미배정";
-    workloadMap.set(name, (workloadMap.get(name) ?? 0) + 1);
-  });
-  const workload = Array.from(workloadMap.entries()).map(([name, taskCount]) => ({ name, taskCount }));
-
-  const activityLog: ActivityLog[] = [...tasks]
-    .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())
-    .slice(0, 8)
-    .map(t => ({
-      projectId: String(t.project ?? ""),
-      projectName: (t.project != null ? projectNameById.get(t.project) : undefined) ?? "",
-      taskTitle: t.title,
-      status: t.status_code,
-      statusLabel: t.status_info?.code_name ?? t.status_code,
-      assigneeName: t.assigned_user_name,
-      updatedAt: t.updated_at,
-    }));
-
-  // 참여 중인 프로젝트 = PM은 전체, 팀원은 자기 업무가 걸린 프로젝트만
-  const relevantProjectIds = isPM ? new Set(projects.map(p => p.id)) : new Set(tasks.map(t => t.project).filter((id): id is number => id != null));
-  const projectList: ProjectStat[] = projects
-    .filter(p => relevantProjectIds.has(p.id))
-    .map(p => {
-      const projectTasks = tasks.filter(t => t.project === p.id);
-      const totalTasks = projectTasks.length;
-      const doneTasks = projectTasks.filter(t => t.status_code === "COMPLETED").length;
-      return {
-        id: String(p.id),
-        name: p.name,
-        totalTasks,
-        doneTasks,
-        progress: totalTasks ? Math.round((doneTasks / totalTasks) * 100) : 0,
-      };
-    });
-
-  return { summary: { totalTasks, inProgress, pendingApproval, done, completionRate }, statusChart, workload, activityLog, projectList };
+// 백엔드 statusChart는 code_id/code_name/value만 준다 — 화면에 쓰는 색상(color)과
+// 클릭 시 이동할 상태 필터(code_id)는 여기서 붙인다. projectId/assigneeName처럼
+// null/빈 문자열일 수 있는 필드도 화면이 기대하던 모양(string | null)으로 맞춘다.
+function mapOverview(raw: OverviewDto): {
+  summary: OverviewDto["summary"];
+  statusChart: { name: string; value: number; color: string; code_id: string }[];
+  workload: OverviewDto["workload"];
+  activityLog: ActivityLog[];
+  projectList: ProjectStat[];
+} {
+  return {
+    summary: raw.summary,
+    statusChart: raw.statusChart.map(s => ({
+      name: s.code_name,
+      value: s.value,
+      color: STATUS_CHART_COLOR[s.code_id] ?? "#888888",
+      code_id: s.code_id,
+    })),
+    workload: raw.workload,
+    activityLog: raw.activityLog.map(a => ({
+      projectId: String(a.projectId ?? ""),
+      projectName: a.projectName,
+      taskTitle: a.taskTitle,
+      status: a.status,
+      statusLabel: a.statusLabel,
+      assigneeName: a.assigneeName || null,
+      updatedAt: a.updatedAt ?? "",
+    })),
+    projectList: raw.projectList.map(p => ({
+      id: String(p.id), name: p.name, totalTasks: p.totalTasks, doneTasks: p.doneTasks, progress: p.progress,
+    })),
+  };
 }
 
 export default function OverviewView() {
   const { user } = useAuth();
   const router = useRouter();
   const isPM = user?.role === "PM";
-  const [stats, setStats] = useState<any>(null);
+  const [stats, setStats] = useState<ReturnType<typeof mapOverview> | null>(null);
   const [loading, setLoading] = useState(true);
 
+  // 예전엔 /api/tasks/assignments/ + /api/projects/ 원본 전체를 받아 화면에서 직접
+  // 집계했다(#11 — 데이터 늘어나면 느려짐, 팀원 요청으로 백엔드에 집계 API 추가됨).
+  // 백엔드가 PM/팀원 범위를 이미 구분해서 내려주므로(dashboard/views.py) 프론트는
+  // isPM에 따라 URL을 나눌 필요 없이 그대로 받아 쓴다.
   useEffect(() => {
     if (!user) return;
-    const tasksUrl = isPM ? "/api/tasks/assignments/" : `/api/tasks/assignments/?assigneeId=${user.id}`;
-    Promise.all([
-      apiFetch<TaskDto[]>(tasksUrl),
-      apiFetch<ProjectDto[]>("/api/projects/"),
-    ])
-      .then(([tasks, projects]) => {
-        setStats(buildStats(tasks, projects, isPM));
-      })
+    apiFetch<OverviewDto>("/api/dashboard/overview/")
+      .then(raw => setStats(mapOverview(raw)))
       .catch((err) => console.error(err))
       .finally(() => setLoading(false));
   }, [user, isPM]);
@@ -242,7 +201,7 @@ export default function OverviewView() {
                       </p>
                     </div>
                     <span className="text-xs text-muted-foreground shrink-0">
-                      {formatDistanceToNow(new Date(log.updatedAt), { addSuffix: true, locale: ko })}
+                      {log.updatedAt ? formatDistanceToNow(new Date(log.updatedAt), { addSuffix: true, locale: ko }) : ""}
                     </span>
                   </Link>
                 ))
@@ -268,7 +227,7 @@ export default function OverviewView() {
                             key={`cell-${index}`}
                             fill={entry.color}
                             cursor="pointer"
-                            onClick={() => router.push(`/tasks?status=${STATUS_CODE_BY_LABEL[entry.name] ?? ""}`)}
+                            onClick={() => router.push(`/tasks?status=${entry.code_id}`)}
                           />
                         ))}
                       </Pie>
@@ -283,7 +242,7 @@ export default function OverviewView() {
                   {statusChart.map((d: any) => (
                     <Link
                       key={d.name}
-                      href={`/tasks?status=${STATUS_CODE_BY_LABEL[d.name] ?? ""}`}
+                      href={`/tasks?status=${d.code_id}`}
                       className="flex justify-between text-xs font-medium hover:text-primary transition-colors group"
                     >
                       <span className="flex items-center gap-2">

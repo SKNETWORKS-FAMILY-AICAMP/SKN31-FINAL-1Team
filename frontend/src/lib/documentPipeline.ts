@@ -17,16 +17,31 @@ export const PIPELINE_TAB_LABEL: Record<PipelineTab, string> = {
 };
 
 type SpecLike = { status_info?: { code_id?: string | null } | null } | null;
+type ReqDefLike = { status_info?: { code_id?: string | null } | null } | null;
 
-// 기획서는 승인 여부로 "완료"가 명확하다. 요구사항정의서·업무배분은 이 프로젝트에 아직
-// 승인 워크플로우 자체가 없어서(백엔드에 status 필드가 없음) "완료"라는 개념이 없다 —
-// heyzzabi2의 업무배분 단계와 같은 취급(항상 false, 잠기지 않음).
-export function stepDone(spec: SpecLike, step: PipelineTab): boolean {
-  return step === "proposal" ? bareStatus(spec) === "APPROVED" : false;
+// 요구사항정의서는 이제(2026-09) DRAFT/PENDING_REVIEW/APPROVED/REJECTED 승인
+// 워크플로우가 생겼고, 업무배분은 확정된 TaskAssignment가 하나라도 있으면 "완료"로
+// 본다 — 이 프로젝트엔 업무배분 자체에 별도 승인 상태가 없어(확정 = 완료) 그렇다.
+// reqDef/hasConfirmedTasks를 안 넘기면(예: 옛 호출부·테스트) 이전과 동일하게
+// false로 취급된다 — 하위 호환을 위해 둘 다 선택 인자로 둔다.
+export function stepDone(
+  spec: SpecLike,
+  step: PipelineTab,
+  reqDef?: ReqDefLike,
+  hasConfirmedTasks?: boolean,
+): boolean {
+  if (step === "proposal") return bareStatus(spec) === "APPROVED";
+  if (step === "reqSpec") return reqDef?.status_info?.code_id === "APPROVED";
+  return !!hasConfirmedTasks; // step === "taskAssignment"
 }
 
-// 문서를 고르면 "그 문서가 지금 있는 단계"를 첫 화면으로 보여준다 — 요구사항정의서
-// 승인 개념이 없으므로, 기획서가 승인되면 그 다음 할 일인 요구사항정의서 단계로 고정한다.
-export function stageOf(spec: SpecLike): PipelineTab {
-  return bareStatus(spec) === "APPROVED" ? "reqSpec" : "proposal";
+// 문서를 고르면 "그 문서가 지금 있는 단계"를 첫 화면으로 보여준다. 예전엔 기획서
+// 승인 이후를 전부 "reqSpec"으로 뭉뚱그렸는데(요구사항정의서 승인 개념이 아직
+// 없었을 때 결정), 지금은 승인 워크플로우와 업무배분 확정까지 생겨서 문서가 실제로
+// 끝까지 진행됐는데도 목록/스테퍼가 "요구사항정의서" 단계에 멈춰 보이는 문제가
+// 있었다 — reqDef/hasConfirmedTasks가 있으면 그만큼 더 뒤 단계로 보여준다.
+export function stageOf(spec: SpecLike, reqDef?: ReqDefLike, hasConfirmedTasks?: boolean): PipelineTab {
+  if (reqDef?.status_info?.code_id === "APPROVED" && hasConfirmedTasks) return "taskAssignment";
+  if (bareStatus(spec) === "APPROVED") return "reqSpec";
+  return "proposal";
 }

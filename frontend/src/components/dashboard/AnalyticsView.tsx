@@ -8,76 +8,25 @@ import {
 import { Loader2, TrendingUp, Users, Clock, Target, CheckCircle2, AlertTriangle, Layers } from "lucide-react";
 import { apiFetch } from "@/lib/api/client";
 
-type TaskDto = {
-  id: number;
-  project: number | null;
-  assigned_user_name: string | null;
-  status_code: string;
-  created_at: string;
-  updated_at: string;
+type AnalyticsDto = {
+  weeklyCompletion: { date: string; count: number }[];
+  teamContribution: { name: string; done: number; inProgress: number }[];
+  averageProcessTime: number;
+  approvalPassRate: { approved: number; rejected: number };
+  projectBurndown: { name: string; remaining: number }[];
 };
 
-type ProjectDto = { id: number; name: string };
-
-// 백엔드엔 통계 전용 API가 없다 — 업무 원본을 받아 화면에서 직접 집계한다. 완료 시각을 따로
-// 기록하지 않으므로 "완료 시점"은 상태가 마지막으로 바뀐 시각(updated_at)으로 근사한다.
-function buildAnalytics(tasks: TaskDto[], projects: ProjectDto[]) {
-  const days: string[] = [];
-  for (let i = 6; i >= 0; i--) {
-    const d = new Date();
-    d.setDate(d.getDate() - i);
-    days.push(d.toISOString().slice(0, 10));
-  }
-  const weeklyCompletion = days.map(date => ({
-    date: date.slice(5),
-    count: tasks.filter(t => t.status_code === "COMPLETED" && t.updated_at.slice(0, 10) === date).length,
-  }));
-
-  const contributionMap = new Map<string, { done: number; inProgress: number }>();
-  tasks.forEach(t => {
-    const name = t.assigned_user_name ?? "미배정";
-    const entry = contributionMap.get(name) ?? { done: 0, inProgress: 0 };
-    if (t.status_code === "COMPLETED") entry.done += 1;
-    if (t.status_code === "IN_PROGRESS") entry.inProgress += 1;
-    contributionMap.set(name, entry);
-  });
-  const teamContribution = Array.from(contributionMap.entries()).map(([name, v]) => ({ name, ...v }));
-
-  const completedTasks = tasks.filter(t => t.status_code === "COMPLETED");
-  const averageProcessTime = completedTasks.length
-    ? Math.round(
-        (completedTasks.reduce((sum, t) => sum + (new Date(t.updated_at).getTime() - new Date(t.created_at).getTime()), 0) /
-          completedTasks.length / 86400000) * 10
-      ) / 10
-    : 0;
-
-  const approved = tasks.filter(t => ["APPROVED", "IN_PROGRESS", "COMPLETED"].includes(t.status_code)).length;
-  const rejected = tasks.filter(t => t.status_code === "REJECTED").length;
-
-  const projectBurndown = projects.map(p => ({
-    name: p.name,
-    remaining: tasks.filter(t => t.project === p.id && ["PENDING_APPROVAL", "APPROVED", "IN_PROGRESS"].includes(t.status_code)).length,
-  }));
-
-  return {
-    weeklyCompletion,
-    teamContribution,
-    averageProcessTime,
-    approvalPassRate: { approved, rejected },
-    projectBurndown,
-  };
-}
-
 export default function AnalyticsPage() {
-  const [data, setData] = useState<any>(null);
+  const [data, setData] = useState<AnalyticsDto | null>(null);
   const [loading, setLoading] = useState(true);
 
+  // 예전엔 /api/tasks/assignments/ + /api/projects/ 원본을 통째로 받아 화면에서 직접
+  // 집계했다(#11 — 데이터 늘어나면 느려짐, 팀원 요청으로 백엔드에 집계 API 추가됨).
+  // 지금은 백엔드가 같은 모양(weeklyCompletion/teamContribution/... 필드명까지 동일)
+  // 으로 미리 집계해서 내려주므로 그대로 받아서 쓴다.
   useEffect(() => {
-    Promise.all([
-      apiFetch<TaskDto[]>("/api/tasks/assignments/"),
-      apiFetch<ProjectDto[]>("/api/projects/"),
-    ])
-      .then(([tasks, projects]) => setData(buildAnalytics(tasks, projects)))
+    apiFetch<AnalyticsDto>("/api/dashboard/analytics/")
+      .then(setData)
       .catch(console.error)
       .finally(() => setLoading(false));
   }, []);

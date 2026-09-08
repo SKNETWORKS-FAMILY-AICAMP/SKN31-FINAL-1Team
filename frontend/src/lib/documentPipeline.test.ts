@@ -31,12 +31,24 @@ describe("stepDone", () => {
     expect(stepDone(null, "proposal")).toBe(false);
   });
 
-  // 요구사항정의서/업무배분은 이 프로젝트에 승인 워크플로우 자체가 없어서(백엔드 status
-  // 필드 없음) "완료"라는 개념이 없다 — 기획서가 승인되어도 항상 false여야 한다(잠기지 않음).
-  it("is always false for reqSpec and taskAssignment regardless of proposal status", () => {
+  // reqDef/hasConfirmedTasks를 안 넘긴 옛 호출부는 이전과 동일하게 항상 false다
+  // (하위 호환) — 아래 별도 테스트에서 실제 reqDef 승인/업무배분 확정 케이스를 본다.
+  it("is false for reqSpec and taskAssignment when reqDef/hasConfirmedTasks are omitted", () => {
     const approved = specWith("PROPOSAL_APPROVED");
     expect(stepDone(approved, "reqSpec")).toBe(false);
     expect(stepDone(approved, "taskAssignment")).toBe(false);
+  });
+
+  it("is true for reqSpec once the requirement definition is approved", () => {
+    const approved = specWith("PROPOSAL_APPROVED");
+    expect(stepDone(approved, "reqSpec", { status_info: { code_id: "APPROVED" } })).toBe(true);
+    expect(stepDone(approved, "reqSpec", { status_info: { code_id: "PENDING_REVIEW" } })).toBe(false);
+  });
+
+  it("is true for taskAssignment once there's at least one confirmed task", () => {
+    const approved = specWith("PROPOSAL_APPROVED");
+    expect(stepDone(approved, "taskAssignment", null, true)).toBe(true);
+    expect(stepDone(approved, "taskAssignment", null, false)).toBe(false);
   });
 });
 
@@ -50,5 +62,15 @@ describe("stageOf", () => {
 
   it("moves to reqSpec once the proposal is approved", () => {
     expect(stageOf(specWith("PROPOSAL_APPROVED"))).toBe("reqSpec");
+  });
+
+  it("stays on reqSpec once approved but before any task is confirmed", () => {
+    const approved = specWith("PROPOSAL_APPROVED");
+    expect(stageOf(approved, { status_info: { code_id: "APPROVED" } }, false)).toBe("reqSpec");
+  });
+
+  it("moves to taskAssignment once the requirement definition is approved and a task is confirmed", () => {
+    const approved = specWith("PROPOSAL_APPROVED");
+    expect(stageOf(approved, { status_info: { code_id: "APPROVED" } }, true)).toBe("taskAssignment");
   });
 });
