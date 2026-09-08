@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useState, useMemo, Fragment } from "react";
+import { useEffect, useState, useMemo, Fragment, type Dispatch, type SetStateAction } from "react";
 import { useAuth } from "@/lib/auth";
 import { apiFetch } from "@/lib/api/client";
 import {
   FileText, Plus, Bot, Loader2, Send, CheckCircle2, XCircle,
   AlertCircle, Clock, RotateCcw, MessageSquare, X, FolderKanban,
   Download, Printer, Trash2, Save, Pencil, Lock, ChevronDown, Briefcase,
+  UserIcon, CalendarIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { NewDocumentModal } from "@/components/projects/NewDocumentModal";
@@ -113,8 +114,80 @@ type TaskAssignmentDto = {
   assignment_reason: string | null;
   epic_no: string;
   epic_title: string;
+  start_date: string | null;
+  end_date: string | null;
   status_info: { code_id: string; code_name: string } | null;
 };
+
+// ── 업무 배분 (2단계 확정 플로우) ──────────────────────────────
+// generate-tasks가 반환하는 미리보기 제안 하나. DB에는 아직 저장되지 않았다.
+type TaskSuggestionDto = {
+  unit_id: string;
+  source_req_id: string;
+  title: string;
+  description: string;
+  estimated_hours: number;
+  difficulty_reason: string | null;
+  epic_no: string;
+  epic_title: string;
+  assignee_id: number | null;
+  assignee_name: string | null;
+  score: number | null;
+  tech_fit: string | null;
+  workload_fit: string | null;
+  experience_fit: string | null;
+  review_required: boolean;
+  hold_explanation: string | null;
+  suggested_start_date: string | null;
+  suggested_end_date: string | null;
+};
+
+// PM이 화면에서 편집 중인 행 하나 — 제안값에서 시작하되 담당자/일정을 직접 바꿀 수 있다.
+type TaskDraft = {
+  unit_id: string;
+  source_req_id: string;
+  title: string;
+  description: string;
+  estimated_hours: number;
+  difficulty_reason: string | null;
+  epic_no: string;
+  epic_title: string;
+  assignee_id: number | null;
+  score: number | null;
+  tech_fit: string | null;
+  workload_fit: string | null;
+  experience_fit: string | null;
+  hold_explanation: string | null;
+  start_date: string; // yyyy-mm-dd, <input type="date"> 용 — 없으면 빈 문자열
+  end_date: string;
+};
+
+type Member = { id: number; name: string };
+
+const toDateInput = (iso: string | null) => (iso ? iso.slice(0, 10) : "");
+
+const suggestionToDraft = (s: TaskSuggestionDto): TaskDraft => ({
+  unit_id: s.unit_id,
+  source_req_id: s.source_req_id,
+  title: s.title,
+  description: s.description,
+  estimated_hours: s.estimated_hours,
+  difficulty_reason: s.difficulty_reason,
+  epic_no: s.epic_no,
+  epic_title: s.epic_title,
+  assignee_id: s.assignee_id,
+  score: s.score,
+  tech_fit: s.tech_fit,
+  workload_fit: s.workload_fit,
+  experience_fit: s.experience_fit,
+  hold_explanation: s.hold_explanation,
+  start_date: toDateInput(s.suggested_start_date),
+  end_date: toDateInput(s.suggested_end_date),
+});
+
+// 담당자별로 업무 막대를 배치하는 간트 차트에 넘길 공통 아이템 — heyzzabi2의 GanttItem과
+// 동일한 모양이라 draft/confirmed 둘 다 이걸로 변환해서 같은 GanttChart를 재사용한다.
+type GanttItem = { id: string; title: string; assigneeName: string; start: string; end: string };
 
 const STATUS_META: Record<BareStatus, { label: string; className: string; icon: any }> = {
   DRAFT: { label: "초안", className: "bg-muted text-muted-foreground", icon: FileText },
@@ -213,6 +286,14 @@ export default function DocumentsPage() {
   const [notes, setNotes] = useState<NoteDto[]>([]);
   const [reqDefs, setReqDefs] = useState<ReqDefDto[]>([]);
   const [taskAssignments, setTaskAssignments] = useState<TaskAssignmentDto[]>([]);
+  // 업무배분 2단계 확정 플로우 — generate-tasks 응답(제안)을 편집 중인 임시 상태.
+  // null/빈 배열이면 "리뷰 중이 아님"(진짜 배정 목록 taskAssignments를 보여줌).
+  const [taskDrafts, setTaskDrafts] = useState<TaskDraft[] | null>(null);
+  const [taskDraftsReqDefId, setTaskDraftsReqDefId] = useState<number | null>(null);
+  const [generatingTasks, setGeneratingTasks] = useState(false);
+  const [confirmingTasks, setConfirmingTasks] = useState(false);
+  const [reassigningTaskId, setReassigningTaskId] = useState<number | null>(null);
+  const [members, setMembers] = useState<Member[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedNoteId, setSelectedNoteId] = useState<number | null>(null);
   const [activeTab, setActiveTab] = useState<PipelineTab>("proposal");
@@ -256,6 +337,19 @@ export default function DocumentsPage() {
   };
 
   useEffect(() => { fetchAll(); }, []);
+
+  // 담당자 변경(재배정) 드롭다운 + 배분 리뷰 화면의 담당자 선택에 쓸 팀원 목록. 전용
+  // 엔드포인트가 없어서(heyzzabi2와 달리) 기존 /api/users/를 재사용해 이름만 뽑아 쓴다.
+  useEffect(() => {
+    // /api/users/ 응답에는 full_name 필드가 없다(실측 확인) — lib/api/mappers.ts의
+    // toUser()와 동일한 규칙(성+이름, 둘 다 없으면 username)으로 표시 이름을 만든다.
+    apiFetch<any[]>("/api/users/")
+      .then(list => setMembers(list.map(u => ({
+        id: u.id,
+        name: u.first_name || u.last_name ? `${u.last_name ?? ""}${u.first_name ?? ""}` : (u.full_name || u.username || `#${u.id}`),
+      }))))
+      .catch(() => {});
+  }, []);
 
   const sortedNotes = useMemo(
     () => notes.slice().sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()),
@@ -546,26 +640,98 @@ export default function DocumentsPage() {
   };
 
   // heyzzabi2의 "업무 배분 실행" — 요구사항정의서 승인 후 PM이 눌러서 실제 AI
-  // 파이프라인(업무생성→담당자매핑→담당자추천)을 돌린다. 시간이 좀 걸릴 수 있어
-  // (LLM 여러 번 호출) busy 상태를 계속 보여준다.
+  // 파이프라인(업무생성→담당자매핑→담당자추천)을 돌린다. 이 단계는 미리보기(제안)만
+  // 만들고 DB에는 아무것도 저장하지 않는다 — PM이 담당자/일정을 검토·수정한 뒤
+  // "배분 확정"을 눌러야 handleConfirmTasks가 실제로 저장한다(2단계 확정 플로우).
   const handleGenerateTasks = async (note: NoteDto, spec: SpecDto, reqDefId: number) => {
+    setGeneratingTasks(true);
     setBusy(`reqdef-${reqDefId}-tasks`);
     try {
-      const result = await apiFetch<{ status: string; message?: string; created_count?: number; held_count?: number }>(
+      const result = await apiFetch<{ status: string; message?: string; suggestions?: TaskSuggestionDto[]; req_def_id?: number }>(
         `/api/requirements/${spec.id}/generate-tasks/`,
         { method: "POST" }
       );
       if (result.status !== "success") {
-        setErrorToast(result.message || "업무 배분에 실패했습니다.");
+        setErrorToast(result.message || "업무 배분 제안 생성에 실패했습니다.");
         return;
       }
-      setToastMessage(`업무 배분 완료 — ${result.created_count ?? 0}건 배정, ${result.held_count ?? 0}건 보류`);
+      setTaskDrafts((result.suggestions ?? []).map(suggestionToDraft));
+      setTaskDraftsReqDefId(result.req_def_id ?? reqDefId);
       setActiveTab("taskAssignment");
+      setToastMessage("업무 배분 제안이 생성되었습니다. 검토 후 확정해주세요.");
+    } catch (err: any) {
+      setErrorToast(err.message || "업무 배분 제안 생성에 실패했습니다.");
+    } finally {
+      setGeneratingTasks(false);
+      setBusy(null);
+    }
+  };
+
+  // PM이 검토·수정한 draft를 그대로 신뢰해 저장한다(재계산 없음) — confirm-tasks가
+  // 같은 요구사항정의서의 기존 배정을 지우고 새로 만들기 때문에, 취소된 draft(담당자를
+  // 미배정으로 바꾼 행)는 그냥 걸러서 보내도 되고 서버가 스킵해도 되지만, 여기서는
+  // 명시적으로 걸러서 보내 의도를 분명히 한다.
+  const handleConfirmTasks = async (note: NoteDto, spec: SpecDto) => {
+    if (!taskDrafts || taskDraftsReqDefId == null) return;
+    setConfirmingTasks(true);
+    try {
+      const result = await apiFetch<{ status: string; message?: string; created_count?: number }>(
+        `/api/requirements/${spec.id}/confirm-tasks/`,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            req_def_id: taskDraftsReqDefId,
+            assignments: taskDrafts
+              .filter(d => d.assignee_id != null)
+              .map(d => ({
+                unit_id: d.unit_id,
+                source_req_id: d.source_req_id,
+                title: d.title,
+                description: d.description,
+                estimated_hours: d.estimated_hours,
+                difficulty_reason: d.difficulty_reason,
+                epic_no: d.epic_no,
+                epic_title: d.epic_title,
+                assignee_id: d.assignee_id,
+                score: d.score,
+                tech_fit: d.tech_fit,
+                workload_fit: d.workload_fit,
+                experience_fit: d.experience_fit,
+                start_date: d.start_date || null,
+                end_date: d.end_date || null,
+              })),
+          }),
+        }
+      );
+      if (result.status !== "success") {
+        setErrorToast(result.message || "업무 배분 확정에 실패했습니다.");
+        return;
+      }
+      setToastMessage(`업무 배분이 확정되었습니다 — ${result.created_count ?? 0}건`);
+      setTaskDrafts(null);
+      setTaskDraftsReqDefId(null);
       if (note.project) await fetchTaskAssignments(note.project);
     } catch (err: any) {
-      setErrorToast(err.message || "업무 배분에 실패했습니다.");
+      setErrorToast(err.message || "업무 배분 확정에 실패했습니다.");
     } finally {
-      setBusy(null);
+      setConfirmingTasks(false);
+    }
+  };
+
+  // 확정된 업무의 담당자를 나중에 바꾸는 경우 — 기존 PATCH 엔드포인트(/api/tasks/assignments/{id}/)를
+  // 재사용한다. 전용 재배정 엔드포인트는 이 계약에 없다.
+  const handleReassignTask = async (note: NoteDto, taskId: number, assigneeId: number) => {
+    setReassigningTaskId(taskId);
+    try {
+      await apiFetch(`/api/tasks/assignments/${taskId}/`, {
+        method: "PATCH",
+        body: JSON.stringify({ assigned_user: assigneeId }),
+      });
+      if (note.project) await fetchTaskAssignments(note.project);
+    } catch (err: any) {
+      setErrorToast(err.message || "담당자 변경에 실패했습니다.");
+    } finally {
+      setReassigningTaskId(null);
     }
   };
 
@@ -785,6 +951,15 @@ export default function DocumentsPage() {
               onGenerateTasks={(spec, reqDefId) => handleGenerateTasks(selectedNote, spec, reqDefId)}
               onRejectReqDef={(spec, reqDefId) => setRejectTarget({ kind: "reqdef", specId: spec.id, reqDefId })}
               taskAssignments={taskAssignments}
+              taskDrafts={taskDrafts}
+              setTaskDrafts={setTaskDrafts}
+              generatingTasks={generatingTasks}
+              confirmingTasks={confirmingTasks}
+              onConfirmTasks={(spec) => handleConfirmTasks(selectedNote, spec)}
+              onCancelTaskDrafts={() => { setTaskDrafts(null); setTaskDraftsReqDefId(null); }}
+              members={members}
+              reassigningTaskId={reassigningTaskId}
+              onReassignTask={(taskId, assigneeId) => handleReassignTask(selectedNote, taskId, assigneeId)}
             />
           )}
         </div>
@@ -870,6 +1045,8 @@ function NoteDetail({
   onGenerateSpec, onSaveNoteContent, onSaveSpec, onSavePeriod, onSubmitReview, onApprove, onReject,
   onCreateReqDef, onExtractItems, onAddItem, onUpdateItem, onDeleteItem, onReqDefStatusChange,
   onGenerateTasks, taskAssignments, onRejectReqDef,
+  taskDrafts, setTaskDrafts, generatingTasks, confirmingTasks, onConfirmTasks, onCancelTaskDrafts,
+  members, reassigningTaskId, onReassignTask,
 }: {
   note: NoteDto; spec: SpecDto | null; reqDef: ReqDefDto | null; activeTab: PipelineTab; isPM: boolean; currentUserId: string | undefined; busy: string | null;
   onGenerateSpec: () => void;
@@ -888,6 +1065,15 @@ function NoteDetail({
   onGenerateTasks: (spec: SpecDto, reqDefId: number) => void;
   onRejectReqDef: (spec: SpecDto, reqDefId: number) => void;
   taskAssignments: TaskAssignmentDto[];
+  taskDrafts: TaskDraft[] | null;
+  setTaskDrafts: Dispatch<SetStateAction<TaskDraft[] | null>>;
+  generatingTasks: boolean;
+  confirmingTasks: boolean;
+  onConfirmTasks: (spec: SpecDto) => void;
+  onCancelTaskDrafts: () => void;
+  members: Member[];
+  reassigningTaskId: number | null;
+  onReassignTask: (taskId: number, assigneeId: number) => void;
 }) {
   const status = bareStatus(spec);
   const meta = STATUS_META[status];
@@ -1194,54 +1380,395 @@ function NoteDetail({
         )}
       </div>
 
-      {/* 업무배분 탭 — heyzzabi2의 "업무 배분 실행"으로 만들어진 결과(TaskAssignment)를
-          보여준다. 실제 AI 파이프라인(업무생성→담당자매핑→담당자추천)까지 연결됨. */}
+      {/* 업무배분 탭 — heyzzabi2의 TaskAssignmentPanel과 동일한 2단계(제안 검토→확정) 흐름.
+          taskDrafts가 있으면(생성 직후, 아직 미저장) 편집 가능한 리뷰 화면, 없으면 이미
+          확정된 taskAssignments를 보여준다. */}
       <div className={cn(activeTab !== "taskAssignment" && "hidden")}>
-        {taskAssignments.length === 0 ? (
+        {taskDrafts && taskDrafts.length > 0 ? (
+          <TaskDraftReview
+            drafts={taskDrafts}
+            setDrafts={setTaskDrafts}
+            members={members}
+            confirming={confirmingTasks}
+            onCancel={onCancelTaskDrafts}
+            onConfirm={() => spec && onConfirmTasks(spec)}
+          />
+        ) : taskAssignments.length === 0 ? (
           <div className="border border-dashed border-border rounded-xl p-10 flex flex-col items-center gap-3 text-center">
-            <Briefcase className="w-8 h-8 text-muted-foreground/40" />
-            <p className="text-sm text-muted-foreground">
-              {reqDef?.status_info?.code_id === "APPROVED"
-                ? "요구사항정의서 탭에서 \"업무 배분 실행\"을 누르면 여기에 결과가 표시됩니다."
-                : "요구사항정의서가 승인되면 업무 배분을 실행할 수 있습니다."}
-            </p>
+            {generatingTasks ? (
+              <div className="flex flex-col items-center gap-4 py-6">
+                <Loader2 className="w-9 h-9 animate-spin text-primary" />
+                <p className="text-sm font-semibold text-muted-foreground">에이전트가 업무를 배분하는 중입니다…</p>
+              </div>
+            ) : (
+              <>
+                <Briefcase className="w-8 h-8 text-muted-foreground/40" />
+                <p className="text-sm text-muted-foreground">
+                  {reqDef?.status_info?.code_id === "APPROVED"
+                    ? "요구사항정의서 탭에서 \"업무 배분 실행\"을 누르면 여기에 결과가 표시됩니다."
+                    : "요구사항정의서가 승인되면 업무 배분을 실행할 수 있습니다."}
+                </p>
+              </>
+            )}
           </div>
         ) : (
-          <div className="border border-border rounded-xl overflow-hidden">
-            <table className="w-full text-sm text-left">
-              <thead className="text-xs text-muted-foreground uppercase bg-black/5 dark:bg-white/5">
-                <tr>
-                  <th className="px-4 py-2.5 font-bold w-24">업무번호</th>
-                  <th className="px-4 py-2.5 font-bold">업무명</th>
-                  <th className="px-4 py-2.5 font-bold w-28">담당자</th>
-                  <th className="px-4 py-2.5 font-bold w-20 text-right">예상시간</th>
-                  <th className="px-4 py-2.5 font-bold w-24">상태</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
-                {taskAssignments.map(t => (
-                  <tr key={t.id}>
-                    {/* task_no는 DB에서 유일해야 해서 실제 값은 "RD3-TASK-021"처럼
-                        요구사항정의서 id가 붙어있다 — 화면엔 그 뒤의 TASK-021만 보여준다. */}
-                    <td className="px-4 py-2.5 font-mono text-xs text-muted-foreground align-middle whitespace-nowrap">{t.task_no?.replace(/^RD\d+-/, "") ?? t.task_no}</td>
-                    <td className="px-4 py-2.5 align-top">
-                      <p className="font-semibold">{t.title}</p>
-                      {t.epic_title && <p className="text-xs text-muted-foreground mt-0.5">{t.epic_no} · {t.epic_title}</p>}
-                      {t.assignment_reason && <p className="text-xs text-muted-foreground/70 mt-0.5">{t.assignment_reason}</p>}
-                    </td>
-                    <td className="px-4 py-2.5 align-middle">{t.assigned_user_name}</td>
-                    <td className="px-4 py-2.5 align-middle text-right tabular-nums">{t.estimated_hours ?? "-"}h</td>
-                    <td className="px-4 py-2.5 align-middle">
-                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-orange-500/10 text-orange-500">
-                        {t.status_info?.code_name ?? "미지정"}
-                      </span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <TaskAssignmentList
+            tasks={taskAssignments}
+            members={members}
+            isPM={isPM}
+            reassigningTaskId={reassigningTaskId}
+            onReassign={onReassignTask}
+          />
         )}
+      </div>
+    </div>
+  );
+}
+
+// 업무명/난이도/시간 배지 + 펼침형 배정근거를 함께 보여주는 공통 헤더 셀 — draft 리뷰
+// 표와 확정 목록 표가 똑같은 모양을 쓰므로 하나로 뺐다(heyzzabi2 TaskAssignmentPanel 참고).
+function TaskTitleCell({
+  title, estimatedHours, techFit, expanded, onToggleExpand,
+}: {
+  title: string; estimatedHours: number | null; techFit: string | null;
+  expanded: boolean; onToggleExpand: () => void;
+}) {
+  return (
+    <button
+      onClick={onToggleExpand}
+      disabled={!techFit}
+      className="flex items-start gap-1 font-semibold hover:text-primary transition-colors text-left disabled:cursor-default disabled:hover:text-foreground"
+    >
+      {techFit && <ChevronDown className={cn("w-3.5 h-3.5 transition-transform shrink-0 mt-0.5", !expanded && "-rotate-90")} />}
+      <span className="min-w-0">
+        <span className="block truncate">{title}</span>
+        <span className="flex items-center gap-1.5 mt-0.5">
+          <span className="shrink-0 text-[10px] px-1.5 py-0.5 rounded-full bg-black/5 dark:bg-white/5 text-muted-foreground font-semibold">
+            {estimatedHours ?? "-"}h
+          </span>
+          {techFit ? (
+            <span className="text-xs font-normal text-muted-foreground line-clamp-1">{techFit}</span>
+          ) : (
+            <span className="text-xs font-normal text-muted-foreground/60">배정 근거 없음</span>
+          )}
+        </span>
+      </span>
+    </button>
+  );
+}
+
+function ReasonRow({ techFit, workloadFit, experienceFit }: { techFit: string | null; workloadFit: string | null; experienceFit: string | null }) {
+  return (
+    <tr className="bg-black/[0.02] dark:bg-white/[0.02]">
+      <td colSpan={4} className="px-4 pb-3 pt-0">
+        <ul className="text-xs text-muted-foreground space-y-1 pl-5">
+          <li>🛠 기술 적합도: {techFit ?? "-"}</li>
+          <li>📊 업무 여유도: {workloadFit ?? "-"}</li>
+          <li>📁 유사 경험: {experienceFit ?? "-"}</li>
+        </ul>
+      </td>
+    </tr>
+  );
+}
+
+// AI 제안을 PM이 검토·수정하는 화면 — 아직 DB에 저장되지 않은 draft 상태만 다룬다.
+// 확정("배분 확정")을 눌러야 비로소 handleConfirmTasks가 실제로 저장한다.
+function TaskDraftReview({
+  drafts, setDrafts, members, confirming, onCancel, onConfirm,
+}: {
+  drafts: TaskDraft[];
+  setDrafts: Dispatch<SetStateAction<TaskDraft[] | null>>;
+  members: Member[];
+  confirming: boolean;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  const [expandedUnitId, setExpandedUnitId] = useState<string | null>(null);
+
+  const updateDraft = (unitId: string, patch: Partial<TaskDraft>) => {
+    setDrafts(prev => prev?.map(d => d.unit_id === unitId ? { ...d, ...patch } : d) ?? null);
+  };
+
+  const ganttItems: GanttItem[] = drafts
+    .filter(d => d.assignee_id != null && d.start_date && d.end_date)
+    .map(d => ({
+      id: d.unit_id,
+      title: d.title,
+      assigneeName: members.find(m => m.id === d.assignee_id)?.name ?? "미배정",
+      start: d.start_date,
+      end: d.end_date,
+    }));
+
+  return (
+    <div className="space-y-4">
+      <p className="text-sm text-muted-foreground">
+        AI가 추천한 담당자와 일정입니다. 필요하면 담당자·일정을 직접 바꾼 뒤 확정하세요. 확정 전까지는 저장되지 않습니다.
+      </p>
+      <GanttChart items={ganttItems} />
+      <div className="border border-border rounded-xl overflow-hidden overflow-x-auto">
+        <table className="w-full text-sm text-left">
+          <thead className="text-xs text-muted-foreground uppercase bg-black/5 dark:bg-white/5">
+            <tr>
+              <th className="px-4 py-3 font-bold">업무명</th>
+              <th className="px-4 py-3 font-bold w-40">담당자</th>
+              <th className="px-4 py-3 font-bold w-24">적합도</th>
+              <th className="px-4 py-3 font-bold w-64">시작~종료일</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-border">
+            {drafts.map(d => (
+              <Fragment key={d.unit_id}>
+                <tr className="align-top">
+                  <td className="px-4 py-3">
+                    <TaskTitleCell
+                      title={d.title}
+                      estimatedHours={d.estimated_hours}
+                      techFit={d.tech_fit}
+                      expanded={expandedUnitId === d.unit_id}
+                      onToggleExpand={() => setExpandedUnitId(v => v === d.unit_id ? null : d.unit_id)}
+                    />
+                  </td>
+                  <td className="px-4 py-3">
+                    <select
+                      value={d.assignee_id ?? ""}
+                      onChange={e => updateDraft(d.unit_id, { assignee_id: e.target.value ? Number(e.target.value) : null })}
+                      className="w-full bg-black/5 dark:bg-white/5 border border-border rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-primary/40"
+                    >
+                      <option value="">미배정</option>
+                      {members.map(m => (
+                        <option key={m.id} value={m.id}>{m.name}</option>
+                      ))}
+                    </select>
+                    {d.assignee_id == null && d.hold_explanation && (
+                      <p className="text-[11px] text-amber-500 mt-1">{d.hold_explanation}</p>
+                    )}
+                  </td>
+                  <td className="px-4 py-3">
+                    {d.score != null ? (
+                      <span className="text-[11px] font-bold text-primary bg-primary/10 px-2 py-0.5 rounded-full">{d.score}</span>
+                    ) : <span className="text-xs text-muted-foreground">-</span>}
+                  </td>
+                  <td className="px-4 py-3">
+                    <div className="flex items-center gap-1.5">
+                      <input type="date" value={d.start_date} onChange={e => updateDraft(d.unit_id, { start_date: e.target.value })}
+                        className="bg-black/5 dark:bg-white/5 border border-border rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-primary/40" />
+                      <span className="text-muted-foreground">~</span>
+                      <input type="date" value={d.end_date} onChange={e => updateDraft(d.unit_id, { end_date: e.target.value })}
+                        className="bg-black/5 dark:bg-white/5 border border-border rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-primary/40" />
+                    </div>
+                  </td>
+                </tr>
+                {expandedUnitId === d.unit_id && (
+                  <ReasonRow techFit={d.tech_fit} workloadFit={d.workload_fit} experienceFit={d.experience_fit} />
+                )}
+              </Fragment>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <div className="flex justify-end gap-3">
+        <button
+          onClick={onCancel}
+          className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 text-sm font-bold transition-colors"
+        >
+          취소
+        </button>
+        <button
+          onClick={onConfirm}
+          disabled={confirming}
+          className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-bold hover:bg-primary/90 disabled:opacity-50"
+        >
+          {confirming ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
+          배분 확정
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// 이미 확정(TaskAssignment로 저장)된 목록 — 일반 사용자는 읽기 전용, PM은 담당자 드롭다운으로
+// 재배정할 수 있다(기존 PATCH /api/tasks/assignments/{id}/ 재사용).
+function TaskAssignmentList({
+  tasks, members, isPM, reassigningTaskId, onReassign,
+}: {
+  tasks: TaskAssignmentDto[]; members: Member[]; isPM: boolean;
+  reassigningTaskId: number | null;
+  onReassign: (taskId: number, assigneeId: number) => void;
+}) {
+  const [expandedId, setExpandedId] = useState<number | null>(null);
+
+  const ganttItems: GanttItem[] = tasks
+    .filter(t => t.start_date && t.end_date)
+    .map(t => ({ id: String(t.id), title: t.title, assigneeName: t.assigned_user_name, start: t.start_date!, end: t.end_date! }));
+
+  return (
+    <div className="space-y-4">
+      <GanttChart items={ganttItems} />
+      <div className="border border-border rounded-xl overflow-hidden overflow-x-auto">
+        <table className="w-full text-sm text-left">
+          <thead className="text-xs text-muted-foreground uppercase bg-black/5 dark:bg-white/5">
+            <tr>
+              <th className="px-4 py-3 font-bold">업무명 / 배정 근거</th>
+              <th className="px-4 py-3 font-bold w-44">담당자</th>
+              <th className="px-4 py-3 font-bold w-40">일정</th>
+              <th className="px-4 py-3 font-bold w-28">상태</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-border">
+            {tasks.map(t => (
+              <Fragment key={t.id}>
+                <tr className="align-top">
+                  <td className="px-4 py-3">
+                    <TaskTitleCell
+                      title={t.title}
+                      estimatedHours={t.estimated_hours}
+                      techFit={t.assignment_reason}
+                      expanded={expandedId === t.id}
+                      onToggleExpand={() => setExpandedId(v => v === t.id ? null : t.id)}
+                    />
+                    {t.epic_title && <p className="text-xs text-muted-foreground mt-0.5 pl-4">{t.epic_no} · {t.epic_title}</p>}
+                  </td>
+                  <td className="px-4 py-3">
+                    {isPM ? (
+                      <select
+                        value={t.assigned_user}
+                        onChange={e => onReassign(t.id, Number(e.target.value))}
+                        disabled={reassigningTaskId === t.id}
+                        className="w-full bg-black/5 dark:bg-white/5 border border-border rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-primary/40 disabled:opacity-50"
+                      >
+                        {members.map(m => (
+                          <option key={m.id} value={m.id}>{m.name}</option>
+                        ))}
+                      </select>
+                    ) : (
+                      <div className="flex items-center gap-1.5">
+                        <UserIcon className="w-3.5 h-3.5 text-muted-foreground" />
+                        <span className="text-xs font-medium">{t.assigned_user_name}</span>
+                      </div>
+                    )}
+                  </td>
+                  <td className="px-4 py-3 text-xs text-muted-foreground">
+                    {t.start_date && t.end_date ? (
+                      <span className="flex flex-col gap-0.5">
+                        <span className="flex items-center gap-1"><CalendarIcon className="w-3 h-3 shrink-0" /> {new Date(t.start_date).toLocaleDateString()}</span>
+                        <span className="pl-4">~ {new Date(t.end_date).toLocaleDateString()}</span>
+                      </span>
+                    ) : "-"}
+                  </td>
+                  <td className="px-4 py-3">
+                    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-orange-500/10 text-orange-500">
+                      {t.status_info?.code_name ?? "미지정"}
+                    </span>
+                  </td>
+                </tr>
+                {expandedId === t.id && t.assignment_reason && (
+                  <ReasonRow
+                    techFit={t.assignment_reason.split(" / ")[0] ?? null}
+                    workloadFit={t.assignment_reason.split(" / ")[1] ?? null}
+                    experienceFit={t.assignment_reason.split(" / ")[2] ?? null}
+                  />
+                )}
+              </Fragment>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+// 담당자별로 업무 막대를 타임라인 위에 배치하는 가벼운 간트 차트(heyzzabi2 GanttChart를
+// 그대로 이식, 필드명만 이 파일의 GanttItem에 맞춤). 하루=한 칸인 날짜 그리드라 기간이
+// 짧아도(며칠) 눈금이 중복되지 않는다.
+function GanttChart({ items }: { items: GanttItem[] }) {
+  if (items.length === 0) return null;
+
+  const toLocalMidnight = (iso: string) => {
+    const d = new Date(iso);
+    d.setHours(0, 0, 0, 0);
+    return d.getTime();
+  };
+  const DAY_MS = 86400000;
+
+  const starts = items.map(i => toLocalMidnight(i.start));
+  const ends = items.map(i => toLocalMidnight(i.end));
+  const rangeStartMs = Math.min(...starts);
+  const rangeEndMs = Math.max(...ends);
+  const dayCount = Math.max(1, Math.round((rangeEndMs - rangeStartMs) / DAY_MS) + 1);
+  const days = Array.from({ length: dayCount }, (_, i) => new Date(rangeStartMs + i * DAY_MS));
+  const dayIndexOf = (iso: string) => Math.min(dayCount - 1, Math.max(0, Math.round((toLocalMidnight(iso) - rangeStartMs) / DAY_MS)));
+  const fmtDate = (d: Date) => d.toLocaleDateString("ko-KR", { month: "short", day: "numeric" });
+  const fmtWeekday = (d: Date) => d.toLocaleDateString("ko-KR", { weekday: "short" });
+  const todayIndex = Math.round((toLocalMidnight(new Date().toISOString()) - rangeStartMs) / DAY_MS);
+
+  const byAssignee = new Map<string, GanttItem[]>();
+  items.forEach(i => {
+    if (!byAssignee.has(i.assigneeName)) byAssignee.set(i.assigneeName, []);
+    byAssignee.get(i.assigneeName)!.push(i);
+  });
+
+  const rows: { label: string | null; item: GanttItem }[] = [];
+  byAssignee.forEach((personItems, name) => {
+    personItems.forEach((item, idx) => rows.push({ label: idx === 0 ? name : null, item }));
+  });
+
+  const dayGridStyle = { gridTemplateColumns: `repeat(${dayCount}, minmax(52px, 1fr))` };
+  const dayColClass = (i: number) =>
+    cn(
+      "border-l border-dashed",
+      i === todayIndex ? "border-primary/40" : "border-border",
+      i === dayCount - 1 && "border-r border-border"
+    );
+
+  return (
+    <div className="border border-border rounded-xl p-4 overflow-x-auto">
+      <div style={{ minWidth: `${96 + dayCount * 52}px` }}>
+        <div className="grid gap-y-2" style={{ gridTemplateColumns: `96px 1fr` }}>
+          <div />
+          <div className="grid" style={dayGridStyle}>
+            {days.map((d, i) => (
+              <div key={i} className={cn("text-center pb-1.5", dayColClass(i))}>
+                <p className={cn("text-[10px] font-semibold", i === todayIndex ? "text-primary" : "text-muted-foreground")}>{fmtDate(d)}</p>
+                <p className="text-[9px] text-muted-foreground/60">{fmtWeekday(d)}</p>
+              </div>
+            ))}
+          </div>
+
+          {rows.map(({ label, item }) => {
+            const s = dayIndexOf(item.start);
+            const e = dayIndexOf(item.end);
+            const left = (s / dayCount) * 100;
+            const width = ((e - s + 1) / dayCount) * 100;
+            const narrow = width < 14;
+            return (
+              <Fragment key={item.id}>
+                <p className="text-xs font-bold text-muted-foreground flex items-center gap-1 truncate pt-1">
+                  {label && (<><UserIcon className="w-3 h-3 shrink-0" /><span className="truncate">{label}</span></>)}
+                </p>
+                <div className="relative h-6">
+                  <div className="absolute inset-0 grid" style={dayGridStyle}>
+                    {days.map((_, i) => <div key={i} className={dayColClass(i)} />)}
+                  </div>
+                  <div
+                    title={`${item.title} · ${fmtDate(days[s])} ~ ${fmtDate(days[e])}`}
+                    className="absolute top-0 h-full rounded-md flex items-center px-2 bg-primary/80 hover:bg-primary transition-colors overflow-hidden"
+                    style={{ left: `${left}%`, width: `${width}%` }}
+                  >
+                    {!narrow && <span className="text-[10px] font-semibold text-primary-foreground truncate">{item.title}</span>}
+                  </div>
+                  {narrow && (
+                    <span
+                      className="absolute top-1/2 -translate-y-1/2 text-[10px] font-medium text-foreground whitespace-nowrap pointer-events-none"
+                      style={{ left: `calc(${left}% + ${width}% + 6px)` }}
+                    >
+                      {item.title}
+                    </span>
+                  )}
+                </div>
+              </Fragment>
+            );
+          })}
+        </div>
       </div>
     </div>
   );

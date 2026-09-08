@@ -323,20 +323,45 @@ class RequirementGenerateTasksView(APIView):
     """
     POST /api/requirements/{spec_id}/generate-tasks/
     heyzzabi2의 "업무 배분 실행" 버튼 — 요구사항정의서가 승인된 뒤 PM이 눌러서
-    실제 AI 파이프라인(업무생성 -> 담당자매핑 -> 담당자추천)을 돌리고
-    TaskAssignment까지 만든다(tasks/services.run_task_generation_pipeline).
+    실제 AI 파이프라인(업무생성 -> 담당자매핑 -> 담당자추천)을 돌려 미리보기용
+    배정 제안 목록(suggestions)을 만든다. 이 단계에서는 DB에 아무것도 저장하지
+    않는다 — PM이 화면에서 담당자/일정을 검토·수정한 뒤 "확정"을 누르면 그 결과가
+    RequirementConfirmTasksView로 전달되어 그때 TaskAssignment가 생성된다
+    (tasks/services.generate_task_suggestions).
     """
     permission_classes = [permissions.IsAuthenticated]
 
     @extend_schema(
         tags=['3단계 - 업무 배정'],
-        summary='요구사항정의서 기반 업무 배분 실행(AI)',
-        description='승인된 요구사항정의서를 바탕으로 AI가 업무를 생성하고 담당자를 추천·배정합니다.',
-        responses={200: OpenApiResponse(description='업무 배분 실행 결과')}
+        summary='요구사항정의서 기반 업무 배분 제안 생성(AI, 미리보기)',
+        description='승인된 요구사항정의서를 바탕으로 AI가 업무를 생성하고 담당자를 추천합니다. DB에는 저장하지 않고 PM이 검토/수정할 수 있는 제안 목록만 반환합니다.',
+        responses={200: OpenApiResponse(description='업무 배분 제안 목록 (suggestions)')}
     )
     def post(self, request, spec_id):
-        from tasks.services import run_task_generation_pipeline
-        result = run_task_generation_pipeline(spec_id)
+        from tasks.services import generate_task_suggestions
+        result = generate_task_suggestions(spec_id)
+        http_status = status.HTTP_200_OK if result.get("status") == "success" else status.HTTP_400_BAD_REQUEST
+        return Response(result, status=http_status)
+
+
+class RequirementConfirmTasksView(APIView):
+    """
+    POST /api/requirements/{spec_id}/confirm-tasks/
+    PM이 RequirementGenerateTasksView가 반환한 제안 목록을 검토(및 필요시 담당자/
+    일정 수정)한 뒤 "확정" 버튼을 눌러서 호출한다. 이때 비로소 TaskAssignment가
+    실제로 생성된다(tasks/services.confirm_task_assignments).
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    @extend_schema(
+        tags=['3단계 - 업무 배정'],
+        summary='업무 배분 제안 확정(DB 저장)',
+        description='PM이 검토/수정한 업무 배분 제안 목록(assignments)을 확정하여 TaskAssignment로 저장합니다. 요청 본문: {"req_def_id": <int>, "assignments": [...]}. 같은 요구사항정의서에 대한 기존 배정은 삭제 후 새로 생성됩니다.',
+        responses={200: OpenApiResponse(description='업무 배정 확정 결과')}
+    )
+    def post(self, request, spec_id):
+        from tasks.services import confirm_task_assignments
+        result = confirm_task_assignments(request.data.get("req_def_id"), request.data.get("assignments") or [])
         http_status = status.HTTP_200_OK if result.get("status") == "success" else status.HTTP_400_BAD_REQUEST
         return Response(result, status=http_status)
 

@@ -4,6 +4,7 @@ from requirements.views import (
     RequirementDefinitionDetailView,
     RequirementExtractView,
     RequirementGenerateTasksView,
+    RequirementConfirmTasksView,
     RequirementItemViewSet,
     RequirementItemDetailView,
 )
@@ -13,6 +14,7 @@ urlpatterns = [
     path('<int:spec_id>/', RequirementDefinitionDetailView.as_view(), name='requirement-detail'),
     path('<int:spec_id>/extract/', RequirementExtractView.as_view(), name='requirement-extract'),
     path('<int:spec_id>/generate-tasks/', RequirementGenerateTasksView.as_view(), name='requirement-generate-tasks'),
+    path('<int:spec_id>/confirm-tasks/', RequirementConfirmTasksView.as_view(), name='requirement-confirm-tasks'),
     path('items/', RequirementItemViewSet.as_view(), name='requirement-item-list'),
     path('items/<int:pk>/', RequirementItemDetailView.as_view(), name='item-detail'),  # PATCH, DELETE 지원
 ]
