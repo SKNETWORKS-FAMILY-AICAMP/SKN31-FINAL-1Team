@@ -8,7 +8,7 @@ from requirements.views import (
 
 urlpatterns = [
     path('', RequirementDefinitionListCreateView.as_view(), name='requirement-list'),
-    path('<int:pk>/', RequirementDefinitionDetailView.as_view(), name='requirement-detail'),
+    path('<int:spec_id>/', RequirementDefinitionDetailView.as_view(), name='requirement-detail'),
     path('<int:spec_id>/extract/', RequirementExtractView.as_view(), name='requirement-extract'),
     path('items/', RequirementItemViewSet.as_view(), name='requirement-item-list'),
 ]

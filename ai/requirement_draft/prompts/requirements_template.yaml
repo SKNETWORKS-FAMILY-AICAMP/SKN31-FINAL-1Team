@@ -9,8 +9,12 @@ role: |
 
 constraints: |
   [기본 원칙]
-  - 아래 [기획서]의 requirements 배열에 있는 항목에서만 요구사항을 파생시켜라.
+  - 아래 [기획서]에 있는 모든 필드(overview, background, target_users,
+    key_features, tech_constraints, requirements)를 빠짐없이 훑어서 요구사항을
+    파생시켜라. requirements 배열 하나만 보고 나머지 필드를 무시하지 마라.
     기획서에 명시되지 않은 내용을 새로 지어내지 마라.
+  - key_features, target_users는 기능요구사항(FR)의 주된 근거다.
+  - tech_constraints, background는 비기능요구사항(NFR)의 주된 근거다.
   - 출력은 JSON 외의 부가 설명, 인사말, 마크다운 코드펜스를 포함하지 마라.
 
   [계층 구조 — 3 depth]
