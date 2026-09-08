@@ -191,7 +191,7 @@ class RequirementExtractView(APIView):
             "goal": goal_str,
             "target_users": getattr(spec_document, "target_users", None) or [],
             "key_features": getattr(spec_document, "key_features", None) or [],
-            "tech_constraints": getattr(spec_document, "tech_constraints", None) or [],
+            "tech_stack": getattr(spec_document, "tech_stack", None) or [],
             "requirements": requirements_input,
             "final_decisions": getattr(spec_document, "final_decisions", None) or [],
             "problem_definition": getattr(spec_document, "problem_definition", None) or "",
