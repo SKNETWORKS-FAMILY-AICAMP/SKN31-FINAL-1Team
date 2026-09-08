@@ -62,9 +62,10 @@ class PlanDocument(BaseModel):
     """
     A1-2가 생성한 기획서 JSON.
 
-    아래 5개 필드(overview/background/target_users/key_features/
-    tech_constraints)는 requirements/views.py의 RequirementExtractView가
-    SpecDocument에서 직접 읽어 plan_dict에 담아 보내는 필드
+    아래 필드(overview/background/target_users/key_features/tech_stack/
+    final_decisions/problem_definition/user_scenarios)는
+    requirements/views.py의 RequirementExtractView가 SpecDocument에서 직접
+    읽어 plan_dict에 담아 보내는 필드다.
     """
 
     project_id: str
@@ -75,25 +76,36 @@ class PlanDocument(BaseModel):
     background: str = ""
     target_users: str = ""
     key_features: str = ""
-    # SpecDocument엔 tech_constraints란 필드가 없다(실제론 tech_stack) — views.py가
-    # 존재하지 않는 속성명으로 읽으려다 매번 getattr 기본값(빈 리스트)만 보내는
-    # 상태라, 지금 당장은 항상 빈 리스트로 들어온다는 전제로 타입만 맞춰둔다.
-    tech_constraints: List[str] = Field(default_factory=list)
+    tech_stack: str = ""
+    final_decisions: str = ""
+    problem_definition: str = ""
+    user_scenarios: str = ""
     requirements: List[PlanRequirement] = Field(..., min_length=1)
     pipeline_stage: Optional[str] = None
+
+    # views.py가 SpecDocument 필드가 비어있을 때(None) "or []"로 빈 리스트를
+    # 기본값으로 보낸다 — 이 필드들은 원래 SpecDocument에서 전부 문자열
+    # (longtext)이라, 빈 리스트가 오면 빈 문자열로 취급한다.
+    @field_validator(
+        "overview", "background", "target_users", "key_features", "tech_stack",
+        "final_decisions", "problem_definition", "user_scenarios",
+        mode="before",
+    )
+    @classmethod
+    def normalize_empty_list_to_str(cls, v):
+        if isinstance(v, list):
+            return "" if not v else "\n".join(str(x) for x in v)
+        return v
 
 
 class RequirementItem(BaseModel):
     """
     요구사항 1건. 3-depth(대분류>중분류>소분류=title).
 
-    category_1(대분류)은 "기능"/"비기능" 두 값만 존재한다 — LLM이 채운 값을
-    믿지 않고, validate_consistency()가 type에서 그대로 확정한다(2026-09-08,
-    이미 ID 포맷으로 이중 검증되는 type을 그대로 쓰는 게 LLM이 매번 정확히
-    맞히길 기대하는 것보다 안전하다). category_2(중분류)가 실제 그룹을
-    나타낸다 — 기능은 기능 그룹명(예: "재고 관리"), 비기능은 NFR 표준
-    카테고리명(예: "보안성")이 들어가며, 이제 둘 다 필수다(예전엔 비기능의
-    category_2를 null로 강제했었는데, 화면 분류 표시 요구사항에 맞춰 뒤집었다).
+    category_1(대분류)은 "기능"/"비기능" 두 값만 존재한다.
+    category_2(중분류)가 실제 그룹을 나타낸다 —
+    기능은 기능 그룹명(예: "재고 관리"), 
+    비기능은 NFR 표준 카테고리명(예: "보안성")이 들어간다.
     """
 
     id: str
