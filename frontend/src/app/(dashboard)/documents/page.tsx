@@ -1678,12 +1678,12 @@ function TaskAssignmentList({
                     {t.epic_title && <p className="text-xs text-muted-foreground mt-0.5 pl-4">{t.epic_no} · {t.epic_title}</p>}
                   </td>
                   <td className="px-4 py-3">
-                    {/* 배분 확정은 PM이 직접 하는 액션이라 확정 즉시 APPROVED로 시작한다
-                        (PENDING_APPROVAL이 아님 — PM이 확정했는데 또 PM 승인을 기다리는
-                        건 앞뒤가 안 맞는다, 사용자 지적으로 수정). 담당자 변경은 실제로
-                        작업이 시작되기 전(APPROVED)까지만 허용 — IN_PROGRESS/COMPLETED로
-                        넘어간 업무의 담당자를 바꾸면 실제 작업자와 기록이 어긋난다. */}
-                    {isPM && t.status_info?.code_id === "APPROVED" ? (
+                    {/* 배분 확정(APPROVED)된 업무는 담당자 드롭박스 자체를 비활성화한다 —
+                        "확정된 이후에는 담당자 변경이 안 되도록" 해야 한다는 사용자 지적으로
+                        수정(이전엔 APPROVED 상태에서도 재배정 드롭박스를 열어뒀었다). 확정
+                        전 상태(PENDING_APPROVAL — 자동배정 등 다른 경로로 만들어진 업무)만
+                        드롭박스로 담당자를 바꿀 수 있고, 확정된 뒤엔 읽기 전용으로 보여준다. */}
+                    {isPM && t.status_info?.code_id !== "APPROVED" ? (
                       <div className="flex items-center gap-1">
                         <select
                           value={pendingReassign[t.id] ?? t.assigned_user}
