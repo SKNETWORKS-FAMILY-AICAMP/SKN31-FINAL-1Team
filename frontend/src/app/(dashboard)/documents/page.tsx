@@ -40,6 +40,27 @@ type SpecDto = {
   updated_at: string;
 };
 
+type ReqItemDto = {
+  id: number;
+  req_code: string;
+  req_name: string;
+  description: string;
+  category?: string;
+  difficulty?: string;
+};
+
+type ReqDefDto = {
+  id: number;
+  spec: number;
+  project: number;
+  title: string;
+  version: string;
+  description?: string;
+  items: ReqItemDto[];
+  created_at: string;
+  updated_at: string;
+};
+
 type NoteDto = {
   id: number;
   project: number | null;
@@ -59,38 +80,6 @@ type NoteDto = {
 
 type ProjectDto = { id: number; name: string };
 
-// ── 요구사항 정의서 (Django requirements 앱) ──────────────────────
-type ReqItemDto = {
-  id: number;
-  req_def: number;
-  req_code: string;
-  req_name: string;
-  description: string;
-  priority_code: string | null;
-  priority_info: { code_id: string; code_name: string } | null;
-  difficulty: string | null;
-  category: string | null;
-  category_2: string | null;
-};
-
-type ReqDefDto = {
-  id: number;
-  spec: number;
-  spec_title: string;
-  project: number | null;
-  project_name: string;
-  title: string;
-  version: string;
-  description: string | null;
-  created_by: number | null;
-  created_by_name: string;
-  items: ReqItemDto[];
-  created_at: string;
-  updated_at: string;
-};
-
-// 백엔드가 실제로 지원하는 상태는 4가지뿐 — PROPOSAL_ 접두사는 CommonCode.code_id가 테이블
-// 전체에서 전역 유일해(REQSPEC_STATUS와 겹치지 않도록) 붙인 것이라 화면 표시에서는 벗겨서 쓴다.
 type BareStatus = "DRAFT" | "PENDING_REVIEW" | "APPROVED" | "REJECTED";
 const bareStatus = (spec: SpecDto | null): BareStatus =>
   ((spec?.status_info?.code_id ?? "").replace(/^PROPOSAL_/, "") || "DRAFT") as BareStatus;
@@ -102,33 +91,19 @@ const STATUS_META: Record<BareStatus, { label: string; className: string; icon: 
   REJECTED: { label: "반려됨", className: "bg-red-500/10 text-red-500", icon: XCircle },
 };
 
-// AI가 "[기능] ... [기술] ... [범위] ..."처럼 대괄호 태그로 하위 항목을 구분해서 쓸 때가
-// 있는데, 한 문단으로 이어붙여 내려줘서 태그가 바뀌는 지점을 못 알아보게 뭉쳐 보였다
-// (실제로 팀에서 가독성 문제로 지적받음). 대괄호 태그 직전마다 줄바꿈을 넣어 항목별로
-// 문단을 나눈다 — 태그가 없는 섹션은 그대로(전체를 한 덩어리로 반환)라 부작용이 없다.
-function splitByBracketTags(text: string): string {
-  if (!text) return text;
-  return text
-    .split(/(?=\[[^\]]+\])/g)
-    .map(chunk => chunk.trim())
-    .filter(Boolean)
-    .join("\n");
-}
-
 function specToProposalDoc(spec: SpecDto): ProposalDoc {
   return {
-    projectOverview: splitByBracketTags(spec.overview ?? ""),
-    problemDefinition: splitByBracketTags(spec.problem_definition ?? ""),
-    target: splitByBracketTags(spec.target_users ?? ""),
-    features: splitByBracketTags(spec.key_features ?? ""),
-    userScenario: splitByBracketTags(spec.user_scenarios ?? ""),
-    techStackConstraints: splitByBracketTags(spec.tech_stack ?? ""),
-    finalDecisions: splitByBracketTags(spec.final_decisions ?? ""),
-    // 회의록 원문에 기간이 명시돼 있으면 AI 분석 시점에 자동으로 채워지고(백엔드
-    // MeetingNoteAnalyzeView), 없으면 null — 화면(ProposalTemplate)에서 직접 입력할 수 있다.
+    projectOverview: spec.overview ?? "",
+    problemDefinition: spec.problem_definition ?? "",
+    target: spec.target_users ?? "",
+    features: spec.key_features ?? "",
+    userScenario: spec.user_scenarios ?? "",
+    techStackConstraints: spec.tech_stack ?? "",
+    finalDecisions: spec.final_decisions ?? "",
     projectPeriod: { start: spec.period_start ?? "", end: spec.period_end ?? "" },
   };
 }
+
 function proposalDocToPatch(doc: ProposalDoc) {
   return {
     overview: doc.projectOverview,
@@ -143,7 +118,6 @@ function proposalDocToPatch(doc: ProposalDoc) {
   };
 }
 
-// 검토요청 중이거나 이미 승인된 기획서가 있는 회의록은 삭제하면 안 된다.
 const isNoteDeletable = (note: NoteDto) => {
   const spec = note.spec_documents[0];
   if (!spec) return true;
@@ -168,7 +142,6 @@ export default function DocumentsPage() {
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState("");
   const [toastMessage, setToastMessage] = useState<string | null>(null);
-  const [errorToast, setErrorToast] = useState<string | null>(null);
 
   const fetchAll = async (preferredProjectId?: number) => {
     setLoading(true);
@@ -180,12 +153,12 @@ export default function DocumentsPage() {
         : projects[0];
       setProject(current ?? null);
       if (current) {
-        const noteList = await apiFetch<NoteDto[]>(`/api/meetings/notes/?project=${current.id}`);
+        const [noteList, reqDefList] = await Promise.all([
+          apiFetch<NoteDto[]>(`/api/meetings/notes/?project=${current.id}`),
+          apiFetch<ReqDefDto[]>("/api/requirements/").catch(() => []),
+        ]);
         setNotes(noteList);
-        // 백엔드에 스펙별 필터 파라미터가 없어서(GET /api/requirements/가 항상 전체 목록을
-        // 반환) 전체를 받아 화면에서 spec.id로 매칭한다 — 다른 화면들과 같은 패턴.
-        const allReqDefs = await apiFetch<ReqDefDto[]>("/api/requirements/");
-        setReqDefs(allReqDefs);
+        setReqDefs(reqDefList);
       } else {
         setNotes([]);
         setReqDefs([]);
@@ -226,7 +199,7 @@ export default function DocumentsPage() {
       await refetchNote(note.id);
       setToastMessage("기획서 생성이 완료되었습니다");
     } catch (err: any) {
-      setErrorToast(err.message || "기획서 생성에 실패했습니다.");
+      alert(err.message || "기획서 생성에 실패했습니다.");
     } finally {
       setBusy(null);
     }
@@ -241,7 +214,7 @@ export default function DocumentsPage() {
       });
       replaceNote(updated);
     } catch (err: any) {
-      setErrorToast(err.message || "저장에 실패했습니다.");
+      alert(err.message || "저장에 실패했습니다.");
     } finally {
       setBusy(null);
     }
@@ -256,7 +229,7 @@ export default function DocumentsPage() {
       });
       replaceNote({ ...note, spec_documents: note.spec_documents.map(s => s.id === updated.id ? updated : s) });
     } catch (err: any) {
-      setErrorToast(err.message || "저장에 실패했습니다.");
+      alert(err.message || "저장에 실패했습니다.");
     } finally {
       setBusy(null);
     }
@@ -271,7 +244,7 @@ export default function DocumentsPage() {
       });
       await refetchNote(note.id);
     } catch (err: any) {
-      setErrorToast(err.message || "저장에 실패했습니다.");
+      alert(err.message || "저장에 실패했습니다.");
     } finally {
       setBusy(null);
     }
@@ -284,7 +257,7 @@ export default function DocumentsPage() {
       await refetchNote(note.id);
       setToastMessage("검토요청이 완료되었습니다");
     } catch (err: any) {
-      setErrorToast(err.message || "검토 요청에 실패했습니다.");
+      alert(err.message || "검토 요청에 실패했습니다.");
     } finally {
       setBusy(null);
     }
@@ -296,7 +269,7 @@ export default function DocumentsPage() {
       await apiFetch(`/api/meetings/specs/${spec.id}/approve/`, { method: "POST" });
       await refetchNote(note.id);
     } catch (err: any) {
-      setErrorToast(err.message || "승인에 실패했습니다.");
+      alert(err.message || "승인에 실패했습니다.");
     } finally {
       setBusy(null);
     }
@@ -314,64 +287,7 @@ export default function DocumentsPage() {
       setRejectTarget(null);
       setRejectReason("");
     } catch (err: any) {
-      setErrorToast(err.message || "반려에 실패했습니다.");
-    } finally {
-      setBusy(null);
-    }
-  };
-
-  // 요구사항 정의서 생성 — POST 응답(RequirementDefinitionCreateSerializer)에 id가 안 들어있어서
-  // (spec/project/title/version/description만 반환) 생성 후 목록을 다시 받아 spec.id로 찾는다.
-  const handleCreateReqDef = async (note: NoteDto, spec: SpecDto) => {
-    setBusy(`${note.id}-create-reqdef`);
-    try {
-      await apiFetch("/api/requirements/", {
-        method: "POST",
-        body: JSON.stringify({
-          spec: spec.id,
-          project: note.project,
-          title: `${spec.title} 요구사항정의서`,
-          version: "v1.0",
-        }),
-      });
-      const allReqDefs = await apiFetch<ReqDefDto[]>("/api/requirements/");
-      setReqDefs(allReqDefs);
-      setToastMessage("요구사항 정의서가 생성되었습니다");
-    } catch (err: any) {
-      setErrorToast(err.message || "요구사항 정의서 생성에 실패했습니다.");
-    } finally {
-      setBusy(null);
-    }
-  };
-
-  // AI 자동 추출 — 현재 백엔드(RequirementExtractView)는 기획서 내용과 무관하게 항상 같은
-  // 고정된 2개 항목(REQ-01, REQ-02)을 반환하는 모킹 상태다(실제 AI 연동 전). 실제 기획서
-  // 내용을 반영하려면 백엔드 쪽 연동이 필요 — 팀원에게 전달할 목록에 남겨둔다.
-  const handleExtractItems = async (reqDefId: number) => {
-    setBusy(`reqdef-${reqDefId}-extract`);
-    try {
-      const result = await apiFetch<{ extracted_items: ReqItemDto[] }>(`/api/requirements/${reqDefId}/extract/`, {
-        method: "POST",
-      });
-      setReqDefs(prev => prev.map(r => r.id === reqDefId ? { ...r, items: [...r.items, ...result.extracted_items] } : r));
-      setToastMessage(`요구사항 항목 ${result.extracted_items.length}건이 추출되었습니다`);
-    } catch (err: any) {
-      setErrorToast(err.message || "요구사항 추출에 실패했습니다.");
-    } finally {
-      setBusy(null);
-    }
-  };
-
-  const handleAddItem = async (reqDefId: number, item: { req_code: string; req_name: string; description: string }) => {
-    setBusy(`reqdef-${reqDefId}-additem`);
-    try {
-      const created = await apiFetch<ReqItemDto>("/api/requirements/items/", {
-        method: "POST",
-        body: JSON.stringify({ req_def: reqDefId, ...item }),
-      });
-      setReqDefs(prev => prev.map(r => r.id === reqDefId ? { ...r, items: [...r.items, created] } : r));
-    } catch (err: any) {
-      setErrorToast(err.message || "항목 추가에 실패했습니다.");
+      alert(err.message || "반려에 실패했습니다.");
     } finally {
       setBusy(null);
     }
@@ -386,9 +302,64 @@ export default function DocumentsPage() {
       if (selectedNoteId === deleteTarget.id) setSelectedNoteId(null);
       setDeleteTarget(null);
     } catch (err: any) {
-      setErrorToast(err.message || "삭제에 실패했습니다.");
+      alert(err.message || "삭제에 실패했습니다.");
     } finally {
       setDeleting(false);
+    }
+  };
+
+  // ── 요구사항 정의서 관련 핸들러 ────────────────────────────────
+  const handleCreateReqDef = async (note: NoteDto, spec: SpecDto) => {
+    setBusy(`${spec.id}-create-reqdef`);
+    try {
+      await apiFetch("/api/requirements/", {
+        method: "POST",
+        body: JSON.stringify({
+          spec: spec.id,
+          project: note.project,
+          title: `${spec.title} 요구사항정의서`,
+          version: "v1.0",
+        }),
+      });
+      const allReqDefs = await apiFetch<ReqDefDto[]>("/api/requirements/");
+      setReqDefs(allReqDefs);
+      setToastMessage("요구사항 정의서가 생성되었습니다");
+    } catch (err: any) {
+      alert(err.message || "요구사항 정의서 생성에 실패했습니다.");
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const handleExtractItems = async (specId: number, reqDefId: number) => {
+    setBusy(`reqdef-${reqDefId}-extract`);
+    try {
+      const updatedReqDef = await apiFetch<ReqDefDto>(`/api/requirements/${specId}/extract/`, {
+        method: "POST",
+      });
+      setReqDefs(prev => prev.map(r => r.id === reqDefId ? updatedReqDef : r));
+      const itemCount = updatedReqDef.items?.length || 0;
+      setToastMessage(`요구사항 항목 ${itemCount}건이 추출되었습니다`);
+    } catch (err: any) {
+      alert(err.message || "요구사항 추출에 실패했습니다.");
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const handleAddItem = async (reqDefId: number, item: { req_code: string; req_name: string; description: string }) => {
+    setBusy(`reqdef-${reqDefId}-additem`);
+    try {
+      const newItem = await apiFetch<ReqItemDto>(`/api/requirements/${reqDefId}/items/`, {
+        method: "POST",
+        body: JSON.stringify(item),
+      });
+      setReqDefs(prev => prev.map(r => r.id === reqDefId ? { ...r, items: [...r.items, newItem] } : r));
+      setToastMessage("요구사항 항목이 추가되었습니다");
+    } catch (err: any) {
+      alert(err.message || "항목 추가에 실패했습니다.");
+    } finally {
+      setBusy(null);
     }
   };
 
@@ -435,6 +406,9 @@ export default function DocumentsPage() {
     );
   }
 
+  const activeSpec = selectedNote?.spec_documents[0] ?? null;
+  const activeReqDef = activeSpec ? reqDefs.find(r => r.spec === activeSpec.id) ?? null : null;
+
   return (
     <div className="w-full space-y-6 animate-in fade-in duration-500">
       <div className="flex items-center justify-between flex-wrap gap-4">
@@ -442,7 +416,6 @@ export default function DocumentsPage() {
           <h1 className="text-xl font-bold">문서생성</h1>
           <p className="text-sm text-muted-foreground mt-1">
             회의록을 기반으로 기획서를 작성하고 검토·승인합니다.
-            <span className="ml-2 text-xs text-muted-foreground/70">(요구사항정의서·업무배분 단계는 백엔드 API 준비 중)</span>
           </p>
         </div>
       </div>
@@ -450,8 +423,6 @@ export default function DocumentsPage() {
       <div className="grid grid-cols-1 lg:grid-cols-[360px_minmax(0,1fr)] gap-6 items-start">
         {/* Document list */}
         <div className="glass rounded-2xl border border-border p-4 space-y-3">
-          {/* PM은 회의록/기획서/요구사항정의서를 생성하지 않고 검토(승인/반려)만 한다 —
-              문서 생성은 일반유저 역할이므로 PM에게는 생성 버튼 자체를 숨긴다. */}
           {!isPM && (
             <button
               onClick={() => setNewDocModalOpen(true)}
@@ -522,6 +493,8 @@ export default function DocumentsPage() {
           ) : (
             <NoteDetail
               note={selectedNote}
+              spec={activeSpec}
+              reqDef={activeReqDef}
               isPM={isPM}
               currentUserId={user?.id}
               busy={busy}
@@ -532,7 +505,6 @@ export default function DocumentsPage() {
               onSubmitReview={(spec) => handleSubmitReview(selectedNote, spec)}
               onApprove={(spec) => handleApprove(selectedNote, spec)}
               onReject={(spec) => setRejectTarget({ specId: spec.id })}
-              reqDef={reqDefs.find(r => r.spec === selectedNote.spec_documents[0]?.id) ?? null}
               onCreateReqDef={(spec) => handleCreateReqDef(selectedNote, spec)}
               onExtractItems={handleExtractItems}
               onAddItem={handleAddItem}
@@ -611,17 +583,16 @@ export default function DocumentsPage() {
         </div>
       )}
       <Toast message={toastMessage} onDismiss={() => setToastMessage(null)} />
-      <Toast message={errorToast} variant="error" onDismiss={() => setErrorToast(null)} />
     </div>
   );
 }
 
 function NoteDetail({
-  note, isPM, currentUserId, busy,
+  note, spec, reqDef, isPM, currentUserId, busy,
   onGenerateSpec, onSaveNoteContent, onSaveSpec, onSavePeriod, onSubmitReview, onApprove, onReject,
-  reqDef, onCreateReqDef, onExtractItems, onAddItem,
+  onCreateReqDef, onExtractItems, onAddItem,
 }: {
-  note: NoteDto; isPM: boolean; currentUserId: string | undefined; busy: string | null;
+  note: NoteDto; spec: SpecDto | null; reqDef: ReqDefDto | null; isPM: boolean; currentUserId: string | undefined; busy: string | null;
   onGenerateSpec: () => void;
   onSaveNoteContent: (content: string) => void;
   onSaveSpec: (spec: SpecDto, doc: ProposalDoc) => void;
@@ -629,12 +600,10 @@ function NoteDetail({
   onSubmitReview: (spec: SpecDto) => void;
   onApprove: (spec: SpecDto) => void;
   onReject: (spec: SpecDto) => void;
-  reqDef: ReqDefDto | null;
   onCreateReqDef: (spec: SpecDto) => void;
-  onExtractItems: (reqDefId: number) => void;
+  onExtractItems: (specId: number, reqDefId: number) => void;
   onAddItem: (reqDefId: number, item: { req_code: string; req_name: string; description: string }) => void;
 }) {
-  const spec = note.spec_documents[0] ?? null;
   const status = bareStatus(spec);
   const meta = STATUS_META[status];
   const canGenerate = String(note.created_by) === currentUserId;
@@ -646,11 +615,7 @@ function NoteDetail({
   useEffect(() => { setRawDraft(note.content ?? ""); }, [note.id, note.content]);
   const rawDirty = rawDraft !== (note.content ?? "");
   const rawSaving = busy === busyKey("save-raw");
-  // 기획서가 한 번이라도 생성되면 그 순간의 회의록 내용을 근거로 AI가 만든 것이므로, 이후에
-  // 원본을 고치면 기획서와 내용이 어긋난다 — 그래서 검토중/승인됨뿐 아니라 기획서가 존재하는
-  // 한(초안/반려 포함) 항상 잠근다(수정 화면 자체가 없도록 — 저장 버튼도 자동으로 숨겨짐).
   const rawLocked = !!spec;
-  // 기획서 자체(직접수정 모드/기간)의 잠금은 검토중/승인됨일 때만 — 이건 원본 회의록과 별개다.
   const specLocked = status === "PENDING_REVIEW" || status === "APPROVED";
 
   const [editMode, setEditMode] = useState(false);
@@ -658,9 +623,6 @@ function NoteDetail({
   useEffect(() => { setEditMode(false); setEditDraft(null); }, [note.id]);
   const editSaving = busy === busyKey("save-spec");
 
-  // 기간은 "직접 수정" 모드를 켜지 않아도 항상 바로 입력할 수 있다 — 검토중/승인됨일 때만
-  // 잠근다(원본 회의록 잠금과 같은 기준). 값이 바뀌는 즉시 저장한다(날짜 선택은 텍스트
-  // 입력과 달리 클릭 한 번짜리 이산적인 동작이라 별도 저장 버튼 없이 바로 반영해도 된다).
   const [periodDraft, setPeriodDraft] = useState({ start: spec?.period_start ?? "", end: spec?.period_end ?? "" });
   useEffect(() => {
     setPeriodDraft({ start: spec?.period_start ?? "", end: spec?.period_end ?? "" });
@@ -857,7 +819,7 @@ function NoteDetail({
         )}
       </div>
 
-      {/* 요구사항 정의서 — 기획서가 승인된 뒤에만 진행할 수 있는 다음 단계 */}
+      {/* 요구사항 정의서 — 기획서 승인 완료 시 표시 */}
       {spec && status === "APPROVED" && (
         <RequirementSection
           spec={spec}
@@ -878,7 +840,7 @@ function RequirementSection({
 }: {
   spec: SpecDto; reqDef: ReqDefDto | null; isPM: boolean; busy: string | null;
   onCreate: () => void;
-  onExtract: (reqDefId: number) => void;
+  onExtract: (specId: number, reqDefId: number) => void;
   onAddItem: (reqDefId: number, item: { req_code: string; req_name: string; description: string }) => void;
 }) {
   const [showAddForm, setShowAddForm] = useState(false);
@@ -886,7 +848,7 @@ function RequirementSection({
   const [newName, setNewName] = useState("");
   const [newDesc, setNewDesc] = useState("");
 
-  const creating = busy === `${spec.meeting}-create-reqdef`;
+  const creating = busy === `${spec.id}-create-reqdef`;
   const extracting = reqDef && busy === `reqdef-${reqDef.id}-extract`;
   const addingItem = reqDef && busy === `reqdef-${reqDef.id}-additem`;
 
@@ -894,9 +856,6 @@ function RequirementSection({
     return (
       <div className="border-t border-border pt-5 mt-2">
         <h3 className="font-bold text-sm mb-2">요구사항 정의서</h3>
-        {/* 기획서 생성/검토요청과 같은 패턴 — 문서를 진행시키는 건 담당자(작성자) 몫이고
-            PM은 승인만 한다. 이 섹션 자체가 이미 status === "APPROVED"(PM 승인 완료)일 때만
-            보이므로, "PM 승인 후 담당자가 생성" 흐름이 된다. */}
         {!isPM ? (
           <button
             onClick={onCreate}
@@ -922,10 +881,10 @@ function RequirementSection({
         </div>
         {!isPM && (
           <button
-            onClick={() => onExtract(reqDef.id)}
+            onClick={() => onExtract(spec.id, reqDef.id)}
             disabled={!!extracting}
             className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-primary/10 text-primary text-xs font-semibold hover:bg-primary/20 disabled:opacity-50"
-            title="현재는 기획서 내용과 무관하게 고정된 예시 항목을 추가합니다 (백엔드 AI 연동 전)"
+            title="기획서를 분석하여 요구사항 항목을 자동으로 추출합니다."
           >
             {extracting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Bot className="w-3.5 h-3.5" />}
             AI 자동 추출
