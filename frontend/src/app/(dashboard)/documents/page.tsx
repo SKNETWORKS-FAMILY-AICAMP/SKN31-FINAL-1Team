@@ -115,6 +115,22 @@ const PRIORITY_BADGE_CLASS: Record<string, string> = {
   MEDIUM: "bg-amber-500/10 text-amber-500",
   LOW: "bg-slate-500/10 text-slate-400",
 };
+// 우선순위 드롭박스 옵션 — CommonCode REQ_PRIORITY 그룹의 실제 code_id 값(PRIORITY_HIGH 등).
+const PRIORITY_OPTIONS: { code_id: string; label: string }[] = [
+  { code_id: "PRIORITY_HIGH", label: "상" },
+  { code_id: "PRIORITY_MEDIUM", label: "중" },
+  { code_id: "PRIORITY_LOW", label: "하" },
+];
+
+// 코드 끝의 숫자를 1 증가시킨다(FR-01-003 -> FR-01-004). 자릿수는 유지(001, 01 등).
+// 숫자로 안 끝나면 원본 그대로 반환.
+function incrementCode(code: string): string {
+  const m = code.match(/^(.*?)(\d+)$/);
+  if (!m) return code;
+  const [, prefix, numStr] = m;
+  const next = String(parseInt(numStr, 10) + 1).padStart(numStr.length, "0");
+  return prefix + next;
+}
 
 function specToProposalDoc(spec: SpecDto): ProposalDoc {
   return {
@@ -393,7 +409,7 @@ export default function DocumentsPage() {
   // req_def는 body로 받음) — 중첩 경로로 호출하면 404가 난다(직접 재현해서 확인).
   // order는 "이 행과 저 행 사이에 끼워넣기"를 표현하는 값(두 이웃의 order 중간값) —
   // RequirementSection이 어느 +버튼을 눌렀는지 보고 계산해서 넘긴다.
-  const handleAddItem = async (reqDefId: number, item: { req_code: string; req_name: string; description: string; order: number }) => {
+  const handleAddItem = async (reqDefId: number, item: { req_code: string; req_name: string; description: string; order: number; priority_code: string | null }) => {
     setBusy(`reqdef-${reqDefId}-additem`);
     try {
       const newItem = await apiFetch<ReqItemDto>(`/api/requirements/items/`, {
@@ -414,7 +430,7 @@ export default function DocumentsPage() {
 
   // 백엔드에 방금 추가된 엔드포인트(/api/requirements/items/{id}/ PATCH/DELETE) — 팀원이
   // 실제로 구현·배포한 걸 확인하고 연동한다.
-  const handleUpdateItem = async (reqDefId: number, itemId: number, patch: { req_name: string; description: string }) => {
+  const handleUpdateItem = async (reqDefId: number, itemId: number, patch: { req_name: string; description: string; priority_code?: string | null }) => {
     setBusy(`reqitem-${itemId}-update`);
     try {
       const updated = await apiFetch<ReqItemDto>(`/api/requirements/items/${itemId}/`, {
@@ -777,8 +793,8 @@ function NoteDetail({
   onReject: (spec: SpecDto) => void;
   onCreateReqDef: (spec: SpecDto) => void;
   onExtractItems: (specId: number, reqDefId: number) => void;
-  onAddItem: (reqDefId: number, item: { req_code: string; req_name: string; description: string; order: number }) => void;
-  onUpdateItem: (reqDefId: number, itemId: number, patch: { req_name: string; description: string }) => void;
+  onAddItem: (reqDefId: number, item: { req_code: string; req_name: string; description: string; order: number; priority_code: string | null }) => void;
+  onUpdateItem: (reqDefId: number, itemId: number, patch: { req_name: string; description: string; priority_code?: string | null }) => void;
   onDeleteItem: (reqDefId: number, itemId: number) => void;
   onReqDefStatusChange: (spec: SpecDto, reqDefId: number, statusCode: "PENDING_REVIEW" | "APPROVED" | "REJECTED") => void;
 }) {
@@ -1100,23 +1116,25 @@ function RequirementSection({
   spec: SpecDto; reqDef: ReqDefDto | null; isPM: boolean; busy: string | null;
   onCreate: () => void;
   onExtract: (specId: number, reqDefId: number) => void;
-  onAddItem: (reqDefId: number, item: { req_code: string; req_name: string; description: string; order: number }) => void;
-  onUpdateItem: (reqDefId: number, itemId: number, patch: { req_name: string; description: string }) => void;
+  onAddItem: (reqDefId: number, item: { req_code: string; req_name: string; description: string; order: number; priority_code: string | null }) => void;
+  onUpdateItem: (reqDefId: number, itemId: number, patch: { req_name: string; description: string; priority_code?: string | null }) => void;
   onDeleteItem: (reqDefId: number, itemId: number) => void;
   onStatusChange: (statusCode: "PENDING_REVIEW" | "APPROVED" | "REJECTED") => void;
 }) {
   // 하단에 고정된 "항목 직접 추가" 버튼 대신, 표의 행과 행 사이에 있는 + 버튼을 눌러 그
   // 자리에 바로 추가 폼이 펼쳐지도록 바꿨다(사용자 요청). null이면 어디에도 안 열려있고,
-  // "start"면 첫 행 위, 숫자면 그 항목 바로 아래에 폼이 펼쳐진다. 다만 백엔드에 항목
-  // 순서를 저장하는 필드가 없어서 실제로는 항상 목록 맨 끝에 추가된다 — 어느 +를 눌러도
-  // 저장 위치는 같고, 폼이 열리는 자리만 사용자가 고른 위치를 따른다.
+  // "start"면 첫 행 위, 숫자면 그 항목 바로 아래에 폼이 펼쳐진다. RequirementItem.order
+  // (실수)에 이웃 두 항목의 중간값을 매겨서 실제로 그 위치에 저장된다.
   const [addFormAt, setAddFormAt] = useState<number | "start" | null>(null);
-  const [newCode, setNewCode] = useState("");
   const [newName, setNewName] = useState("");
   const [newDesc, setNewDesc] = useState("");
+  // 코드(REQ-01 등)는 삽입 위치의 앞 항목 코드를 보고 자동으로 다음 번호를 매긴다 —
+  // 사용자가 직접 입력하지 않는다(사용자 요청, incrementCode 참고).
+  const [newPriority, setNewPriority] = useState("");
   const [editingItemId, setEditingItemId] = useState<number | null>(null);
   const [editName, setEditName] = useState("");
   const [editDesc, setEditDesc] = useState("");
+  const [editPriority, setEditPriority] = useState("");
 
   const creating = busy === `${spec.id}-create-reqdef`;
   const extracting = reqDef && busy === `reqdef-${reqDef.id}-extract`;
@@ -1256,35 +1274,51 @@ function RequirementSection({
           if (idx === -1 || idx === items.length - 1) return items[items.length - 1].order + 1;
           return (items[idx].order + items[idx + 1].order) / 2;
         };
+        // 삽입 위치의 "앞 항목" 코드를 기준으로 다음 번호를 자동으로 매긴다(사용자 요청 —
+        // 직접 코드를 입력하지 않아도 FR-01-003 다음에 넣으면 FR-01-004가 되도록).
+        // 맨 앞(start)에 넣을 항목이 없으면 첫 항목 코드를 그대로 이어받는다.
+        const autoCodeAt = (pos: number | "start"): string => {
+          const items = reqDef.items;
+          if (items.length === 0) return "FR-01-001";
+          if (pos === "start") return items[0].req_code;
+          const idx = items.findIndex(it => it.id === pos);
+          const base = idx === -1 ? items[items.length - 1] : items[idx];
+          return incrementCode(base.req_code);
+        };
         const openAddForm = (pos: number | "start") => {
           setAddFormAt(pos);
-          setNewCode(""); setNewName(""); setNewDesc("");
+          setNewName(""); setNewDesc(""); setNewPriority("");
         };
         const submitAddForm = (pos: number | "start") => {
-          if (!newCode.trim() || !newName.trim()) return;
+          if (!newName.trim()) return;
           onAddItem(reqDef.id, {
-            req_code: newCode.trim(),
+            req_code: autoCodeAt(pos),
             req_name: newName.trim(),
             description: newDesc.trim(),
             order: insertOrderAt(pos),
+            priority_code: newPriority || null,
           });
           setAddFormAt(null);
         };
         const addFormFields = (pos: number | "start") => (
           <>
-            <div className="grid grid-cols-[120px_1fr] gap-2">
-              <input
-                value={newCode}
-                onChange={e => setNewCode(e.target.value)}
-                placeholder="REQ-03"
-                className="bg-black/5 dark:bg-white/5 border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
-              />
+            <div className="grid grid-cols-[1fr_120px] gap-2">
               <input
                 value={newName}
                 onChange={e => setNewName(e.target.value)}
                 placeholder="요구사항명"
                 className="bg-black/5 dark:bg-white/5 border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
               />
+              <select
+                value={newPriority}
+                onChange={e => setNewPriority(e.target.value)}
+                className="bg-black/5 dark:bg-white/5 border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
+              >
+                <option value="">우선순위</option>
+                {PRIORITY_OPTIONS.map(p => (
+                  <option key={p.code_id} value={p.code_id}>{p.label}</option>
+                ))}
+              </select>
             </div>
             <textarea
               value={newDesc}
@@ -1292,16 +1326,19 @@ function RequirementSection({
               placeholder="상세 내용"
               className="w-full bg-black/5 dark:bg-white/5 border border-border rounded-lg px-3 py-2 text-sm resize-none h-20 focus:outline-none focus:ring-2 focus:ring-primary/40 mt-2"
             />
-            <div className="flex justify-end gap-2 mt-2">
-              <button onClick={() => setAddFormAt(null)} className="px-4 py-2 text-sm font-semibold text-muted-foreground hover:bg-black/5 dark:hover:bg-white/5 rounded-lg">취소</button>
-              <button
-                onClick={() => submitAddForm(pos)}
-                disabled={!newCode.trim() || !newName.trim() || !!addingItem}
-                className="flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-bold hover:bg-primary/90 disabled:opacity-50"
-              >
-                {addingItem ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
-                추가
-              </button>
+            <div className="flex items-center justify-between mt-2">
+              <p className="text-[11px] text-muted-foreground/70 font-mono">코드 {autoCodeAt(pos)} (자동)</p>
+              <div className="flex justify-end gap-2">
+                <button onClick={() => setAddFormAt(null)} className="px-4 py-2 text-sm font-semibold text-muted-foreground hover:bg-black/5 dark:hover:bg-white/5 rounded-lg">취소</button>
+                <button
+                  onClick={() => submitAddForm(pos)}
+                  disabled={!newName.trim() || !!addingItem}
+                  className="flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-bold hover:bg-primary/90 disabled:opacity-50"
+                >
+                  {addingItem ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+                  추가
+                </button>
+              </div>
             </div>
           </>
         );
@@ -1404,8 +1441,20 @@ function RequirementSection({
                       {/* 설명 아래 회색 텍스트로만 있던 우선순위를 별도 컬럼 + 상/중/하 색
                           배지로 바꿨다(가독성 피드백) — 신호등처럼 급함(상)=빨강,
                           보통(중)=주황, 낮음(하)=회색. 다른 컬럼은 다 위쪽(align-top)
-                          정렬인데 이 배지만 세로 중앙에 오게 해달라는 요청. */}
-                      {(() => {
+                          정렬인데 이 배지만 세로 중앙에 오게 해달라는 요청. 수정 모드에서는
+                          AI가 생성한 항목이라도 드롭박스로 우선순위를 바꿀 수 있다(요청). */}
+                      {isEditing ? (
+                        <select
+                          value={editPriority}
+                          onChange={e => setEditPriority(e.target.value)}
+                          className="bg-black/5 dark:bg-white/5 border border-border rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-primary/40"
+                        >
+                          <option value="">미지정</option>
+                          {PRIORITY_OPTIONS.map(p => (
+                            <option key={p.code_id} value={p.code_id}>{p.label}</option>
+                          ))}
+                        </select>
+                      ) : (() => {
                         const code = item.priority_info?.code_name ?? "";
                         const label = PRIORITY_LABEL[code];
                         return (
@@ -1431,7 +1480,7 @@ function RequirementSection({
                             <button
                               onClick={() => {
                                 if (!editName.trim()) return;
-                                onUpdateItem(reqDef.id, item.id, { req_name: editName.trim(), description: editDesc.trim() });
+                                onUpdateItem(reqDef.id, item.id, { req_name: editName.trim(), description: editDesc.trim(), priority_code: editPriority || null });
                                 setEditingItemId(null);
                               }}
                               disabled={!editName.trim() || updating}
@@ -1443,7 +1492,7 @@ function RequirementSection({
                         ) : (
                           <div className="flex items-center justify-end gap-1">
                             <button
-                              onClick={() => { setEditingItemId(item.id); setEditName(item.req_name); setEditDesc(item.description); }}
+                              onClick={() => { setEditingItemId(item.id); setEditName(item.req_name); setEditDesc(item.description); setEditPriority(item.priority_info?.code_id ?? ""); }}
                               title="항목 수정"
                               className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-black/5 dark:hover:bg-white/5"
                             >
