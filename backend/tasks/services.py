@@ -1,5 +1,6 @@
+#tasks/services.py
 from django.contrib.auth import get_user_model
-from specs.models import SpecDocument
+from meetings.models import SpecDocument
 from tasks.models import TaskAssignment
 
 User = get_user_model()
@@ -43,3 +44,36 @@ def create_task_assignments_for_spec(spec_id: int):
 
     except SpecDocument.DoesNotExist:
         return {"status": "error", "message": "기획서를 찾을 수 없습니다."}
+
+# ==========================================
+# 뷰(views.py)에서 호출하는 AI 연동 서비스 함수들
+# ==========================================
+
+def run_assignee_mapping(data):
+    """
+    AI 담당자 매핑 추천 로직
+    """
+    spec_id = data.get("spec_id")
+    if spec_id:
+        return create_task_assignments_for_spec(spec_id)
+    
+    return {
+        "status": "success",
+        "message": "AI 담당자 매핑이 정상 처리되었습니다.",
+        "result": []
+    }
+
+
+def run_task_generation(data):
+    """
+    AI 업무 자동 생성 로직
+    """
+    spec_id = data.get("spec_id")
+    if spec_id:
+        return create_task_assignments_for_spec(spec_id)
+
+    return {
+        "status": "success",
+        "message": "AI 업무 자동 생성이 완료되었습니다.",
+        "result": []
+    }

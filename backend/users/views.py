@@ -1,4 +1,4 @@
-#users/views.py
+# users/views.py
 
 from django.conf import settings
 from django.middleware.csrf import get_token
@@ -153,8 +153,8 @@ class CookieTokenRefreshView(APIView):
         tags=['0단계 - 사용자 관리'],
         summary='access 토큰 재발급',
         description='refresh_token 쿠키로 새 access 토큰을 발급해 쿠키로 내려줍니다. 활동이 있는 '
-                     '동안은 refresh 토큰도 매번 새로 발급해(슬라이딩) 세션이 계속 연장되게 합니다 — '
-                     '그렇지 않으면 로그인 시점 기준 24시간 뒤 활동 중이어도 무조건 로그아웃됩니다.',
+                    '동안은 refresh 토큰도 매번 새로 발급해(슬라이딩) 세션이 계속 연장되게 합니다 — '
+                    '그렇지 않으면 로그인 시점 기준 24시간 뒤 활동 중이어도 무조건 로그아웃됩니다.',
         responses={200: OpenApiTypes.OBJECT, 401: OpenApiTypes.OBJECT}
     )
     def post(self, request):
@@ -195,6 +195,7 @@ class CurrentUserProfileView(APIView):
     """
     현재 로그인한 사용자 프로필 조회/수정 API
     GET /api/users/me/
+    PATCH /api/users/me/ (본인 프로필 및 온보딩 상태 수정)
     """
     permission_classes = [permissions.IsAuthenticated]
 
@@ -208,6 +209,23 @@ class CurrentUserProfileView(APIView):
         serializer = UserDetailSerializer(request.user)
         return Response(serializer.data)
 
+    @extend_schema(
+        tags=['0단계 - 사용자 관리'],
+        summary='현재 로그인 유저 프로필 수정 / 온보딩 완료',
+        description='본인의 상세 프로필 정보 및 온보딩 완료 상태(`is_onboarded=True`)를 업데이트합니다.',
+        request=UserDetailSerializer,
+        responses={200: UserDetailSerializer, 400: OpenApiTypes.OBJECT}
+    )
+    def patch(self, request):
+        """
+        [2026-09-08 추가] 온보딩 완료 시 프로필(전화번호 등) 입력 및 is_onboarded=True 처리를 함께 수행
+        """
+        serializer = UserDetailSerializer(request.user, data=request.data, partial=True)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data, status=status.HTTP_200_OK)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
 
 class ChangePasswordView(APIView):
     """
@@ -220,7 +238,7 @@ class ChangePasswordView(APIView):
     @extend_schema(
         tags=['0단계 - 사용자 관리'],
         summary='본인 비밀번호 변경',
-        description='현재 비밀번호 확인 후 새 비밀번호로 변경합니다.',
+        description='현재 비밀번호 확인 후 새 비밀번호로 변경합니다. (온보딩 과정에서 변경 시 is_onboarded=True 전환)',
         responses={200: None, 400: None},
     )
     def patch(self, request):
@@ -235,7 +253,11 @@ class ChangePasswordView(APIView):
             return Response({"error": "새 비밀번호는 4자 이상이어야 합니다."}, status=status.HTTP_400_BAD_REQUEST)
 
         request.user.set_password(new_password)
-        request.user.save(update_fields=['password'])
+        
+        # 2026-09-08: 초기 비밀번호 변경 시 온보딩을 완료한 것으로 판단하여 is_onboarded=True 함께 반영
+        request.user.is_onboarded = True
+        request.user.save(update_fields=['password', 'is_onboarded'])
+        
         return Response({"message": "비밀번호가 변경되었습니다."}, status=status.HTTP_200_OK)
 
 
@@ -346,7 +368,7 @@ class UserManageView(generics.RetrieveUpdateDestroyAPIView):
 
     @extend_schema(tags=['0단계 - 사용자 관리'], summary='직원 정보 수정 (PM 전용)',
                     description='이름/부서/직급/직무/권한(role_code)/상태(status_code)/연락처/'
-                                '입사일/퇴사일/참여 프로젝트 등을 수정합니다.')
+                                '입사일/퇴사일/참여 프로젝트/온보딩 상태 등을 수정합니다.')
     def patch(self, request, *args, **kwargs):
         return super().patch(request, *args, **kwargs)
 
@@ -385,7 +407,7 @@ class UserPasswordResetView(APIView):
     @extend_schema(
         tags=['0단계 - 사용자 관리'],
         summary='비밀번호 초기화 (PM 전용)',
-        description='해당 직원의 비밀번호를 1111로 초기화합니다. 다음 로그인 시 본인이 바꿔야 합니다.',
+        description='해당 직원의 비밀번호를 1111로 초기화합니다. 비밀번호 변경 시 온보딩을 새로 진행해야 하므로 is_onboarded=False로 리셋합니다.',
         responses={200: UserPasswordResetResponseSerializer}
     )
     def post(self, request, id):
@@ -394,7 +416,11 @@ class UserPasswordResetView(APIView):
         except User.DoesNotExist:
             return Response({"error": "존재하지 않는 사용자입니다."}, status=status.HTTP_404_NOT_FOUND)
         user.set_password('1111')
-        user.save()
+        
+        # 2026-09-08: PM이 비밀번호를 초기화하면 다시 온보딩 절차를 밟도록 is_onboarded=False로 리셋
+        user.is_onboarded = False
+        user.save(update_fields=['password', 'is_onboarded'])
+        
         return Response({"message": "비밀번호가 초기화되었습니다."}, status=status.HTTP_200_OK)
 
 

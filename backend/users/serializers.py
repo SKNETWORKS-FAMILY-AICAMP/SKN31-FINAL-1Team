@@ -37,13 +37,13 @@ class UserCertificationSerializer(serializers.ModelSerializer):
 
 class UserSimpleSerializer(serializers.ModelSerializer):
     """
-    타 앱(tasks, meetings 등)에서 담당자/작성자 참조용 간단 Serializer
+    타 앱(tasks, meetings 등) 및 로그인 성공 응답에서 담당자/작성자/사용자 참조용 간단 Serializer
     """
     full_name = serializers.SerializerMethodField()
 
     class Meta:
         model = User
-        fields = ['id', 'username', 'full_name', 'emp_no']
+        fields = ['id', 'username', 'full_name', 'emp_no', 'is_onboarded']
 
     @extend_schema_field(serializers.CharField())
     def get_full_name(self, obj):
@@ -86,6 +86,7 @@ class UserDetailSerializer(serializers.ModelSerializer):
             'status_info',
             'is_staff',
             'is_busy',
+            'is_onboarded',
             'hire_date',
             'resign_date',
             'past_projects',

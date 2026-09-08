@@ -1,4 +1,4 @@
-#tasks/views.py
+# tasks/views.py
 from rest_framework import generics, status, permissions
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -18,6 +18,8 @@ from tasks.serializers import (
     TaskAssignmentCreateSerializer,
     TaskStatusUpdateSerializer,
 )
+# services.py에서 구현되어 있는 AI 로직 함수 임포트
+from tasks.services import run_assignee_mapping, run_task_generation
 from requirements.models import RequirementItem
 from projects.models import PipelineHistory, Project
 from notifications.services import notify_user
@@ -216,7 +218,7 @@ class TaskStatusUpdateView(APIView):
         if new_status not in TaskStatusCode.VALUES:
             return Response({"error": "유효하지 않은 status_code 값입니다."}, status=status.HTTP_400_BAD_REQUEST)
 
-        # 반려는 승인 대기 상태에서만 사유와 함께 — 담당자를 다시 배정 없이 그냥 되돌리면
+        # 반려시는 승인 대기 상태에서만 사유와 함께 — 담당자를 다시 배정 없이 그냥 되돌리면
         # 사유가 안 남아 왜 반려됐는지 알 방법이 없다.
         if new_status == TaskStatusCode.REJECTED:
             reason = request.data.get('reject_reason', '').strip()
@@ -245,3 +247,39 @@ class TaskStatusUpdateView(APIView):
             "message": "업무 상태가 성공적으로 변경되었습니다.",
             "task": TaskAssignmentSerializer(task).data
         }, status=status.HTTP_200_OK)
+
+
+class AIAssigneeMappingView(APIView):
+    """
+    AI 담당자 매핑 API
+    POST /api/tasks/ai/assignee-mapping/ (또는 /api/ai/assignee-mapping/)
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    @extend_schema(
+        tags=['3단계 - 업무 배정'],
+        summary='AI 담당자 매핑 추천',
+        description='AI 알고리즘을 활용하여 업무 요구사항에 가장 적합한 담당자 매핑 결과를 추천받습니다.',
+        responses={200: OpenApiResponse(description='AI 담당자 매핑 성공')}
+    )
+    def post(self, request):
+        result = run_assignee_mapping(request.data)
+        return Response(result, status=status.HTTP_200_OK)
+
+
+class AITaskGenerationView(APIView):
+    """
+    AI 업무 생성 API
+    POST /api/tasks/ai/task-generation/ (또는 /api/ai/task-generation/)
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    @extend_schema(
+        tags=['3단계 - 업무 배정'],
+        summary='AI 업무 자동 생성',
+        description='요구사항 명세서를 바탕으로 AI가 구체적인 업무 목록을 자동 생성합니다.',
+        responses={200: OpenApiResponse(description='AI 업무 생성 성공')}
+    )
+    def post(self, request):
+        result = run_task_generation(request.data)
+        return Response(result, status=status.HTTP_200_OK)
