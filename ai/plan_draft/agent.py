@@ -6,9 +6,26 @@
   [3] 섹션 정렬·병합        코드
   [4] is_incomplete 판정    코드
   [5] unresolved 전달       코드
+
+실패 처리:
+  _call()이 노드②의 유일한 LLM 호출 지점이다(run()·regenerate_section()
+  둘 다 여기를 거친다). Instructor 재시도가 모두 소진되면
+  InstructorRetryException이 올라오는데, 그대로 두면 호출부가 원인을
+  구분 못 하고 뭉뚱그려 처리하게 되므로 여기서 로그를 남기고 원인별로
+  구분된 NodeGenerationError로 다시 던진다. (호출부가 cause_code별로
+  다른 안내문을 고르는 부분은 별도 작업 — shared/errors.py 참고.)
 """
+import logging
 from html import escape
 
+from openai import APIError
+
+try:
+    from instructor.core import InstructorRetryException
+except ImportError:  # 구버전 instructor 호환
+    from instructor.exceptions import InstructorRetryException
+
+from shared.errors import NodeGenerationError
 from shared.llm_client import get_client
 from shared.retry_config import MAX_RETRIES, MAX_TOKENS, MODEL, PROVIDER, TEMPERATURE
 
@@ -27,26 +44,78 @@ from .schemas import (
     SectionType,
 )
 
+logger = logging.getLogger(__name__)
+
 ALLOWED_TAGS = {"p", "ul", "li", "strong"}
 
 
-def _call(system: str, messages: list[dict], response_model):
-    """provider별 호출 차이를 흡수합니다."""
-    client = get_client()
-    common = dict(
-        model=MODEL,
-        response_model=response_model,
-        max_retries=MAX_RETRIES,
-        temperature=TEMPERATURE,
-    )
-    if PROVIDER == "anthropic":
-        # 
-        return client.messages.create(
-            system=system, max_tokens=MAX_TOKENS, messages=messages, **common
+def _call(system: str, messages: list[dict], response_model, context: str = ""):
+    """provider별 호출 차이를 흡수합니다.
+
+    context: 로그에 남길 짧은 설명(예: "run" 또는 재생성 대상 section_key).
+    어떤 호출이 실패했는지 로그만 보고 알 수 있게 하기 위함이다.
+    """
+    try:
+        client = get_client()
+        common = dict(
+            model=MODEL,
+            response_model=response_model,
+            max_retries=MAX_RETRIES,
+            temperature=TEMPERATURE,
         )
-    return client.chat.completions.create(
-        messages=[{"role": "system", "content": system}] + messages, **common
-    )
+        if PROVIDER == "anthropic":
+            return client.messages.create(
+                system=system, max_tokens=MAX_TOKENS, messages=messages, **common
+            )
+        return client.chat.completions.create(
+            messages=[{"role": "system", "content": system}] + messages, **common
+        )
+    except InstructorRetryException as e:
+        logger.exception(
+            "노드② 기획서 생성 실패(%s) — 재시도 %s회 모두 스키마 검증 실패",
+            context or "run", e.n_attempts,
+        )
+        raise NodeGenerationError(
+            "AI가 기획서를 정해진 형식으로 생성하지 못했습니다"
+            f"(재시도 {e.n_attempts}회 모두 실패). "
+            "회의록 구조화 결과가 너무 짧거나 모호하지 않은지 확인해 주세요.",
+            cause_code="LLM_RETRY_EXHAUSTED",
+            node="plan_draft",
+            original=e,
+        ) from e
+    except RuntimeError as e:
+        # get_client()가 OPENAI_API_KEY 미설정 시 던지는 예외.
+        logger.exception(
+            "노드② 기획서 생성 실패(%s) — 설정 오류", context or "run",
+        )
+        raise NodeGenerationError(
+            "AI 서비스 설정에 문제가 있어 기획서를 생성할 수 없습니다. "
+            "관리자에게 문의해 주세요.",
+            cause_code="CONFIG_ERROR",
+            node="plan_draft",
+            original=e,
+        ) from e
+    except APIError as e:
+        logger.exception(
+            "노드② 기획서 생성 실패(%s) — OpenAI API 호출 오류", context or "run",
+        )
+        raise NodeGenerationError(
+            "AI 서비스 호출에 실패했습니다(네트워크 또는 서비스 오류). "
+            "잠시 후 다시 시도해 주세요.",
+            cause_code="LLM_API_ERROR",
+            node="plan_draft",
+            original=e,
+        ) from e
+    except Exception as e:
+        logger.exception(
+            "노드② 기획서 생성 실패(%s) — 알 수 없는 오류", context or "run",
+        )
+        raise NodeGenerationError(
+            "기획서 생성 중 예상치 못한 오류가 발생했습니다.",
+            cause_code="UNKNOWN",
+            node="plan_draft",
+            original=e,
+        ) from e
 
 
 def _source_is_empty(structured: dict, source_fields: list[str]) -> bool:
@@ -78,7 +147,8 @@ def _source_is_empty(structured: dict, source_fields: list[str]) -> bool:
 def run(structured: dict, proposal_id: str) -> PlanDocument:
     # ── [1] 서술형 5개 생성 ──────────────────────────────────
     result: PlanSections = _call(
-        SYSTEM_PROMPT, build_messages(structured), PlanSections
+        SYSTEM_PROMPT, build_messages(structured), PlanSections,
+        context=f"run proposal_id={proposal_id}",
     )
     by_key = {s.key: s for s in result.sections}
 
@@ -180,6 +250,7 @@ def regenerate_section(
         SYSTEM_PROMPT + "\n\n" + REGENERATE_PROMPT,
         build_regenerate_messages(structured, section_key, reject_type, comment),
         PlanSections,
+        context=f"regenerate_section={section_key}",
     )
     gen = next((s for s in result.sections if s.key == section_key), None)
     content = gen.content_html if gen else ""
