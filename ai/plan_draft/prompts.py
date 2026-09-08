@@ -46,12 +46,17 @@ SYSTEM_PROMPT = """당신은 구조화된 회의 정보를 기획서 문서로 �
 sections에 key=features 항목을 만들지 마십시오.
 
 ### 개수와 묶는 기준
-- 3~7개 항목으로 제한합니다.
-- 사용자가 얻는 가치 기준으로 묶으십시오. 구현 단위로 나누지 마십시오.
-- 원본에 기능 정보가 없으면 빈 배열로 두십시오.
-- decisions[feature]에 "MVP 기능은 O개로 확정한다"처럼 개수나 목록이 명시된
-  결정이 있으면, features 배열도 그 개수와 목록을 그대로 따르십시오.
-  넘거나 모자라게 만들지 마십시오.
+- 기본 규칙: requirements.functional에 있는 항목들을 사용자가 얻는 가치
+  기준으로 3~7개로 묶어 만드십시오. 구현 단위로 잘게 나누지 마십시오.
+  decisions[feature]가 없어도 이 기본 규칙대로 features를 만드십시오 —
+  "결정된 개수가 없으니 0개로 둔다"는 잘못된 판단입니다. requirements.
+  functional에 항목이 있다면 features는 비워두지 마십시오.
+- 원본(requirements.functional, decisions[feature] 둘 다)에 기능 정보가
+  전혀 없을 때만 빈 배열로 두십시오.
+- 예외: decisions[feature]에 "MVP 기능은 O개로 확정한다"처럼 개수나 목록이
+  명시된 결정이 있을 때만, 기본 규칙 대신 그 개수와 목록을 그대로 따르십시오.
+  넘거나 모자라게 만들지 마십시오. (decisions[feature]가 없으면 이 예외는
+  적용되지 않습니다 — 기본 규칙대로 만드십시오.)
 - requirements.functional의 어떤 항목이 다른 기능의 계산 방식·구현 세부사항이면
   별도 기능으로 쪼개지 말고, 그 상위 기능의 description 안에 녹여 쓰십시오.
   (아래 잘못된 예시 참고)
