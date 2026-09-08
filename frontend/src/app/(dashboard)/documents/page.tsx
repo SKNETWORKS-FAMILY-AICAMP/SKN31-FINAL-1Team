@@ -122,8 +122,6 @@ const PRIORITY_OPTIONS: { code_id: string; label: string }[] = [
   { code_id: "PRIORITY_LOW", label: "하" },
 ];
 
-// 코드 끝의 숫자를 1 증가시킨다(FR-01-003 -> FR-01-004). 자릿수는 유지(001, 01 등).
-// 숫자로 안 끝나면 원본 그대로 반환.
 // 코드의 마지막 "-NNN" 세부번호를 뗀 그룹 부분(FR-01-003 -> FR-01). 같은 그룹 안에서는
 // +버튼으로 끼워넣지 않는다(사용자 요청 — FR-01-001과 FR-01-002 사이엔 없어야 함) —
 // 그룹이 바뀌는 경계(예: FR-01-003과 FR-02-001 사이)에서만 새 항목을 추가할 수 있다.
@@ -132,6 +130,8 @@ function groupOf(code: string): string {
   return m ? m[1] : code;
 }
 
+// 코드 끝의 숫자를 1 증가시킨다(FR-01-003 -> FR-01-004). 자릿수는 유지(001, 01 등).
+// 숫자로 안 끝나면 원본 그대로 반환.
 function incrementCode(code: string): string {
   const m = code.match(/^(.*?)(\d+)$/);
   if (!m) return code;
@@ -139,6 +139,17 @@ function incrementCode(code: string): string {
   const next = String(parseInt(numStr, 10) + 1).padStart(numStr.length, "0");
   return prefix + next;
 }
+
+// "FR-01-003" -> {prefix:"FR", group:"01", seq:"003"} — 하단 항목 추가 폼에서 분류/그룹
+// 드롭박스와 다음 번호 자동계산에 쓴다. 형식이 안 맞으면 null.
+function parseCode(code: string): { prefix: "FR" | "NFR"; group: string; seq: string } | null {
+  const m = code.match(/^(FR|NFR)-(\d+)-(\d+)$/);
+  if (!m) return null;
+  return { prefix: m[1] as "FR" | "NFR", group: m[2], seq: m[3] };
+}
+
+// 우선순위 정렬용 가중치 — 상단 컬럼 헤더 클릭 정렬(엑셀처럼)에 사용.
+const PRIORITY_SORT_WEIGHT: Record<string, number> = { HIGH: 3, MEDIUM: 2, LOW: 1 };
 
 function specToProposalDoc(spec: SpecDto): ProposalDoc {
   return {
@@ -1144,6 +1155,28 @@ function RequirementSection({
   const [editDesc, setEditDesc] = useState("");
   const [editPriority, setEditPriority] = useState("");
 
+  // 같은 그룹 안에는 행 사이 +버튼이 안 뜨니(위 groupOf 참고), 기존 그룹 안에 항목을 더
+  // 추가하려면 이 하단 버튼이 필요하다(사용자 요청 — "추가하기 버튼 살려줘"). 코드를
+  // 직접 입력하는 대신 분류(기능/비기능)와 그룹을 고르면 그 안에서 다음 번호가 자동으로
+  // 매겨진다(예: FR-01에 001~004가 있으면 005).
+  const [bottomAddOpen, setBottomAddOpen] = useState(false);
+  const [bottomCategory, setBottomCategory] = useState<"FR" | "NFR">("FR");
+  const [bottomGroup, setBottomGroup] = useState<string>("__new__");
+  const [bottomName, setBottomName] = useState("");
+  const [bottomDesc, setBottomDesc] = useState("");
+  const [bottomPriority, setBottomPriority] = useState("");
+
+  // 엑셀처럼 컬럼 헤더를 눌러 정렬(코드/우선순위) — null이면 원래 순서(순번=order 기준).
+  // 정렬 중에는 화면 순서가 실제 저장 순서(order)와 달라지므로 그룹 경계 판단이나 행
+  // 사이 +버튼 삽입이 의미 없어져서 정렬 중엔 숨긴다(아래 렌더링 참고).
+  const [sortColumn, setSortColumn] = useState<"code" | "priority" | null>(null);
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
+  const toggleSort = (col: "code" | "priority") => {
+    if (sortColumn !== col) { setSortColumn(col); setSortDir("asc"); }
+    else if (sortDir === "asc") setSortDir("desc");
+    else { setSortColumn(null); setSortDir("asc"); }
+  };
+
   const creating = busy === `${spec.id}-create-reqdef`;
   const extracting = reqDef && busy === `reqdef-${reqDef.id}-extract`;
   const addingItem = reqDef && busy === `reqdef-${reqDef.id}-additem`;
@@ -1373,6 +1406,79 @@ function RequirementSection({
           </tr>
         );
 
+        // 하단 "항목 직접 추가" 버튼 — 같은 그룹 안에는 행 사이 +버튼이 없어서, 기존 그룹에
+        // 항목을 더 넣고 싶을 때 쓴다(사용자 요청). 분류(기능/비기능)+그룹을 고르면 그
+        // 그룹의 다음 번호가 자동으로 매겨진다(코드 직접 입력 없음).
+        const groupsFor = (prefix: "FR" | "NFR"): string[] => {
+          const set = new Set<string>();
+          reqDef.items.forEach(it => {
+            const p = parseCode(it.req_code);
+            if (p && p.prefix === prefix) set.add(p.group);
+          });
+          return Array.from(set).sort();
+        };
+        const nextSeqInGroup = (prefix: "FR" | "NFR", group: string): string => {
+          const seqs = reqDef.items
+            .map(it => parseCode(it.req_code))
+            .filter((p): p is NonNullable<typeof p> => !!p && p.prefix === prefix && p.group === group)
+            .map(p => parseInt(p.seq, 10));
+          const max = seqs.length ? Math.max(...seqs) : 0;
+          return String(max + 1).padStart(3, "0");
+        };
+        const nextGroupNumber = (prefix: "FR" | "NFR"): string => {
+          const nums = groupsFor(prefix).map(g => parseInt(g, 10));
+          const max = nums.length ? Math.max(...nums) : 0;
+          return String(max + 1).padStart(2, "0");
+        };
+        const bottomCode = bottomGroup === "__new__"
+          ? `${bottomCategory}-${nextGroupNumber(bottomCategory)}-001`
+          : `${bottomCategory}-${bottomGroup}-${nextSeqInGroup(bottomCategory, bottomGroup)}`;
+        const bottomOrder = (): number => {
+          const items = reqDef.items;
+          if (items.length === 0) return 1;
+          if (bottomGroup === "__new__") return items[items.length - 1].order + 1;
+          let lastIdx = -1;
+          items.forEach((it, i) => {
+            const p = parseCode(it.req_code);
+            if (p && p.prefix === bottomCategory && p.group === bottomGroup) lastIdx = i;
+          });
+          if (lastIdx === -1) return items[items.length - 1].order + 1;
+          if (lastIdx === items.length - 1) return items[lastIdx].order + 1;
+          return (items[lastIdx].order + items[lastIdx + 1].order) / 2;
+        };
+        const openBottomAdd = () => {
+          setBottomAddOpen(true);
+          const groups = groupsFor(bottomCategory);
+          setBottomGroup(groups[0] ?? "__new__");
+          setBottomName(""); setBottomDesc(""); setBottomPriority("");
+        };
+        const submitBottomAdd = () => {
+          if (!bottomName.trim()) return;
+          onAddItem(reqDef.id, {
+            req_code: bottomCode,
+            req_name: bottomName.trim(),
+            description: bottomDesc.trim(),
+            order: bottomOrder(),
+            priority_code: bottomPriority || null,
+          });
+          setBottomAddOpen(false);
+        };
+
+        // 엑셀처럼 코드/우선순위 헤더를 눌러 정렬 — 정렬 중엔 화면 순서가 실제 order와
+        // 달라지므로 그룹 경계/삽입 위치 계산(+버튼)은 원래 순서(reqDef.items) 기준 그대로
+        // 두고, 화면에 뿌리는 목록만 displayItems로 바꾼다.
+        const displayItems = !sortColumn ? reqDef.items : [...reqDef.items].sort((a, b) => {
+          let cmp = 0;
+          if (sortColumn === "code") cmp = a.req_code.localeCompare(b.req_code);
+          else if (sortColumn === "priority") {
+            const wa = PRIORITY_SORT_WEIGHT[a.priority_info?.code_name ?? ""] ?? 0;
+            const wb = PRIORITY_SORT_WEIGHT[b.priority_info?.code_name ?? ""] ?? 0;
+            cmp = wa - wb;
+          }
+          return sortDir === "asc" ? cmp : -cmp;
+        });
+        const sortArrow = (col: "code" | "priority") => sortColumn === col ? (sortDir === "asc" ? "▲" : "▼") : "";
+
         if (reqDef.items.length === 0) {
           return (
             <div className="py-4 text-center space-y-3">
@@ -1394,23 +1500,32 @@ function RequirementSection({
         }
 
         return (
+        <>
         <div className="border border-border rounded-xl overflow-hidden">
           <table className="w-full text-sm text-left">
             <thead className="text-xs text-muted-foreground uppercase bg-black/5 dark:bg-white/5">
               <tr>
                 <th className="px-4 py-2.5 font-bold w-14">순번</th>
                 <th className="px-4 py-2.5 font-bold w-24">분류</th>
-                <th className="px-4 py-2.5 font-bold w-24">코드</th>
+                <th className="px-4 py-2.5 font-bold w-28">
+                  <button type="button" onClick={() => toggleSort("code")} className="flex items-center gap-1 hover:text-foreground">
+                    코드 <span className="text-primary">{sortArrow("code")}</span>
+                  </button>
+                </th>
                 <th className="px-4 py-2.5 font-bold">요구사항명</th>
-                <th className="px-4 py-2.5 font-bold w-20">우선순위</th>
+                <th className="px-4 py-2.5 font-bold w-24">
+                  <button type="button" onClick={() => toggleSort("priority")} className="flex items-center gap-1 hover:text-foreground">
+                    우선순위 <span className="text-primary">{sortArrow("priority")}</span>
+                  </button>
+                </th>
                 {!isPM && !itemsLocked && <th className="px-4 py-2.5 font-bold w-20 text-right">관리</th>}
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {!isPM && !itemsLocked && (
+              {!sortColumn && !isPM && !itemsLocked && (
                 addFormAt === "start" ? renderAddFormRow("start") : renderDivider("start")
               )}
-              {reqDef.items.map((item, index) => {
+              {displayItems.map((item, index) => {
                 const isEditing = editingItemId === item.id;
                 const deleting = busy === `reqitem-${item.id}-delete`;
                 const updating = busy === `reqitem-${item.id}-update`;
@@ -1423,7 +1538,7 @@ function RequirementSection({
                           도메인 세부분류(재고 관리, 보안성 등)라 기능/비기능 여부와는 다르다. */}
                       {item.req_code?.startsWith("NFR") ? "비기능" : item.req_code?.startsWith("FR") ? "기능" : "-"}
                     </td>
-                    <td className="px-4 py-2.5 font-mono text-xs text-muted-foreground align-middle">{item.req_code}</td>
+                    <td className="px-4 py-2.5 font-mono text-xs text-muted-foreground align-middle whitespace-nowrap">{item.req_code}</td>
                     <td className="px-4 py-2.5 align-top">
                       {isEditing ? (
                         <div className="space-y-1.5">
@@ -1521,8 +1636,9 @@ function RequirementSection({
                     )}
                   </tr>
                   {/* 같은 그룹(FR-01 등) 안에서는 +버튼을 안 보여준다 — 다음 항목이 없거나
-                      (마지막 행) 그룹이 다를 때만 표시. */}
-                  {!isPM && !itemsLocked && (
+                      (마지막 행) 그룹이 다를 때만 표시. 정렬 중에는 화면 순서와 실제 order가
+                      달라서 삽입 위치 계산이 의미 없어지므로 +버튼 자체를 숨긴다. */}
+                  {!sortColumn && !isPM && !itemsLocked && (
                     index === reqDef.items.length - 1 || groupOf(item.req_code) !== groupOf(reqDef.items[index + 1].req_code)
                   ) && (
                     addFormAt === item.id ? renderAddFormRow(item.id) : renderDivider(item.id)
@@ -1533,11 +1649,84 @@ function RequirementSection({
             </tbody>
           </table>
         </div>
+        {!isPM && !itemsLocked && (
+          bottomAddOpen ? (
+            <div className="border border-border rounded-xl p-4 space-y-2 mt-3">
+              <div className="grid grid-cols-2 gap-2">
+                <select
+                  value={bottomCategory}
+                  onChange={e => {
+                    const cat = e.target.value as "FR" | "NFR";
+                    setBottomCategory(cat);
+                    setBottomGroup(groupsFor(cat)[0] ?? "__new__");
+                  }}
+                  className="bg-black/5 dark:bg-white/5 border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
+                >
+                  <option value="FR">기능 (FR)</option>
+                  <option value="NFR">비기능 (NFR)</option>
+                </select>
+                <select
+                  value={bottomGroup}
+                  onChange={e => setBottomGroup(e.target.value)}
+                  className="bg-black/5 dark:bg-white/5 border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
+                >
+                  {groupsFor(bottomCategory).map(g => (
+                    <option key={g} value={g}>{bottomCategory}-{g} (다음 {nextSeqInGroup(bottomCategory, g)})</option>
+                  ))}
+                  <option value="__new__">새 그룹 추가 ({bottomCategory}-{nextGroupNumber(bottomCategory)})</option>
+                </select>
+              </div>
+              <div className="grid grid-cols-[1fr_120px] gap-2">
+                <input
+                  value={bottomName}
+                  onChange={e => setBottomName(e.target.value)}
+                  placeholder="요구사항명"
+                  className="bg-black/5 dark:bg-white/5 border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
+                />
+                <select
+                  value={bottomPriority}
+                  onChange={e => setBottomPriority(e.target.value)}
+                  className="bg-black/5 dark:bg-white/5 border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
+                >
+                  <option value="">우선순위</option>
+                  {PRIORITY_OPTIONS.map(p => (
+                    <option key={p.code_id} value={p.code_id}>{p.label}</option>
+                  ))}
+                </select>
+              </div>
+              <textarea
+                value={bottomDesc}
+                onChange={e => setBottomDesc(e.target.value)}
+                placeholder="상세 내용"
+                className="w-full bg-black/5 dark:bg-white/5 border border-border rounded-lg px-3 py-2 text-sm resize-none h-20 focus:outline-none focus:ring-2 focus:ring-primary/40"
+              />
+              <div className="flex items-center justify-between">
+                <p className="text-[11px] text-muted-foreground/70 font-mono">코드 {bottomCode} (자동)</p>
+                <div className="flex justify-end gap-2">
+                  <button onClick={() => setBottomAddOpen(false)} className="px-4 py-2 text-sm font-semibold text-muted-foreground hover:bg-black/5 dark:hover:bg-white/5 rounded-lg">취소</button>
+                  <button
+                    onClick={submitBottomAdd}
+                    disabled={!bottomName.trim() || !!addingItem}
+                    className="flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-bold hover:bg-primary/90 disabled:opacity-50"
+                  >
+                    {addingItem ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+                    추가
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <button
+              onClick={openBottomAdd}
+              className="mt-3 flex items-center gap-1.5 text-xs font-semibold text-primary hover:underline"
+            >
+              <Plus className="w-3.5 h-3.5" /> 항목 직접 추가
+            </button>
+          )
+        )}
+        </>
         );
       })()}
-
-      {/* 예전엔 여기(표 하단)에 고정된 "항목 직접 추가" 버튼/폼이 있었다 — 행 사이 +버튼
-          방식(위 renderDivider/renderAddFormRow)으로 대체했다(사용자 요청). */}
     </div>
   );
 }
