@@ -1,3 +1,4 @@
+#requirements/views.py
 import logging
 from django.db import transaction
 from django.shortcuts import get_object_or_404
@@ -324,8 +325,44 @@ class RequirementExtractView(APIView):
 )
 class RequirementItemViewSet(generics.ListCreateAPIView):
     """
-    요구사항 세부 항목(RequirementItem) CRUD API
+    요구사항 세부 항목(RequirementItem) 목록 조회 및 추가 API
     GET/POST /api/requirements/items/
+    """
+    queryset = RequirementItem.objects.all().select_related('priority_code', 'req_def')
+    serializer_class = RequirementItemSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+
+@extend_schema_view(
+    get=extend_schema(
+        tags=['2단계 - 요구사항 정의서'],
+        summary='세부 요구사항 항목 단건 조회',
+        description='특정 세부 요구사항 항목(`item_id`)의 상세 정보를 조회합니다.',
+        responses={200: RequirementItemSerializer}
+    ),
+    put=extend_schema(
+        tags=['2단계 - 요구사항 정의서'],
+        summary='세부 요구사항 항목 전체 수정',
+        description='특정 세부 요구사항 항목(`item_id`)의 전체 필드를 수정합니다.',
+        responses={200: RequirementItemSerializer}
+    ),
+    patch=extend_schema(
+        tags=['2단계 - 요구사항 정의서'],
+        summary='세부 요구사항 항목 부분 수정',
+        description='특정 세부 요구사항 항목(`item_id`)의 일부 필드를 수정합니다.',
+        responses={200: RequirementItemSerializer}
+    ),
+    delete=extend_schema(
+        tags=['2단계 - 요구사항 정의서'],
+        summary='세부 요구사항 항목 삭제',
+        description='특정 세부 요구사항 항목(`item_id`)을 삭제합니다.',
+        responses={204: None}
+    )
+)
+class RequirementItemDetailView(generics.RetrieveUpdateDestroyAPIView):
+    """
+    요구사항 세부 항목(RequirementItem) 단건 조회 / 수정 / 삭제 API
+    GET/PUT/PATCH/DELETE /api/requirements/items/{pk}/
     """
     queryset = RequirementItem.objects.all().select_related('priority_code', 'req_def')
     serializer_class = RequirementItemSerializer
