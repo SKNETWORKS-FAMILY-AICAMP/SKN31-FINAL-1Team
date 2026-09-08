@@ -106,8 +106,15 @@ const STATUS_META: Record<BareStatus, { label: string; className: string; icon: 
   REJECTED: { label: "반려됨", className: "bg-red-500/10 text-red-500", icon: XCircle },
 };
 
-// 요구사항 항목의 우선순위(CommonCode REQ_PRIORITY 그룹, code_name 기준) 한글 표시.
+// 요구사항 항목의 우선순위(CommonCode REQ_PRIORITY 그룹, code_name 기준) 한글 표시 + 배지 색.
+// 설명 하단에 회색 텍스트로만 있어서 눈에 안 띈다는 피드백 — 별도 컬럼으로 빼고 상/중/하를
+// 신호등처럼(급함=빨강, 보통=주황, 낮음=회색) 색으로 구분한다.
 const PRIORITY_LABEL: Record<string, string> = { HIGH: "상", MEDIUM: "중", LOW: "하" };
+const PRIORITY_BADGE_CLASS: Record<string, string> = {
+  HIGH: "bg-red-500/10 text-red-500",
+  MEDIUM: "bg-amber-500/10 text-amber-500",
+  LOW: "bg-slate-500/10 text-slate-400",
+};
 
 function specToProposalDoc(spec: SpecDto): ProposalDoc {
   return {
@@ -1297,7 +1304,7 @@ function RequirementSection({
         );
         const renderDivider = (pos: number | "start") => (
           <tr className="group h-3">
-            <td colSpan={5} className="p-0 relative">
+            <td colSpan={6} className="p-0 relative">
               <div className="absolute inset-x-4 top-1/2 -translate-y-1/2 border-t border-dashed border-transparent group-hover:border-border/60 transition-colors" />
               <button
                 type="button"
@@ -1312,7 +1319,7 @@ function RequirementSection({
         );
         const renderAddFormRow = (pos: number | "start") => (
           <tr>
-            <td colSpan={5} className="px-4 py-3 bg-black/5 dark:bg-white/5">
+            <td colSpan={6} className="px-4 py-3 bg-black/5 dark:bg-white/5">
               {addFormFields(pos)}
             </td>
           </tr>
@@ -1347,6 +1354,7 @@ function RequirementSection({
                 <th className="px-4 py-2.5 font-bold w-24">분류</th>
                 <th className="px-4 py-2.5 font-bold w-24">코드</th>
                 <th className="px-4 py-2.5 font-bold">요구사항명</th>
+                <th className="px-4 py-2.5 font-bold w-20">우선순위</th>
                 {!isPM && !itemsLocked && <th className="px-4 py-2.5 font-bold w-20 text-right">관리</th>}
               </tr>
             </thead>
@@ -1388,11 +1396,23 @@ function RequirementSection({
                           <p className="text-xs text-muted-foreground mt-0.5">{item.description}</p>
                         </>
                       )}
-                      {/* 분류(기능/비기능)는 왼쪽 열에 이미 나와서 여기서 또 보여줄 필요가 없고,
-                          난이도는 안 쓰기로 해서 우선순위(DB의 priority_info)로 대체했다. */}
-                      <p className="text-xs text-muted-foreground/70 mt-0.5">
-                        우선순위 {PRIORITY_LABEL[item.priority_info?.code_name ?? ""] ?? "미지정"}
-                      </p>
+                    </td>
+                    <td className="px-4 py-2.5 align-top">
+                      {/* 설명 아래 회색 텍스트로만 있던 우선순위를 별도 컬럼 + 상/중/하 색
+                          배지로 바꿨다(가독성 피드백) — 신호등처럼 급함(상)=빨강,
+                          보통(중)=주황, 낮음(하)=회색. */}
+                      {(() => {
+                        const code = item.priority_info?.code_name ?? "";
+                        const label = PRIORITY_LABEL[code];
+                        return (
+                          <span className={cn(
+                            "inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold",
+                            PRIORITY_BADGE_CLASS[code] ?? "bg-black/5 dark:bg-white/5 text-muted-foreground"
+                          )}>
+                            {label ?? "미지정"}
+                          </span>
+                        );
+                      })()}
                     </td>
                     {!isPM && !itemsLocked && (
                       <td className="px-4 py-2.5 align-top">
