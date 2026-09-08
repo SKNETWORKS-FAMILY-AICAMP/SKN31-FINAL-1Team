@@ -1323,7 +1323,7 @@ function NoteDetail({
 
         {/* 검토요청은 하단, 승인/반려는 상단 우측 — "직접수정"도 하단에 있어서 사용자
             흐름상 하단에 두는 게 더 자연스럽다는 판단으로 다시 하단으로 내렸다. */}
-        {spec && !isPM && canGenerate && status === "DRAFT" && (
+        {spec && !isPM && canGenerate && (status === "DRAFT" || status === "REJECTED") && (
           <button
             onClick={() => onSubmitReview(spec)}
             disabled={busy === busyKey("submit")}
