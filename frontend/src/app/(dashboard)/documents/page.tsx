@@ -681,6 +681,10 @@ export default function DocumentsPage() {
   // 명시적으로 걸러서 보내 의도를 분명히 한다.
   const handleConfirmTasks = async (note: NoteDto, spec: SpecDto) => {
     if (!taskDrafts || taskDraftsReqDefId == null) return;
+    if (!taskDrafts.some(d => d.assignee_id != null)) {
+      setErrorToast("담당자가 배정된 업무가 없습니다. 최소 1건 이상 담당자를 지정해주세요.");
+      return;
+    }
     setConfirmingTasks(true);
     try {
       const result = await apiFetch<{ status: string; message?: string; created_count?: number }>(
@@ -1529,6 +1533,13 @@ function TaskDraftReview({
       end: d.end_date,
     }));
 
+  // 전부 "미배정"인 채로 확정을 누르면 서버가 저장할 게 하나도 없어 created_count=0
+  // 인데도 "확정되었습니다" 성공 토스트가 뜨는 버그가 있었다(사용자 신고: "배분 확정하고
+  // DB에 안 들어가는 상황"). "미배정" 자체는 AI가 워크로드/스킬 불일치로 일부러 보류
+  // 추천하는 정상 값이라 드롭박스에서 없앨 수는 없으니, 최소 1건은 배정돼야 확정 버튼을
+  // 누를 수 있게 막는다.
+  const hasAnyAssignee = drafts.some(d => d.assignee_id != null);
+
   return (
     <div className="space-y-4">
       <p className="text-sm text-muted-foreground">
@@ -1605,13 +1616,17 @@ function TaskDraftReview({
         </button>
         <button
           onClick={onConfirm}
-          disabled={confirming}
+          disabled={confirming || !hasAnyAssignee}
+          title={!hasAnyAssignee ? "최소 1건 이상 담당자를 지정해야 확정할 수 있습니다." : undefined}
           className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-bold hover:bg-primary/90 disabled:opacity-50"
         >
           {confirming ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
           배분 확정
         </button>
       </div>
+      {!hasAnyAssignee && (
+        <p className="text-xs text-amber-500 text-right -mt-2">담당자가 배정된 업무가 없습니다. 최소 1건 이상 담당자를 지정해주세요.</p>
+      )}
     </div>
   );
 }

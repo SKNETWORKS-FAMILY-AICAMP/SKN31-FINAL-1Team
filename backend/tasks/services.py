@@ -223,6 +223,14 @@ def confirm_task_assignments(req_def_id: int, assignments: list) -> dict:
     except RequirementDefinition.DoesNotExist:
         return {"status": "error", "message": "요구사항 정의서를 찾을 수 없습니다."}
 
+    # 담당자 미배정 항목만 넘어오면(전부 "미배정"으로 두고 확정을 누른 경우)
+    # 아래 루프가 전부 continue로 건너뛰어 created_count=0인 채 "success"를
+    # 반환하게 된다 — 화면엔 "확정되었습니다"가 뜨는데 DB엔 아무것도 안
+    # 쌓이는 버그로 이어졌다(사용자 신고: "배분 확정하고 DB에 안 들어가는
+    # 상황"). 여기서 미리 막아 명확한 에러로 알린다.
+    if not any(item.get("assignee_id") is not None for item in assignments):
+        return {"status": "error", "message": "담당자가 배정된 업무가 없습니다. 최소 1건 이상 담당자를 지정한 뒤 확정해주세요."}
+
     try:
         with transaction.atomic():
             # task_no는 DB에서 unique 제약이 있는데, AI는 매번 실행마다 TASK-001부터
@@ -233,12 +241,21 @@ def confirm_task_assignments(req_def_id: int, assignments: list) -> dict:
             TaskAssignment.objects.filter(req_item__req_def=req_def).delete()
 
             created_count = 0
+            skipped_no_match = []
             for item in assignments:
                 if item.get("assignee_id") is None:
                     continue
 
                 req_item = req_def.items.filter(req_code=item["source_req_id"]).first()
                 if not req_item:
+                    # req_code가 매칭 안 되는 경우(예: 배분 제안 생성 이후 요구사항
+                    # 항목의 코드가 바뀐 경우) 조용히 건너뛰면 이번 버그와 같은 패턴
+                    # (성공 응답인데 저장 안 됨)이 반복되므로 로그로 남긴다.
+                    skipped_no_match.append(item.get("source_req_id"))
+                    logger.warning(
+                        "업무 배정 확정: req_code=%s 매칭 실패로 건너뜀 (req_def_id=%s)",
+                        item.get("source_req_id"), req_def_id,
+                    )
                     continue
 
                 reason_text = " / ".join(filter(None, [
