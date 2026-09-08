@@ -119,7 +119,10 @@ function proposalDocToPatch(doc: ProposalDoc) {
   };
 }
 
-const isNoteDeletable = (note: NoteDto) => {
+// "기획서 생성"/"검토요청" 버튼은 작성자 본인만 보이는데, 삭제 버튼엔 그 체크가 빠져있었다
+// (실제로 다른 사람이 시작한 초안도 지울 수 있는 상태였음) — PM은 검토 권한상 예외로 허용.
+const isNoteDeletable = (note: NoteDto, currentUserId: string | undefined, isPM: boolean) => {
+  if (!isPM && String(note.created_by) !== currentUserId) return false;
   const spec = note.spec_documents[0];
   if (!spec) return true;
   const s = bareStatus(spec);
@@ -535,7 +538,7 @@ export default function DocumentsPage() {
                         <span className="truncate">작성자 {note.created_by_name || "알 수 없음"}</span>
                       </p>
                     </button>
-                    {isNoteDeletable(note) ? (
+                    {isNoteDeletable(note, user?.id, isPM) ? (
                       <button
                         onClick={() => setDeleteTarget({ id: note.id, title: note.title })}
                         title="문서 삭제"
@@ -690,6 +693,9 @@ function NoteDetail({
   const rawSaving = busy === busyKey("save-raw");
   const rawLocked = !!spec;
   const specLocked = status === "PENDING_REVIEW" || status === "APPROVED";
+  // "기획서 생성"과 같은 기준 — 작성자 본인이 아니면 원본 회의록도 못 고친다(PM은 예외).
+  // 이 체크가 빠져있어서 다른 사람이 시작한 회의록도 아무나 고칠 수 있는 상태였다.
+  const canEditRaw = canGenerate || isPM;
 
   const [editMode, setEditMode] = useState(false);
   const [editDraft, setEditDraft] = useState<ProposalDoc | null>(null);
@@ -769,7 +775,7 @@ function NoteDetail({
               </span>
             )}
           </p>
-          {!rawLocked && rawDirty && (
+          {!rawLocked && canEditRaw && rawDirty && (
             <button
               onClick={() => onSaveNoteContent(rawDraft)}
               disabled={rawSaving}
@@ -782,12 +788,13 @@ function NoteDetail({
         </div>
         <textarea
           value={rawDraft}
-          onChange={e => !rawLocked && setRawDraft(e.target.value)}
-          readOnly={rawLocked}
+          onChange={e => !rawLocked && canEditRaw && setRawDraft(e.target.value)}
+          readOnly={rawLocked || !canEditRaw}
           placeholder="내용이 없습니다."
+          title={!rawLocked && !canEditRaw ? "다른 사용자가 시작한 회의록입니다. 작성자 본인만 수정할 수 있습니다." : undefined}
           className={cn(
             "w-full h-48 bg-black/5 dark:bg-white/5 border border-border rounded-xl p-4 whitespace-pre-wrap overflow-y-auto text-muted-foreground resize-none focus:outline-none transition-all",
-            rawLocked ? "cursor-default" : "focus:ring-2 focus:ring-primary/40"
+            (rawLocked || !canEditRaw) ? "cursor-default" : "focus:ring-2 focus:ring-primary/40"
           )}
         />
       </div>
@@ -846,7 +853,9 @@ function NoteDetail({
           </button>
         )}
 
-        {spec && (status === "REJECTED" || status === "DRAFT") && !editMode && (
+        {/* "기획서 생성"/"검토요청"과 같은 기준(작성자 본인, PM은 예외)으로 맞춘다 —
+            이 체크가 빠져있어서 다른 사람이 시작한 초안도 고칠 수 있는 상태였다. */}
+        {spec && (status === "REJECTED" || status === "DRAFT") && (canGenerate || isPM) && !editMode && (
           <button
             onClick={startEdit}
             className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 text-sm font-bold transition-colors"
