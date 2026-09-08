@@ -15,6 +15,7 @@ from shared.retry_config import DEFAULT_MAX_TOKENS, MAX_RETRIES, TEMPERATURE_STR
 
 from .prompt_builder import build_messages, load_nfr_checklist
 from .schemas import (
+    ItemReviewStatus,
     PlanDocument,
     RequirementDocument,
     RequirementDocumentOutput,
@@ -27,28 +28,36 @@ logger = logging.getLogger(__name__)
 
 
 def verify_baseline_coverage(doc: RequirementDocument) -> List[str]:
-    """baseline 카테고리(보안성·신뢰성)가 최소 1건씩 생성되었는지 확인."""
+    """체크리스트의 모든 카테고리(2026-09-08부터 전부 baseline)가 최소 1건씩
+    생성되었는지 확인한다.
+
+    NFR 표준 카테고리명(보안성/신뢰성 등)은 category_2에 들어간다 —
+    category_1은 "기능"/"비기능" 두 값뿐이라(schemas.py의 validate_consistency
+    참고) 여기서 category_1을 보면 전부 "비기능"으로만 잡혀서 커버리지 확인이
+    항상 무의미해진다. standard_categories와 project_specific_categories
+    둘 다 확인한다 — 전부 baseline으로 바뀌면서 AI 특화 카테고리도 최소 1건
+    보장 대상에 들어갔다.
+    """
     checklist = load_nfr_checklist()
-    baseline_names = [
-        cat["name_kr"]
-        for cat in checklist.get("standard_categories", [])
-        if cat["generation_mode"] == "baseline"
-    ]
+    all_categories = checklist.get("standard_categories", []) + checklist.get(
+        "project_specific_categories", []
+    )
+    baseline_names = [cat["name_kr"] for cat in all_categories if cat["generation_mode"] == "baseline"]
     generated = {
-        item.category_1 for item in doc.requirements if item.type == ReqType.NON_FUNCTIONAL
+        item.category_2 for item in doc.requirements if item.type == ReqType.NON_FUNCTIONAL
     }
     return [name for name in baseline_names if name not in generated]
 
 
 def verify_source_consistency(doc: RequirementDocument) -> List[str]:
-    """Source Enum 구조 변경 및 AttributeError 예방을 위해 안전하게 속성 검사"""
-    baseline_val = getattr(Source, "BASELINE_DEFAULT", "baseline_default")
-    
+    """baseline_default 항목은 항상 검토대기여야 한다는 규칙이 실제로
+    지켜졌는지 확인한다. item.review_status는 문서 단위 게이트(ReviewStatus)가
+    아니라 항목 단위 확신도(ItemReviewStatus)라 그쪽으로 비교해야 한다."""
     return [
         f"{item.id}: baseline 항목이 검토대기가 아님"
         for item in doc.requirements
-        if (item.source == baseline_val or str(getattr(item.source, "value", item.source)) == "baseline_default")
-        and item.review_status != ReviewStatus.PENDING
+        if item.source == Source.BASELINE_DEFAULT
+        and item.review_status != ItemReviewStatus.PENDING
     ]
 
 

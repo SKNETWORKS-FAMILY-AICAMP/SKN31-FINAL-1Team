@@ -38,8 +38,12 @@ def test_prompt_contains_fixed_and_dynamic_parts(sample_plan):
     "overrides,expected_error",
     [
         ({"id": "FR-1-1"}, "ID 포맷"),
-        ({"id": "NFR-01-001", "type": "기능", "category_2": None}, "type"),
-        ({"category_2": "하위분류", "type": "비기능", "id": "NFR-01-001"}, "category_2"),
+        ({"id": "NFR-01-001", "type": "기능"}, "type"),
+        # category_1은 이제 type에서 코드가 강제로 확정하므로(2026-09-08),
+        # LLM이 뭘 보내든 검증 대상이 아니다 — 대신 category_2는 기능/비기능
+        # 둘 다 필수로 바뀌었으니 빈 값이면 걸려야 한다.
+        ({"category_2": None}, "category_2"),
+        ({"category_2": "  "}, "category_2"),
         ({"priority": None, "review_status": "검토완료"}, "priority"),
         ({"source": "baseline_default", "review_status": "검토완료"}, "baseline_default"),
     ],
@@ -47,9 +51,9 @@ def test_prompt_contains_fixed_and_dynamic_parts(sample_plan):
 def test_schema_rejects_rule_violations(overrides, expected_error):
     base = dict(
         id="FR-01-001",
-        category_1="문서 관리",
-        category_2="문서 등록",
-        name="문서 업로드",
+        category_1="기능",
+        category_2="문서 관리",
+        title="문서 업로드",
         description="설명",
         type="기능",
         priority="High",
