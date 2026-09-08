@@ -270,8 +270,9 @@ class RequirementExtractView(APIView):
 
                     # 캐시된 공통 코드에서 우선순위 객체 매핑
                     priority_code_obj = (
-                        priority_codes.get(priority_str) or 
-                        priority_codes.get(f"REQ_PRIORITY_{priority_str}")
+                        priority_codes.get(priority_str)
+                        or priority_codes.get(f"PRIORITY_{priority_str}")
+                        or priority_codes.get(f"REQ_PRIORITY_{priority_str}")
                     )
 
                     items_to_create.append(
