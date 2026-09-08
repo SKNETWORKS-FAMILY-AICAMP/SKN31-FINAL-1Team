@@ -2,6 +2,7 @@
 
 import { useState, useEffect, use } from "react";
 import { useRouter } from "next/navigation";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   FolderKanban, CalendarDays, Settings, Clock, CheckCircle2, PlayCircle, ShieldAlert, XCircle, Lock,
   Loader2, Search,
@@ -43,10 +44,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   // 담당자 재배정/일정 조율은 PM의 권한이고, 상태·진행률은 "내 업무면 내가 갱신"이 자연스럽다.
   const canEditTask = (task: Task) => isPM || String(task.assigned_user) === String(user?.id);
 
-  const [project, setProject] = useState<Project | null>(null);
-  const [tasks, setTasks] = useState<Task[]>([]);
-  const [users, setUsers] = useState<User[]>([]);
-  const [loading, setLoading] = useState(true);
+  const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState<"KANBAN" | "WBS" | "SETTINGS">("KANBAN");
   const [search, setSearch] = useState("");
 
@@ -57,34 +55,42 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   const [settingsSaved, setSettingsSaved] = useState(false);
   const [toast, setToast] = useState<{ message: string; variant: "success" | "error" } | null>(null);
 
-  useEffect(() => {
+  // TanStack Query로 전환 — 업무관리(/tasks) 화면과 캐시를 공유한다("users" 키가 같으면
+  // 두 화면 사이를 오갈 때 다시 안 부른다). 업무 목록도 같은 30초 폴링을 적용해 다른
+  // 화면(예: 승인 처리)에서 바뀐 내용이 이 화면에도 반영되게 한다.
+  const { data: projectData, isLoading: projectLoading } = useQuery({
+    queryKey: ["project", id],
+    queryFn: () => apiFetch<any>(`/api/projects/${id}/`),
+  });
+  const project: Project | null = projectData
+    ? { id: String(projectData.id), name: projectData.name, description: projectData.description }
+    : null;
+
+  const { data: usersData } = useQuery({
+    queryKey: ["users"],
+    queryFn: () => apiFetch<any[]>("/api/users/"),
+  });
+  // 칸반의 담당자 드롭다운에는 실제로 업무를 받을 수 있는 사람만 나와야 한다 — PM(is_staff)은
+  // 배정 대상이 아니고, 온보딩 전이라 이름이 비어있는 계정도 빈 옵션으로 보이니 제외한다.
+  const users: User[] = (usersData ?? [])
+    .filter((u: any) => !u.is_staff && (u.first_name || u.last_name))
+    .map((u: any) => ({
+      id: String(u.id),
+      name: `${u.last_name ?? ""}${u.first_name ?? ""}`.trim() || u.username,
+      email: u.email,
+      role: u.is_staff ? "PM" : "MEMBER",
+    }));
+
+  const { data: tasks = [], isLoading: tasksLoading } = useQuery({
+    queryKey: ["tasks", "project", id],
     // TaskAssignment는 project를 직접 참조하지 않아서(req_item->req_def->spec->meeting->project
     // 체인을 탐) 백엔드가 ?project= 쿼리 파라미터로 필터링을 지원한다(tasks/views.py 참고).
-    Promise.all([
-      apiFetch<any>(`/api/projects/${id}/`),
-      apiFetch<any[]>("/api/users/"),
-      apiFetch<Task[]>(`/api/tasks/assignments/?project=${id}`),
-    ]).then(([proj, allUsers, taskList]) => {
-      setProject({ id: String(proj.id), name: proj.name, description: proj.description });
-      setTasks(taskList);
-      // 칸반의 담당자 드롭다운에는 실제로 업무를 받을 수 있는 사람만 나와야 한다 —
-      // PM(is_staff)은 배정 대상이 아니고, 온보딩 전이라 이름이 비어있는 계정도 빈 옵션으로 보이니 제외한다.
-      setUsers(
-        allUsers
-          .filter((u: any) => !u.is_staff && (u.first_name || u.last_name))
-          .map((u: any) => ({
-            id: String(u.id),
-            name: `${u.last_name ?? ""}${u.first_name ?? ""}`.trim() || u.username,
-            email: u.email,
-            role: u.is_staff ? "PM" : "MEMBER",
-          }))
-      );
-      setLoading(false);
-    }).catch(e => {
-      console.error(e);
-      setLoading(false);
-    });
-  }, [id]);
+    queryFn: () => apiFetch<Task[]>(`/api/tasks/assignments/?project=${id}`),
+    refetchInterval: 30_000,
+  });
+  const setTasks = (next: Task[]) => queryClient.setQueryData<Task[]>(["tasks", "project", id], next);
+
+  const loading = projectLoading || tasksLoading;
 
   useEffect(() => {
     if (project) {
@@ -102,7 +108,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
         method: "PATCH",
         body: JSON.stringify({ name: settingsName.trim(), description: settingsDescription }),
       });
-      setProject({ ...project, name: updated.name, description: updated.description });
+      queryClient.setQueryData(["project", id], (prev: any) => ({ ...prev, name: updated.name, description: updated.description }));
       setSettingsSaved(true);
       setTimeout(() => setSettingsSaved(false), 2000);
     } catch (err: any) {
@@ -241,7 +247,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
             <KanbanBoard
               initialTasks={filteredTasks}
               members={users}
-              onTaskChange={(taskId, patch) => setTasks(prev => prev.map(t => t.id === taskId ? { ...t, ...patch } : t))}
+              onTaskChange={(taskId, patch) => setTasks(tasks.map(t => t.id === taskId ? { ...t, ...patch } : t))}
             />
           </div>
         )}
