@@ -5,6 +5,7 @@ import { useAuth } from "@/lib/auth";
 import { FolderKanban, Search, LayoutGrid, Loader2, ChevronLeft, ChevronRight, ClipboardList, AlertTriangle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useSearchParams } from "next/navigation";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { KanbanBoard } from "@/components/layout/KanbanBoard";
 import { TaskDetailModal } from "@/components/projects/TaskDetailModal";
 import { isTaskOverdue } from "@/lib/taskOverdue";
@@ -44,8 +45,7 @@ export default function TasksPage() {
   const { user } = useAuth();
   const isPM = user?.role === "PM";
   const searchParams = useSearchParams();
-  const [tasks, setTasks] = useState<Task[]>([]);
-  const [loading, setLoading] = useState(true);
+  const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
   // 대시보드 "업무 상태 분포" 차트에서 ?status=IN_PROGRESS 같은 링크로 들어오면 그 상태로 미리 필터링한다.
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
@@ -61,35 +61,50 @@ export default function TasksPage() {
   const [page, setPage] = useState(1);
   const PAGE_SIZE = 10;
 
-  // 칸반 뷰는 담당자 배정에 프로젝트 멤버 목록이 필요하다 — 이 앱은 단일 프로젝트 전제이므로
-  // 다른 화면들과 같은 방식으로 가장 최근(첫 번째) 프로젝트를 기본값으로 쓴다.
-  const [members, setMembers] = useState<Member[]>([]);
-  const [currentProjectId, setCurrentProjectId] = useState<string | null>(null);
   // 리스트/WBS 뷰 행을 눌러도 아무 반응이 없었다 — 칸반 카드와 동일하게 상세 모달을 연다.
   const [selectedTaskForDetail, setSelectedTaskForDetail] = useState<Task | null>(null);
   const [toast, setToast] = useState<{ message: string; variant: "success" | "error" } | null>(null);
 
-  useEffect(() => {
-    fetchTasks();
-    Promise.all([
-      apiFetch<any[]>("/api/projects/"),
-      apiFetch<any[]>("/api/users/"),
-    ]).then(([projects, allUsers]) => {
-      setCurrentProjectId(projects[0] ? String(projects[0].id) : null);
-      // 칸반 담당자 드롭다운엔 실제로 업무를 받을 수 있는 사람만 — PM(is_staff)은 배정 대상이
-      // 아니고, 온보딩 전이라 이름이 비어있는 계정도 빈 옵션으로 보이니 제외한다.
-      setMembers(
-        allUsers
-          .filter((u: any) => !u.is_staff && (u.first_name || u.last_name))
-          .map((u: any) => ({
-            id: String(u.id),
-            name: `${u.last_name ?? ""}${u.first_name ?? ""}`.trim() || u.username,
-            email: u.email,
-            role: u.is_staff ? "PM" : "MEMBER",
-          }))
-      );
-    }).catch(error => console.error(error));
-  }, []);
+  // TanStack Query 도입 전에는 화면에 들어올 때마다 useEffect로 다시 fetch하고 로딩 스피너부터
+  // 띄웠다 — 다른 화면 갔다가 돌아올 때마다 매번 깜빡였다. staleTime(30초) 안에서는 캐시를
+  // 그대로 보여주고, 지난 뒤에는 화면은 그대로 둔 채 백그라운드에서 조용히 갱신한다
+  // (isLoading=최초 로드만 true, isFetching=백그라운드 갱신 포함) — 예전의 "silent refetch"
+  // 수동 처리를 라이브러리가 대신해준다.
+  // refetchInterval: PM이 다른 화면에서 승인/반려하거나 동료가 상태를 바꿔도, 지금까지는
+  // 내가 직접 새로고침하기 전까진 안 보였다(NotificationBell만 30초 폴링하고 있었음).
+  // 같은 주기로 업무 목록도 백그라운드에서 갱신해 "거의 실시간"에 가깝게 만든다 — 진짜
+  // 실시간(웹소켓 푸시)은 백엔드 지원이 필요해 별도.
+  const { data: tasks = [], isLoading: loading } = useQuery({
+    queryKey: ["tasks"],
+    queryFn: () => apiFetch<Task[]>("/api/tasks/assignments/"),
+    refetchInterval: 30_000,
+  });
+
+  // 프로젝트 멤버 목록 — 다른 화면(칸반보드 등)도 같은 쿼리 키를 쓰면 캐시를 공유해서
+  // 화면을 오갈 때마다 다시 안 부른다.
+  const { data: projectsData } = useQuery({
+    queryKey: ["projects"],
+    queryFn: () => apiFetch<any[]>("/api/projects/"),
+  });
+  const { data: usersData } = useQuery({
+    queryKey: ["users"],
+    queryFn: () => apiFetch<any[]>("/api/users/"),
+  });
+  const currentProjectId = projectsData?.[0] ? String(projectsData[0].id) : null;
+  // 칸반 담당자 드롭다운엔 실제로 업무를 받을 수 있는 사람만 — PM(is_staff)은 배정 대상이
+  // 아니고, 온보딩 전이라 이름이 비어있는 계정도 빈 옵션으로 보이니 제외한다.
+  const members: Member[] = useMemo(
+    () =>
+      (usersData ?? [])
+        .filter((u: any) => !u.is_staff && (u.first_name || u.last_name))
+        .map((u: any) => ({
+          id: String(u.id),
+          name: `${u.last_name ?? ""}${u.first_name ?? ""}`.trim() || u.username,
+          email: u.email,
+          role: u.is_staff ? "PM" : "MEMBER",
+        })),
+    [usersData]
+  );
 
   // 로그인 정보가 로드된 뒤 역할에 맞는 기본 필터로 맞춘다 (PM은 전체 업무를 기본으로 봄)
   useEffect(() => {
@@ -97,35 +112,23 @@ export default function TasksPage() {
     else setFilterScope("ME");
   }, [isPM]);
 
-  // silent=true는 이미 목록이 화면에 떠 있는 상태에서 데이터만 조용히 갱신할 때 쓴다(예: 상세
-  // 모달 닫을 때) — 전체 화면 로딩 스피너로 목록을 통째로 갈아끼우면 리스트가 언마운트됐다
-  // 다시 그려지면서 스크롤 위치가 맨 위로 튀는 문제가 있었다(사용자가 실제로 보고 발견함).
-  const fetchTasks = async (silent = false) => {
-    if (!silent) setLoading(true);
-    try {
-      const data = await apiFetch<Task[]>("/api/tasks/assignments/");
-      setTasks(data);
-    } catch (error) {
-      console.error(error);
-    } finally {
-      if (!silent) setLoading(false);
-    }
-  };
-
-  const handleStatusChange = async (taskId: number, newStatus: string) => {
-    setProcessingId(taskId);
-    try {
-      await apiFetch(`/api/tasks/assignments/${taskId}/status/`, {
+  const statusMutation = useMutation({
+    mutationFn: ({ taskId, newStatus }: { taskId: number; newStatus: string }) =>
+      apiFetch(`/api/tasks/assignments/${taskId}/status/`, {
         method: "PATCH",
         body: JSON.stringify({ status_code: newStatus }),
-      });
-      setTasks(tasks.map(t => t.id === taskId ? { ...t, status_code: newStatus } : t));
-    } catch {
-      setToast({ message: "상태 변경에 실패했습니다.", variant: "error" });
-    } finally {
-      setProcessingId(null);
-    }
-  };
+      }),
+    onMutate: ({ taskId }) => setProcessingId(taskId),
+    onSuccess: (_data, { taskId, newStatus }) => {
+      queryClient.setQueryData<Task[]>(["tasks"], (prev) =>
+        prev?.map(t => t.id === taskId ? { ...t, status_code: newStatus } : t)
+      );
+    },
+    onError: () => setToast({ message: "상태 변경에 실패했습니다.", variant: "error" }),
+    onSettled: () => setProcessingId(null),
+  });
+  const handleStatusChange = (taskId: number, newStatus: string) =>
+    statusMutation.mutate({ taskId, newStatus });
 
   const filteredTasks = useMemo(() => {
     let filtered = tasks;
@@ -242,7 +245,7 @@ export default function TasksPage() {
                 projectId={currentProjectId}
                 initialTasks={filteredTasks}
                 members={members}
-                onTaskChange={(taskId, patch) => setTasks(prev => prev.map(t => t.id === taskId ? { ...t, ...patch } : t))}
+                onTaskChange={(taskId, patch) => queryClient.setQueryData<Task[]>(["tasks"], prev => prev?.map(t => t.id === taskId ? { ...t, ...patch } : t))}
               />
             ) : (
               <div className="flex flex-col items-center justify-center h-64 text-center gap-3">
@@ -348,7 +351,7 @@ export default function TasksPage() {
           members={members}
           onClose={() => setSelectedTaskForDetail(null)}
           onUpdated={(updated) => {
-            setTasks(prev => prev.map(t => t.id === updated.id ? { ...t, ...updated } : t));
+            queryClient.setQueryData<Task[]>(["tasks"], prev => prev?.map(t => t.id === updated.id ? { ...t, ...updated } : t));
             setSelectedTaskForDetail(null);
           }}
         />
