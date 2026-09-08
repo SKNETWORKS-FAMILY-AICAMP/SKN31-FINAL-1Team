@@ -292,6 +292,7 @@ class RequirementExtractView(APIView):
                             difficulty=getattr(req_item, "difficulty", "중"),
                             category=getattr(req_item, "category_1", getattr(req_item, "category", "기타")),
                             category_2=getattr(req_item, "category_2", None),
+                            order=index,
                         )
                     )
 

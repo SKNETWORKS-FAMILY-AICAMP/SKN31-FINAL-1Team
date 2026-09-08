@@ -56,6 +56,7 @@ type ReqItemDto = {
   category?: string | null;
   category_2?: string | null;
   difficulty?: string | null;
+  order: number;
 };
 
 type ReqDefStatusCode = "DRAFT" | "PENDING_REVIEW" | "APPROVED" | "REJECTED";
@@ -383,14 +384,19 @@ export default function DocumentsPage() {
 
   // 백엔드 requirements/urls.py에는 <reqDefId>/items/ 같은 중첩 경로가 없다(items/ 하나뿐,
   // req_def는 body로 받음) — 중첩 경로로 호출하면 404가 난다(직접 재현해서 확인).
-  const handleAddItem = async (reqDefId: number, item: { req_code: string; req_name: string; description: string }) => {
+  // order는 "이 행과 저 행 사이에 끼워넣기"를 표현하는 값(두 이웃의 order 중간값) —
+  // RequirementSection이 어느 +버튼을 눌렀는지 보고 계산해서 넘긴다.
+  const handleAddItem = async (reqDefId: number, item: { req_code: string; req_name: string; description: string; order: number }) => {
     setBusy(`reqdef-${reqDefId}-additem`);
     try {
       const newItem = await apiFetch<ReqItemDto>(`/api/requirements/items/`, {
         method: "POST",
         body: JSON.stringify({ req_def: reqDefId, ...item }),
       });
-      setReqDefs(prev => prev.map(r => r.id === reqDefId ? { ...r, items: [...r.items, newItem] } : r));
+      setReqDefs(prev => prev.map(r => r.id === reqDefId
+        ? { ...r, items: [...r.items, newItem].sort((a, b) => a.order - b.order) }
+        : r
+      ));
       setToastMessage("요구사항 항목이 추가되었습니다");
     } catch (err: any) {
       setErrorToast(err.message || "항목 추가에 실패했습니다.");
@@ -764,7 +770,7 @@ function NoteDetail({
   onReject: (spec: SpecDto) => void;
   onCreateReqDef: (spec: SpecDto) => void;
   onExtractItems: (specId: number, reqDefId: number) => void;
-  onAddItem: (reqDefId: number, item: { req_code: string; req_name: string; description: string }) => void;
+  onAddItem: (reqDefId: number, item: { req_code: string; req_name: string; description: string; order: number }) => void;
   onUpdateItem: (reqDefId: number, itemId: number, patch: { req_name: string; description: string }) => void;
   onDeleteItem: (reqDefId: number, itemId: number) => void;
   onReqDefStatusChange: (spec: SpecDto, reqDefId: number, statusCode: "PENDING_REVIEW" | "APPROVED" | "REJECTED") => void;
@@ -1027,8 +1033,13 @@ function NoteDetail({
               <ChevronDown className={cn("w-4 h-4 transition-transform", !proposalRefOpen && "-rotate-90")} />
               기획서 원본
             </span>
-            <span className={cn("inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold", meta.className)}>
-              <meta.icon className="w-3 h-3" /> {spec ? meta.label : "기획서 미생성"}
+            <span className="flex items-center gap-2">
+              {/* 회의록/요구사항정의서는 각자 번호가 보이는데 기획서 원본 박스만 없어서
+                  추가 — 다른 두 곳과 동일한 스타일(font-mono, 흐린 색)로 맞춘다. */}
+              {spec && <span className="text-xs font-mono font-normal text-muted-foreground/70">기획서 번호 {spec.id}</span>}
+              <span className={cn("inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold", meta.className)}>
+                <meta.icon className="w-3 h-3" /> {spec ? meta.label : "기획서 미생성"}
+              </span>
             </span>
           </button>
           {proposalRefOpen && (
@@ -1082,12 +1093,17 @@ function RequirementSection({
   spec: SpecDto; reqDef: ReqDefDto | null; isPM: boolean; busy: string | null;
   onCreate: () => void;
   onExtract: (specId: number, reqDefId: number) => void;
-  onAddItem: (reqDefId: number, item: { req_code: string; req_name: string; description: string }) => void;
+  onAddItem: (reqDefId: number, item: { req_code: string; req_name: string; description: string; order: number }) => void;
   onUpdateItem: (reqDefId: number, itemId: number, patch: { req_name: string; description: string }) => void;
   onDeleteItem: (reqDefId: number, itemId: number) => void;
   onStatusChange: (statusCode: "PENDING_REVIEW" | "APPROVED" | "REJECTED") => void;
 }) {
-  const [showAddForm, setShowAddForm] = useState(false);
+  // 하단에 고정된 "항목 직접 추가" 버튼 대신, 표의 행과 행 사이에 있는 + 버튼을 눌러 그
+  // 자리에 바로 추가 폼이 펼쳐지도록 바꿨다(사용자 요청). null이면 어디에도 안 열려있고,
+  // "start"면 첫 행 위, 숫자면 그 항목 바로 아래에 폼이 펼쳐진다. 다만 백엔드에 항목
+  // 순서를 저장하는 필드가 없어서 실제로는 항상 목록 맨 끝에 추가된다 — 어느 +를 눌러도
+  // 저장 위치는 같고, 폼이 열리는 자리만 사용자가 고른 위치를 따른다.
+  const [addFormAt, setAddFormAt] = useState<number | "start" | null>(null);
   const [newCode, setNewCode] = useState("");
   const [newName, setNewName] = useState("");
   const [newDesc, setNewDesc] = useState("");
@@ -1218,9 +1234,111 @@ function RequirementSection({
         </div>
       </div>
 
-      {reqDef.items.length === 0 ? (
-        <p className="text-sm text-muted-foreground py-4 text-center">아직 요구사항 항목이 없습니다.</p>
-      ) : (
+      {/* 항목 삽입 위치 계산 — order는 정수가 아니라 실수라, 두 이웃 항목의 order 중간값을
+          매기면 다른 항목들의 order를 하나도 안 건드리고 그 사이에 끼워넣을 수 있다.
+          "start"는 첫 항목 앞, 항목 id는 그 항목 바로 다음 자리를 뜻한다. */}
+      {(() => {
+        const insertOrderAt = (pos: number | "start"): number => {
+          const items = reqDef.items;
+          if (items.length === 0) return 1;
+          if (pos === "start") return items[0].order - 1;
+          const idx = items.findIndex(it => it.id === pos);
+          if (idx === -1 || idx === items.length - 1) return items[items.length - 1].order + 1;
+          return (items[idx].order + items[idx + 1].order) / 2;
+        };
+        const openAddForm = (pos: number | "start") => {
+          setAddFormAt(pos);
+          setNewCode(""); setNewName(""); setNewDesc("");
+        };
+        const submitAddForm = (pos: number | "start") => {
+          if (!newCode.trim() || !newName.trim()) return;
+          onAddItem(reqDef.id, {
+            req_code: newCode.trim(),
+            req_name: newName.trim(),
+            description: newDesc.trim(),
+            order: insertOrderAt(pos),
+          });
+          setAddFormAt(null);
+        };
+        const addFormFields = (pos: number | "start") => (
+          <>
+            <div className="grid grid-cols-[120px_1fr] gap-2">
+              <input
+                value={newCode}
+                onChange={e => setNewCode(e.target.value)}
+                placeholder="REQ-03"
+                className="bg-black/5 dark:bg-white/5 border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
+              />
+              <input
+                value={newName}
+                onChange={e => setNewName(e.target.value)}
+                placeholder="요구사항명"
+                className="bg-black/5 dark:bg-white/5 border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
+              />
+            </div>
+            <textarea
+              value={newDesc}
+              onChange={e => setNewDesc(e.target.value)}
+              placeholder="상세 내용"
+              className="w-full bg-black/5 dark:bg-white/5 border border-border rounded-lg px-3 py-2 text-sm resize-none h-20 focus:outline-none focus:ring-2 focus:ring-primary/40 mt-2"
+            />
+            <div className="flex justify-end gap-2 mt-2">
+              <button onClick={() => setAddFormAt(null)} className="px-4 py-2 text-sm font-semibold text-muted-foreground hover:bg-black/5 dark:hover:bg-white/5 rounded-lg">취소</button>
+              <button
+                onClick={() => submitAddForm(pos)}
+                disabled={!newCode.trim() || !newName.trim() || !!addingItem}
+                className="flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-bold hover:bg-primary/90 disabled:opacity-50"
+              >
+                {addingItem ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+                추가
+              </button>
+            </div>
+          </>
+        );
+        const renderDivider = (pos: number | "start") => (
+          <tr className="group h-3">
+            <td colSpan={5} className="p-0 relative">
+              <div className="absolute inset-x-4 top-1/2 -translate-y-1/2 border-t border-dashed border-transparent group-hover:border-border/60 transition-colors" />
+              <button
+                type="button"
+                onClick={() => openAddForm(pos)}
+                title="이 위치에 항목 추가"
+                className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-5 h-5 rounded-full border border-border bg-background flex items-center justify-center text-muted-foreground opacity-0 group-hover:opacity-100 hover:!opacity-100 hover:text-primary hover:border-primary transition-opacity z-10"
+              >
+                <Plus className="w-3 h-3" />
+              </button>
+            </td>
+          </tr>
+        );
+        const renderAddFormRow = (pos: number | "start") => (
+          <tr>
+            <td colSpan={5} className="px-4 py-3 bg-black/5 dark:bg-white/5">
+              {addFormFields(pos)}
+            </td>
+          </tr>
+        );
+
+        if (reqDef.items.length === 0) {
+          return (
+            <div className="py-4 text-center space-y-3">
+              <p className="text-sm text-muted-foreground">아직 요구사항 항목이 없습니다.</p>
+              {!isPM && !itemsLocked && (
+                addFormAt === "start" ? (
+                  <div className="border border-border rounded-xl p-4 text-left max-w-md mx-auto">{addFormFields("start")}</div>
+                ) : (
+                  <button
+                    onClick={() => openAddForm("start")}
+                    className="inline-flex items-center gap-1.5 text-xs font-semibold text-primary hover:underline"
+                  >
+                    <Plus className="w-3.5 h-3.5" /> 항목 직접 추가
+                  </button>
+                )
+              )}
+            </div>
+          );
+        }
+
+        return (
         <div className="border border-border rounded-xl overflow-hidden">
           <table className="w-full text-sm text-left">
             <thead className="text-xs text-muted-foreground uppercase bg-black/5 dark:bg-white/5">
@@ -1233,12 +1351,16 @@ function RequirementSection({
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
+              {!isPM && !itemsLocked && (
+                addFormAt === "start" ? renderAddFormRow("start") : renderDivider("start")
+              )}
               {reqDef.items.map((item, index) => {
                 const isEditing = editingItemId === item.id;
                 const deleting = busy === `reqitem-${item.id}-delete`;
                 const updating = busy === `reqitem-${item.id}-update`;
                 return (
-                  <tr key={item.id}>
+                  <Fragment key={item.id}>
+                  <tr>
                     <td className="px-4 py-2.5 text-xs text-muted-foreground align-top">{index + 1}</td>
                     <td className="px-4 py-2.5 text-xs text-muted-foreground align-top">
                       {/* req_code 접두사(FR/NFR)로 기능·비기능을 구분한다 — category 필드는
@@ -1316,61 +1438,20 @@ function RequirementSection({
                       </td>
                     )}
                   </tr>
+                  {!isPM && !itemsLocked && (
+                    addFormAt === item.id ? renderAddFormRow(item.id) : renderDivider(item.id)
+                  )}
+                  </Fragment>
                 );
               })}
             </tbody>
           </table>
         </div>
-      )}
+        );
+      })()}
 
-      {!isPM && !itemsLocked && (
-        showAddForm ? (
-          <div className="border border-border rounded-xl p-4 space-y-2">
-            <div className="grid grid-cols-[120px_1fr] gap-2">
-              <input
-                value={newCode}
-                onChange={e => setNewCode(e.target.value)}
-                placeholder="REQ-03"
-                className="bg-black/5 dark:bg-white/5 border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
-              />
-              <input
-                value={newName}
-                onChange={e => setNewName(e.target.value)}
-                placeholder="요구사항명"
-                className="bg-black/5 dark:bg-white/5 border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
-              />
-            </div>
-            <textarea
-              value={newDesc}
-              onChange={e => setNewDesc(e.target.value)}
-              placeholder="상세 내용"
-              className="w-full bg-black/5 dark:bg-white/5 border border-border rounded-lg px-3 py-2 text-sm resize-none h-20 focus:outline-none focus:ring-2 focus:ring-primary/40"
-            />
-            <div className="flex justify-end gap-2">
-              <button onClick={() => setShowAddForm(false)} className="px-4 py-2 text-sm font-semibold text-muted-foreground hover:bg-black/5 dark:hover:bg-white/5 rounded-lg">취소</button>
-              <button
-                onClick={() => {
-                  if (!newCode.trim() || !newName.trim()) return;
-                  onAddItem(reqDef.id, { req_code: newCode.trim(), req_name: newName.trim(), description: newDesc.trim() });
-                  setNewCode(""); setNewName(""); setNewDesc(""); setShowAddForm(false);
-                }}
-                disabled={!newCode.trim() || !newName.trim() || !!addingItem}
-                className="flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-bold hover:bg-primary/90 disabled:opacity-50"
-              >
-                {addingItem ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
-                추가
-              </button>
-            </div>
-          </div>
-        ) : (
-          <button
-            onClick={() => setShowAddForm(true)}
-            className="flex items-center gap-1.5 text-xs font-semibold text-primary hover:underline"
-          >
-            <Plus className="w-3.5 h-3.5" /> 항목 직접 추가
-          </button>
-        )
-      )}
+      {/* 예전엔 여기(표 하단)에 고정된 "항목 직접 추가" 버튼/폼이 있었다 — 행 사이 +버튼
+          방식(위 renderDivider/renderAddFormRow)으로 대체했다(사용자 요청). */}
     </div>
   );
 }
