@@ -98,7 +98,7 @@ class MeetingNoteAnalyzeView(APIView):
             else:
                 plan_dict = {}
 
-            # [디버깅] AI가実際に 어떤 Key 형태로 반환하는지 서버 콘솔 출력
+            # [디버깅] AI가 어떤 Key 형태로 반환하는지 서버 콘솔 출력
             print("=== AI Agent Raw Output Keys ===", plan_dict.keys())
             print("=== AI Agent Data ===", json.dumps(plan_dict, ensure_ascii=False, indent=2))
 
