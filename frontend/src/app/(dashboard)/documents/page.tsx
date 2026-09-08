@@ -514,12 +514,11 @@ export default function DocumentsPage() {
   };
 
   // 요구사항정의서 상태 전이 — 전용 엔드포인트는 아직 없어서(기획서 쪽처럼 /submit-review/,
-  // /approve/, /reject/가 따로 없음) 일반 PATCH로 status_code만 바꾼다. DRAFT/REJECTED에서
-  // 작성자가 "검토요청"을 누르면 PENDING_REVIEW로, PM이 그 상태에서 승인/반려하면 APPROVED/
-  // REJECTED로 넘어간다(RequirementSection 참고). 반려 사유를 저장할 필드가 모델에 아직
-  // 없어서(기획서의 review_comment 같은 것) 반려 사유 입력 UI는 이번엔 생략한다 — 팀원
-  // 전달 목록에 추가해야 함.
-  const handleReqDefStatusChange = async (spec: SpecDto, reqDefId: number, statusCode: "PENDING_REVIEW" | "APPROVED" | "REJECTED") => {
+  // /approve/가 따로 없음) 일반 PATCH로 status_code만 바꾼다. DRAFT/REJECTED에서 작성자가
+  // "검토요청"을 누르면 PENDING_REVIEW로, PM이 승인하면 APPROVED로 넘어간다(RequirementSection
+  // 참고). 반려(REJECTED)는 사유 입력이 필수라 이 함수를 안 거치고 rejectTarget 모달 →
+  // handleReject가 reject_reason과 함께 별도로 처리한다.
+  const handleReqDefStatusChange = async (spec: SpecDto, reqDefId: number, statusCode: "PENDING_REVIEW" | "APPROVED") => {
     setBusy(`reqdef-${reqDefId}-${statusCode.toLowerCase()}`);
     try {
       const updated = await apiFetch<ReqDefDto>(`/api/requirements/${spec.id}/`, {
@@ -528,9 +527,7 @@ export default function DocumentsPage() {
       });
       setReqDefs(prev => prev.map(r => r.id === reqDefId ? updated : r));
       setToastMessage(
-        statusCode === "APPROVED" ? "요구사항 정의서가 승인되었습니다"
-          : statusCode === "REJECTED" ? "요구사항 정의서가 반려되었습니다"
-          : "요구사항 정의서 검토를 요청했습니다"
+        statusCode === "APPROVED" ? "요구사항 정의서가 승인되었습니다" : "요구사항 정의서 검토를 요청했습니다"
       );
     } catch (err: any) {
       setErrorToast(err.message || "상태 변경에 실패했습니다.");
@@ -887,7 +884,7 @@ function NoteDetail({
   onAddItem: (reqDefId: number, item: { req_code: string; req_name: string; description: string; order: number; priority_code: string | null }) => void;
   onUpdateItem: (reqDefId: number, itemId: number, patch: { req_name: string; description: string; priority_code?: string | null }) => void;
   onDeleteItem: (reqDefId: number, itemId: number) => void;
-  onReqDefStatusChange: (spec: SpecDto, reqDefId: number, statusCode: "PENDING_REVIEW" | "APPROVED" | "REJECTED") => void;
+  onReqDefStatusChange: (spec: SpecDto, reqDefId: number, statusCode: "PENDING_REVIEW" | "APPROVED") => void;
   onGenerateTasks: (spec: SpecDto, reqDefId: number) => void;
   onRejectReqDef: (spec: SpecDto, reqDefId: number) => void;
   taskAssignments: TaskAssignmentDto[];

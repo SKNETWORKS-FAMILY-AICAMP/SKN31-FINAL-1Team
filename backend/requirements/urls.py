@@ -14,6 +14,5 @@ urlpatterns = [
     path('<int:spec_id>/extract/', RequirementExtractView.as_view(), name='requirement-extract'),
     path('<int:spec_id>/generate-tasks/', RequirementGenerateTasksView.as_view(), name='requirement-generate-tasks'),
     path('items/', RequirementItemViewSet.as_view(), name='requirement-item-list'),
-    path('items/', RequirementItemViewSet.as_view(), name='item-list-create'),
     path('items/<int:pk>/', RequirementItemDetailView.as_view(), name='item-detail'),  # PATCH, DELETE 지원
 ]

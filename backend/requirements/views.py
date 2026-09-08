@@ -341,6 +341,9 @@ class RequirementGenerateTasksView(APIView):
         return Response(result, status=http_status)
 
 
+LOCKED_REQDEF_STATUSES = ('APPROVED', 'PENDING_REVIEW')
+
+
 @extend_schema_view(
     get=extend_schema(
         tags=['2단계 - 요구사항 정의서'],
@@ -357,6 +360,25 @@ class RequirementItemViewSet(generics.ListCreateAPIView):
     queryset = RequirementItem.objects.all().select_related('priority_code', 'req_def')
     serializer_class = RequirementItemSerializer
     permission_classes = [permissions.IsAuthenticated]
+
+    def create(self, request, *args, **kwargs):
+        """
+        요구사항정의서가 승인(APPROVED)되었거나 검토중(PENDING_REVIEW)인 경우
+        하위 항목을 새로 추가할 수 없도록 차단한다. req_def id가 없거나 유효하지
+        않은 경우는 별도 검증 없이 기존 serializer 검증에 맡긴다.
+        """
+        req_def_id = request.data.get('req_def')
+        if req_def_id:
+            req_def = RequirementDefinition.objects.filter(pk=req_def_id).select_related('status_code').first()
+            if req_def and req_def.status_code_id in LOCKED_REQDEF_STATUSES:
+                return Response(
+                    {
+                        "error": "REQDEF_LOCKED",
+                        "details": "승인되었거나 검토 중인 요구사항정의서의 항목은 수정/삭제할 수 없습니다."
+                    },
+                    status=status.HTTP_403_FORBIDDEN
+                )
+        return super().create(request, *args, **kwargs)
 
 
 @extend_schema_view(
@@ -385,3 +407,33 @@ class RequirementItemDetailView(generics.RetrieveUpdateDestroyAPIView):
     queryset = RequirementItem.objects.all().select_related('priority_code', 'req_def')
     serializer_class = RequirementItemSerializer
     permission_classes = [permissions.IsAuthenticated]
+
+    def _check_not_locked(self, instance):
+        """
+        상위 요구사항정의서가 승인(APPROVED)되었거나 검토중(PENDING_REVIEW)인 경우
+        해당 항목의 수정/삭제를 차단한다. GET(조회)은 잠금 상태와 무관하게 항상 허용된다.
+        """
+        req_def = instance.req_def
+        if req_def and req_def.status_code_id in LOCKED_REQDEF_STATUSES:
+            return Response(
+                {
+                    "error": "REQDEF_LOCKED",
+                    "details": "승인되었거나 검토 중인 요구사항정의서의 항목은 수정/삭제할 수 없습니다."
+                },
+                status=status.HTTP_403_FORBIDDEN
+            )
+        return None
+
+    def update(self, request, *args, **kwargs):
+        instance = self.get_object()
+        locked_response = self._check_not_locked(instance)
+        if locked_response is not None:
+            return locked_response
+        return super().update(request, *args, **kwargs)
+
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        locked_response = self._check_not_locked(instance)
+        if locked_response is not None:
+            return locked_response
+        return super().destroy(request, *args, **kwargs)
