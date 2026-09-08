@@ -727,6 +727,7 @@ export default function DocumentsPage() {
         method: "PATCH",
         body: JSON.stringify({ assigned_user: assigneeId }),
       });
+      setToastMessage("담당자가 변경되었습니다");
       if (note.project) await fetchTaskAssignments(note.project);
     } catch (err: any) {
       setErrorToast(err.message || "담당자 변경에 실패했습니다.");
@@ -1381,6 +1382,7 @@ function NoteDetail({
             onGenerateTasks={() => onGenerateTasks(spec!, reqDef!.id)}
             generatingTasks={!!reqDef && busy === `reqdef-${reqDef.id}-tasks`}
             onRejectClick={() => onRejectReqDef(spec!, reqDef!.id)}
+            tasksAlreadyAssigned={taskAssignments.length > 0}
           />
         )}
       </div>
@@ -1610,6 +1612,10 @@ function TaskAssignmentList({
   onReassign: (taskId: number, assigneeId: number) => void;
 }) {
   const [expandedId, setExpandedId] = useState<number | null>(null);
+  // 드롭박스를 바꾸는 즉시 저장되면 실수로 잘못 바꾸기 쉽다는 피드백 — 이 기능 전체가
+  // "제안 → 확정" 패턴이니 재배정도 똑같이, 고르기만 하면 우선 화면에만 반영(staged)되고
+  // 옆의 "확정" 버튼을 눌러야 실제로 PATCH가 나간다.
+  const [pendingReassign, setPendingReassign] = useState<Record<number, number>>({});
 
   const ganttItems: GanttItem[] = tasks
     .filter(t => t.start_date && t.end_date)
@@ -1644,16 +1650,58 @@ function TaskAssignmentList({
                   </td>
                   <td className="px-4 py-3">
                     {isPM ? (
-                      <select
-                        value={t.assigned_user}
-                        onChange={e => onReassign(t.id, Number(e.target.value))}
-                        disabled={reassigningTaskId === t.id}
-                        className="w-full bg-black/5 dark:bg-white/5 border border-border rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-primary/40 disabled:opacity-50"
-                      >
-                        {members.map(m => (
-                          <option key={m.id} value={m.id}>{m.name}</option>
-                        ))}
-                      </select>
+                      <div className="flex items-center gap-1">
+                        <select
+                          value={pendingReassign[t.id] ?? t.assigned_user}
+                          onChange={e => {
+                            const next = Number(e.target.value);
+                            setPendingReassign(prev => {
+                              if (next === t.assigned_user) {
+                                const { [t.id]: _omit, ...rest } = prev;
+                                return rest;
+                              }
+                              return { ...prev, [t.id]: next };
+                            });
+                          }}
+                          disabled={reassigningTaskId === t.id}
+                          className={cn(
+                            "w-full border rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-primary/40 disabled:opacity-50",
+                            pendingReassign[t.id] != null
+                              ? "bg-amber-500/10 border-amber-500/40"
+                              : "bg-black/5 dark:bg-white/5 border-border"
+                          )}
+                        >
+                          {members.map(m => (
+                            <option key={m.id} value={m.id}>{m.name}</option>
+                          ))}
+                        </select>
+                        {pendingReassign[t.id] != null && (
+                          <>
+                            <button
+                              type="button"
+                              title="담당자 변경 확정"
+                              disabled={reassigningTaskId === t.id}
+                              onClick={() => {
+                                const newId = pendingReassign[t.id];
+                                onReassign(t.id, newId);
+                                setPendingReassign(prev => { const { [t.id]: _omit, ...rest } = prev; return rest; });
+                              }}
+                              className="shrink-0 p-1.5 rounded-lg text-emerald-500 hover:bg-emerald-500/10 disabled:opacity-50"
+                            >
+                              {reassigningTaskId === t.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
+                            </button>
+                            <button
+                              type="button"
+                              title="취소"
+                              disabled={reassigningTaskId === t.id}
+                              onClick={() => setPendingReassign(prev => { const { [t.id]: _omit, ...rest } = prev; return rest; })}
+                              className="shrink-0 p-1.5 rounded-lg text-muted-foreground hover:bg-black/5 dark:hover:bg-white/5 disabled:opacity-50"
+                            >
+                              <X className="w-3.5 h-3.5" />
+                            </button>
+                          </>
+                        )}
+                      </div>
                     ) : (
                       <div className="flex items-center gap-1.5">
                         <UserIcon className="w-3.5 h-3.5 text-muted-foreground" />
@@ -1670,8 +1718,13 @@ function TaskAssignmentList({
                     ) : "-"}
                   </td>
                   <td className="px-4 py-3">
+                    {/* PENDING_APPROVAL은 "배분은 끝났지만 PM 최종 승인 전"이라는 뜻인데
+                        코드명만 보여주면 "대기"로만 읽혀 아무것도 안 된 것처럼 보인다는
+                        피드백 — /tasks 페이지와 같은 문구로 맞춘다. */}
                     <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-orange-500/10 text-orange-500">
-                      {t.status_info?.code_name ?? "미지정"}
+                      {t.status_info?.code_id === "PENDING_APPROVAL"
+                        ? "배분완료 · PM 승인 대기"
+                        : t.status_info?.code_name ?? "미지정"}
                     </span>
                   </td>
                 </tr>
@@ -1790,7 +1843,7 @@ function GanttChart({ items }: { items: GanttItem[] }) {
 
 function RequirementSection({
   spec, reqDef, isPM, busy, onCreate, onExtract, onAddItem, onUpdateItem, onDeleteItem, onStatusChange,
-  onGenerateTasks, generatingTasks, onRejectClick,
+  onGenerateTasks, generatingTasks, onRejectClick, tasksAlreadyAssigned,
 }: {
   spec: SpecDto; reqDef: ReqDefDto | null; isPM: boolean; busy: string | null;
   onCreate: () => void;
@@ -1804,6 +1857,10 @@ function RequirementSection({
   onGenerateTasks: () => void;
   generatingTasks: boolean;
   onRejectClick: () => void;
+  // 이미 배분을 확정한 뒤에는 "업무 배분 실행" 버튼을 완전히 숨긴다 — PM이 요구사항정의서
+  // 탭으로 돌아왔을 때 버튼이 그대로 남아있으면 실수로 다시 눌러 기존 배정을 통째로
+  // 덮어쓸 위험이 있다(사용자 요청 — 재배분이 필요하면 업무배분 탭에서 별도로 처리).
+  tasksAlreadyAssigned: boolean;
 }) {
   // 하단에 고정된 "항목 직접 추가" 버튼 대신, 표의 행과 행 사이에 있는 + 버튼을 눌러 그
   // 자리에 바로 추가 폼이 펼쳐지도록 바꿨다(사용자 요청). null이면 어디에도 안 열려있고,
@@ -1929,8 +1986,14 @@ function RequirementSection({
             </span>
           )}
           {/* heyzzabi2와 동일 — 요구사항정의서가 승인되면 PM이 다음 단계(업무분배)로
-              넘어갈 업무를 AI로 자동 추출·배정할 수 있다. */}
-          {reqStatus === "APPROVED" && isPM && (
+              넘어갈 업무를 AI로 자동 추출·배정할 수 있다. 이미 확정된 배정이 있으면
+              버튼 자체를 숨긴다(사용자 요청) — 재배분은 업무배분 탭에서만. */}
+          {reqStatus === "APPROVED" && isPM && tasksAlreadyAssigned && (
+            <span className="flex items-center gap-1 text-[11px] text-muted-foreground/70">
+              <CheckCircle2 className="w-3 h-3" /> 업무 배분 완료 — 업무배분 탭에서 확인
+            </span>
+          )}
+          {reqStatus === "APPROVED" && isPM && !tasksAlreadyAssigned && (
             <button
               onClick={onGenerateTasks}
               disabled={generatingTasks}
