@@ -1177,9 +1177,12 @@ function RequirementSection({
           <p className="text-xs text-muted-foreground mt-0.5">{reqDef.version} · 항목 {reqDef.items.length}건</p>
         </div>
         <div className="flex items-center gap-2">
-          {!isPM && !itemsLocked && (
+          {/* 재추출은 버전 관리 없이 기존 항목을 통째로 지우고 새로 만든다(RequirementExtractView
+              참고 — 되돌릴 방법이 없음) — 당분간 쓰지 않기로 해서 숨긴다(사용자 요청). 항목은
+              이제 표의 +버튼으로 하나씩 추가한다. 다시 켜려면 아래 주석만 풀면 된다. */}
+          {false && !isPM && !itemsLocked && (
             <button
-              onClick={() => onExtract(spec.id, reqDef.id)}
+              onClick={() => onExtract(spec.id, reqDef!.id)}
               disabled={!!extracting}
               className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-primary/10 text-primary text-xs font-semibold hover:bg-primary/20 disabled:opacity-50"
               title="기획서를 분석하여 요구사항 항목을 자동으로 추출합니다."
