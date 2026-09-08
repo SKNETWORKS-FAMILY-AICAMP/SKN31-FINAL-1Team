@@ -96,38 +96,42 @@ class RequirementDefinitionListCreateView(generics.ListCreateAPIView):
     get=extend_schema(
         tags=['2단계 - 요구사항 정의서'],
         summary='요구사항 정의서 상세 조회',
-        description='특정 요구사항 정의서의 상세 정보 및 하위 요구사항 항목들을 조회합니다.',
+        description='특정 기획서 ID(`spec_id`)에 연관된 요구사항 정의서의 상세 정보 및 하위 요구사항 항목들을 조회합니다.',
         responses={200: RequirementDefinitionSerializer}
     ),
     put=extend_schema(
         tags=['2단계 - 요구사항 정의서'],
         summary='요구사항 정의서 전체 수정',
-        description='특정 요구사항 정의서의 전체 필드를 수정합니다.',
+        description='특정 기획서 ID(`spec_id`)에 연관된 요구사항 정의서의 전체 필드를 수정합니다.',
         responses={200: RequirementDefinitionSerializer}
     ),
     patch=extend_schema(
         tags=['2단계 - 요구사항 정의서'],
         summary='요구사항 정의서 부분 수정',
-        description='특정 요구사항 정의서의 일부 필드를 수정합니다.',
+        description='특정 기획서 ID(`spec_id`)에 연관된 요구사항 정의서의 일부 필드를 수정합니다.',
         responses={200: RequirementDefinitionSerializer}
     ),
     delete=extend_schema(
         tags=['2단계 - 요구사항 정의서'],
         summary='요구사항 정의서 삭제',
-        description='특정 요구사항 정의서를 삭제합니다.',
+        description='특정 기획서 ID(`spec_id`)에 연관된 요구사항 정의서를 삭제합니다.',
         responses={204: None}
     )
 )
 class RequirementDefinitionDetailView(generics.RetrieveUpdateDestroyAPIView):
     """
-    요구사항 정의서 상세 조회 / 수정 / 삭제 API
-    GET/PUT/PATCH/DELETE /api/requirements/{id}/
+    요구사항 정의서 상세 조회 / 수정 / 삭제 API (spec_id 기준)
+    GET/PUT/PATCH/DELETE /api/requirements/{spec_id}/
     """
     queryset = RequirementDefinition.objects.all().select_related(
         'spec', 'project', 'status_code', 'created_by'
     ).prefetch_related('items__priority_code')
     serializer_class = RequirementDefinitionSerializer
     permission_classes = [permissions.IsAuthenticated]
+
+    # URL path parameter인 spec_id를 RequirementDefinition 모델의 spec_id(외래키)와 연결
+    lookup_field = 'spec_id'
+    lookup_url_kwarg = 'spec_id'
 
 
 class RequirementExtractView(APIView):
@@ -180,15 +184,18 @@ class RequirementExtractView(APIView):
             ]
 
         plan_dict = {
-            "project_id": str(spec_document.project.id) if hasattr(spec_document, "project") and spec_document.project else "DEFAULT_PROJECT",
-            "title": getattr(spec_document, "title", "기획서 초안"),
-            "overview": getattr(spec_document, "overview", ""),
-            "background": getattr(spec_document, "background", ""),
+            "project_id": str(spec_document.project.id) if getattr(spec_document, "project", None) else "DEFAULT_PROJECT",
+            "title": getattr(spec_document, "title", None) or "기획서 초안",
+            "overview": getattr(spec_document, "overview", None) or "",
+            "background": getattr(spec_document, "background", None) or "",  # None일 경우 ""(빈 문자열)로 대체
             "goal": goal_str,
-            "target_users": getattr(spec_document, "target_users", []),
-            "key_features": getattr(spec_document, "key_features", []),
-            "tech_constraints": getattr(spec_document, "tech_constraints", []),
+            "target_users": getattr(spec_document, "target_users", None) or [],
+            "key_features": getattr(spec_document, "key_features", None) or [],
+            "tech_stack": getattr(spec_document, "tech_stack", None) or [],
             "requirements": requirements_input,
+            "final_decisions": getattr(spec_document, "final_decisions", None) or [],
+            "problem_definition": getattr(spec_document, "problem_definition", None) or "",
+            "user_scenarios": getattr(spec_document, "user_scenarios", None) or [],
         }
 
         # 3. PlanDocument 스키마 검증

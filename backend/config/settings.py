@@ -12,6 +12,7 @@ https://docs.djangoproject.com/en/6.0/ref/settings/
 import os
 import environ
 import sys
+from datetime import timedelta
 from pathlib import Path
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
@@ -178,6 +179,16 @@ REST_FRAMEWORK = {
 'DEFAULT_PERMISSION_CLASSES': (
     'rest_framework.permissions.IsAuthenticated',
 ),
+}
+
+# 2026-09-08: "한 번 로그인하면 24시간 전까지는 안 끊기게" 요청.
+# simplejwt 기본값(access 5분)이라 5분마다 재발급(token-refresh)이 돌아야 하고, 그 과정이
+# 한 번이라도 삐끗하면(네트워크 순간 끊김, 쿠키 미전송 등) 로그아웃됐다. access 수명을 24시간으로
+# 맞춰서 세션 도중 재발급 자체가 필요 없게 한다.
+# 쿠키 max_age도 이 값에서 파생된다(users/jwt_cookies.py) → access_token 쿠키도 24시간 유지.
+SIMPLE_JWT = {
+    'ACCESS_TOKEN_LIFETIME': timedelta(hours=24),
+    'REFRESH_TOKEN_LIFETIME': timedelta(hours=24),
 }
 
 # Swagger UI에 표시될 기본 정보 설정
