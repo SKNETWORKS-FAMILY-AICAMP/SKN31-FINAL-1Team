@@ -68,6 +68,7 @@ INSTALLED_APPS = [
     'projects',
     'requirements',
     'notifications',
+    'dashboard',
 ]
 
 MIDDLEWARE = [
