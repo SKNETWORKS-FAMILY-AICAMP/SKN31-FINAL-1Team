@@ -104,6 +104,7 @@ type ProjectDto = { id: number; name: string };
 type TaskAssignmentDto = {
   id: number;
   task_no: string | null;
+  req_item: number;
   req_code: string;
   req_name: string;
   assigned_user: number;
@@ -449,6 +450,13 @@ export default function DocumentsPage() {
   };
 
   const handleSubmitReview = async (note: NoteDto, spec: SpecDto) => {
+    // 프로젝트 기간을 안 정하고 검토요청하면 나중에 업무배분(간트차트 일정 계산 등)이
+    // 기간을 기준으로 돌아가는데 기준 자체가 없어진다 — 검토요청 전에 반드시 채우게 막는다
+    // (사용자 요청).
+    if (!spec.period_start || !spec.period_end) {
+      setErrorToast("프로젝트 기간을 입력해주세요.");
+      return;
+    }
     setBusy(`${note.id}-submit`);
     try {
       await apiFetch(`/api/meetings/specs/${spec.id}/submit-review/`, { method: "PATCH" });
@@ -673,6 +681,10 @@ export default function DocumentsPage() {
   // 명시적으로 걸러서 보내 의도를 분명히 한다.
   const handleConfirmTasks = async (note: NoteDto, spec: SpecDto) => {
     if (!taskDrafts || taskDraftsReqDefId == null) return;
+    if (!taskDrafts.some(d => d.assignee_id != null)) {
+      setErrorToast("담당자가 배정된 업무가 없습니다. 최소 1건 이상 담당자를 지정해주세요.");
+      return;
+    }
     setConfirmingTasks(true);
     try {
       const result = await apiFetch<{ status: string; message?: string; created_count?: number }>(
@@ -1080,11 +1092,17 @@ function NoteDetail({
   const meta = STATUS_META[status];
   const canGenerate = String(note.created_by) === currentUserId;
   const dateLabel = new Date(note.updated_at).toLocaleDateString("ko-KR");
+  // taskAssignments는 프로젝트 단위로 통째로 가져온다(reqDef별 조회 API가 없음) — 그대로
+  // 쓰면 "같은 프로젝트의 예전 요구사항정의서로 이미 배분한 기록"이 있을 때 방금 새로
+  // 만든 요구사항정의서에도 "이미 배분됨"으로 잘못 표시되어 배분 실행 버튼이 스킵된
+  // 것처럼 사라지는 실제 버그가 있었다 — reqDef.items에 실제로 속한 업무만 걸러낸다.
+  const reqDefItemIds = new Set((reqDef?.items ?? []).map(item => item.id));
+  const tasksForReqDef = taskAssignments.filter(t => reqDefItemIds.has(t.req_item));
   // 확정된 업무배분 목록 — PM은 전체를 보고, 일반 유저는 본인에게 배정된 업무만 본다
   // (heyzzabi2와 동일한 접근 제어 — 다른 사람 업무까지 보이면 안 된다는 요청).
   const visibleTaskAssignments = isPM
-    ? taskAssignments
-    : taskAssignments.filter(t => String(t.assigned_user) === currentUserId);
+    ? tasksForReqDef
+    : tasksForReqDef.filter(t => String(t.assigned_user) === currentUserId);
 
   const busyKey = (action: string) => `${note.id}-${action}`;
 
@@ -1382,7 +1400,7 @@ function NoteDetail({
             onGenerateTasks={() => onGenerateTasks(spec!, reqDef!.id)}
             generatingTasks={!!reqDef && busy === `reqdef-${reqDef.id}-tasks`}
             onRejectClick={() => onRejectReqDef(spec!, reqDef!.id)}
-            tasksAlreadyAssigned={taskAssignments.length > 0}
+            tasksAlreadyAssigned={tasksForReqDef.length > 0}
           />
         )}
       </div>
@@ -1418,7 +1436,7 @@ function NoteDetail({
               <>
                 <Briefcase className="w-8 h-8 text-muted-foreground/40" />
                 <p className="text-sm text-muted-foreground">
-                  {!isPM && taskAssignments.length > 0
+                  {!isPM && tasksForReqDef.length > 0
                     ? "본인에게 배정된 업무가 없습니다."
                     : reqDef?.status_info?.code_id === "APPROVED"
                     ? "요구사항정의서 탭에서 \"업무 배분 실행\"을 누르면 여기에 결과가 표시됩니다."
@@ -1515,6 +1533,13 @@ function TaskDraftReview({
       end: d.end_date,
     }));
 
+  // 전부 "미배정"인 채로 확정을 누르면 서버가 저장할 게 하나도 없어 created_count=0
+  // 인데도 "확정되었습니다" 성공 토스트가 뜨는 버그가 있었다(사용자 신고: "배분 확정하고
+  // DB에 안 들어가는 상황"). "미배정" 자체는 AI가 워크로드/스킬 불일치로 일부러 보류
+  // 추천하는 정상 값이라 드롭박스에서 없앨 수는 없으니, 최소 1건은 배정돼야 확정 버튼을
+  // 누를 수 있게 막는다.
+  const hasAnyAssignee = drafts.some(d => d.assignee_id != null);
+
   return (
     <div className="space-y-4">
       <p className="text-sm text-muted-foreground">
@@ -1591,13 +1616,17 @@ function TaskDraftReview({
         </button>
         <button
           onClick={onConfirm}
-          disabled={confirming}
+          disabled={confirming || !hasAnyAssignee}
+          title={!hasAnyAssignee ? "최소 1건 이상 담당자를 지정해야 확정할 수 있습니다." : undefined}
           className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-bold hover:bg-primary/90 disabled:opacity-50"
         >
           {confirming ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
           배분 확정
         </button>
       </div>
+      {!hasAnyAssignee && (
+        <p className="text-xs text-amber-500 text-right -mt-2">담당자가 배정된 업무가 없습니다. 최소 1건 이상 담당자를 지정해주세요.</p>
+      )}
     </div>
   );
 }
