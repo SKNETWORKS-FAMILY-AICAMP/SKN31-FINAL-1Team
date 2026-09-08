@@ -121,7 +121,7 @@ Get-ChildItem .\src -Recurse -Include *.ts,*.tsx |
 | `PUT` | `/api/requirements/{id}/` | 요구사항 정의서 전체 수정 |
 | `PATCH` | `/api/requirements/{id}/` | 요구사항 정의서 일부 수정 |
 | `DELETE` | `/api/requirements/{id}/` | 요구사항 정의서 삭제 |
-| `POST` | `/api/requirements/{id}/extract/` | 기획서 기반 AI 요구사항 항목 추출 |
+| `POST` | `/api/requirements/{spec_id}/extract/` | 기획서 기반 AI 요구사항 항목 추출 |
 | `GET` | `/api/requirements/items/` | 세부 요구사항 항목 목록 조회 |
 | `POST` | `/api/requirements/items/` | 세부 요구사항 항목 직접 추가 |
 
