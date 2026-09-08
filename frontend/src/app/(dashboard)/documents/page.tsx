@@ -1073,6 +1073,10 @@ function RequirementSection({
   const reqStatus = reqDef?.status_info?.code_id ?? null;
   const approving = reqDef && busy === `reqdef-${reqDef.id}-approved`;
   const rejecting = reqDef && busy === `reqdef-${reqDef.id}-rejected`;
+  // 승인(APPROVED) 후에는 기획서와 마찬가지로 항목을 잠근다 — 이미 승인된 내용이 뒤에서
+  // 바뀌면 안 되기 때문(백엔드 RequirementItemDetailView는 아직 이 체크가 없어서 API 직접
+  // 호출로는 우회 가능 — 팀원 전달 목록에 추가 필요).
+  const itemsLocked = reqStatus === "APPROVED";
 
   if (!reqDef) {
     return (
@@ -1117,7 +1121,7 @@ function RequirementSection({
           <p className="text-xs text-muted-foreground mt-0.5">{reqDef.version} · 항목 {reqDef.items.length}건</p>
         </div>
         <div className="flex items-center gap-2">
-          {!isPM && (
+          {!isPM && !itemsLocked && (
             <button
               onClick={() => onExtract(spec.id, reqDef.id)}
               disabled={!!extracting}
@@ -1127,6 +1131,11 @@ function RequirementSection({
               {extracting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Bot className="w-3.5 h-3.5" />}
               AI 자동 추출
             </button>
+          )}
+          {itemsLocked && (
+            <span className="flex items-center gap-1 text-[11px] text-muted-foreground/70">
+              <Lock className="w-3 h-3" /> 승인되어 항목이 잠겼습니다
+            </span>
           )}
           {/* 요구사항정의서 승인/반려 — 기획서처럼 검토요청 단계가 따로 없어서 PM이 언제든
               바로 승인/반려할 수 있게 뒀다. 반려 사유를 저장할 필드가 모델에 없어서(팀원
@@ -1165,7 +1174,7 @@ function RequirementSection({
                 <th className="px-4 py-2.5 font-bold w-24">분류</th>
                 <th className="px-4 py-2.5 font-bold w-24">코드</th>
                 <th className="px-4 py-2.5 font-bold">요구사항명</th>
-                {!isPM && <th className="px-4 py-2.5 font-bold w-20 text-right">관리</th>}
+                {!isPM && !itemsLocked && <th className="px-4 py-2.5 font-bold w-20 text-right">관리</th>}
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
@@ -1208,7 +1217,7 @@ function RequirementSection({
                         우선순위 {PRIORITY_LABEL[item.priority_info?.code_name ?? ""] ?? "미지정"}
                       </p>
                     </td>
-                    {!isPM && (
+                    {!isPM && !itemsLocked && (
                       <td className="px-4 py-2.5 align-top">
                         {isEditing ? (
                           <div className="flex items-center justify-end gap-1">
@@ -1259,7 +1268,7 @@ function RequirementSection({
         </div>
       )}
 
-      {!isPM && (
+      {!isPM && !itemsLocked && (
         showAddForm ? (
           <div className="border border-border rounded-xl p-4 space-y-2">
             <div className="grid grid-cols-[120px_1fr] gap-2">
