@@ -24,11 +24,15 @@ class WorkloadItemSerializer(serializers.Serializer):
 
 class ActivityLogItemSerializer(serializers.Serializer):
     projectId = serializers.IntegerField(allow_null=True)
-    projectName = serializers.CharField()
+    # views.py가 project/assigned_user가 없는 task는 ""로 채워서 넘긴다(project 없이
+    # AutoTaskAssignView로 만들어진 업무 등) — CharField 기본값(allow_blank=False)이라
+    # 그 "" 하나 때문에 전체 응답이 400으로 거부되는 버그가 있었다(직접 재현해 확인:
+    # {"activityLog":{"0":{"projectName":["이 필드는 blank일 수 없습니다."]}}}).
+    projectName = serializers.CharField(allow_blank=True)
     taskTitle = serializers.CharField()
     status = serializers.CharField()
     statusLabel = serializers.CharField()
-    assigneeName = serializers.CharField()
+    assigneeName = serializers.CharField(allow_blank=True)
     updatedAt = serializers.CharField(allow_null=True)
 
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useMemo, Fragment, type Dispatch, type SetStateAction } from "react";
+import { useEffect, useState, useMemo, useRef, Fragment, type Dispatch, type SetStateAction } from "react";
 import { useAuth } from "@/lib/auth";
 import { apiFetch } from "@/lib/api/client";
 import {
@@ -370,18 +370,44 @@ export default function DocumentsPage() {
     else setTaskAssignments([]);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedNote?.project]);
+  // reqDef/taskAssignments를 아는 채로 stageOf/stepDone을 호출하기 위한 헬퍼 —
+  // 요구사항정의서 승인·업무배분 확정까지 반영해 "지금 이 문서가 실제로 어디까지
+  // 왔는지" 정확히 판단한다(documentPipeline.ts 참고).
+  const reqDefFor = (spec: SpecDto | null) => (spec ? reqDefs.find(r => r.spec === spec.id) ?? null : null);
+  const hasConfirmedTasksFor = (reqDef: ReqDefDto | null) => {
+    if (!reqDef) return false;
+    const itemIds = new Set(reqDef.items.map(i => i.id));
+    return taskAssignments.some(t => itemIds.has(t.req_item));
+  };
+
   // 문서를 고르면(직접 클릭이든, 등록 직후 자동이든) 항상 "그 문서가 지금 있는 단계"를
   // 첫 화면으로 보여준다 — heyzzabi2와 동일한 동작.
   const selectNote = (note: NoteDto) => {
     setSelectedNoteId(note.id);
-    setActiveTab(stageOf(note.spec_documents[0] ?? null));
+    const spec = note.spec_documents[0] ?? null;
+    const reqDef = reqDefFor(spec);
+    setActiveTab(stageOf(spec, reqDef, hasConfirmedTasksFor(reqDef)));
   };
-  // 지금 보던 탭이 승인 등으로 잠기게 되면(방금 승인한 경우 포함) 자동으로 다음 단계로 넘어간다.
+  // 지금 보던 탭이 승인/확정으로 "방금" 완료 처리됐을 때만(=상태가 실제로 바뀐 순간)
+  // 자동으로 다음 단계로 넘어간다. done이 항상 클릭 가능해진 뒤로(위 stepper 참고)
+  // activeTab이 바뀔 때마다 이 조건을 다시 평가하면, 완료된 과거 탭을 수동으로
+  // 눌러 돌아가는 즉시 이 effect가 "done이니까"라며 곧바로 다음 단계로 도로 튕겨내는
+  // 버그가 생긴다(실제로 재현해서 확인) — 그래서 activeTab을 의존성에서 빼고, 노트별로
+  // 마지막에 본 상태 스냅샷과 비교해 "진짜로 상태가 바뀐 경우"에만 넘어가게 한다.
+  const lastStageKeyRef = useRef<Record<number, string>>({});
   useEffect(() => {
     if (!selectedNote) return;
     const spec = selectedNote.spec_documents[0] ?? null;
-    if (stepDone(spec, activeTab)) setActiveTab(stageOf(spec));
-  }, [selectedNote?.id, selectedNote?.spec_documents[0]?.status_code, activeTab]);
+    const reqDef = reqDefFor(spec);
+    const hasConfirmedTasks = hasConfirmedTasksFor(reqDef);
+    const stageKey = `${spec?.status_info?.code_id ?? ""}|${reqDef?.status_info?.code_id ?? ""}|${hasConfirmedTasks}`;
+    const prevKey = lastStageKeyRef.current[selectedNote.id];
+    lastStageKeyRef.current[selectedNote.id] = stageKey;
+    if (prevKey !== undefined && prevKey !== stageKey && stepDone(spec, activeTab, reqDef, hasConfirmedTasks)) {
+      setActiveTab(stageOf(spec, reqDef, hasConfirmedTasks));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedNote?.id, selectedNote?.spec_documents[0]?.status_code, reqDefs, taskAssignments]);
 
   const replaceNote = (updated: NoteDto) => {
     setNotes(prev => prev.map(n => (n.id === updated.id ? updated : n)));
@@ -806,42 +832,42 @@ export default function DocumentsPage() {
       </div>
 
       {/* Pipeline stepper — 기획서 → 요구사항정의서 → 업무배분이 하나로 이어지는
-          파이프라인임을 보여준다(heyzzabi2 참고). 완료된 단계는 잠금(초록 자물쇠),
-          지금 선택한 문서가 있는 단계는 강조 링, 탭 자체는 항상 클릭 가능(과거 열람용). */}
+          파이프라인임을 보여준다(heyzzabi2 참고). 완료된 단계는 초록 자물쇠 아이콘으로
+          "끝났다"는 것만 표시하고, 탭 자체는 항상 클릭 가능하다(과거 열람용) — 예전엔
+          done이면 disabled까지 걸어서 승인된 기획서를 다시 못 열어보는(PDF/PPTX
+          다운로드도 못 하는) 버그가 있었다. 지금 선택한 문서가 있는 단계는 강조 링. */}
       <div className="flex items-center">
-        {PIPELINE_STEPS.map((step, i) => {
-          const done = stepDone(activeSpec, step);
-          const isDocStage = selectedNote ? stageOf(activeSpec) === step : false;
-          const isViewed = activeTab === step;
-          const prevDone = i > 0 ? stepDone(activeSpec, PIPELINE_STEPS[i - 1]) : false;
-          const locked = done;
-          return (
-            <Fragment key={step}>
-              {i > 0 && <div className={cn("h-0.5 w-6 md:w-10 rounded-full transition-colors", prevDone ? "bg-emerald-500/50" : "bg-black/10 dark:bg-white/10")} />}
-              <button
-                onClick={() => !locked && setActiveTab(step)}
-                disabled={locked}
-                title={locked ? "승인이 완료되어 더 이상 열람할 수 없습니다." : undefined}
-                className={cn(
-                  "flex items-center gap-2 pb-1 px-1 text-base font-medium transition-colors border-b-2",
-                  locked
-                    ? "border-transparent text-muted-foreground/50 cursor-not-allowed"
-                    : isViewed ? "border-primary text-primary font-bold" : "border-transparent text-muted-foreground hover:text-foreground"
-                )}
-              >
-                <span className={cn(
-                  "w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 transition-colors",
-                  done ? "bg-emerald-500 text-white"
-                    : isDocStage ? "bg-primary text-primary-foreground ring-4 ring-primary/20"
-                    : "bg-black/10 dark:bg-white/10 text-muted-foreground"
-                )}>
-                  {locked ? <Lock className="w-3 h-3" /> : i + 1}
-                </span>
-                {PIPELINE_TAB_LABEL[step]}
-              </button>
-            </Fragment>
-          );
-        })}
+        {(() => {
+          const hasConfirmedTasks = hasConfirmedTasksFor(activeReqDef);
+          return PIPELINE_STEPS.map((step, i) => {
+            const done = stepDone(activeSpec, step, activeReqDef, hasConfirmedTasks);
+            const isDocStage = selectedNote ? stageOf(activeSpec, activeReqDef, hasConfirmedTasks) === step : false;
+            const isViewed = activeTab === step;
+            const prevDone = i > 0 ? stepDone(activeSpec, PIPELINE_STEPS[i - 1], activeReqDef, hasConfirmedTasks) : false;
+            return (
+              <Fragment key={step}>
+                {i > 0 && <div className={cn("h-0.5 w-6 md:w-10 rounded-full transition-colors", prevDone ? "bg-emerald-500/50" : "bg-black/10 dark:bg-white/10")} />}
+                <button
+                  onClick={() => setActiveTab(step)}
+                  className={cn(
+                    "flex items-center gap-2 pb-1 px-1 text-base font-medium transition-colors border-b-2",
+                    isViewed ? "border-primary text-primary font-bold" : "border-transparent text-muted-foreground hover:text-foreground"
+                  )}
+                >
+                  <span className={cn(
+                    "w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 transition-colors",
+                    done ? "bg-emerald-500 text-white"
+                      : isDocStage ? "bg-primary text-primary-foreground ring-4 ring-primary/20"
+                      : "bg-black/10 dark:bg-white/10 text-muted-foreground"
+                  )}>
+                    {done ? <Lock className="w-3 h-3" /> : i + 1}
+                  </span>
+                  {PIPELINE_TAB_LABEL[step]}
+                </button>
+              </Fragment>
+            );
+          });
+        })()}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-[360px_minmax(0,1fr)] gap-6 items-start">
@@ -871,9 +897,11 @@ export default function DocumentsPage() {
                 // — 기획서 단계면 기획서 번호, 요구사항정의서 단계(기획서 승인 완료)로
                 // 넘어갔으면 요구사항정의서 번호, 아직 기획서도 없으면 회의록 번호.
                 const cardReqDef = spec ? reqDefs.find(r => r.spec === spec.id) ?? null : null;
+                const cardHasConfirmedTasks = hasConfirmedTasksFor(cardReqDef);
+                const cardStage = stageOf(spec, cardReqDef, cardHasConfirmedTasks);
                 const [numberLabel, numberValue] = !spec
                   ? ["회의록 번호", note.id]
-                  : stageOf(spec) === "reqSpec" && cardReqDef
+                  : cardStage !== "proposal" && cardReqDef
                   ? ["요구사항정의서 번호", cardReqDef.id]
                   : ["기획서 번호", spec.id];
                 return (
@@ -893,12 +921,12 @@ export default function DocumentsPage() {
                       <div className="flex items-center gap-1 mb-1.5">
                         {PIPELINE_STEPS.map((step, i) => (
                           <Fragment key={step}>
-                            {i > 0 && <div className={cn("h-px w-3", stepDone(spec, PIPELINE_STEPS[i - 1]) ? "bg-emerald-500/40" : "bg-black/10 dark:bg-white/10")} />}
+                            {i > 0 && <div className={cn("h-px w-3", stepDone(spec, PIPELINE_STEPS[i - 1], cardReqDef, cardHasConfirmedTasks) ? "bg-emerald-500/40" : "bg-black/10 dark:bg-white/10")} />}
                             <div
                               title={PIPELINE_TAB_LABEL[step]}
                               className={cn(
                                 "w-1.5 h-1.5 rounded-full shrink-0",
-                                step === stageOf(spec) ? "bg-primary ring-2 ring-primary/25" : stepDone(spec, step) ? "bg-emerald-500" : "bg-black/10 dark:bg-white/15"
+                                step === cardStage ? "bg-primary ring-2 ring-primary/25" : stepDone(spec, step, cardReqDef, cardHasConfirmedTasks) ? "bg-emerald-500" : "bg-black/10 dark:bg-white/15"
                               )}
                             />
                           </Fragment>
@@ -1390,6 +1418,7 @@ function NoteDetail({
             spec={spec!}
             reqDef={reqDef}
             isPM={isPM}
+            canGenerate={canGenerate}
             busy={busy}
             onCreate={() => onCreateReqDef(spec!)}
             onExtract={onExtractItems}
@@ -1882,10 +1911,15 @@ function GanttChart({ items }: { items: GanttItem[] }) {
 }
 
 function RequirementSection({
-  spec, reqDef, isPM, busy, onCreate, onExtract, onAddItem, onUpdateItem, onDeleteItem, onStatusChange,
+  spec, reqDef, isPM, canGenerate, busy, onCreate, onExtract, onAddItem, onUpdateItem, onDeleteItem, onStatusChange,
   onGenerateTasks, generatingTasks, onRejectClick, tasksAlreadyAssigned,
 }: {
-  spec: SpecDto; reqDef: ReqDefDto | null; isPM: boolean; busy: string | null;
+  spec: SpecDto; reqDef: ReqDefDto | null; isPM: boolean;
+  // 기획서 탭과 동일한 규칙 — 이 문서(회의록)를 시작한 작성자 본인만 요구사항정의서를
+  // 생성/수정/삭제/검토요청할 수 있다. 예전엔 isPM만 봐서, PM이 아니기만 하면 다른
+  // 사람이 시작한 문서의 요구사항정의서도 마음대로 건드릴 수 있는 문제가 있었다.
+  canGenerate: boolean;
+  busy: string | null;
   onCreate: () => void;
   onExtract: (specId: number, reqDefId: number) => void;
   onAddItem: (reqDefId: number, item: { req_code: string; req_name: string; description: string; order: number; priority_code: string | null }) => void;
@@ -1955,7 +1989,7 @@ function RequirementSection({
     return (
       <div className="border-t border-border pt-5 mt-2">
         <h3 className="font-bold text-sm mb-2">요구사항 정의서</h3>
-        {!isPM ? (
+        {!isPM && canGenerate ? (
           <button
             onClick={onCreate}
             disabled={creating}
@@ -1965,7 +1999,9 @@ function RequirementSection({
             요구사항 정의서 생성
           </button>
         ) : (
-          <p className="text-sm text-muted-foreground">아직 요구사항 정의서가 생성되지 않았습니다.</p>
+          <p className="text-sm text-muted-foreground">
+            {!isPM && !canGenerate ? "다른 사용자가 시작한 회의록입니다. 작성자 본인만 생성할 수 있습니다." : "아직 요구사항 정의서가 생성되지 않았습니다."}
+          </p>
         )}
       </div>
     );
@@ -2009,7 +2045,7 @@ function RequirementSection({
           {/* 재추출은 버전 관리 없이 기존 항목을 통째로 지우고 새로 만든다(RequirementExtractView
               참고 — 되돌릴 방법이 없음) — 당분간 쓰지 않기로 해서 숨긴다(사용자 요청). 항목은
               이제 표의 +버튼으로 하나씩 추가한다. 다시 켜려면 아래 주석만 풀면 된다. */}
-          {false && !isPM && !itemsLocked && (
+          {false && !isPM && canGenerate && !itemsLocked && (
             <button
               onClick={() => onExtract(spec.id, reqDef!.id)}
               disabled={!!extracting}
@@ -2256,7 +2292,7 @@ function RequirementSection({
           return (
             <div className="py-4 text-center space-y-3">
               <p className="text-sm text-muted-foreground">아직 요구사항 항목이 없습니다.</p>
-              {!isPM && !itemsLocked && (
+              {!isPM && canGenerate && !itemsLocked && (
                 addFormAt === "start" ? (
                   <div className="border border-border rounded-xl p-4 text-left max-w-md mx-auto">{addFormFields("start")}</div>
                 ) : (
@@ -2291,11 +2327,11 @@ function RequirementSection({
                     우선순위 <span className="text-primary">{sortArrow("priority")}</span>
                   </button>
                 </th>
-                {!isPM && !itemsLocked && <th className="px-4 py-2.5 font-bold w-20 text-right">관리</th>}
+                {!isPM && canGenerate && !itemsLocked && <th className="px-4 py-2.5 font-bold w-20 text-right">관리</th>}
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {!sortColumn && !isPM && !itemsLocked && (
+              {!sortColumn && !isPM && canGenerate && !itemsLocked && (
                 addFormAt === "start" ? renderAddFormRow("start") : renderDivider("start")
               )}
               {displayItems.map((item, index) => {
@@ -2364,7 +2400,7 @@ function RequirementSection({
                         );
                       })()}
                     </td>
-                    {!isPM && !itemsLocked && (
+                    {!isPM && canGenerate && !itemsLocked && (
                       <td className="px-4 py-2.5 align-middle">
                         {isEditing ? (
                           <div className="flex items-center justify-end gap-1">
@@ -2411,7 +2447,7 @@ function RequirementSection({
                   {/* 같은 그룹(FR-01 등) 안에서는 +버튼을 안 보여준다 — 다음 항목이 없거나
                       (마지막 행) 그룹이 다를 때만 표시. 정렬 중에는 화면 순서와 실제 order가
                       달라서 삽입 위치 계산이 의미 없어지므로 +버튼 자체를 숨긴다. */}
-                  {!sortColumn && !isPM && !itemsLocked && (
+                  {!sortColumn && !isPM && canGenerate && !itemsLocked && (
                     index === reqDef.items.length - 1 || groupOf(item.req_code) !== groupOf(reqDef.items[index + 1].req_code)
                   ) && (
                     addFormAt === item.id ? renderAddFormRow(item.id) : renderDivider(item.id)
@@ -2422,7 +2458,7 @@ function RequirementSection({
             </tbody>
           </table>
         </div>
-        {!isPM && !itemsLocked && (
+        {!isPM && canGenerate && !itemsLocked && (
           bottomAddOpen ? (
             <div className="border border-border rounded-xl p-4 space-y-2 mt-3">
               <div className="grid grid-cols-2 gap-2">
@@ -2500,7 +2536,7 @@ function RequirementSection({
         {/* 검토요청은 하단 우측 — 기획서 탭과 동일한 위치(승인/반려는 상단, 검토요청/
             직접수정 성격의 액션은 하단). reqStatus===null은 REQSPEC_STATUS 도입 전
             기존 데이터라 DRAFT로 간주해 검토요청을 받을 수 있게 한다. */}
-        {!isPM && !itemsLocked && (reqStatus === "DRAFT" || reqStatus === "REJECTED" || reqStatus === null) && (
+        {!isPM && canGenerate && !itemsLocked && (reqStatus === "DRAFT" || reqStatus === "REJECTED" || reqStatus === null) && (
           <div className="flex justify-end mt-3">
             <button
               onClick={() => onStatusChange("PENDING_REVIEW")}
