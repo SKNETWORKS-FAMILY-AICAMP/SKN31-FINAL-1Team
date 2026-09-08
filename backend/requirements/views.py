@@ -90,7 +90,9 @@ class RequirementDefinitionListCreateView(generics.ListCreateAPIView):
         return queryset
 
     def perform_create(self, serializer):
-        serializer.save(created_by=self.request.user)
+        # 검토요청 전 초안(DRAFT) 상태로 시작 — AI 추출(RequirementExtractView)과 동일한 초기값.
+        draft_status = CommonCode.objects.filter(group_id='REQSPEC_STATUS', code_id='DRAFT').first()
+        serializer.save(created_by=self.request.user, status_code=draft_status)
 
 
 @extend_schema_view(
@@ -231,10 +233,13 @@ class RequirementExtractView(APIView):
         # 5. DB 저장 및 기존 요구사항 정의서 연동 (트랜잭션)
         try:
             with transaction.atomic():
-                # 초기 승인 상태(PENDING_REVIEW / 검토대기) 공통 코드 조회
-                pending_status = CommonCode.objects.filter(
+                # AI 추출 직후에는 검토요청 전 초안(DRAFT) 상태로 시작한다 — 사용자가 항목을
+                # 확인/수정한 뒤 직접 "검토요청"을 눌러야 PENDING_REVIEW로 넘어간다. 예전엔
+                # 추출 즉시 PENDING_REVIEW로 박혀서, 사용자가 아직 항목을 고치는 중인데도
+                # PM이 곧바로 승인/반려할 수 있는 절차 문제가 있었다(프론트 요청으로 수정).
+                draft_status = CommonCode.objects.filter(
                     group_id='REQSPEC_STATUS',
-                    code_id__in=['PENDING_REVIEW', 'PENDING', 'REQSPEC_STATUS_PENDING']
+                    code_id='DRAFT'
                 ).first()
 
                 # 기획서와 1:1 대응되는 RequirementDefinition 생성 또는 조회
@@ -243,14 +248,15 @@ class RequirementExtractView(APIView):
                     defaults={
                         'project': spec_document.project if hasattr(spec_document, "project") else None,
                         'title': f"{spec_document.title} - 요구사항 정의서",
-                        'status_code': pending_status,
+                        'status_code': draft_status,
                         'created_by': request.user
                     }
                 )
 
-                # 재추출 시 상태를 다시 PENDING_REVIEW로 초기화
-                if not created and pending_status:
-                    req_def.status_code = pending_status
+                # 재추출 시 상태를 다시 DRAFT로 초기화 — 반려/검토중이던 상태에서 다시
+                # 추출했다면 그 내용은 폐기되고 새로 검토요청을 받아야 하므로.
+                if not created and draft_status:
+                    req_def.status_code = draft_status
                     req_def.save()
 
                 # 기존 생성 항목 초기화 (재추출 시 중복 방지)

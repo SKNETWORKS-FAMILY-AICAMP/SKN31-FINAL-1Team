@@ -430,11 +430,13 @@ export default function DocumentsPage() {
     }
   };
 
-  // 요구사항정의서 승인/반려 — 전용 엔드포인트는 아직 없어서(기획서 쪽처럼 /approve/,
-  // /reject/가 따로 없음) 일반 PATCH로 status_code만 바꾼다. 반려 사유를 저장할 필드가
-  // 모델에 아직 없어서(기획서의 review_comment 같은 것) 반려 사유 입력 UI는 이번엔 생략한다
-  // — 팀원 전달 목록에 추가해야 함.
-  const handleReqDefStatusChange = async (spec: SpecDto, reqDefId: number, statusCode: "APPROVED" | "REJECTED") => {
+  // 요구사항정의서 상태 전이 — 전용 엔드포인트는 아직 없어서(기획서 쪽처럼 /submit-review/,
+  // /approve/, /reject/가 따로 없음) 일반 PATCH로 status_code만 바꾼다. DRAFT/REJECTED에서
+  // 작성자가 "검토요청"을 누르면 PENDING_REVIEW로, PM이 그 상태에서 승인/반려하면 APPROVED/
+  // REJECTED로 넘어간다(RequirementSection 참고). 반려 사유를 저장할 필드가 모델에 아직
+  // 없어서(기획서의 review_comment 같은 것) 반려 사유 입력 UI는 이번엔 생략한다 — 팀원
+  // 전달 목록에 추가해야 함.
+  const handleReqDefStatusChange = async (spec: SpecDto, reqDefId: number, statusCode: "PENDING_REVIEW" | "APPROVED" | "REJECTED") => {
     setBusy(`reqdef-${reqDefId}-${statusCode.toLowerCase()}`);
     try {
       const updated = await apiFetch<ReqDefDto>(`/api/requirements/${spec.id}/`, {
@@ -442,7 +444,11 @@ export default function DocumentsPage() {
         body: JSON.stringify({ status_code: statusCode }),
       });
       setReqDefs(prev => prev.map(r => r.id === reqDefId ? updated : r));
-      setToastMessage(statusCode === "APPROVED" ? "요구사항 정의서가 승인되었습니다" : "요구사항 정의서가 반려되었습니다");
+      setToastMessage(
+        statusCode === "APPROVED" ? "요구사항 정의서가 승인되었습니다"
+          : statusCode === "REJECTED" ? "요구사항 정의서가 반려되었습니다"
+          : "요구사항 정의서 검토를 요청했습니다"
+      );
     } catch (err: any) {
       setErrorToast(err.message || "상태 변경에 실패했습니다.");
     } finally {
@@ -580,7 +586,9 @@ export default function DocumentsPage() {
                     )}
                   >
                     <button onClick={() => selectNote(note)} className="flex-1 min-w-0 text-left">
-                      <p className="text-[10px] font-mono text-muted-foreground/70">문서번호 {note.id}</p>
+                      {/* 목록 카드는 특정 탭이 아니라 문서 묶음 전체를 대표하는 행이라 항상
+                          회의록 번호(그 묶음의 시작점)로 표시한다 — 탭별 번호는 상세 패널에서. */}
+                      <p className="text-[10px] font-mono text-muted-foreground/70">회의록 번호 {note.id}</p>
                       <p className="font-semibold text-sm truncate mb-1.5">{note.title}</p>
                       {/* 미니 파이프라인 — 이 문서가 지금 3단계 중 어디에 있는지 한눈에 */}
                       <div className="flex items-center gap-1 mb-1.5">
@@ -752,7 +760,7 @@ function NoteDetail({
   onAddItem: (reqDefId: number, item: { req_code: string; req_name: string; description: string }) => void;
   onUpdateItem: (reqDefId: number, itemId: number, patch: { req_name: string; description: string }) => void;
   onDeleteItem: (reqDefId: number, itemId: number) => void;
-  onReqDefStatusChange: (spec: SpecDto, reqDefId: number, statusCode: "APPROVED" | "REJECTED") => void;
+  onReqDefStatusChange: (spec: SpecDto, reqDefId: number, statusCode: "PENDING_REVIEW" | "APPROVED" | "REJECTED") => void;
 }) {
   const status = bareStatus(spec);
   const meta = STATUS_META[status];
@@ -817,7 +825,18 @@ function NoteDetail({
     <div className="space-y-5">
       <div className="flex items-center justify-between">
         <div>
-          <p className="text-xs font-mono text-muted-foreground/70">문서번호 {note.id}</p>
+          {/* 지금 보고 있는 탭(회의록/기획서/요구사항정의서)에 해당하는 실제 문서 번호를
+              보여준다 — 파이프라인 단계마다 별개의 레코드(MeetingNote/SpecDocument/
+              RequirementDefinition)라 번호도 그에 맞게 바뀌어야 한다는 요청. 아직 그
+              단계의 문서가 없으면(예: 요구사항정의서 탭인데 아직 미생성) 회의록 번호로
+              대체 표시한다. */}
+          {activeTab === "reqSpec" && reqDef ? (
+            <p className="text-xs font-mono text-muted-foreground/70">요구사항정의서 번호 {reqDef.id}</p>
+          ) : activeTab === "proposal" && spec ? (
+            <p className="text-xs font-mono text-muted-foreground/70">기획서 번호 {spec.id}</p>
+          ) : (
+            <p className="text-xs font-mono text-muted-foreground/70">회의록 번호 {note.id}</p>
+          )}
           <h2 className="font-bold text-lg">{note.title}</h2>
           <p className="text-xs text-muted-foreground mt-0.5">
             작성자 {note.created_by_name || "알 수 없음"}
@@ -1057,7 +1076,7 @@ function RequirementSection({
   onAddItem: (reqDefId: number, item: { req_code: string; req_name: string; description: string }) => void;
   onUpdateItem: (reqDefId: number, itemId: number, patch: { req_name: string; description: string }) => void;
   onDeleteItem: (reqDefId: number, itemId: number) => void;
-  onStatusChange: (statusCode: "APPROVED" | "REJECTED") => void;
+  onStatusChange: (statusCode: "PENDING_REVIEW" | "APPROVED" | "REJECTED") => void;
 }) {
   const [showAddForm, setShowAddForm] = useState(false);
   const [newCode, setNewCode] = useState("");
@@ -1073,10 +1092,11 @@ function RequirementSection({
   const reqStatus = reqDef?.status_info?.code_id ?? null;
   const approving = reqDef && busy === `reqdef-${reqDef.id}-approved`;
   const rejecting = reqDef && busy === `reqdef-${reqDef.id}-rejected`;
-  // 승인(APPROVED) 후에는 기획서와 마찬가지로 항목을 잠근다 — 이미 승인된 내용이 뒤에서
-  // 바뀌면 안 되기 때문(백엔드 RequirementItemDetailView는 아직 이 체크가 없어서 API 직접
-  // 호출로는 우회 가능 — 팀원 전달 목록에 추가 필요).
-  const itemsLocked = reqStatus === "APPROVED";
+  const submittingReview = reqDef && busy === `reqdef-${reqDef.id}-pending_review`;
+  // 검토요청(PENDING_REVIEW) ~ 승인(APPROVED) 사이에는 기획서와 마찬가지로 항목을 잠근다 —
+  // 이미 검토에 들어간 내용이 뒤에서 바뀌면 안 되기 때문(백엔드 RequirementItemDetailView는
+  // 아직 이 체크가 없어서 API 직접 호출로는 우회 가능 — 팀원 전달 목록에 추가 필요).
+  const itemsLocked = reqStatus === "APPROVED" || reqStatus === "PENDING_REVIEW";
 
   if (!reqDef) {
     return (
@@ -1132,15 +1152,37 @@ function RequirementSection({
               AI 자동 추출
             </button>
           )}
-          {itemsLocked && (
+          {reqStatus === "APPROVED" && (
             <span className="flex items-center gap-1 text-[11px] text-muted-foreground/70">
               <Lock className="w-3 h-3" /> 승인되어 항목이 잠겼습니다
             </span>
           )}
-          {/* 요구사항정의서 승인/반려 — 기획서처럼 검토요청 단계가 따로 없어서 PM이 언제든
-              바로 승인/반려할 수 있게 뒀다. 반려 사유를 저장할 필드가 모델에 없어서(팀원
-              전달 목록에 추가 필요) 사유 입력 없이 상태만 바뀐다. */}
-          {isPM && reqStatus !== "APPROVED" && (
+          {reqStatus === "PENDING_REVIEW" && !isPM && (
+            <span className="flex items-center gap-1 text-[11px] text-muted-foreground/70">
+              <Clock className="w-3 h-3" /> 검토 요청됨 · 승인 대기 중
+            </span>
+          )}
+          {/* 검토요청(DRAFT/REJECTED → PENDING_REVIEW) — 작성자가 항목을 다 다듬은 뒤 직접
+              눌러야 PM에게 승인/반려 대상으로 넘어간다. 그 전에는 PM이 승인/반려 버튼 자체를
+              볼 수 없다(아래 조건 참고) — 사용자가 수정 중인 문서를 PM이 먼저 승인/반려해
+              버리는 절차 문제가 있어 추가했다. */}
+          {/* reqStatus === null은 REQSPEC_STATUS 도입 전에 만들어진 기존 데이터 — DRAFT로
+              간주해 검토요청을 받을 수 있게 한다(없으면 그 문서들만 영원히 액션 불가 상태로
+              막힘). */}
+          {!isPM && !itemsLocked && (reqStatus === "DRAFT" || reqStatus === "REJECTED" || reqStatus === null) && (
+            <button
+              onClick={() => onStatusChange("PENDING_REVIEW")}
+              disabled={!!submittingReview}
+              className="flex items-center gap-2 px-3 py-2 rounded-lg bg-primary text-primary-foreground text-xs font-bold hover:bg-primary/90 disabled:opacity-50"
+            >
+              {submittingReview ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
+              검토요청
+            </button>
+          )}
+          {/* 요구사항정의서 승인/반려 — 검토요청(PENDING_REVIEW) 상태일 때만 PM에게 노출된다.
+              반려 사유를 저장할 필드가 모델에 없어서(팀원 전달 목록에 추가 필요) 사유 입력
+              없이 상태만 바뀐다. */}
+          {isPM && reqStatus === "PENDING_REVIEW" && (
             <>
               <button
                 onClick={() => onStatusChange("REJECTED")}
