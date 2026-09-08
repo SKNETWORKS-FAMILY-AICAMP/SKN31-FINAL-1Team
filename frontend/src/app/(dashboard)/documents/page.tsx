@@ -1649,7 +1649,12 @@ function TaskAssignmentList({
                     {t.epic_title && <p className="text-xs text-muted-foreground mt-0.5 pl-4">{t.epic_no} · {t.epic_title}</p>}
                   </td>
                   <td className="px-4 py-3">
-                    {isPM ? (
+                    {/* 배분 확정은 PM이 직접 하는 액션이라 확정 즉시 APPROVED로 시작한다
+                        (PENDING_APPROVAL이 아님 — PM이 확정했는데 또 PM 승인을 기다리는
+                        건 앞뒤가 안 맞는다, 사용자 지적으로 수정). 담당자 변경은 실제로
+                        작업이 시작되기 전(APPROVED)까지만 허용 — IN_PROGRESS/COMPLETED로
+                        넘어간 업무의 담당자를 바꾸면 실제 작업자와 기록이 어긋난다. */}
+                    {isPM && t.status_info?.code_id === "APPROVED" ? (
                       <div className="flex items-center gap-1">
                         <select
                           value={pendingReassign[t.id] ?? t.assigned_user}
@@ -1704,7 +1709,7 @@ function TaskAssignmentList({
                       </div>
                     ) : (
                       <div className="flex items-center gap-1.5">
-                        <UserIcon className="w-3.5 h-3.5 text-muted-foreground" />
+                        {isPM ? <Lock className="w-3.5 h-3.5 text-muted-foreground/50" /> : <UserIcon className="w-3.5 h-3.5 text-muted-foreground" />}
                         <span className="text-xs font-medium">{t.assigned_user_name}</span>
                       </div>
                     )}
@@ -1718,12 +1723,18 @@ function TaskAssignmentList({
                     ) : "-"}
                   </td>
                   <td className="px-4 py-3">
-                    {/* PENDING_APPROVAL은 "배분은 끝났지만 PM 최종 승인 전"이라는 뜻인데
-                        코드명만 보여주면 "대기"로만 읽혀 아무것도 안 된 것처럼 보인다는
-                        피드백 — /tasks 페이지와 같은 문구로 맞춘다. */}
-                    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-orange-500/10 text-orange-500">
+                    {/* 이 화면에서 확정된 업무는 APPROVED로 바로 시작한다(PM 본인이 확정하는
+                        액션이라 "확정 = 이미 승인됨" — 위 담당자 드롭박스 조건 주석 참고).
+                        PENDING_APPROVAL은 다른 배정 경로(자동배정 등)로 만들어진 업무에만
+                        남아있을 수 있어 그 경우에 대비해 문구만 유지한다. */}
+                    <span className={cn(
+                      "inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold",
+                      t.status_info?.code_id === "APPROVED" ? "bg-emerald-500/10 text-emerald-500" : "bg-orange-500/10 text-orange-500"
+                    )}>
                       {t.status_info?.code_id === "PENDING_APPROVAL"
                         ? "배분완료 · PM 승인 대기"
+                        : t.status_info?.code_id === "APPROVED"
+                        ? "배분 확정됨"
                         : t.status_info?.code_name ?? "미지정"}
                     </span>
                   </td>

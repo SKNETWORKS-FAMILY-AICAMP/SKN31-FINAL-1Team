@@ -259,7 +259,13 @@ def confirm_task_assignments(req_def_id: int, assignments: list) -> dict:
                     epic_title=item.get("epic_title", ""),
                     start_date=item.get("start_date") or None,
                     end_date=item.get("end_date") or None,
-                    status_code_id='PENDING_APPROVAL',
+                    # PENDING_APPROVAL(=PM 승인 대기)이 아니라 APPROVED로 바로 시작한다 —
+                    # 다른 배정 경로(AutoTaskAssignView 등)는 PM이 아닌 쪽이 배정하고 PM이
+                    # 나중에 승인하는 흐름이라 PENDING_APPROVAL이 맞지만, 이 확정 액션 자체를
+                    # PM이 직접 누르는 거라 "확정 = 이미 승인됨"이다. PENDING_APPROVAL로
+                    # 두면 "PM이 확정했는데 또 PM 승인을 기다린다"는 앞뒤가 안 맞는 상태가
+                    # 된다(사용자 지적).
+                    status_code_id='APPROVED',
                 )
                 created_count += 1
     except RequirementDefinition.DoesNotExist:
