@@ -25,10 +25,44 @@ project.start_date/end_date는 이미 있는 컬럼이라 이 계산 자체엔 D
 데이터가 필요해 지금 범위 밖 — 필요해지면 팀과 상의).
 """
 
+import re
 from datetime import date, datetime, timedelta
 from typing import Any, Dict, List, Optional, Union
 
 _PRIORITY_RANK = {"High": 0, "Medium": 1, "Low": 2, None: 3}
+
+
+def _normalize_skill(skill: str) -> str:
+    """"REST API 설계" vs "REST API", "Node.js" vs "NodeJS" 처럼 표현만
+    다를 뿐 같은 기술을 가리키는 문자열을 비교 가능하게 만든다. required_skills는
+    LLM이 자유 텍스트로 채우는데(task_generation 프롬프트가 "구체적으로 나열하라"
+    고만 지시하고 고정된 어휘를 강제하지 않는다) DB의 스킬 코드(User.skills)는
+    "REST API", "Django"처럼 고정된 표기다 — 원래는 완전 일치(set 교집합)만
+    보고 있어서 공백/대소문자/한글 수식어 하나만 달라도 스킬이 하나도 안 겹쳐
+    전원이 "조건을 만족하는 후보가 없어 보류 처리"되는 문제가 있었다(사용자
+    신고: "API 호출이 되는데 업무 배분이 미배정"). 영문/숫자/한글만 남기고
+    소문자로 바꿔 비교한다."""
+    return re.sub(r"[^a-z0-9가-힣]", "", skill.lower())
+
+
+def _skills_overlap(required: set, member_skills: set) -> set:
+    """정규화한 문자열끼리 완전 일치뿐 아니라 부분 포함도 매칭으로 본다 —
+    "REST API 설계"를 정규화하면 "restapi설계"가 되는데, "REST API"를 정규화한
+    "restapi"가 그 안에 그대로 포함되므로 실제로는 같은 기술을 가리키는 것으로
+    본다. 반환값은 화면에 보여줄 원본 표기(required 쪽 원문)의 부분집합이다."""
+    if not required:
+        return set()
+    norm_member = {_normalize_skill(s) for s in member_skills if s}
+    if not norm_member:
+        return set()
+    matched = set()
+    for skill in required:
+        norm_skill = _normalize_skill(skill)
+        if not norm_skill:
+            continue
+        if any(norm_skill == nm or norm_skill in nm or nm in norm_skill for nm in norm_member):
+            matched.add(skill)
+    return matched
 
 # TODO(팀 합의 필요): 담당자 1인이 근무일 하루에 이 업무에 쓸 수 있는 시간.
 # DB 필드가 아니라 코드 상수 — calculate_max_hours_per_assignee()가 프로젝트
@@ -193,7 +227,7 @@ def schedule_assignments(
             projected = workload.get(emp_id, 0.0) + unit["estimated_hours"]
             if projected > max_hours_per_assignee:
                 continue  # 이 업무까지 더하면 상한을 넘기는 사람은 후보에서 제외
-            matched = required & set(m.get("skills", []))
+            matched = _skills_overlap(required, set(m.get("skills", [])))
             if required and not matched:
                 continue  # 요구 기술과 하나도 안 겹치면 제외
             remaining_ratio = (
