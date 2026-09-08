@@ -1400,10 +1400,11 @@ function RequirementSection({
                         </>
                       )}
                     </td>
-                    <td className="px-4 py-2.5 align-top">
+                    <td className="px-4 py-2.5 align-middle">
                       {/* 설명 아래 회색 텍스트로만 있던 우선순위를 별도 컬럼 + 상/중/하 색
                           배지로 바꿨다(가독성 피드백) — 신호등처럼 급함(상)=빨강,
-                          보통(중)=주황, 낮음(하)=회색. */}
+                          보통(중)=주황, 낮음(하)=회색. 다른 컬럼은 다 위쪽(align-top)
+                          정렬인데 이 배지만 세로 중앙에 오게 해달라는 요청. */}
                       {(() => {
                         const code = item.priority_info?.code_name ?? "";
                         const label = PRIORITY_LABEL[code];
