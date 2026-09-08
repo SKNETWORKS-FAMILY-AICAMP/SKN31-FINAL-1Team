@@ -40,7 +40,7 @@ class RequirementDefinitionSerializer(serializers.ModelSerializer):
     요구사항 정의서(RequirementDefinition) 상세 조회용 Serializer
     하위에 속한 모든 요구사항 상세 항목(items) 및 spec_id 포함.
     """
-    spec_id = serializers.IntegerField(source='spec.id', read_only=True)  # spec_id 명시적 추가
+    spec_id = serializers.IntegerField(source='spec.spec_id', read_only=True)  # spec.spec_id 참조로 변경
     created_by_name = serializers.CharField(source='created_by.username', read_only=True)
     spec_title = serializers.CharField(source='spec.title', read_only=True)
     project_name = serializers.CharField(source='project.name', read_only=True)
