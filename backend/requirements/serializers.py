@@ -65,6 +65,7 @@ class RequirementDefinitionSerializer(serializers.ModelSerializer):
             'description',
             'status_code',    # 상태 변경(승인/반려) 수정을 위한 FK 필드
             'status_info',    # 상태 코드/명칭 조회를 위한 객체 필드
+            'reject_reason',
             'created_by',
             'created_by_name',
             'items',

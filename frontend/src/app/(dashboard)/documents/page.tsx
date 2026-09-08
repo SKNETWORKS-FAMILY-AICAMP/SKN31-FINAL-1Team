@@ -73,6 +73,7 @@ type ReqDefDto = {
   description?: string | null;
   status_code: string | null;
   status_info: { code_id: ReqDefStatusCode; code_name: string } | null;
+  reject_reason: string | null;
   created_by: number | null;
   created_by_name: string;
   items: ReqItemDto[];
@@ -217,7 +218,9 @@ export default function DocumentsPage() {
   const [activeTab, setActiveTab] = useState<PipelineTab>("proposal");
   const [newDocModalOpen, setNewDocModalOpen] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
-  const [rejectTarget, setRejectTarget] = useState<{ specId: number } | null>(null);
+  const [rejectTarget, setRejectTarget] = useState<
+    { kind: "spec"; specId: number } | { kind: "reqdef"; specId: number; reqDefId: number } | null
+  >(null);
   const [rejectReason, setRejectReason] = useState("");
   const [deleteTarget, setDeleteTarget] = useState<{ id: number; title: string } | null>(null);
   const [deleting, setDeleting] = useState(false);
@@ -380,11 +383,19 @@ export default function DocumentsPage() {
     if (!rejectTarget || !rejectReason.trim() || !selectedNote) return;
     setBusy(`${selectedNote.id}-reject`);
     try {
-      await apiFetch(`/api/meetings/specs/${rejectTarget.specId}/reject/`, {
-        method: "POST",
-        body: JSON.stringify({ reason: rejectReason }),
-      });
-      await refetchNote(selectedNote.id);
+      if (rejectTarget.kind === "spec") {
+        await apiFetch(`/api/meetings/specs/${rejectTarget.specId}/reject/`, {
+          method: "POST",
+          body: JSON.stringify({ reason: rejectReason }),
+        });
+        await refetchNote(selectedNote.id);
+      } else {
+        const updated = await apiFetch<ReqDefDto>(`/api/requirements/${rejectTarget.specId}/`, {
+          method: "PATCH",
+          body: JSON.stringify({ status_code: "REJECTED", reject_reason: rejectReason }),
+        });
+        setReqDefs(prev => prev.map(r => r.id === rejectTarget.reqDefId ? updated : r));
+      }
       setRejectTarget(null);
       setRejectReason("");
     } catch (err: any) {
@@ -767,7 +778,7 @@ export default function DocumentsPage() {
               onSavePeriod={(spec, period) => handleSavePeriod(selectedNote, spec, period)}
               onSubmitReview={(spec) => handleSubmitReview(selectedNote, spec)}
               onApprove={(spec) => handleApprove(selectedNote, spec)}
-              onReject={(spec) => setRejectTarget({ specId: spec.id })}
+              onReject={(spec) => setRejectTarget({ kind: "spec", specId: spec.id })}
               onCreateReqDef={(spec) => handleCreateReqDef(selectedNote, spec)}
               onExtractItems={handleExtractItems}
               onAddItem={handleAddItem}
@@ -775,6 +786,7 @@ export default function DocumentsPage() {
               onDeleteItem={handleDeleteItem}
               onReqDefStatusChange={handleReqDefStatusChange}
               onGenerateTasks={(spec, reqDefId) => handleGenerateTasks(selectedNote, spec, reqDefId)}
+              onRejectReqDef={(spec, reqDefId) => setRejectTarget({ kind: "reqdef", specId: spec.id, reqDefId })}
               taskAssignments={taskAssignments}
             />
           )}
@@ -860,7 +872,7 @@ function NoteDetail({
   note, spec, reqDef, activeTab, isPM, currentUserId, busy,
   onGenerateSpec, onSaveNoteContent, onSaveSpec, onSavePeriod, onSubmitReview, onApprove, onReject,
   onCreateReqDef, onExtractItems, onAddItem, onUpdateItem, onDeleteItem, onReqDefStatusChange,
-  onGenerateTasks, taskAssignments,
+  onGenerateTasks, taskAssignments, onRejectReqDef,
 }: {
   note: NoteDto; spec: SpecDto | null; reqDef: ReqDefDto | null; activeTab: PipelineTab; isPM: boolean; currentUserId: string | undefined; busy: string | null;
   onGenerateSpec: () => void;
@@ -877,6 +889,7 @@ function NoteDetail({
   onDeleteItem: (reqDefId: number, itemId: number) => void;
   onReqDefStatusChange: (spec: SpecDto, reqDefId: number, statusCode: "PENDING_REVIEW" | "APPROVED" | "REJECTED") => void;
   onGenerateTasks: (spec: SpecDto, reqDefId: number) => void;
+  onRejectReqDef: (spec: SpecDto, reqDefId: number) => void;
   taskAssignments: TaskAssignmentDto[];
 }) {
   const status = bareStatus(spec);
@@ -957,18 +970,27 @@ function NoteDetail({
           <span className={cn("inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold", meta.className)}>
             <meta.icon className="w-3.5 h-3.5" /> {spec ? meta.label : "기획서 미생성"}
           </span>
-          {/* 요구사항정의서 탭은 검토요청 버튼이 상단 우측(제목 옆)에 있는데 기획서 탭만
-              하단에 따로 있어서 통일감이 없다는 피드백 — 같은 위치로 옮긴다. PDF/PPTX
-              다운로드는 그대로 하단 좌측에 둔다. */}
-          {activeTab === "proposal" && spec && !isPM && canGenerate && status === "DRAFT" && (
-            <button
-              onClick={() => onSubmitReview(spec)}
-              disabled={busy === busyKey("submit")}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-primary text-primary-foreground text-xs font-bold hover:bg-primary/90 disabled:opacity-50"
-            >
-              {busy === busyKey("submit") ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
-              검토요청
-            </button>
+          {/* 요구사항정의서 탭처럼 PM 승인/반려는 상단 우측(제목 옆)에 둔다 — 검토요청/
+              직접수정은 하단, 승인/반려만 상단으로 통일(사용자 요청). PDF/PPTX 다운로드는
+              하단 좌측 그대로. */}
+          {activeTab === "proposal" && spec && isPM && status === "PENDING_REVIEW" && (
+            <>
+              <button
+                onClick={() => onReject(spec)}
+                disabled={busy === busyKey("reject")}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-red-500/10 border border-red-500/30 text-red-400 text-xs font-semibold hover:bg-red-500/20 disabled:opacity-50"
+              >
+                <XCircle className="w-3.5 h-3.5" /> 반려
+              </button>
+              <button
+                onClick={() => onApprove(spec)}
+                disabled={busy === busyKey("approve")}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-emerald-500 text-white text-xs font-semibold hover:bg-emerald-600 disabled:opacity-50"
+              >
+                {busy === busyKey("approve") ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
+                승인
+              </button>
+            </>
           )}
         </div>
       </div>
@@ -1064,7 +1086,18 @@ function NoteDetail({
           </button>
         )}
 
-        {/* 검토요청 버튼은 상단 우측(제목 옆)으로 옮겼다 — 요구사항정의서 탭과 위치 통일. */}
+        {/* 검토요청은 하단, 승인/반려는 상단 우측 — "직접수정"도 하단에 있어서 사용자
+            흐름상 하단에 두는 게 더 자연스럽다는 판단으로 다시 하단으로 내렸다. */}
+        {spec && !isPM && canGenerate && status === "DRAFT" && (
+          <button
+            onClick={() => onSubmitReview(spec)}
+            disabled={busy === busyKey("submit")}
+            className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-bold hover:bg-primary/90 disabled:opacity-50"
+          >
+            {busy === busyKey("submit") ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+            검토요청
+          </button>
+        )}
 
         {/* "기획서 생성"/"검토요청"과 같은 기준(작성자 본인, PM은 예외)으로 맞춘다 —
             이 체크가 빠져있어서 다른 사람이 시작한 초안도 고칠 수 있는 상태였다. */}
@@ -1102,25 +1135,7 @@ function NoteDetail({
           </span>
         )}
 
-        {spec && isPM && status === "PENDING_REVIEW" && (
-          <>
-            <button
-              onClick={() => onReject(spec)}
-              disabled={busy === busyKey("reject")}
-              className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-red-500/10 border border-red-500/30 text-red-400 text-sm font-bold hover:bg-red-500/20 disabled:opacity-50"
-            >
-              <XCircle className="w-4 h-4" /> 반려
-            </button>
-            <button
-              onClick={() => onApprove(spec)}
-              disabled={busy === busyKey("approve")}
-              className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-emerald-500 text-white text-sm font-bold hover:bg-emerald-600 disabled:opacity-50"
-            >
-              {busy === busyKey("approve") ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
-              승인
-            </button>
-          </>
-        )}
+        {/* 승인/반려는 상단 우측(제목 옆)으로 옮겼다 — 요구사항정의서 탭과 위치 통일. */}
       </div>
       </div>
 
@@ -1177,6 +1192,7 @@ function NoteDetail({
             onStatusChange={(statusCode) => onReqDefStatusChange(spec!, reqDef!.id, statusCode)}
             onGenerateTasks={() => onGenerateTasks(spec!, reqDef!.id)}
             generatingTasks={!!reqDef && busy === `reqdef-${reqDef.id}-tasks`}
+            onRejectClick={() => onRejectReqDef(spec!, reqDef!.id)}
           />
         )}
       </div>
@@ -1236,7 +1252,7 @@ function NoteDetail({
 
 function RequirementSection({
   spec, reqDef, isPM, busy, onCreate, onExtract, onAddItem, onUpdateItem, onDeleteItem, onStatusChange,
-  onGenerateTasks, generatingTasks,
+  onGenerateTasks, generatingTasks, onRejectClick,
 }: {
   spec: SpecDto; reqDef: ReqDefDto | null; isPM: boolean; busy: string | null;
   onCreate: () => void;
@@ -1244,9 +1260,12 @@ function RequirementSection({
   onAddItem: (reqDefId: number, item: { req_code: string; req_name: string; description: string; order: number; priority_code: string | null }) => void;
   onUpdateItem: (reqDefId: number, itemId: number, patch: { req_name: string; description: string; priority_code?: string | null }) => void;
   onDeleteItem: (reqDefId: number, itemId: number) => void;
-  onStatusChange: (statusCode: "PENDING_REVIEW" | "APPROVED" | "REJECTED") => void;
+  // REJECTED는 사유 입력 모달(onRejectClick)을 거쳐서만 일어난다 — 상태만 바로 바꾸는
+  // 경로를 남겨두면 사유 없이 반려하는 길이 다시 생긴다.
+  onStatusChange: (statusCode: "PENDING_REVIEW" | "APPROVED") => void;
   onGenerateTasks: () => void;
   generatingTasks: boolean;
+  onRejectClick: () => void;
 }) {
   // 하단에 고정된 "항목 직접 추가" 버튼 대신, 표의 행과 행 사이에 있는 + 버튼을 눌러 그
   // 자리에 바로 추가 폼이 펼쳐지도록 바꿨다(사용자 요청). null이면 어디에도 안 열려있고,
@@ -1342,6 +1361,14 @@ function RequirementSection({
             )}
           </div>
           <p className="text-xs text-muted-foreground mt-0.5">{reqDef.version} · 항목 {reqDef.items.length}건</p>
+          {/* 기획서 반려 사유 박스(review_comment)와 동일한 자리·스타일 — reject_reason
+              필드 추가로 이제 요구사항정의서도 반려 사유를 남길 수 있다. */}
+          {reqStatus === "REJECTED" && reqDef.reject_reason && (
+            <div className="flex items-start gap-2 mt-2 p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-sm text-red-400 max-w-xl">
+              <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+              <div><span className="font-semibold">반려 사유:</span> {reqDef.reject_reason}</div>
+            </div>
+          )}
         </div>
         <div className="flex items-center gap-2">
           {/* 재추출은 버전 관리 없이 기존 항목을 통째로 지우고 새로 만든다(RequirementExtractView
@@ -1380,30 +1407,15 @@ function RequirementSection({
               <Clock className="w-3 h-3" /> 검토 요청됨 · 승인 대기 중
             </span>
           )}
-          {/* 검토요청(DRAFT/REJECTED → PENDING_REVIEW) — 작성자가 항목을 다 다듬은 뒤 직접
-              눌러야 PM에게 승인/반려 대상으로 넘어간다. 그 전에는 PM이 승인/반려 버튼 자체를
-              볼 수 없다(아래 조건 참고) — 사용자가 수정 중인 문서를 PM이 먼저 승인/반려해
-              버리는 절차 문제가 있어 추가했다. */}
-          {/* reqStatus === null은 REQSPEC_STATUS 도입 전에 만들어진 기존 데이터 — DRAFT로
-              간주해 검토요청을 받을 수 있게 한다(없으면 그 문서들만 영원히 액션 불가 상태로
-              막힘). */}
-          {!isPM && !itemsLocked && (reqStatus === "DRAFT" || reqStatus === "REJECTED" || reqStatus === null) && (
-            <button
-              onClick={() => onStatusChange("PENDING_REVIEW")}
-              disabled={!!submittingReview}
-              className="flex items-center gap-2 px-3 py-2 rounded-lg bg-primary text-primary-foreground text-xs font-bold hover:bg-primary/90 disabled:opacity-50"
-            >
-              {submittingReview ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
-              검토요청
-            </button>
-          )}
+          {/* 검토요청은 하단으로 옮겼다(기획서 탭과 통일 — 승인/반려만 상단, 검토요청/
+              항목추가는 하단). 아래 표 밑 액션바 참고. */}
           {/* 요구사항정의서 승인/반려 — 검토요청(PENDING_REVIEW) 상태일 때만 PM에게 노출된다.
-              반려 사유를 저장할 필드가 모델에 없어서(팀원 전달 목록에 추가 필요) 사유 입력
-              없이 상태만 바뀐다. */}
+              반려는 사유 입력 모달(onRejectClick, reject_reason 필드)을 거친다 —
+              기획서 반려와 동일한 방식(팀 전달 목록에 있던 항목, 추가 완료). */}
           {isPM && reqStatus === "PENDING_REVIEW" && (
             <>
               <button
-                onClick={() => onStatusChange("REJECTED")}
+                onClick={onRejectClick}
                 disabled={!!rejecting || !!approving}
                 className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-red-500/10 border border-red-500/30 text-red-400 text-xs font-semibold hover:bg-red-500/20 disabled:opacity-50"
               >
@@ -1843,6 +1855,21 @@ function RequirementSection({
               <Plus className="w-3.5 h-3.5" /> 항목 직접 추가
             </button>
           )
+        )}
+        {/* 검토요청은 하단 우측 — 기획서 탭과 동일한 위치(승인/반려는 상단, 검토요청/
+            직접수정 성격의 액션은 하단). reqStatus===null은 REQSPEC_STATUS 도입 전
+            기존 데이터라 DRAFT로 간주해 검토요청을 받을 수 있게 한다. */}
+        {!isPM && !itemsLocked && (reqStatus === "DRAFT" || reqStatus === "REJECTED" || reqStatus === null) && (
+          <div className="flex justify-end mt-3">
+            <button
+              onClick={() => onStatusChange("PENDING_REVIEW")}
+              disabled={!!submittingReview}
+              className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-bold hover:bg-primary/90 disabled:opacity-50"
+            >
+              {submittingReview ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+              검토요청
+            </button>
+          </div>
         )}
         </>
         );
