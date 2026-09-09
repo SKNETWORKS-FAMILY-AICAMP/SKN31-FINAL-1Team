@@ -2031,7 +2031,7 @@ function RequirementSection({
               </span>
             )}
           </div>
-          <p className="text-xs text-muted-foreground mt-0.5">{reqDef.version} · 항목 {reqDef.items.length}건</p>
+          <p className="text-xs text-muted-foreground mt-0.5">항목 {reqDef.items.length}건</p>
           {/* 기획서 반려 사유 박스(review_comment)와 동일한 자리·스타일 — reject_reason
               필드 추가로 이제 요구사항정의서도 반려 사유를 남길 수 있다. */}
           {reqStatus === "REJECTED" && reqDef.reject_reason && (

@@ -108,6 +108,14 @@ def generate_task_suggestions(spec_id: int) -> dict:
     req_def = RequirementDefinition.objects.filter(spec=spec).order_by('-id').first()
     if not req_def:
         return {"status": "error", "message": "요구사항 정의서가 없습니다."}
+    
+    # 5단계 Business Validation: 요구사항정의서 승인(APPROVED) 상태 검증
+    if req_def.status_code_id != 'APPROVED':
+        return {
+            "status": "error", 
+            "message": f"요구사항 정의서가 승인(APPROVED) 상태가 아닙니다. (현재 상태: {req_def.status_code_id})"
+        }
+
     if not req_def.items.exists():
         return {"status": "error", "message": "요구사항 항목이 없습니다."}
 
@@ -130,11 +138,6 @@ def generate_task_suggestions(spec_id: int) -> dict:
     needed_roles = [r["role"] for r in team_size["team_size_estimate"]["by_role"]]
 
     raw_profiles = _build_employee_profiles()
-    # task_generation과 달리 이 호출은 try/except가 없어서, OpenAI 쪽 레이트리밋(TPM)을
-    # 재시도 끝에 못 넘기면(InstructorRetryException 등) 그대로 밖으로 터져 나가
-    # Django가 500을 던졌다 — 프론트는 이걸 그냥 뭉뚱그려 "API 실패"로만 보여줘서
-    # 원인을 알 수 없었다(직원 수만큼 LLM 호출이 나가는 구조라 자주 30k TPM에 걸림).
-    # 다른 단계들처럼 잡아서 사용자에게 재시도를 유도하는 메시지로 반환한다.
     try:
         mapping_result = assignee_mapping_node({
             "raw_employee_profiles": raw_profiles,
@@ -185,9 +188,6 @@ def generate_task_suggestions(spec_id: int) -> dict:
             epic_lookup[sub["subtask_id"]] = (t.get("epic_id", ""), t.get("epic_title", ""))
             difficulty_lookup[sub["subtask_id"]] = t.get("difficulty_reason", "")
 
-    # 여기서는 DB에 아무것도 저장하지 않는다 — task_no 접두어(RD{req_def.id}-)
-    # 부여 및 실제 TaskAssignment 생성은 PM이 "확정"을 누른 뒤 confirm_task_assignments()
-    # 에서 이루어진다(예전 run_task_generation_pipeline이 여기서 바로 저장하던 부분).
     suggestions = []
     for a in assignments:
         unit = unit_lookup.get(a["unit_id"])
@@ -240,21 +240,18 @@ def confirm_task_assignments(req_def_id: int, assignments: list) -> dict:
     except RequirementDefinition.DoesNotExist:
         return {"status": "error", "message": "요구사항 정의서를 찾을 수 없습니다."}
 
-    # 담당자 미배정 항목만 넘어오면(전부 "미배정"으로 두고 확정을 누른 경우)
-    # 아래 루프가 전부 continue로 건너뛰어 created_count=0인 채 "success"를
-    # 반환하게 된다 — 화면엔 "확정되었습니다"가 뜨는데 DB엔 아무것도 안
-    # 쌓이는 버그로 이어졌다(사용자 신고: "배분 확정하고 DB에 안 들어가는
-    # 상황"). 여기서 미리 막아 명확한 에러로 알린다.
+    # 5단계 Business Validation: 요구사항정의서 승인(APPROVED) 상태 검증
+    if req_def.status_code_id != 'APPROVED':
+        return {
+            "status": "error", 
+            "message": f"요구사항 정의서가 승인(APPROVED) 상태여야 업무를 확정할 수 있습니다. (현재 상태: {req_def.status_code_id})"
+        }
+
     if not any(item.get("assignee_id") is not None for item in assignments):
         return {"status": "error", "message": "담당자가 배정된 업무가 없습니다. 최소 1건 이상 담당자를 지정한 뒤 확정해주세요."}
 
     try:
         with transaction.atomic():
-            # task_no는 DB에서 unique 제약이 있는데, AI는 매번 실행마다 TASK-001부터
-            # 다시 번호를 매긴다 — 그대로 쓰면 다른 요구사항정의서의 이전 실행 결과와
-            # 번호가 겹쳐서 IntegrityError가 난다(직접 재현해서 확인). req_def.id를
-            # 붙여 전역에서 유일하게 만들고, 같은 요구사항정의서를 재확정한 경우는
-            # 기존 배정을 지우고 새로 만든다 — 중복이 아니라 "다시 배분"이 맞는 의미이므로.
             TaskAssignment.objects.filter(req_item__req_def=req_def).delete()
 
             created_count = 0
@@ -265,9 +262,6 @@ def confirm_task_assignments(req_def_id: int, assignments: list) -> dict:
 
                 req_item = req_def.items.filter(req_code=item["source_req_id"]).first()
                 if not req_item:
-                    # req_code가 매칭 안 되는 경우(예: 배분 제안 생성 이후 요구사항
-                    # 항목의 코드가 바뀐 경우) 조용히 건너뛰면 이번 버그와 같은 패턴
-                    # (성공 응답인데 저장 안 됨)이 반복되므로 로그로 남긴다.
                     skipped_no_match.append(item.get("source_req_id"))
                     logger.warning(
                         "업무 배정 확정: req_code=%s 매칭 실패로 건너뜀 (req_def_id=%s)",
@@ -293,12 +287,6 @@ def confirm_task_assignments(req_def_id: int, assignments: list) -> dict:
                     epic_title=item.get("epic_title", ""),
                     start_date=item.get("start_date") or None,
                     end_date=item.get("end_date") or None,
-                    # PENDING_APPROVAL(=PM 승인 대기)이 아니라 APPROVED로 바로 시작한다 —
-                    # 다른 배정 경로(AutoTaskAssignView 등)는 PM이 아닌 쪽이 배정하고 PM이
-                    # 나중에 승인하는 흐름이라 PENDING_APPROVAL이 맞지만, 이 확정 액션 자체를
-                    # PM이 직접 누르는 거라 "확정 = 이미 승인됨"이다. PENDING_APPROVAL로
-                    # 두면 "PM이 확정했는데 또 PM 승인을 기다린다"는 앞뒤가 안 맞는 상태가
-                    # 된다(사용자 지적).
                     status_code_id='APPROVED',
                 )
                 created_count += 1
@@ -312,7 +300,7 @@ def confirm_task_assignments(req_def_id: int, assignments: list) -> dict:
 
 
 # ==========================================
-# 뷰(views.py)에서 호출하는 AI 연동 서비스 함수들 — 둘 다 같은 파이프라인을 탄다.
+# 뷰(views.py)에서 호출하는 AI 연동 서비스 함수들
 # ==========================================
 
 def run_assignee_mapping(data):

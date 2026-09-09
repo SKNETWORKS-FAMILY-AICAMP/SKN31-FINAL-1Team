@@ -1,4 +1,4 @@
-# users/permissions.py
+#users/permissions.py
 
 from rest_framework import permissions
 
@@ -8,12 +8,9 @@ class IsOwnerOrAdmin(permissions.BasePermission):
     - 읽기(GET) 요청은 인증된 유저라면 누구든 허용
     """
     def has_object_permission(self, request, view, obj):
-        # 1. GET, HEAD, OPTIONS 요청은 허용
         if request.method in permissions.SAFE_METHODS:
             return True
         
-        # 2. 객체의 주인이 본인이거나 관리자인 경우만 허용
-        # (obj가 User 모델인 경우 obj == request.user, 다른 모델은 obj.user == request.user)
         is_owner = (obj == request.user) if hasattr(obj, 'password') else getattr(obj, 'user', None) == request.user
         return is_owner or request.user.is_staff
 
@@ -22,4 +19,44 @@ class IsAdminUserOnly(permissions.BasePermission):
     관리자(is_staff=True)만 접근 가능
     """
     def has_permission(self, request, view):
-        return bool(request.user and request.user.is_staff)
+        return bool(request.user and request.user.is_authenticated and request.user.is_staff)
+
+
+# --- 1단계 추가 권한 클래스 ---
+
+class IsPMUser(permissions.BasePermission):
+    """
+    PM/관리자(is_staff=True) 권한 검증 클래스
+    - 대시보드 통계, 기획서/요구사항 승인·반려, 업무 AI 추천 및 확정 등 PM 전용 엔드포인트에 적용
+    """
+    def has_permission(self, request, view):
+        return bool(request.user and request.user.is_authenticated and request.user.is_staff)
+
+
+class IsOwnerOrPM(permissions.BasePermission):
+    """
+    작성자 본인 또는 PM(is_staff=True) 권한 검증 클래스
+    - 개별 객체 접근 권한(has_object_permission) 검증
+    - obj.created_by, obj.meeting.created_by, obj.user, 또는 obj 본인과 비교
+    """
+    def has_object_permission(self, request, view, obj):
+        if not (request.user and request.user.is_authenticated):
+            return False
+
+        # PM/관리자인 경우 무조건 허용
+        if request.user.is_staff:
+            return True
+
+        # 작성자(Owner) 여부 판단
+        # 1. obj가 User 모델 자체인 경우
+        if obj == request.user:
+            return True
+        
+        # 2. SpecDocument 처럼 meeting을 거쳐 created_by를 참조해야 하는 경우 확인
+        meeting = getattr(obj, 'meeting', None)
+        meeting_owner = getattr(meeting, 'created_by', None) if meeting else None
+
+        # 3. obj가 직접 created_by, user 필드를 가지고 있거나 meeting.created_by에 해당하는 경우
+        owner = getattr(obj, 'created_by', None) or getattr(obj, 'user', None) or meeting_owner
+        
+        return owner == request.user
