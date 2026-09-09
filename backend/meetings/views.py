@@ -198,7 +198,21 @@ class MeetingNoteAnalyzeView(APIView):
                 clean_text = re.sub(r'\n\s*\n', '\n', clean_text)
                 return clean_text.strip()
 
+            # ai/plan_draft/schemas.py의 SECTION_SPEC(노드②의 설계도)과 동일한 key ↔
+            # SpecDocument 필드명 매핑. 근거자료(evidence_data)도 이 키로 저장해야 프론트
+            # (documents/page.tsx의 EVIDENCE_KEY_ALIASES)가 올바른 섹션에 붙여준다.
+            SECTION_KEY_TO_FIELD = {
+                'overview': 'overview',
+                'problem': 'problem_definition',
+                'users': 'target_users',
+                'features': 'key_features',
+                'scenarios': 'user_scenarios',
+                'tech_scope': 'tech_stack',
+                'decisions': 'final_decisions',
+            }
+
             sections_map = {}
+            evidence_map = {}
             for sec in (plan_dict.get('sections') or []):
                 if not isinstance(sec, dict):
                     continue
@@ -218,6 +232,17 @@ class MeetingNoteAnalyzeView(APIView):
 
                 sections_map[sec_key] = content
 
+                # PlanSection.evidence(VerifiedEvidence 목록)는 노드①이 이미 원문 대조를
+                # 마친 근거라 status를 갖는다 — 회의록에 실제로 없는 문장을 "근거"로 보여주는
+                # 걸 막기 위해(환각 방지 원칙) status="verified"인 것만 채택한다.
+                quotes = [
+                    e.get('quote') for e in (sec.get('evidence') or [])
+                    if isinstance(e, dict) and e.get('status') == 'verified' and e.get('quote')
+                ]
+                field_name = SECTION_KEY_TO_FIELD.get(sec_key)
+                if quotes and field_name:
+                    evidence_map[field_name] = "\n".join(f"- {q}" for q in quotes)
+
             NOT_DISCUSSED = "회의에서 논의되지 않았습니다."
 
             def section_or_not_discussed(key):
@@ -234,6 +259,8 @@ class MeetingNoteAnalyzeView(APIView):
                 'tech_stack': section_or_not_discussed('tech_scope'),
                 'final_decisions': section_or_not_discussed('decisions'),
             }
+            if evidence_map:
+                spec_defaults['evidence_data'] = json.dumps(evidence_map, ensure_ascii=False)
 
             period_match = re.search(
                 r'(\d{4}-\d{2}-\d{2})\s*(?:~|-|부터)\s*(\d{4}-\d{2}-\d{2})',
