@@ -173,14 +173,27 @@ def sort_units_by_priority(
 ) -> List[Dict[str, Any]]:
     """
     우선순위(요구사항 priority 상속) 순으로 정렬한다. 같은 우선순위 안에서는
-    estimated_hours 내림차순 — 큰 업무를 먼저 배정해, 이후 작은 업무가 자투리
-    가용시간에도 들어갈 여지를 남기는 그리디 휴리스틱이다. priority가 없는
-    (검토대기) 요구사항에서 파생된 업무는 맨 뒤로 보낸다.
+    요구사항(source_req_id) 총 estimated_hours 내림차순 — 규모가 큰 요구사항을
+    먼저 배정해, 이후 작은 요구사항이 자투리 가용시간에도 들어갈 여지를 남기는
+    그리디 휴리스틱이다. priority가 없는(검토대기) 요구사항에서 파생된 업무는
+    맨 뒤로 보낸다.
+
+    2026-09-09 수정: 예전엔 "업무 개별" estimated_hours로 정렬해서, 같은
+    요구사항 안에서도 시간이 큰 업무가 작은 업무보다 먼저 오는 경우가 있었다
+    (예: "반응형 UI 구현"(7h)이 "반응형 UI 설계"(6h)보다 먼저 배정 순서에 놓여,
+    설계보다 구현이 먼저 배정되는 모순이 생김). task_generation은 few-shot대로
+    한 요구사항 안에서 설계→개발→테스트 순으로 업무를 만드는데, 개별 시간
+    기준 정렬이 이 순서를 깨트린 것. 이제는 "요구사항 총합"으로만 큰 것부터
+    앞에 두고, 같은 요구사항 안에서는 안정 정렬(sorted()는 stable)로 원래
+    생성 순서(=설계→개발→테스트)를 그대로 보존한다.
     """
+    req_total_hours: Dict[str, float] = {}
+    for u in units:
+        req_total_hours[u["source_req_id"]] = req_total_hours.get(u["source_req_id"], 0.0) + u["estimated_hours"]
 
     def key(u: Dict[str, Any]):
         prio = priority_by_req_id.get(u["source_req_id"])
-        return (_PRIORITY_RANK.get(prio, 3), -u["estimated_hours"], u["unit_id"])
+        return (_PRIORITY_RANK.get(prio, 3), -req_total_hours[u["source_req_id"]], u["source_req_id"])
 
     return sorted(units, key=key)
 
@@ -190,6 +203,7 @@ def _fit_score(
     member: Dict[str, Any],
     matched_skills: set,
     remaining_ratio: float,
+    already_on_same_requirement: bool,
 ) -> float:
     """
     가용시간은 schedule_assignments()의 상한 컷오프("배정 가능/불가능")에서 이미
@@ -206,16 +220,26 @@ def _fit_score(
 
     remaining_ratio: 이 업무까지 배정했다고 가정했을 때, 상한 대비 남는 여유
     비율(0~1). 1에 가까울수록 여유가 많고, 0이면 상한을 딱 채운다.
+
+    already_on_same_requirement: 이 담당자가 같은 배치 안에서 이미 같은
+    요구사항(source_req_id)의 다른 업무를 맡았으면 True(2026-09-09 추가).
+    예를 들어 게시판 CRUD처럼 한 요구사항 아래 업무가 여러 개일 때, 스킬
+    매칭이 크게 갈리지 않으면 이미 그 요구사항을 맡고 있는 사람에게 몰아줘서
+    컨텍스트 스위칭(여러 사람이 같은 기능을 나눠 맡느라 생기는 소통 비용)을
+    줄인다. 가중치(0.20)를 스킬(0.40)보다는 낮게 둬서, 스킬이 아예 안 맞는
+    사람에게 억지로 몰아주지는 않는다 — 스킬이 비슷한 후보끼리 갈릴 때 이
+    가점이 결정적인 역할을 하도록 설계.
     """
     required = set(unit.get("required_skills", []))
     skill_ratio = len(matched_skills) / len(required) if required else 1.0
     similar_count = len(member.get("past_similar_tasks", []))
     cert_count = len(member.get("certifications", []))
     return round(
-        0.45 * skill_ratio
-        + 0.20 * min(similar_count / 3, 1)
-        + 0.15 * min(cert_count / 2, 1)  # 자격증 가산점 — 2개부터 만점
-        + 0.20 * remaining_ratio,  # 여유 많을수록 가점 — 특정 인원 쏠림 방지
+        0.40 * skill_ratio
+        + 0.15 * min(similar_count / 3, 1)
+        + 0.10 * min(cert_count / 2, 1)  # 자격증 가산점 — 2개부터 만점
+        + 0.15 * remaining_ratio  # 여유 많을수록 가점 — 특정 인원 쏠림 방지
+        + 0.20 * (1.0 if already_on_same_requirement else 0.0),  # 같은 요구사항 담당자 가점 — 업무 응집도
         3,
     )
 
@@ -247,6 +271,9 @@ def schedule_assignments(
     """
     workload = dict(current_workload)  # 원본 훼손 방지용 복사, 이 배치 안에서 누적 증가시킨다
     member_by_id = {m["employee_id"]: m for m in members}
+    # 담당자별로 이 배치 안에서 이미 맡은 요구사항(source_req_id) 집합 — 업무
+    # 응집도 가점(_fit_score의 already_on_same_requirement) 판정에 쓴다.
+    assigned_reqs_by_member: Dict[str, set] = {}
 
     results = []
     for unit in units:
@@ -266,7 +293,8 @@ def schedule_assignments(
             remaining_ratio = (
                 1 - (projected / max_hours_per_assignee) if max_hours_per_assignee > 0 else 0.0
             )
-            score = _fit_score(unit, m, matched, remaining_ratio)
+            already_on_same_req = unit["source_req_id"] in assigned_reqs_by_member.get(emp_id, set())
+            score = _fit_score(unit, m, matched, remaining_ratio, already_on_same_req)
             if score > best_score:
                 best_score, best_id, best_matched = score, emp_id, matched
 
@@ -275,6 +303,7 @@ def schedule_assignments(
             continue
 
         workload[best_id] = workload.get(best_id, 0.0) + unit["estimated_hours"]
+        assigned_reqs_by_member.setdefault(best_id, set()).add(unit["source_req_id"])
         m = member_by_id[best_id]
         certifications = m.get("certifications", [])
         skill_text = (
