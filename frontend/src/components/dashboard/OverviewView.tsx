@@ -188,7 +188,10 @@ export default function OverviewView() {
                 <p className="text-sm text-muted-foreground text-center py-8">아직 활동 내역이 없습니다.</p>
               ) : (
                 activityLog.slice(0, 5).map((log: ActivityLog, i: number) => (
-                  <Link key={i} href={`/projects/${log.projectId}`} className="flex items-start gap-3 pb-3 border-b border-foreground/5 last:border-0 last:pb-0 group">
+                  // project=null인 업무(레거시/시드 데이터)는 projectId가 빈 문자열이 되어
+                  // "/projects/"(빈 id)로 링크되면 존재하지 않는 페이지로 이동한다 — 그럴 땐
+                  // 프로젝트 상세 대신 전체보기와 같은 목적지(/tasks)로 보낸다.
+                  <Link key={i} href={log.projectId ? `/projects/${log.projectId}` : "/tasks"} className="flex items-start gap-3 pb-3 border-b border-foreground/5 last:border-0 last:pb-0 group">
                     <div className={cn("w-2 h-2 rounded-full mt-1.5 shrink-0", STATUS_COLORS[log.status] ?? "bg-gray-500")} />
                     <div className="flex-1 min-w-0">
                       {/* 단일 프로젝트 운영 전제라 프로젝트명 배지는 중복 정보 — 업무 제목만 표시 */}
