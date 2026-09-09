@@ -11,7 +11,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { NewDocumentModal } from "@/components/projects/NewDocumentModal";
-import { ProposalTemplate } from "@/components/documents/ProposalTemplate";
+import { ProposalTemplate, type ProposalEvidence } from "@/components/documents/ProposalTemplate";
 import { exportProposalPptx } from "@/lib/exportProposalPptx";
 import type { ProposalDoc } from "@/lib/documentTemplates";
 import { Toast } from "@/components/ui/Toast";
@@ -1215,6 +1215,14 @@ function NoteDetail({
             작성자 {note.created_by_name || "알 수 없음"}
             {String(note.created_by) === currentUserId && <span className="text-primary font-medium"> (나)</span>}
           </p>
+          {/* 프로젝트 기간 — 기획서 검토요청 시점에 필수 입력이라(handleSubmitReview 참고) 기획서가
+              하나라도 생성된 뒤엔 항상 값이 있다. 탭과 무관하게(기획서/요구사항정의서/업무배분) 공통
+              헤더에 표시 — 사용자 요청으로 업무배분 화면 상단에서 바로 보여야 함. */}
+          {spec?.period_start && spec?.period_end && (
+            <p className="text-xs text-muted-foreground mt-0.5">
+              프로젝트 기간 {spec.period_start} ~ {spec.period_end}
+            </p>
+          )}
         </div>
         <div className="flex items-center gap-2">
           <span className={cn("inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold", meta.className)}>
@@ -1310,6 +1318,7 @@ function NoteDetail({
                 title={note.title} dateLabel={dateLabel}
                 editable={editMode} onChange={setEditDraft}
                 periodEditable={periodEditable} onPeriodChange={handlePeriodChange}
+                evidence={parseProposalEvidence(spec?.evidence_data ?? null)}
               />
             </div>
           </div>
@@ -1319,17 +1328,6 @@ function NoteDetail({
           </div>
         )}
       </div>
-
-      {/* 근거자료 — 7개 섹션 내용이 회의록의 어느 부분에서 나왔는지 보여주는 참고 자료(백엔드
-          준비 중, evidence_data). PDF/PPTX 출력에는 포함되면 안 되므로 #print-area 바깥에 둔다 —
-          위 ProposalTemplate과 달리 이 블록은 print 시 자동으로 숨겨진다. 기본은 접힌 상태. */}
-      {parsedContent && (
-        <CollapsibleSection title="근거자료" defaultOpen={false}>
-          <div className="border border-border rounded-xl p-4 bg-black/[0.02] dark:bg-white/[0.02]">
-            <EvidenceContent raw={spec?.evidence_data ?? null} />
-          </div>
-        </CollapsibleSection>
-      )}
 
       <div className="flex justify-end items-center gap-3 pt-2">
         {spec && (
@@ -1879,46 +1877,36 @@ function CollapsibleSection({
   );
 }
 
-// 기획서 7개 섹션과 동일한 키로 근거 문장을 저장할 것으로 예상해 라벨을 맞춰둔다(백엔드
-// evidence_data 실제 포맷이 확정되면 필요시 조정). 알 수 없는 키가 오면 키 이름 그대로 보여준다.
-const EVIDENCE_SECTION_LABEL: Record<string, string> = {
-  overview: "1. 프로젝트 개요",
-  problem_definition: "2. 문제 정의",
-  target_users: "3. 대상 사용자",
-  key_features: "4. 주요 기능",
-  user_scenarios: "5. 사용자 시나리오",
-  tech_stack: "6. 기술 스택 및 제약사항",
-  final_decisions: "7. 최종 결정사항",
+// SpecDocument.evidence_data(JSON 문자열)를 ProposalTemplate의 섹션별 근거 prop 형태로
+// 정규화한다. 백엔드가 어느 명명 규칙으로 저장하든(스네이크케이스 원본 필드명이든, 프론트와
+// 동일한 카멜케이스든) 받아들이도록 두 가지 키 형태를 모두 매핑한다 — 포맷이 확정되면
+// 필요 없는 쪽은 정리해도 된다.
+const EVIDENCE_KEY_ALIASES: Record<string, keyof ProposalEvidence> = {
+  overview: "projectOverview", projectOverview: "projectOverview",
+  problem_definition: "problemDefinition", problemDefinition: "problemDefinition",
+  target_users: "target", target: "target",
+  key_features: "features", features: "features",
+  user_scenarios: "userScenario", userScenario: "userScenario",
+  tech_stack: "techStackConstraints", techStackConstraints: "techStackConstraints",
+  final_decisions: "finalDecisions", finalDecisions: "finalDecisions",
 };
 
-// evidence_data는 아직 백엔드에서 채우는 중이라 정확한 포맷이 정해지지 않았다 — 섹션별
-// 근거를 담은 JSON 객체로 오면 섹션별로 나눠 보여주고, 그냥 텍스트로 오거나 파싱에
-// 실패하면 원문 그대로, 비어있으면 안내 문구만 보여준다.
-function EvidenceContent({ raw }: { raw: string | null }) {
-  if (!raw || !raw.trim()) {
-    return <p className="text-xs text-muted-foreground">아직 근거 자료가 없습니다.</p>;
-  }
-  let parsed: unknown = null;
-  try { parsed = JSON.parse(raw); } catch { /* 아래에서 원문 텍스트로 처리 */ }
-
-  if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-    const entries = Object.entries(parsed as Record<string, unknown>).filter(([, v]) => v != null && String(v).trim());
-    if (entries.length === 0) {
-      return <p className="text-xs text-muted-foreground">아직 근거 자료가 없습니다.</p>;
+function parseProposalEvidence(raw: string | null): ProposalEvidence {
+  if (!raw || !raw.trim()) return {};
+  try {
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+    const result: ProposalEvidence = {};
+    for (const [key, value] of Object.entries(parsed as Record<string, unknown>)) {
+      const mappedKey = EVIDENCE_KEY_ALIASES[key];
+      if (mappedKey && value != null && String(value).trim()) {
+        result[mappedKey] = String(value);
+      }
     }
-    return (
-      <div className="space-y-3">
-        {entries.map(([key, value]) => (
-          <div key={key}>
-            <p className="text-xs font-bold text-muted-foreground">{EVIDENCE_SECTION_LABEL[key] ?? key}</p>
-            <p className="text-xs text-muted-foreground/80 whitespace-pre-wrap mt-0.5">{String(value)}</p>
-          </div>
-        ))}
-      </div>
-    );
+    return result;
+  } catch {
+    return {};
   }
-
-  return <p className="text-xs text-muted-foreground/80 whitespace-pre-wrap">{raw}</p>;
 }
 
 // 업무 목록에서 담당자(중복 제거) 기준으로 직무별 인원수를 집계 — 업무 자체엔 직무 필드가
