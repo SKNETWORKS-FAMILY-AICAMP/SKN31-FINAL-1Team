@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useMemo, useRef, Fragment, type Dispatch, type SetStateAction } from "react";
+import { useEffect, useState, useMemo, useRef, Fragment, type Dispatch, type SetStateAction, type ReactNode } from "react";
 import { useAuth } from "@/lib/auth";
 import { apiFetch } from "@/lib/api/client";
 import {
@@ -163,7 +163,18 @@ type TaskDraft = {
   end_date: string;
 };
 
-type Member = { id: number; name: string };
+type Member = { id: number; name: string; jobRoleCode: string | null };
+
+// 업무 자체엔 "직무" 필드가 없어서, 담당자 계정의 job_role_code로 대신 집계한다.
+// 예상 인원 요약 박스에 쓸 카테고리만 라벨을 붙이고 나머지(풀스택/PM/QA/디자이너/미지정)는
+// "미분류"로 묶는다.
+const JOB_ROLE_LABEL: Record<string, string> = {
+  BACKEND: "백엔드",
+  FRONTEND: "프론트",
+  DATA_ENGINEER: "데이터",
+  DEVOPS: "데브옵스",
+};
+const roleLabelOf = (code: string | null) => (code && JOB_ROLE_LABEL[code]) || "미분류";
 
 const toDateInput = (iso: string | null) => (iso ? iso.slice(0, 10) : "");
 
@@ -348,6 +359,7 @@ export default function DocumentsPage() {
       .then(list => setMembers(list.map(u => ({
         id: u.id,
         name: u.first_name || u.last_name ? `${u.last_name ?? ""}${u.first_name ?? ""}` : (u.full_name || u.username || `#${u.id}`),
+        jobRoleCode: u.job_role_info?.code_id ?? null,
       }))))
       .catch(() => {});
   }, []);
@@ -1574,7 +1586,12 @@ function TaskDraftReview({
       <p className="text-sm text-muted-foreground">
         AI가 추천한 담당자와 일정입니다. 필요하면 담당자·일정을 직접 바꾼 뒤 확정하세요. 확정 전까지는 저장되지 않습니다.
       </p>
-      <GanttChart items={ganttItems} />
+      <CollapsibleSection title="예상 필요 인원">
+        <HeadcountSummary assigneeIds={drafts.map(d => d.assignee_id)} members={members} />
+      </CollapsibleSection>
+      <CollapsibleSection title="업무 일정">
+        <GanttChart items={ganttItems} />
+      </CollapsibleSection>
       <div className="border border-border rounded-xl overflow-hidden overflow-x-auto">
         <table className="w-full text-sm text-left">
           <thead className="text-xs text-muted-foreground uppercase bg-black/5 dark:bg-white/5">
@@ -1681,7 +1698,12 @@ function TaskAssignmentList({
 
   return (
     <div className="space-y-4">
-      <GanttChart items={ganttItems} />
+      <CollapsibleSection title="예상 필요 인원">
+        <HeadcountSummary assigneeIds={tasks.map(t => t.assigned_user)} members={members} />
+      </CollapsibleSection>
+      <CollapsibleSection title="업무 일정">
+        <GanttChart items={ganttItems} />
+      </CollapsibleSection>
       <div className="border border-border rounded-xl overflow-hidden overflow-x-auto">
         <table className="w-full text-sm text-left">
           <thead className="text-xs text-muted-foreground uppercase bg-black/5 dark:bg-white/5">
@@ -1809,6 +1831,55 @@ function TaskAssignmentList({
           </tbody>
         </table>
       </div>
+    </div>
+  );
+}
+
+// "예상 필요 인원" 박스 / 업무 일정(Gantt) 공통으로 쓰는 접었다 펼 수 있는 섹션 — 버튼이
+// 아니라 제목 자체를 클릭하게(사용자 요청) 만들고, 다른 화면의 펼침형 행(TaskTitleCell 등)과
+// 동일하게 ChevronDown이 접힌 상태에서 -90도 회전하는 방식으로 통일한다.
+function CollapsibleSection({
+  title, defaultOpen = true, children,
+}: {
+  title: string; defaultOpen?: boolean; children: ReactNode;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <div className="space-y-2">
+      <button
+        onClick={() => setOpen(v => !v)}
+        className="flex items-center gap-1.5 text-sm font-bold hover:text-primary transition-colors"
+      >
+        <ChevronDown className={cn("w-4 h-4 transition-transform shrink-0", !open && "-rotate-90")} />
+        {title}
+      </button>
+      {open && children}
+    </div>
+  );
+}
+
+// 업무 목록에서 담당자(중복 제거) 기준으로 직무별 인원수를 집계 — 업무 자체엔 직무 필드가
+// 없어서 담당자 계정의 job_role_code로 대신한다.
+function HeadcountSummary({ assigneeIds, members }: { assigneeIds: (number | null | undefined)[]; members: Member[] }) {
+  const uniqueIds = Array.from(new Set(assigneeIds.filter((id): id is number => id != null)));
+  if (uniqueIds.length === 0) return null;
+
+  const counts = new Map<string, number>();
+  uniqueIds.forEach(id => {
+    const label = roleLabelOf(members.find(m => m.id === id)?.jobRoleCode ?? null);
+    counts.set(label, (counts.get(label) ?? 0) + 1);
+  });
+  // "미분류"는 항상 마지막에 오도록 정렬
+  const entries = Array.from(counts.entries()).sort((a, b) =>
+    a[0] === "미분류" ? 1 : b[0] === "미분류" ? -1 : 0
+  );
+
+  return (
+    <div className="border border-border rounded-xl p-4 bg-black/[0.02] dark:bg-white/[0.02]">
+      <p className="text-sm font-semibold">예상 필요 인원: 총 {uniqueIds.length}명</p>
+      <p className="text-xs text-muted-foreground mt-1">
+        {entries.map(([label, count]) => `${label} ${count}`).join(" · ")}
+      </p>
     </div>
   );
 }
