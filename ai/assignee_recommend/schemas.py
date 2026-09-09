@@ -29,6 +29,38 @@ class HoldExplanation(BaseModel):
     explanation: str
 
 
+class ReasonBatchItem(BaseModel):
+    """배치 근거 생성 결과 1건 — unit_id로 원본 업무와 매칭한다."""
+
+    unit_id: str
+    skill_fit: str
+    workload: str
+    similar_experience: str
+
+
+class ReasonBatch(BaseModel):
+    """
+    여러 업무의 근거 문장을 한 번의 LLM 호출로 생성한 결과(agent.py의
+    generate_reasons_batch 참고). 입력받은 unit_id 전부가 items에 빠짐없이
+    있어야 하며, 누락되면 호출부가 단건으로 보완 호출한다.
+    """
+
+    items: List[ReasonBatchItem] = Field(default_factory=list)
+
+
+class HoldBatchItem(BaseModel):
+    """배치 보류 사유 생성 결과 1건 — unit_id로 원본 업무와 매칭한다."""
+
+    unit_id: str
+    explanation: str
+
+
+class HoldBatch(BaseModel):
+    """여러 업무의 보류 사유를 한 번의 LLM 호출로 생성한 결과."""
+
+    items: List[HoldBatchItem] = Field(default_factory=list)
+
+
 class AssignmentResult(BaseModel):
     """
     배정 단위(Task 또는 Subtask) 1건에 대한 최종 결과.

@@ -26,15 +26,21 @@ a2_2_task_generation/agent.py
 """
 
 import logging
-from typing import Any, Dict, List, Set
+from typing import Any, Dict, List, Optional, Set
 
 from pydantic import ValidationError
 
 from shared.llm_client import create_structured
 from shared.retry_config import DEFAULT_MAX_TOKENS, MAX_RETRIES, TEMPERATURE_STRUCTURED
 
-from .prompt_builder import build_system_prompt
-from .schemas import TaskByRequirement, TaskItem, TaskList, build_requirement_keyed_model
+from .prompt_builder import build_skill_remap_prompt, build_system_prompt
+from .schemas import (
+    SkillRemapBatch,
+    TaskByRequirement,
+    TaskItem,
+    TaskList,
+    build_requirement_keyed_model,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -84,8 +90,82 @@ def _renumber(groups: List[List[TaskItem]]) -> List[TaskItem]:
     return renumbered
 
 
-def generate_tasks(requirement_doc: dict) -> List[TaskItem]:
-    system_prompt = build_system_prompt(requirement_doc)
+def verify_skill_vocabulary(tasks: List[TaskItem], allowed: Set[str]) -> Dict[str, List[str]]:
+    """
+    각 업무의 required_skills 중 허용 명단(allowed, DB SKILL_* CommonCode 코드명)
+    밖의 값을 찾아 task_id -> [위반 스킬] 로 반환한다. 위반이 없으면 빈 dict.
+    Subtask는 required_skills를 따로 갖지 않고 소속 Task 값을 상속하므로
+    (rule_filter.flatten_assignable_units 참고) 여기서도 Task 단위만 본다.
+    """
+    violations: Dict[str, List[str]] = {}
+    for task in tasks:
+        bad = [s for s in task.required_skills if s not in allowed]
+        if bad:
+            violations[task.task_id] = bad
+    return violations
+
+
+def _remap_skill_vocabulary(tasks: List[TaskItem], available_skills: List[str]) -> List[TaskItem]:
+    """
+    verify_skill_vocabulary()로 찾아낸 위반 업무만 좁혀서, 허용 명단 안의 값으로
+    required_skills를 다시 채우도록 재요청하고 결과를 tasks에 반영한다.
+    재시도 후에도 명단 밖 값이 남으면 지어내지 않고 그대로 두되 로그로 남긴다
+    (사람이 DB에 스킬 코드를 추가할지 판단할 근거가 된다).
+    """
+    allowed = set(available_skills)
+    violations = verify_skill_vocabulary(tasks, allowed)
+    if not violations:
+        return tasks
+
+    logger.warning(
+        "업무 %d건이 허용 스킬 명단 밖 값을 씀: %s", len(violations), violations
+    )
+
+    tasks_by_id = {t.task_id: t for t in tasks}
+    for attempt in range(MAX_RETRIES):
+        violating_payload = [
+            {
+                "task_id": task_id,
+                "title": tasks_by_id[task_id].title,
+                "description": tasks_by_id[task_id].description,
+                "required_skills": tasks_by_id[task_id].required_skills,
+            }
+            for task_id in violations
+        ]
+        prompt = build_skill_remap_prompt(violating_payload, available_skills)
+        try:
+            remap: SkillRemapBatch = create_structured(
+                system_prompt=prompt,
+                user_message="위 업무들의 required_skills를 허용 명단 안의 값으로 다시 채워라.",
+                response_model=SkillRemapBatch,
+                max_tokens=DEFAULT_MAX_TOKENS,
+                temperature=TEMPERATURE_STRUCTURED,
+                max_retries=MAX_RETRIES,
+            )
+        except Exception as e:
+            logger.warning("스킬 어휘 재시도 호출 실패(재시도 %d/%d): %s", attempt + 1, MAX_RETRIES, e)
+            continue
+
+        for item in remap.items:
+            task = tasks_by_id.get(item.task_id)
+            if task is not None:
+                task.required_skills = item.required_skills
+
+        violations = verify_skill_vocabulary(tasks, allowed)
+        if not violations:
+            break
+
+    if violations:
+        logger.error(
+            "재시도 소진 — 업무 %d건이 여전히 허용 스킬 명단 밖 값을 씀(원래 값 유지): %s",
+            len(violations), violations,
+        )
+
+    return tasks
+
+
+def generate_tasks(requirement_doc: dict, available_skills: Optional[List[str]] = None) -> List[TaskItem]:
+    system_prompt = build_system_prompt(requirement_doc, available_skills=available_skills)
     req_ids = [r["id"] for r in requirement_doc.get("requirements", [])]
     user_message = "위 요구사항정의서를 바탕으로 업무를 생성하라."
 
@@ -139,6 +219,13 @@ def generate_tasks(requirement_doc: dict) -> List[TaskItem]:
         logger.error("재시도 소진 — 요구사항 %d건 여전히 업무 없음: %s", len(remaining), sorted(remaining))
 
     merged = _renumber(groups)
+
+    # available_skills가 주어졌으면(호출부가 DB SKILL_* 명단을 넘겨준 경우),
+    # required_skills가 그 명단 밖 값을 쓴 업무만 좁혀서 재요청해 바로잡는다
+    # (build_system_prompt의 [스킬 어휘 제약] 지시를 LLM이 놓쳤을 때의 방어선).
+    if available_skills:
+        merged = _remap_skill_vocabulary(merged, available_skills)
+
     # 전부 실패해서 결과가 비어 있으면 TaskList의 min_length=1 검증에
     # 걸려 ValidationError로 올라간다 — task_generation_node가 이를 잡아
     # {"error": ...}로 정리한다.
@@ -147,7 +234,7 @@ def generate_tasks(requirement_doc: dict) -> List[TaskItem]:
 
 def task_generation_node(state: Dict[str, Any]) -> Dict[str, Any]:
     try:
-        result = generate_tasks(state["requirement_doc"])
+        result = generate_tasks(state["requirement_doc"], available_skills=state.get("available_skills"))
     except ValidationError as e:
         logger.error("A2-2 스키마 검증 실패: %s", e)
         return {"error": f"SCHEMA_VALIDATION_FAILED: {e}"}

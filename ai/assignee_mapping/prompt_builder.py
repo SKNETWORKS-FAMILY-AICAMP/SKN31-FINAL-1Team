@@ -3,6 +3,7 @@
 import json
 from functools import lru_cache
 from pathlib import Path
+from typing import List
 
 import yaml
 
@@ -47,4 +48,33 @@ def build_extraction_prompt(profile: RawEmployeeProfile) -> str:
 
 [경력기술서]
 {json.dumps({"career_history_text": profile.career_history_text}, ensure_ascii=False, indent=2)}
+"""
+
+
+def build_extraction_batch_prompt(profiles: List[RawEmployeeProfile]) -> str:
+    """
+    여러 명의 경력기술서를 한 번의 LLM 호출로 처리한다(OpenAI TPM 한도 때문에
+    직원 1인당 1회 호출하던 것을 묶음 — agent.py의 extract_experience_tags_batch 참고).
+    기존 [추출 예시] few-shot을 그대로 재사용한다 — 단건 예시가 태그 추출 품질/톤
+    기준을 이미 보여주므로, 배치 여부와 무관하게 같은 기준을 적용하면 된다.
+    """
+    t = load_template()
+    items = [
+        {"employee_id": p.employee_id, "career_history_text": p.career_history_text}
+        for p in profiles
+    ]
+    return f"""{t['role']}
+
+{t['constraints']}
+
+[추출 예시]
+{_render_few_shots(t['few_shot_examples'])}
+
+---
+아래는 이번에 한 번에 처리할 여러 명의 경력기술서 원문이다. 각 결과는 employee_id로
+원본과 매칭해야 한다 — 입력받은 employee_id 전부에 대해 빠짐없이 결과를 반환하라.
+경력기술서가 비어 있어도 해당 employee_id는 빈 tags로 포함시켜라.
+
+[경력기술서 목록]
+{json.dumps(items, ensure_ascii=False, indent=2)}
 """

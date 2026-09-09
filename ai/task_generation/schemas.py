@@ -66,6 +66,28 @@ class TaskList(BaseModel):
     tasks: List[TaskItem] = Field(..., min_length=1)
 
 
+class SkillRemapItem(BaseModel):
+    """
+    required_skills 어휘 재시도 응답 1건. task_id로 원본 업무를 지정하고,
+    허용된 스킬 명단(available_skills) 안에서 골라 다시 채운 required_skills를
+    돌려준다. 대응되는 값이 정말 없으면 원래 값을 그대로 둬도 된다 —
+    지어내서 억지로 명단에 끼워 맞추지 않는다.
+    """
+
+    task_id: str
+    required_skills: List[str] = Field(default_factory=list)
+
+
+class SkillRemapBatch(BaseModel):
+    """
+    verify_skill_vocabulary()가 찾아낸, 허용 명단 밖 스킬을 쓴 업무들에 대한
+    재요청 응답. 입력받은 task_id 전부에 대해 빠짐없이 반환해야 한다
+    (agent.py의 _remap_skill_vocabulary 참고).
+    """
+
+    items: List[SkillRemapItem] = Field(default_factory=list)
+
+
 def build_requirement_keyed_model(req_ids: List[str]) -> Type[BaseModel]:
     """요구사항 ID별로 필수 필드를 갖는 동적 스키마를 만든다.
 

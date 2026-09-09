@@ -64,6 +64,24 @@ class ExtractedExperienceTags(BaseModel):
     )
 
 
+class ExtractedExperienceTagsBatchItem(BaseModel):
+    """배치 추출 결과 1인분 — employee_id로 원본 요청과 매칭한다."""
+
+    employee_id: str
+    tags: List[str] = Field(default_factory=list)
+
+
+class ExtractedExperienceTagsBatch(BaseModel):
+    """
+    여러 명의 경력기술서를 한 번의 LLM 호출로 처리한 결과. OpenAI TPM 한도 때문에
+    직원 1인당 1회 호출하던 걸 묶어서 호출하려고 도입됨(agent.py의
+    extract_experience_tags_batch 참고). 입력받은 employee_id 전부가 items에
+    빠짐없이 있어야 하며, 누락되면 호출부가 단건으로 보완 호출한다.
+    """
+
+    items: List[ExtractedExperienceTagsBatchItem] = Field(default_factory=list)
+
+
 class EmployeeFitnessProfile(BaseModel):
     """
     이 에이전트의 최종 출력 1인분. assignee_recommend/rule_filter.py의

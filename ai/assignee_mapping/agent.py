@@ -17,18 +17,44 @@ EmployeeFitnessProfile을 만든다.
 """
 
 import logging
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from pydantic import ValidationError
 
 from shared.llm_client import create_structured
 from shared.retry_config import DEFAULT_MAX_TOKENS, MAX_RETRIES, TEMPERATURE_STRUCTURED
 
-from .prompt_builder import build_extraction_prompt
+from .prompt_builder import build_extraction_batch_prompt, build_extraction_prompt
 from .rule_filter import filter_candidates
-from .schemas import EmployeeFitnessProfile, ExtractedExperienceTags, RawEmployeeProfile
+from .schemas import (
+    EmployeeFitnessProfile,
+    ExtractedExperienceTags,
+    ExtractedExperienceTagsBatch,
+    RawEmployeeProfile,
+)
 
 logger = logging.getLogger(__name__)
+
+# 캐시에 없는 후보를 한 번의 LLM 호출에 몇 명씩 묶을지. career_history_text가
+# 사람마다 꽤 길 수 있어 유닛 배치(REASON_BATCH_SIZE=8)보다는 살짝 낮춰 잡았다.
+EXTRACTION_BATCH_SIZE = 10
+
+# 프로세스 안에서 유지되는 경험 태그 캐시: career_history_text(원문) -> tags.
+# 같은 사람의 경력기술서가 안 바뀐 채로 파이프라인이 다시 도는 경우(예: PM이
+# 배정 미리보기를 여러 번 재실행하는 2단계 확정 흐름) 재호출을 건너뛴다.
+# ai/는 여전히 DB를 모른다 — 프로세스 재시작 후에도 남기려면 호출부가
+# state["known_experience_tags"]로 이전 결과를 넘겨주면 된다(assignee_mapping_node 참고).
+_experience_tags_cache: Dict[str, List[str]] = {}
+
+
+def _get_cached_tags(text: str) -> Optional[ExtractedExperienceTags]:
+    if text in _experience_tags_cache:
+        return ExtractedExperienceTags(tags=_experience_tags_cache[text])
+    return None
+
+
+def _store_tags(text: str, tags: ExtractedExperienceTags) -> None:
+    _experience_tags_cache[text] = tags.tags
 
 
 def extract_experience_tags(profile: RawEmployeeProfile) -> ExtractedExperienceTags:
@@ -37,7 +63,7 @@ def extract_experience_tags(profile: RawEmployeeProfile) -> ExtractedExperienceT
         return ExtractedExperienceTags(tags=[])
 
     prompt = build_extraction_prompt(profile)
-    return create_structured(
+    tags = create_structured(
         system_prompt=prompt,
         user_message="위 경력기술서에서 경험 태그를 추출하라.",
         response_model=ExtractedExperienceTags,
@@ -45,6 +71,39 @@ def extract_experience_tags(profile: RawEmployeeProfile) -> ExtractedExperienceT
         temperature=TEMPERATURE_STRUCTURED,
         max_retries=MAX_RETRIES,
     )
+    _store_tags(profile.career_history_text, tags)
+    return tags
+
+
+def extract_experience_tags_batch(
+    profiles: List[RawEmployeeProfile],
+) -> Dict[str, ExtractedExperienceTags]:
+    """
+    캐시에 없는 후보 여러 명을 한 번의 LLM 호출로 처리한다. 반환값은
+    employee_id -> ExtractedExperienceTags. 결과는 개인별 캐시에도 저장한다.
+    """
+    if not profiles:
+        return {}
+
+    prompt = build_extraction_batch_prompt(profiles)
+    batch: ExtractedExperienceTagsBatch = create_structured(
+        system_prompt=prompt,
+        user_message="위 경력기술서들에서 각각 경험 태그를 추출하라.",
+        response_model=ExtractedExperienceTagsBatch,
+        max_tokens=DEFAULT_MAX_TOKENS,
+        temperature=TEMPERATURE_STRUCTURED,
+        max_retries=MAX_RETRIES,
+    )
+
+    text_by_employee = {p.employee_id: p.career_history_text for p in profiles}
+    result: Dict[str, ExtractedExperienceTags] = {}
+    for item in batch.items:
+        tags = ExtractedExperienceTags(tags=item.tags)
+        result[item.employee_id] = tags
+        text = text_by_employee.get(item.employee_id)
+        if text:
+            _store_tags(text, tags)
+    return result
 
 
 def assignee_mapping_node(state: Dict[str, Any]) -> Dict[str, Any]:
@@ -58,13 +117,48 @@ def assignee_mapping_node(state: Dict[str, Any]) -> Dict[str, Any]:
         logger.error("담당자 매핑 입력 검증 실패: %s", e)
         return {"error": f"INVALID_INPUT: {e}"}
 
+    # 호출부(백엔드)가 이전 실행에서 영속시켜 둔 태그가 있으면 캐시를 시드한다.
+    # ai/는 여전히 DB를 모른다 — 이 값을 어떻게 저장/조회할지는 호출부 책임이고,
+    # 여기서는 그냥 {career_history_text: [tags]} 형태의 평범한 dict로만 받는다.
+    known_tags = state.get("known_experience_tags") or {}
+    for text, tags in known_tags.items():
+        if text not in _experience_tags_cache:
+            _experience_tags_cache[text] = tags
+
     # LLM 호출 전, 후보를 코드로 먼저 추린다 (rule_filter.py 참고)
     candidates = filter_candidates(raw_profiles, state["tasks"], state["needed_roles"])
 
-    member_profiles = []
+    tags_by_employee: Dict[str, ExtractedExperienceTags] = {}
+    to_call: List[RawEmployeeProfile] = []
     for profile in candidates:
+        text = profile.career_history_text.strip()
+        if not text:
+            tags_by_employee[profile.employee_id] = ExtractedExperienceTags(tags=[])
+            continue
+        cached = _get_cached_tags(text)
+        if cached is not None:
+            tags_by_employee[profile.employee_id] = cached
+        else:
+            to_call.append(profile)
+
+    try:
+        for i in range(0, len(to_call), EXTRACTION_BATCH_SIZE):
+            batch_profiles = to_call[i : i + EXTRACTION_BATCH_SIZE]
+            tags_by_employee.update(extract_experience_tags_batch(batch_profiles))
+    except ValidationError as e:
+        logger.error("담당자 매핑 스키마 검증 실패(배치): %s", e)
+        return {"error": f"SCHEMA_VALIDATION_FAILED: {e}"}
+    except Exception as e:
+        logger.exception("담당자 매핑 실행 중 오류(배치)")
+        return {"error": f"GENERATION_FAILED: {e}"}
+
+    # 누락 방어: 배치 응답에 employee_id가 빠졌으면 그 사람만 단건으로 보완한다.
+    for profile in to_call:
+        if profile.employee_id in tags_by_employee:
+            continue
+        logger.warning("employee_id=%s: 배치 응답에 없어 단건 재호출", profile.employee_id)
         try:
-            tags = extract_experience_tags(profile)
+            tags_by_employee[profile.employee_id] = extract_experience_tags(profile)
         except ValidationError as e:
             logger.error("담당자 매핑 스키마 검증 실패 (employee_id=%s): %s", profile.employee_id, e)
             return {"error": f"SCHEMA_VALIDATION_FAILED: {e}"}
@@ -72,6 +166,9 @@ def assignee_mapping_node(state: Dict[str, Any]) -> Dict[str, Any]:
             logger.exception("담당자 매핑 실행 중 오류 (employee_id=%s)", profile.employee_id)
             return {"error": f"GENERATION_FAILED: {e}"}
 
+    member_profiles = []
+    for profile in candidates:
+        tags = tags_by_employee[profile.employee_id]
         member_profiles.append(
             EmployeeFitnessProfile(
                 employee_id=profile.employee_id,

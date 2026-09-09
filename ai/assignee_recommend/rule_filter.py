@@ -25,10 +25,56 @@ project.start_date/end_date는 이미 있는 컬럼이라 이 계산 자체엔 D
 데이터가 필요해 지금 범위 밖 — 필요해지면 팀과 상의).
 """
 
+import re
 from datetime import date, datetime, timedelta
 from typing import Any, Dict, List, Optional, Union
 
 _PRIORITY_RANK = {"High": 0, "Medium": 1, "Low": 2, None: 3}
+
+# LLM이 자유 텍스트로 쓰는 required_skills(예: "REST API 설계")와 DB 스킬 코드
+# (예: "REST API")를 완전 일치로만 비교하면 표기가 조금만 달라도 매칭이 전부
+# 실패해 불필요하게 보류(review_required) 처리된다. 흔히 붙는 한글 접미어를
+# 제거해 정규화한 뒤 비교하면 이런 표기 차이를 흡수할 수 있다.
+_SKILL_MODIFIER_SUFFIXES = ("설계", "개발", "구현", "능력", "역량", "작업", "처리")
+
+
+def _normalize_skill(skill: str) -> str:
+    """대소문자/공백을 정리하고, 끝에 붙은 흔한 한글 접미어를 하나 제거한다."""
+    s = re.sub(r"\s+", " ", skill.strip().lower())
+    for suffix in _SKILL_MODIFIER_SUFFIXES:
+        if s.endswith(suffix) and len(s) > len(suffix):
+            s = s[: -len(suffix)].strip()
+            break
+    return s
+
+
+def _match_skills(required: set, member_skills: set) -> set:
+    """
+    required(LLM 자유 텍스트)와 member_skills(DB 스킬 코드) 사이를 정규화 후
+    완전 일치 또는 부분 문자열 포함(양방향)까지 확인해 매칭한다. 예를 들어
+    "REST API 설계" ↔ "REST API"는 접미어 제거 후 일치, "Django REST"는
+    "REST API"와 부분 포함으로 매칭된다.
+
+    반환값은 매칭된 required의 원본 표기 그대로다 — 근거 문장(skill_match)에
+    그대로 노출되므로 LLM이 원래 쓴 표현을 유지한다.
+
+    한계: "pytest"처럼 member_skills(DB 스킬 코드 목록) 자체에 대응 값이 아예
+    없는 어휘는 정규화로도 못 잡는다 — DB 스킬 코드 추가나 프롬프트 단의 허용
+    어휘 목록 주입이 필요한 별개 사안이다.
+    """
+    normalized_member = {_normalize_skill(s): s for s in member_skills}
+    matched = set()
+    for req in required:
+        norm_req = _normalize_skill(req)
+        if not norm_req:
+            continue
+        for norm_mem in normalized_member:
+            if not norm_mem:
+                continue
+            if norm_req == norm_mem or norm_req in norm_mem or norm_mem in norm_req:
+                matched.add(req)
+                break
+    return matched
 
 # TODO(팀 합의 필요): 담당자 1인이 근무일 하루에 이 업무에 쓸 수 있는 시간.
 # DB 필드가 아니라 코드 상수 — calculate_max_hours_per_assignee()가 프로젝트
@@ -193,7 +239,7 @@ def schedule_assignments(
             projected = workload.get(emp_id, 0.0) + unit["estimated_hours"]
             if projected > max_hours_per_assignee:
                 continue  # 이 업무까지 더하면 상한을 넘기는 사람은 후보에서 제외
-            matched = required & set(m.get("skills", []))
+            matched = _match_skills(required, set(m.get("skills", [])))
             if required and not matched:
                 continue  # 요구 기술과 하나도 안 겹치면 제외
             remaining_ratio = (
