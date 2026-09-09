@@ -116,7 +116,7 @@ class SpecDocument(models.Model):
             project.period_start = self.period_start
             project.period_end = self.period_end
             project.save(update_fields=['period_start', 'period_end'])
-            
+
     # background/target_scope: 이 7섹션 템플릿 이전에 쓰이던 필드 — 새 화면에서는 안 쓰지만
     # 기존 데이터 호환을 위해 그대로 남겨둔다.
     background = models.TextField(null=True, blank=True, verbose_name="추진 배경 (구 필드, 미사용)")

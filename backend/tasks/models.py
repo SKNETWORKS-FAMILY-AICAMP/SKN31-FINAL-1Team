@@ -17,7 +17,7 @@ class TaskStatusCode:
     COMPLETED = 'COMPLETED'
     VALUES = {PENDING_APPROVAL, APPROVED, REJECTED, IN_PROGRESS, COMPLETED}
 
-
+#tasks/models.py
 class TaskAssignment(models.Model):
     """
     3단계 - 배정된 업무 (task_assignment)
