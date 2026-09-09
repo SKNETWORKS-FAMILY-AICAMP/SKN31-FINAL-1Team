@@ -10,6 +10,12 @@ const NEW_PROJECT_VALUE = "__new__";
 
 // 2026-09-01: /api/meetings/notes/parse-file/ (.docx/.pdf/.txt/.hwp 지원 — .hwp는 hwp5txt
 // CLI를 서브프로세스로 호출) 로 파일을 올리면 텍스트를 추출해 "원본 내용" 칸을 채운다.
+// 2026-09-09: 음성 파일(.mp3/.mp4/.wav/.m4a/.webm 등)도 같은 엔드포인트로 지원 — 백엔드가
+// Whisper로 받아쓰기한 뒤 GPT로 필러 단어 제거·문장 정리까지 마쳐서 돌려주므로 프론트는
+// 문서 파싱과 동일하게 처리하면 된다. 다만 음성 변환은 문서 텍스트 추출보다 훨씬 오래
+// 걸릴 수 있어(받아쓰기 + GPT 정리 2단계) 버튼 라벨만 구분해서 보여준다.
+const AUDIO_EXTENSIONS = [".mp3", ".mp4", ".mpeg", ".mpga", ".m4a", ".wav", ".webm"];
+const isAudioFile = (filename: string) => AUDIO_EXTENSIONS.some(ext => filename.toLowerCase().endsWith(ext));
 const SAMPLE_NOTES = [
   `[신규 쇼핑몰 프로젝트 킥오프 회의록]
 일자: 2026-08-19
@@ -61,6 +67,7 @@ export function NewDocumentModal({
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
   const [uploadingFile, setUploadingFile] = useState(false);
+  const [uploadingAudio, setUploadingAudio] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [projects, setProjects] = useState<ProjectOption[]>([]);
@@ -136,8 +143,10 @@ export function NewDocumentModal({
     e.target.value = ""; // 같은 파일을 다시 선택해도 onChange가 다시 뜨도록 초기화
     if (!file) return;
 
+    const audio = isAudioFile(file.name);
     setError("");
     setUploadingFile(true);
+    if (audio) setUploadingAudio(true);
     try {
       const formData = new FormData();
       formData.append("file", file);
@@ -148,9 +157,10 @@ export function NewDocumentModal({
       setContent(result.content);
       if (!title.trim()) setTitle(deriveTitleFromContent(result.content));
     } catch (err: any) {
-      setError(err.message || "파일에서 텍스트를 추출하지 못했습니다.");
+      setError(err.message || (audio ? "음성 파일을 텍스트로 변환하지 못했습니다." : "파일에서 텍스트를 추출하지 못했습니다."));
     } finally {
       setUploadingFile(false);
+      setUploadingAudio(false);
     }
   };
 
@@ -290,7 +300,7 @@ export function NewDocumentModal({
                   <input
                     ref={fileInputRef}
                     type="file"
-                    accept=".docx,.pdf,.txt,.hwp,.md"
+                    accept=".docx,.pdf,.txt,.hwp,.md,.mp3,.mp4,.mpeg,.mpga,.m4a,.wav,.webm"
                     onChange={handleFileSelected}
                     className="hidden"
                   />
@@ -299,10 +309,10 @@ export function NewDocumentModal({
                     onClick={() => fileInputRef.current?.click()}
                     disabled={uploadingFile}
                     className="flex items-center gap-1 text-xs font-semibold text-primary hover:text-primary/80 bg-primary/10 px-3 py-1 rounded-full transition-colors disabled:opacity-50"
-                    title="지원 형식: .docx, .pdf, .txt, .hwp, .md"
+                    title="지원 형식: .docx, .pdf, .txt, .hwp, .md / 음성: .mp3, .mp4, .wav, .m4a, .webm (최대 25MB)"
                   >
                     {uploadingFile ? <Loader2 className="w-3 h-3 animate-spin" /> : <Paperclip className="w-3 h-3" />}
-                    {uploadingFile ? "추출 중..." : "파일에서 불러오기"}
+                    {uploadingFile ? (uploadingAudio ? "음성 변환 중... (최대 1분 소요)" : "추출 중...") : "파일/음성에서 불러오기"}
                   </button>
                   <button
                     type="button"

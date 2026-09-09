@@ -587,12 +587,20 @@ class MeetingNoteParseFileView(APIView):
     permission_classes = [permissions.IsAuthenticated]
     parser_classes = [parsers.MultiPartParser]
 
-    MAX_SIZE = 10 * 1024 * 1024  # 10MB
+    MAX_SIZE = 10 * 1024 * 1024  # 10MB — 문서(docx/pdf/txt/md/hwp)
+    # OpenAI Whisper API 자체가 파일당 25MB로 제한한다 — 이보다 크게 받아봐야
+    # 어차피 API 호출에서 거부되므로 업로드 단계에서 미리 막아 헛수고를 줄인다.
+    AUDIO_MAX_SIZE = 25 * 1024 * 1024  # 25MB — 음성 파일
+    AUDIO_EXTENSIONS = ('.mp3', '.mp4', '.mpeg', '.mpga', '.m4a', '.wav', '.webm')
 
     @extend_schema(
         tags=['1단계 - 회의록'],
         summary='회의록 첨부 파일 텍스트 추출',
-        description='.docx/.pdf/.txt/.md/.hwp 파일을 업로드하면 텍스트를 추출해서 돌려준다. DB에 저장하지 않는다.',
+        description=(
+            '.docx/.pdf/.txt/.md/.hwp 파일을 업로드하면 텍스트를 추출해서 돌려준다. '
+            '.mp3/.mp4/.wav/.m4a/.webm 등 음성 파일을 업로드하면 OpenAI Whisper로 받아쓰기한 뒤 '
+            'GPT로 필러 단어 제거·문장 정리까지 마친 회의록 형태로 돌려준다. DB에 저장하지 않는다.'
+        ),
         request={'multipart/form-data': {'type': 'object', 'properties': {'file': {'type': 'string', 'format': 'binary'}}}},
         responses={200: OpenApiResponse(description='추출된 텍스트')},
     )
@@ -600,10 +608,16 @@ class MeetingNoteParseFileView(APIView):
         f = request.FILES.get('file')
         if not f:
             return Response({"error": "파일이 없습니다."}, status=status.HTTP_400_BAD_REQUEST)
-        if f.size > self.MAX_SIZE:
-            return Response({"error": "파일 크기는 10MB를 넘을 수 없습니다."}, status=status.HTTP_400_BAD_REQUEST)
 
         name = f.name.lower()
+        is_audio = name.endswith(self.AUDIO_EXTENSIONS)
+
+        if is_audio:
+            if f.size > self.AUDIO_MAX_SIZE:
+                return Response({"error": "음성 파일 크기는 25MB를 넘을 수 없습니다."}, status=status.HTTP_400_BAD_REQUEST)
+        elif f.size > self.MAX_SIZE:
+            return Response({"error": "파일 크기는 10MB를 넘을 수 없습니다."}, status=status.HTTP_400_BAD_REQUEST)
+
         try:
             if name.endswith('.docx'):
                 document = docx.Document(f)
@@ -615,11 +629,21 @@ class MeetingNoteParseFileView(APIView):
                 text = f.read().decode('utf-8', errors='ignore')
             elif name.endswith('.hwp'):
                 text = self._extract_hwp_text(f)
+            elif is_audio:
+                transcript = self._transcribe_audio(f)
+                text = self._cleanup_transcript(transcript)
             else:
                 return Response(
-                    {"error": "지원하지 않는 파일 형식입니다. .docx, .pdf, .txt, .md, .hwp 파일만 업로드해주세요."},
+                    {
+                        "error": "지원하지 않는 파일 형식입니다. .docx, .pdf, .txt, .md, .hwp 또는 "
+                                 ".mp3/.mp4/.wav/.m4a/.webm 등 음성 파일만 업로드해주세요.",
+                    },
                     status=status.HTTP_400_BAD_REQUEST,
                 )
+        except RuntimeError as e:
+            # OPENAI_API_KEY 미설정 등 설정 문제 — 파일 자체는 문제 없으니 400이 아니라
+            # 서버 설정 오류(500)로 구분해 사용자가 재시도해도 소용없다는 걸 알 수 있게 한다.
+            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         except Exception as e:
             return Response({"error": f"파일을 읽는 중 오류가 발생했습니다: {e}"}, status=status.HTTP_400_BAD_REQUEST)
 
@@ -628,6 +652,61 @@ class MeetingNoteParseFileView(APIView):
             return Response({"error": "파일에서 텍스트를 추출하지 못했습니다."}, status=status.HTTP_400_BAD_REQUEST)
 
         return Response({"content": text, "filename": f.name}, status=status.HTTP_200_OK)
+
+    @staticmethod
+    def _get_openai_client():
+        import os
+        from openai import OpenAI
+
+        api_key = os.environ.get("OPENAI_API_KEY")
+        if not api_key:
+            raise RuntimeError("OPENAI_API_KEY가 설정되지 않아 음성 변환을 사용할 수 없습니다.")
+        return OpenAI(api_key=api_key)
+
+    @classmethod
+    def _transcribe_audio(cls, uploaded_file):
+        """OpenAI Whisper로 음성을 텍스트로 받아쓰기한다. language='ko'로 고정하지 않고
+        Whisper의 자동 언어 감지에 맡긴다 — 회의 참석자가 영어 용어를 섞어 쓰는 경우가
+        흔해서, 언어를 한국어로 강제하면 오히려 그 구간 인식률이 떨어질 수 있다."""
+        client = cls._get_openai_client()
+        uploaded_file.seek(0)
+        # openai SDK가 Django의 UploadedFile(io.IOBase가 아님)을 그대로는 못 받아들여서
+        # (실제로 재현: "Expected entry at `file` to be bytes, an io.IOBase instance,
+        # PathLike or a tuple") (파일명, 바이트, content_type) 튜플로 감싸 넘긴다 —
+        # 파일명 확장자를 SDK가 보고 포맷을 판단하므로 원본 파일명을 그대로 써야 한다.
+        result = client.audio.transcriptions.create(
+            model="whisper-1",
+            file=(uploaded_file.name, uploaded_file.read(), uploaded_file.content_type or "application/octet-stream"),
+        )
+        return result.text
+
+    @classmethod
+    def _cleanup_transcript(cls, raw_text: str) -> str:
+        """Whisper 받아쓰기 결과는 필러 단어("어", "음", "그니까")가 그대로 남아있고
+        문장 구분도 없어서, 회의록 "원본 내용" 칸에 그대로 넣기엔 거칠다 — GPT로 한 번
+        다듬어 회의록 형식으로 정리한다. 내용을 창작하거나 요약하지 말고 표현만
+        다듬으라고 명시해 AI가 실제로 안 한 말을 지어내는 걸 막는다."""
+        if not raw_text or not raw_text.strip():
+            return raw_text
+
+        client = cls._get_openai_client()
+        system_prompt = (
+            "너는 회의 음성 받아쓰기 결과를 다듬는 편집자다. 아래 기준을 반드시 지켜라.\n"
+            "1. '어', '음', '그니까' 같은 필러 단어를 제거한다.\n"
+            "2. 문장 단위로 끊어서 읽기 쉽게 정리한다.\n"
+            "3. 내용은 절대 바꾸지 말고 표현만 다듬는다 — 없는 내용을 추가하거나 요약하지 마라.\n"
+            "4. 결과는 회의록 형식으로 출력한다."
+        )
+        completion = client.chat.completions.create(
+            model="gpt-4o-mini",
+            temperature=0.2,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": f"아래는 음성을 텍스트로 변환한 내용입니다.\n\n{raw_text}"},
+            ],
+        )
+        cleaned = completion.choices[0].message.content
+        return cleaned or raw_text
 
     @staticmethod
     def _extract_docx_text(document):
