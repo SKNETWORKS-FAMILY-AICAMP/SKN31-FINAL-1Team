@@ -21,6 +21,7 @@ from meetings.serializers import (
 )
 from common.models import CommonCode
 from notifications.services import notify_user, notify_all_pms
+from projects.models import PipelineHistory
 
 # AI 모듈 불러오기
 from meeting_analysis.node import run as analyze_meeting
@@ -51,7 +52,18 @@ class MeetingNoteListCreateView(generics.ListCreateAPIView):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         instance = serializer.save(created_by=request.user)
-        
+
+        # 파이프라인 이력 로그 생성 — 회의록에 소속 프로젝트가 없는 레거시 흐름도 있어서 있을 때만 기록
+        if instance.project_id:
+            PipelineHistory.objects.create(
+                project=instance.project,
+                meeting=instance,
+                step_type='MEETING_REGISTERED',
+                title=f"회의록 등록: {instance.title}",
+                description=f"작성자: {request.user.username} 사원",
+                actor=request.user,
+            )
+
         response_serializer = MeetingNoteSerializer(instance)
         return Response(response_serializer.data, status=status.HTTP_201_CREATED)
 
@@ -269,6 +281,16 @@ class SpecDocumentApproveView(APIView):
             type='success',
             link='/documents',
         )
+        if spec.meeting.project_id:
+            PipelineHistory.objects.create(
+                project=spec.meeting.project,
+                meeting=spec.meeting,
+                spec=spec,
+                step_type='SPEC_GENERATED',
+                title=f"기획서 승인: {spec.title}",
+                description=f"승인자: {request.user.username} 사원",
+                actor=request.user,
+            )
         return Response({"message": "기획서가 승인되었습니다.", "spec": SpecDocumentSerializer(spec).data})
 
 

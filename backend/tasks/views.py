@@ -214,6 +214,7 @@ class TaskStatusUpdateView(APIView):
         task = get_object_or_404(TaskAssignment, pk=pk)
         # status_code 는 common_code(group_code='TASK_STATUS') 의 code_id 문자열
         new_status = request.data.get('status_code') or request.data.get('status')
+        old_status = task.status_code_id
 
         if new_status not in TaskStatusCode.VALUES:
             return Response({"error": "유효하지 않은 status_code 값입니다."}, status=status.HTTP_400_BAD_REQUEST)
@@ -242,6 +243,28 @@ class TaskStatusUpdateView(APIView):
             notify_user(task.assigned_user, f"'{task.title}' 업무가 승인되었습니다.", type='success', link='/tasks')
         elif new_status == TaskStatusCode.REJECTED:
             notify_user(task.assigned_user, f"'{task.title}' 업무가 반려되었습니다: {task.reject_reason}", type='error', link='/tasks')
+
+        # 파이프라인 이력 로그 — 실제로 상태가 바뀐 전이(transition)일 때만 기록해서
+        # 같은 상태로 재저장하는 PATCH에 중복 로그가 쌓이지 않게 한다.
+        if task.project_id and new_status != old_status:
+            if new_status == TaskStatusCode.APPROVED:
+                PipelineHistory.objects.create(
+                    project=task.project,
+                    task=task,
+                    step_type='TASK_IN_PROGRESS',
+                    title=f"업무 진행 시작: {task.title}",
+                    description=f"담당자: {task.assigned_user.username} 사원",
+                    actor=request.user,
+                )
+            elif new_status == TaskStatusCode.COMPLETED:
+                PipelineHistory.objects.create(
+                    project=task.project,
+                    task=task,
+                    step_type='COMPLETED',
+                    title=f"업무 완료: {task.title}",
+                    description=f"담당자: {task.assigned_user.username} 사원",
+                    actor=request.user,
+                )
 
         return Response({
             "message": "업무 상태가 성공적으로 변경되었습니다.",
