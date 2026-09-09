@@ -128,6 +128,17 @@ def _schedule_suggestion_dates(suggestions: list, start_date: date, end_date: da
             continue
         by_assignee.setdefault(s["assignee_id"], []).append(s)
 
+    # 프로젝트 기간에 평일이 하루도 없으면(주말만 있거나 종료일이 시작일보다 이른
+    # 잘못된 입력) workdays가 빈 리스트라 아래 인덱싱이 전부 IndexError로 죽는다 —
+    # 날짜를 배정할 기준 자체가 없으므로 전부 초과로 표시하고 날짜는 비워둔다.
+    if total_workdays == 0:
+        for items in by_assignee.values():
+            for item in items:
+                item["exceeds_project_period"] = True
+                item["suggested_start_date"] = None
+                item["suggested_end_date"] = None
+        return
+
     for items in by_assignee.values():
         n = len(items)
         days_needed = [max(1, round((it["estimated_hours"] or 0) / 8)) for it in items]
@@ -153,7 +164,14 @@ def _schedule_suggestion_dates(suggestions: list, start_date: date, end_date: da
             if idx > 0:
                 gap = gap_each + (leftover if idx == n - 1 else 0)
                 cursor_idx += gap
-            start_idx = cursor_idx
+            # 이 담당자의 총 소요일이 프로젝트 평일 수를 넘으면(위 idle_total=0인
+            # 경우) cursor_idx가 total_workdays를 넘어설 수 있다 — end_idx는 이미
+            # 클램프하고 있었지만 start_idx는 안 하고 있어서, 그다음 업무의
+            # start_idx가 workdays 범위를 벗어나 IndexError로 죽는 사고가 실제로
+            # 재현됐다(담당자 1명에게 프로젝트 평일 수보다 많은 업무를 몰아준 경우).
+            # exceeds_project_period=True로 표시하는 건 그대로 두되, 조회용
+            # 인덱스는 마지막 평일로 고정해 죽지 않게 한다.
+            start_idx = min(cursor_idx, total_workdays - 1)
             end_idx = start_idx + d - 1
             item["exceeds_project_period"] = end_idx > total_workdays - 1
             end_idx = min(end_idx, total_workdays - 1)
