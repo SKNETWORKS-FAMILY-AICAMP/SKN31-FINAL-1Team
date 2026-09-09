@@ -35,6 +35,7 @@ type SpecDto = {
   user_scenarios: string | null;
   tech_stack: string | null;
   final_decisions: string | null;
+  evidence_data: string | null;
   period_start: string | null;
   period_end: string | null;
   status_code: string | null;
@@ -1151,6 +1152,8 @@ function NoteDetail({
   const rawDirty = rawDraft !== (note.content ?? "");
   const rawSaving = busy === busyKey("save-raw");
   const rawLocked = !!spec;
+  // "기획서 원본"(요구사항정의서 탭) 참고 박스와 동일하게 접었다 펼 수 있게(사용자 요청) — 기본은 펼침.
+  const [rawNoteOpen, setRawNoteOpen] = useState(true);
   const specLocked = status === "PENDING_REVIEW" || status === "APPROVED";
   // "기획서 생성"과 같은 기준 — 작성자 본인이 아니면 원본 회의록도 못 고친다(PM은 예외).
   // 이 체크가 빠져있어서 다른 사람이 시작한 회의록도 아무나 고칠 수 있는 상태였다.
@@ -1255,14 +1258,19 @@ function NoteDetail({
       <div className={cn("space-y-5", activeTab !== "proposal" && "hidden")}>
       <div className="text-sm">
         <div className="flex items-center justify-between mb-2">
-          <p className="text-muted-foreground font-medium flex items-center gap-1.5">
+          <button
+            type="button"
+            onClick={() => setRawNoteOpen(v => !v)}
+            className="flex items-center gap-1.5 text-muted-foreground font-medium hover:text-foreground transition-colors"
+          >
+            <ChevronDown className={cn("w-4 h-4 transition-transform shrink-0", !rawNoteOpen && "-rotate-90")} />
             원본 회의록 / 메모
             {rawLocked && (
               <span className="flex items-center gap-1 text-[11px] text-muted-foreground/70">
                 <Lock className="w-3 h-3" /> 기획서 생성 후에는 수정할 수 없습니다
               </span>
             )}
-          </p>
+          </button>
           {!rawLocked && canEditRaw && rawDirty && (
             <button
               onClick={() => onSaveNoteContent(rawDraft)}
@@ -1274,17 +1282,19 @@ function NoteDetail({
             </button>
           )}
         </div>
-        <textarea
-          value={rawDraft}
-          onChange={e => !rawLocked && canEditRaw && setRawDraft(e.target.value)}
-          readOnly={rawLocked || !canEditRaw}
-          placeholder="내용이 없습니다."
-          title={!rawLocked && !canEditRaw ? "다른 사용자가 시작한 회의록입니다. 작성자 본인만 수정할 수 있습니다." : undefined}
-          className={cn(
-            "w-full h-48 bg-black/5 dark:bg-white/5 border border-border rounded-xl p-4 whitespace-pre-wrap overflow-y-auto text-muted-foreground resize-none focus:outline-none transition-all",
-            (rawLocked || !canEditRaw) ? "cursor-default" : "focus:ring-2 focus:ring-primary/40"
-          )}
-        />
+        {rawNoteOpen && (
+          <textarea
+            value={rawDraft}
+            onChange={e => !rawLocked && canEditRaw && setRawDraft(e.target.value)}
+            readOnly={rawLocked || !canEditRaw}
+            placeholder="내용이 없습니다."
+            title={!rawLocked && !canEditRaw ? "다른 사용자가 시작한 회의록입니다. 작성자 본인만 수정할 수 있습니다." : undefined}
+            className={cn(
+              "w-full h-48 bg-black/5 dark:bg-white/5 border border-border rounded-xl p-4 whitespace-pre-wrap overflow-y-auto text-muted-foreground resize-none focus:outline-none transition-all",
+              (rawLocked || !canEditRaw) ? "cursor-default" : "focus:ring-2 focus:ring-primary/40"
+            )}
+          />
+        )}
       </div>
 
       <p className="text-sm text-muted-foreground font-semibold flex items-center gap-2">
@@ -1309,6 +1319,17 @@ function NoteDetail({
           </div>
         )}
       </div>
+
+      {/* 근거자료 — 7개 섹션 내용이 회의록의 어느 부분에서 나왔는지 보여주는 참고 자료(백엔드
+          준비 중, evidence_data). PDF/PPTX 출력에는 포함되면 안 되므로 #print-area 바깥에 둔다 —
+          위 ProposalTemplate과 달리 이 블록은 print 시 자동으로 숨겨진다. 기본은 접힌 상태. */}
+      {parsedContent && (
+        <CollapsibleSection title="근거자료" defaultOpen={false}>
+          <div className="border border-border rounded-xl p-4 bg-black/[0.02] dark:bg-white/[0.02]">
+            <EvidenceContent raw={spec?.evidence_data ?? null} />
+          </div>
+        </CollapsibleSection>
+      )}
 
       <div className="flex justify-end items-center gap-3 pt-2">
         {spec && (
@@ -1856,6 +1877,48 @@ function CollapsibleSection({
       {open && children}
     </div>
   );
+}
+
+// 기획서 7개 섹션과 동일한 키로 근거 문장을 저장할 것으로 예상해 라벨을 맞춰둔다(백엔드
+// evidence_data 실제 포맷이 확정되면 필요시 조정). 알 수 없는 키가 오면 키 이름 그대로 보여준다.
+const EVIDENCE_SECTION_LABEL: Record<string, string> = {
+  overview: "1. 프로젝트 개요",
+  problem_definition: "2. 문제 정의",
+  target_users: "3. 대상 사용자",
+  key_features: "4. 주요 기능",
+  user_scenarios: "5. 사용자 시나리오",
+  tech_stack: "6. 기술 스택 및 제약사항",
+  final_decisions: "7. 최종 결정사항",
+};
+
+// evidence_data는 아직 백엔드에서 채우는 중이라 정확한 포맷이 정해지지 않았다 — 섹션별
+// 근거를 담은 JSON 객체로 오면 섹션별로 나눠 보여주고, 그냥 텍스트로 오거나 파싱에
+// 실패하면 원문 그대로, 비어있으면 안내 문구만 보여준다.
+function EvidenceContent({ raw }: { raw: string | null }) {
+  if (!raw || !raw.trim()) {
+    return <p className="text-xs text-muted-foreground">아직 근거 자료가 없습니다.</p>;
+  }
+  let parsed: unknown = null;
+  try { parsed = JSON.parse(raw); } catch { /* 아래에서 원문 텍스트로 처리 */ }
+
+  if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+    const entries = Object.entries(parsed as Record<string, unknown>).filter(([, v]) => v != null && String(v).trim());
+    if (entries.length === 0) {
+      return <p className="text-xs text-muted-foreground">아직 근거 자료가 없습니다.</p>;
+    }
+    return (
+      <div className="space-y-3">
+        {entries.map(([key, value]) => (
+          <div key={key}>
+            <p className="text-xs font-bold text-muted-foreground">{EVIDENCE_SECTION_LABEL[key] ?? key}</p>
+            <p className="text-xs text-muted-foreground/80 whitespace-pre-wrap mt-0.5">{String(value)}</p>
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  return <p className="text-xs text-muted-foreground/80 whitespace-pre-wrap">{raw}</p>;
 }
 
 // 업무 목록에서 담당자(중복 제거) 기준으로 직무별 인원수를 집계 — 업무 자체엔 직무 필드가

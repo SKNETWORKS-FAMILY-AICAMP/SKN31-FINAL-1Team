@@ -75,7 +75,8 @@ def process_ai_requirement_extraction(spec_document, user):
         ]
 
     plan_dict = {
-        "project_id": str(spec_document.project.id) if getattr(spec_document, "project", None) else "DEFAULT_PROJECT",
+        # SpecDocument엔 project 필드가 없다 — meeting을 거쳐야 함(위 defaults의 project 필드와 동일한 이유)
+        "project_id": str(spec_document.meeting.project_id) if spec_document.meeting.project_id else "DEFAULT_PROJECT",
         "title": getattr(spec_document, "title", None) or "기획서 초안",
         "overview": getattr(spec_document, "overview", None) or "",
         "background": getattr(spec_document, "background", None) or "",
@@ -116,7 +117,10 @@ def process_ai_requirement_extraction(spec_document, user):
         req_def, created = RequirementDefinition.objects.get_or_create(
             spec=spec_document,
             defaults={
-                'project': spec_document.project if hasattr(spec_document, "project") else None,
+                # SpecDocument엔 project 필드가 없다 — meeting을 거쳐야 프로젝트를 알 수 있다
+                # (spec_document.project로 잘못 참조하면 hasattr()가 항상 False라 계속 None으로
+                # 저장되는 버그가 있었음, 2026-09-08부터 발생).
+                'project': spec_document.meeting.project,
                 'title': f"{spec_document.title} - 요구사항 정의서",
                 'status_code': draft_status,
                 'created_by': user
