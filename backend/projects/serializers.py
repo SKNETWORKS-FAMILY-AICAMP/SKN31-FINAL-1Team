@@ -23,6 +23,8 @@ class ProjectSerializer(serializers.ModelSerializer):
             'owner_name',
             'created_at',
             'updated_at',
+            'period_start',
+            'period_end',
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
 

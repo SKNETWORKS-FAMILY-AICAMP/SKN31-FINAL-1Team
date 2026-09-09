@@ -100,6 +100,23 @@ class SpecDocument(models.Model):
     period_start = models.DateField(null=True, blank=True, verbose_name="프로젝트 시작일")
     period_end = models.DateField(null=True, blank=True, verbose_name="프로젝트 종료일")
 
+    def save(self, *args, **kwargs):
+        # 1. SpecDocument 자체 저장
+        super().save(*args, **kwargs)
+
+        # 2. 관련 프로젝트(Project)가 연결되어 있는 경우, Project DB로 period_start/end 값 업데이트
+        # (SpecDocument -> MeetingNote -> Project 관계 추적)
+        project = None
+        if hasattr(self, 'project') and self.project:
+            project = self.project
+        elif self.meeting and getattr(self.meeting, 'project', None):
+            project = self.meeting.project
+
+        if project:
+            project.period_start = self.period_start
+            project.period_end = self.period_end
+            project.save(update_fields=['period_start', 'period_end'])
+            
     # background/target_scope: 이 7섹션 템플릿 이전에 쓰이던 필드 — 새 화면에서는 안 쓰지만
     # 기존 데이터 호환을 위해 그대로 남겨둔다.
     background = models.TextField(null=True, blank=True, verbose_name="추진 배경 (구 필드, 미사용)")
