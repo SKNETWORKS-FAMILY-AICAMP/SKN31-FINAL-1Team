@@ -15,6 +15,7 @@ from team_sizing import estimate_team_size
 from assignee_mapping.agent import assignee_mapping_node
 from assignee_recommend.agent import assignee_recommend_node
 from assignee_recommend.rule_filter import flatten_assignable_units
+from common.models import CommonCode
 
 logger = logging.getLogger(__name__)
 User = get_user_model()
@@ -110,10 +111,13 @@ def generate_task_suggestions(spec_id: int) -> dict:
     if not req_def.items.exists():
         return {"status": "error", "message": "요구사항 항목이 없습니다."}
 
+    available_skills = list(
+        CommonCode.objects.filter(groupid__startswith="SKILL").values_list("code_name", flat=True)
+        )
     requirement_doc = _build_requirement_doc(req_def)
 
     try:
-        task_items = generate_tasks(requirement_doc)
+        task_items = generate_tasks(requirement_doc, available_skills=available_skills)
     except Exception as e:
         logger.exception("업무 생성 실패 (spec_id=%s)", spec_id)
         return {"status": "error", "message": f"업무 생성 실패: {e}"}

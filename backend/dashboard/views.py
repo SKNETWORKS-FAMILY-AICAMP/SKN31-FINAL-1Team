@@ -33,7 +33,7 @@ class DashboardOverviewView(APIView):
     )
     def get(self, request):
         user = request.user
-        is_pm = getattr(user, 'role', '') == 'PM' or user.is_staff or user.groups.filter(name='PM').exists()
+        is_pm = user.is_staff
 
         if is_pm:
             task_qs = TaskAssignment.objects.all()
