@@ -1293,7 +1293,7 @@ function NoteDetail({
           </div>
         ) : (
           <div className="w-full max-w-[840px] bg-white dark:bg-white p-10 text-center text-muted-foreground text-sm">
-            {!canGenerate ? "다른 사용자가 시작한 회의록입니다. 작성자 본인만 생성할 수 있습니다." : "AI가 아직 기획서를 생성하지 않았습니다."}
+            {!canGenerate || isPM ? "다른 사용자가 시작한 회의록입니다. 작성자 본인만 생성할 수 있습니다." : "AI가 아직 기획서를 생성하지 않았습니다."}
           </div>
         )}
       </div>
@@ -1310,7 +1310,7 @@ function NoteDetail({
           </div>
         )}
 
-        {!spec && canGenerate && (
+        {!spec && canGenerate && !isPM && (
           <button
             onClick={onGenerateSpec}
             disabled={busy === busyKey("generate")}
@@ -1989,7 +1989,7 @@ function RequirementSection({
     return (
       <div className="border-t border-border pt-5 mt-2">
         <h3 className="font-bold text-sm mb-2">요구사항 정의서</h3>
-        {canGenerate ? (
+        {canGenerate && !isPM ? (
           <button
             onClick={onCreate}
             disabled={creating}
@@ -2000,7 +2000,7 @@ function RequirementSection({
           </button>
         ) : (
           <p className="text-sm text-muted-foreground">
-            다른 사용자가 시작한 회의록입니다. 작성자 본인만 생성할 수 있습니다.
+            {!canGenerate ? "다른 사용자가 시작한 회의록입니다. 작성자 본인만 생성할 수 있습니다." : "아직 요구사항 정의서가 생성되지 않았습니다."}
           </p>
         )}
       </div>
