@@ -28,6 +28,22 @@ SYSTEM_PROMPT = """당신은 회의록에서 프로젝트 정보를 추출하는
    / data(저장·연동 데이터) / technical(기술 스택·환경)
 5. decisions.category는 feature, tech, scope 중 하나입니다.
 
+6. 한 문장 안에 "결정된 부분"과 "다음으로 미뤄진 부분"이 섞여 있으면,
+   두 가지를 모두 하십시오 — 하나만 하고 끝내지 마십시오.
+
+   예: 회의록에 "원거리 지역은 배송비를 추가로 부과한다(구체 금액은 차주
+       회의에서 확정)"라는 문장이 있으면:
+       가) decisions에 다음을 추가하십시오:
+          {"category": "feature", "content": "원거리 지역은 배송비를
+           추가로 부과한다"}
+       나) unresolved에 다음을 추가하십시오:
+          "원거리 지역 추가 배송비의 구체적인 금액이 정해지지 않았습니다."
+
+   "일부가 미정이니 전체를 안 쓴다"와 "미정인 부분만 쓰고 결정된 부분은
+   빠뜨린다" 둘 다 잘못된 처리입니다. 가)와 나) 둘 다 반드시 하십시오.
+   아래 두 번째 few-shot 예시(배송비 정책 사례)가 이 처리를 그대로
+   보여줍니다.
+
 
 ## 분류가 애매할 때
 ### requirements 4분류
@@ -133,11 +149,65 @@ FEWSHOT_OUTPUT = """{
   ]
 }"""
 
+# 규칙 6번("결정된 부분" + "미뤄진 부분"이 한 문장에 섞인 경우) 전용 예시.
+FEWSHOT_INPUT_2 = """[회의 기본정보]
+- 일시: 2026-04-02
+- 참석자: 이기획, 최개발
+- 회의명: 배송비 정책 확정
+
+[회의 목적]
+지역별 배송비 정책을 확정한다.
+
+[회의 내용]
+원거리 지역은 배송비를 추가로 부과한다. 다만 추가 요금이 정확히 얼마일지는
+물류팀 견적을 받아봐야 해서 다음 회의에서 정하기로 했다.
+결제 수단은 카드와 계좌이체만 우선 지원한다.
+
+[최종 결정사항]
+- 원거리 지역은 배송비를 추가 부과한다(구체 금액은 차주 회의에서 확정)
+- 결제 수단은 카드/계좌이체로 한정한다"""
+
+
+FEWSHOT_OUTPUT_2 = """{
+  "project": {
+    "name": "배송비 정책",
+    "background": "지역별로 배송 비용 차이가 있어 정책 정리가 필요함",
+    "problem": "원거리 지역 배송비 기준이 없어 정산이 불명확함",
+    "goals": ["지역별 배송비 부과 기준 확정"],
+    "background_evidence": {"quote": "원거리 지역은 배송비를 추가로 부과한다"},
+    "problem_evidence": {"quote": "원거리 지역은 배송비를 추가로 부과한다"}
+  },
+  "users": [],
+  "requirements": {
+    "functional": [
+      {"content": "결제는 카드와 계좌이체 방식만 지원한다",
+       "evidence": {"quote": "결제 수단은 카드와 계좌이체만 우선 지원한다"}}
+    ],
+    "non_functional": [], "data": [], "technical": []
+  },
+  "scenarios": [],
+  "decisions": [
+    {"category": "feature", "content": "원거리 지역은 배송비를 추가로 부과한다",
+     "rationale": "원거리 배송에 따른 비용 증가를 반영하기 위함",
+     "evidence": {"quote": "원거리 지역은 배송비를 추가로 부과한다"}},
+    {"category": "scope", "content": "결제 수단은 카드와 계좌이체로 한정한다",
+     "rationale": "우선 지원 범위를 최소화하기 위함",
+     "evidence": {"quote": "결제 수단은 카드/계좌이체로 한정한다"}}
+  ],
+  "constraints": [],
+  "unresolved": [
+    "원거리 지역 추가 배송비의 구체적인 금액이 정해지지 않았습니다."
+  ]
+}"""
+
+
 
 def build_messages(meeting_text: str) -> list[dict]:
     """few-shot 한 쌍 + 실제 입력."""
     return [
         {"role": "user", "content": FEWSHOT_INPUT},
         {"role": "assistant", "content": FEWSHOT_OUTPUT},
+        {"role": "user", "content": FEWSHOT_INPUT_2},
+        {"role": "assistant", "content": FEWSHOT_OUTPUT_2},
         {"role": "user", "content": meeting_text},
     ]

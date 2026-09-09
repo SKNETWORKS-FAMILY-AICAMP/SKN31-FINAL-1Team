@@ -74,7 +74,7 @@ def check_unresolved_consistency(data: dict) -> list[str]:
             items = _get_items(data, path)
             if items:
                 contradiction = (path, len(items))
-                break
+            break
  
         if contradiction:
             path, count = contradiction
