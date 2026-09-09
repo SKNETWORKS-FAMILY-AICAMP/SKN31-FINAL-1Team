@@ -112,8 +112,8 @@ def generate_task_suggestions(spec_id: int) -> dict:
         return {"status": "error", "message": "요구사항 항목이 없습니다."}
 
     available_skills = list(
-        CommonCode.objects.filter(groupid__startswith="SKILL").values_list("code_name", flat=True)
-        )
+        CommonCode.objects.filter(group__group_code__startswith="SKILL").values_list("code_name", flat=True)
+    )
     requirement_doc = _build_requirement_doc(req_def)
 
     try:
