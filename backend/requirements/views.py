@@ -127,8 +127,17 @@ def process_ai_requirement_extraction(spec_document, user):
             }
         )
 
-        if not created and draft_status:
-            req_def.status_code = draft_status
+        if not created:
+            # get_or_create의 defaults는 "새로 만들 때"만 적용되고 기존 행은 절대 안 건드린다 —
+            # 그래서 최초 생성 시점에 project가 None으로 저장된 요구사항정의서(예: 예전 버그로
+            # project가 None이었거나, 회의록이 나중에 프로젝트에 연결된 경우)를 같은 기획서로
+            # 재추출해도 project가 계속 None으로 남아있는 문제가 있었다(실제로 재현해서 확인 —
+            # req_def 39: 최초 생성 이후 project가 None인 채로 남아있다가 재추출해도 그대로였음).
+            # 매번 meeting.project를 신뢰 가능한 소스로 보고 다시 맞춰준다.
+            if draft_status:
+                req_def.status_code = draft_status
+            if spec_document.meeting.project_id and req_def.project_id != spec_document.meeting.project_id:
+                req_def.project = spec_document.meeting.project
             req_def.save()
 
         # 기존 생성 항목 초기화 (재추출 시 중복 방지)
