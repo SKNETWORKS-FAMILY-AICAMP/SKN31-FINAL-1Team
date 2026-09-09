@@ -1989,7 +1989,7 @@ function RequirementSection({
     return (
       <div className="border-t border-border pt-5 mt-2">
         <h3 className="font-bold text-sm mb-2">요구사항 정의서</h3>
-        {!isPM && canGenerate ? (
+        {canGenerate ? (
           <button
             onClick={onCreate}
             disabled={creating}
@@ -2000,7 +2000,7 @@ function RequirementSection({
           </button>
         ) : (
           <p className="text-sm text-muted-foreground">
-            {!isPM && !canGenerate ? "다른 사용자가 시작한 회의록입니다. 작성자 본인만 생성할 수 있습니다." : "아직 요구사항 정의서가 생성되지 않았습니다."}
+            다른 사용자가 시작한 회의록입니다. 작성자 본인만 생성할 수 있습니다.
           </p>
         )}
       </div>
