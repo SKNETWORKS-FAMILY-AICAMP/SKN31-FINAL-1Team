@@ -6,7 +6,6 @@ import {
   CheckCircle2, XCircle, AlertCircle, Clock, Loader2,
   MessageSquare, RotateCcw, ShieldCheck
 } from "lucide-react";
-import { cn } from "@/lib/utils";
 import { apiFetch } from "@/lib/api/client";
 
 type Task = {

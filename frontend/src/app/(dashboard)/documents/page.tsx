@@ -699,7 +699,7 @@ export default function DocumentsPage() {
   // 파이프라인(업무생성→담당자매핑→담당자추천)을 돌린다. 이 단계는 미리보기(제안)만
   // 만들고 DB에는 아무것도 저장하지 않는다 — PM이 담당자/일정을 검토·수정한 뒤
   // "배분 확정"을 눌러야 handleConfirmTasks가 실제로 저장한다(2단계 확정 플로우).
-  const handleGenerateTasks = async (note: NoteDto, spec: SpecDto, reqDefId: number) => {
+  const handleGenerateTasks = async (spec: SpecDto, reqDefId: number) => {
     setGeneratingTasks(true);
     setBusy(`reqdef-${reqDefId}-tasks`);
     try {
@@ -1021,7 +1021,7 @@ export default function DocumentsPage() {
               onUpdateItem={handleUpdateItem}
               onDeleteItem={handleDeleteItem}
               onReqDefStatusChange={handleReqDefStatusChange}
-              onGenerateTasks={(spec, reqDefId) => handleGenerateTasks(selectedNote, spec, reqDefId)}
+              onGenerateTasks={(spec, reqDefId) => handleGenerateTasks(spec, reqDefId)}
               onRejectReqDef={(spec, reqDefId) => setRejectTarget({ kind: "reqdef", specId: spec.id, reqDefId })}
               taskAssignments={taskAssignments}
               taskDrafts={taskDrafts}
@@ -2122,8 +2122,10 @@ function RequirementSection({
   const rejecting = reqDef && busy === `reqdef-${reqDef.id}-rejected`;
   const submittingReview = reqDef && busy === `reqdef-${reqDef.id}-pending_review`;
   // 검토요청(PENDING_REVIEW) ~ 승인(APPROVED) 사이에는 기획서와 마찬가지로 항목을 잠근다 —
-  // 이미 검토에 들어간 내용이 뒤에서 바뀌면 안 되기 때문(백엔드 RequirementItemDetailView는
-  // 아직 이 체크가 없어서 API 직접 호출로는 우회 가능 — 팀원 전달 목록에 추가 필요).
+  // 이미 검토에 들어간 내용이 뒤에서 바뀌면 안 되기 때문. 백엔드(requirements/views.py의
+  // LOCKED_REQDEF_STATUSES + RequirementItemViewSet.create()/RequirementItemDetailView.
+  // _check_not_locked())도 생성·수정·삭제를 동일하게 막고 있어 API 직접 호출로 우회할 수
+  // 없다 — 이건 화면에서 버튼/입력을 미리 비활성화해 사용자 경험을 매끄럽게 하는 역할.
   const itemsLocked = reqStatus === "APPROVED" || reqStatus === "PENDING_REVIEW";
 
   if (!reqDef) {

@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import {
-  History as HistoryIcon, FileText, ListTodo, Loader2, CheckCircle2,
+  History as HistoryIcon, FileText, Loader2, CheckCircle2,
   Clock, FolderKanban, PlusCircle, ChevronLeft, ChevronRight, Bot, AlertTriangle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";

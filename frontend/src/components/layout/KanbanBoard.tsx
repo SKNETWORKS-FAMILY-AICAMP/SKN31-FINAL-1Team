@@ -308,7 +308,7 @@ export function KanbanBoard({ initialTasks, members = [], onTaskChange }: { proj
     }
   };
 
-  // Sync state when props change
+  // 부모가 새 initialTasks를 내려주면(다른 화면에서 갱신된 목록을 다시 조회) 내부 상태도 맞춘다
   useEffect(() => { setTasks(initialTasks) }, [initialTasks]);
 
   // 승인됨(APPROVED)은 화면에 별도 컬럼을 안 두고 "진행 중" 칸에 같이 보여준다 — 승인만 되고
