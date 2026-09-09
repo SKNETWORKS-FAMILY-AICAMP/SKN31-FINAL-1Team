@@ -10,12 +10,23 @@ const NEW_PROJECT_VALUE = "__new__";
 
 // 2026-09-01: /api/meetings/notes/parse-file/ (.docx/.pdf/.txt/.hwp 지원 — .hwp는 hwp5txt
 // CLI를 서브프로세스로 호출) 로 파일을 올리면 텍스트를 추출해 "원본 내용" 칸을 채운다.
-// 2026-09-09: 음성 파일(.mp3/.mp4/.wav/.m4a/.webm 등)도 같은 엔드포인트로 지원 — 백엔드가
-// Whisper로 받아쓰기한 뒤 GPT로 필러 단어 제거·문장 정리까지 마쳐서 돌려주므로 프론트는
-// 문서 파싱과 동일하게 처리하면 된다. 다만 음성 변환은 문서 텍스트 추출보다 훨씬 오래
-// 걸릴 수 있어(받아쓰기 + GPT 정리 2단계) 버튼 라벨만 구분해서 보여준다.
+// 2026-09-09: 음성 파일(.mp3/.mp4/.wav/.m4a/.webm 등)도 지원 — 처음엔 parse-file 하나로
+// (Whisper 받아쓰기 + GPT 정리) 한 번에 처리했는데, 그러면 프론트가 "지금 어느 단계인지,
+// 얼마나 남았는지" 전혀 알 수 없어 뭉뚱그린 스피너만 보여줄 수 있었다(사용자 요청 —
+// 진행률 게이지 표시). 그래서 transcribe-audio(받아쓰기)/cleanup-transcript(정리) 2단계
+// API로 나눠 각 단계가 끝날 때마다 진행률을 갱신한다.
 const AUDIO_EXTENSIONS = [".mp3", ".mp4", ".mpeg", ".mpga", ".m4a", ".wav", ".webm"];
 const isAudioFile = (filename: string) => AUDIO_EXTENSIONS.some(ext => filename.toLowerCase().endsWith(ext));
+
+type AudioStage = "transcribing" | "cleaning" | null;
+// 각 단계 안에서는 실제 서버 진행률을 알 수 없어(요청-응답 1회짜리라 중간 이벤트가 없음)
+// 단계 시작/끝 지점만 확실한 값으로 잡고, 그 사이는 "곧 끝날 것 같은" 느낌만 주도록
+// 서서히 상한선까지 슬금슬금 채운다 — 0%에서 안 움직이는 스피너보다 진행 중이라는
+// 인상을 주는 게 목적이라 정확한 퍼센트일 필요는 없다.
+const STAGE_RANGE: Record<Exclude<AudioStage, null>, { from: number; to: number; label: string }> = {
+  transcribing: { from: 5, to: 55, label: "음성 인식 중" },
+  cleaning: { from: 55, to: 95, label: "내용 정리 중" },
+};
 const SAMPLE_NOTES = [
   `[신규 쇼핑몰 프로젝트 킥오프 회의록]
 일자: 2026-08-19
@@ -67,7 +78,8 @@ export function NewDocumentModal({
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
   const [uploadingFile, setUploadingFile] = useState(false);
-  const [uploadingAudio, setUploadingAudio] = useState(false);
+  const [audioStage, setAudioStage] = useState<AudioStage>(null);
+  const [audioProgress, setAudioProgress] = useState(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [projects, setProjects] = useState<ProjectOption[]>([]);
@@ -138,6 +150,29 @@ export function NewDocumentModal({
     if (!title.trim()) setTitle(deriveTitleFromContent(sample));
   };
 
+  // 음성 변환은 단계 안에서 서버 진행률을 알 방법이 없다(요청 하나에 응답 하나뿐,
+  // 중간 이벤트 없음) — 그래서 단계 시작(from)/끝(to)만 확실한 값으로 잡고, 그 사이는
+  // 남은 거리의 일부씩 계속 좁혀가며(점근선처럼 to에 가까워지되 닿지는 않음) "진행 중"
+  // 이라는 인상을 준다. 실제로 응답이 오면 즉시 to로 스냅하고 다음 단계로 넘어간다.
+  const runAudioStage = async <T,>(stage: Exclude<AudioStage, null>, task: () => Promise<T>): Promise<T> => {
+    const range = STAGE_RANGE[stage];
+    setAudioStage(stage);
+    setAudioProgress(range.from);
+    const interval = setInterval(() => {
+      setAudioProgress(p => {
+        const remaining = range.to - p;
+        return remaining <= 1 ? p : p + Math.max(1, remaining * 0.12);
+      });
+    }, 350);
+    try {
+      const result = await task();
+      setAudioProgress(range.to);
+      return result;
+    } finally {
+      clearInterval(interval);
+    }
+  };
+
   const handleFileSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     e.target.value = ""; // 같은 파일을 다시 선택해도 onChange가 다시 뜨도록 초기화
@@ -146,21 +181,37 @@ export function NewDocumentModal({
     const audio = isAudioFile(file.name);
     setError("");
     setUploadingFile(true);
-    if (audio) setUploadingAudio(true);
     try {
-      const formData = new FormData();
-      formData.append("file", file);
-      const result = await apiFetch<{ content: string; filename: string }>(
-        "/api/meetings/notes/parse-file/",
-        { method: "POST", body: formData }
-      );
-      setContent(result.content);
-      if (!title.trim()) setTitle(deriveTitleFromContent(result.content));
+      if (audio) {
+        const formData = new FormData();
+        formData.append("file", file);
+        const { transcript } = await runAudioStage("transcribing", () =>
+          apiFetch<{ transcript: string }>("/api/meetings/notes/transcribe-audio/", { method: "POST", body: formData })
+        );
+        const { content: cleaned } = await runAudioStage("cleaning", () =>
+          apiFetch<{ content: string }>("/api/meetings/notes/cleanup-transcript/", {
+            method: "POST",
+            body: JSON.stringify({ text: transcript }),
+          })
+        );
+        setContent(cleaned);
+        if (!title.trim()) setTitle(deriveTitleFromContent(cleaned));
+      } else {
+        const formData = new FormData();
+        formData.append("file", file);
+        const result = await apiFetch<{ content: string; filename: string }>(
+          "/api/meetings/notes/parse-file/",
+          { method: "POST", body: formData }
+        );
+        setContent(result.content);
+        if (!title.trim()) setTitle(deriveTitleFromContent(result.content));
+      }
     } catch (err: any) {
       setError(err.message || (audio ? "음성 파일을 텍스트로 변환하지 못했습니다." : "파일에서 텍스트를 추출하지 못했습니다."));
     } finally {
       setUploadingFile(false);
-      setUploadingAudio(false);
+      setAudioStage(null);
+      setAudioProgress(0);
     }
   };
 
@@ -312,7 +363,7 @@ export function NewDocumentModal({
                     title="지원 형식: .docx, .pdf, .txt, .hwp, .md / 음성: .mp3, .mp4, .wav, .m4a, .webm (최대 25MB)"
                   >
                     {uploadingFile ? <Loader2 className="w-3 h-3 animate-spin" /> : <Paperclip className="w-3 h-3" />}
-                    {uploadingFile ? (uploadingAudio ? "음성 변환 중... (최대 1분 소요)" : "추출 중...") : "파일/음성에서 불러오기"}
+                    {uploadingFile ? (audioStage ? `${STAGE_RANGE[audioStage].label}...` : "추출 중...") : "파일/음성에서 불러오기"}
                   </button>
                   <button
                     type="button"
@@ -323,6 +374,22 @@ export function NewDocumentModal({
                   </button>
                 </div>
               </div>
+              {audioStage && (
+                <div className="mb-2">
+                  <div className="flex justify-between items-center mb-1">
+                    <span className="text-xs text-muted-foreground">
+                      {STAGE_RANGE[audioStage].label} — {audioStage === "transcribing" ? "1/2단계" : "2/2단계"}
+                    </span>
+                    <span className="text-xs font-semibold text-primary">{Math.round(audioProgress)}%</span>
+                  </div>
+                  <div className="h-1.5 w-full bg-black/10 dark:bg-white/10 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-primary rounded-full transition-all duration-300 ease-out"
+                      style={{ width: `${audioProgress}%` }}
+                    />
+                  </div>
+                </div>
+              )}
               <textarea
                 required
                 value={content}

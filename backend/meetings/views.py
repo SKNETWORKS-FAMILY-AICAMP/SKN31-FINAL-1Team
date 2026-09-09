@@ -582,76 +582,16 @@ class SpecDocumentRejectView(APIView):
         return Response({"message": "기획서가 반려되었습니다.", "spec": SpecDocumentSerializer(spec).data})
 
 
-class MeetingNoteParseFileView(APIView):
-    """회의록 첨부 파일에서 텍스트 추출"""
-    permission_classes = [permissions.IsAuthenticated]
-    parser_classes = [parsers.MultiPartParser]
+class _AudioTranscriptionMixin:
+    """음성 -> 텍스트 변환 공용 로직. MeetingNoteTranscribeAudioView(Whisper 받아쓰기)와
+    MeetingNoteCleanupTranscriptView(GPT 정리)가 나눠서 쓴다 — 원래 한 번의 API 호출로
+    둘 다 처리했는데(2026-09-09), 그러면 프론트가 "지금 받아쓰기 중인지 정리 중인지" 그리고
+    "끝나기까지 얼마나 남았는지"를 전혀 알 수 없어 그냥 뭉뚱그린 스피너만 보여줄 수 있었다
+    (사용자 요청 — 진행 단계/게이지 표시). 두 단계를 별도 API로 쪼개면 프론트가 각 단계의
+    완료 시점을 정확히 알 수 있어 실제 진행률을 보여줄 수 있다."""
 
-    MAX_SIZE = 10 * 1024 * 1024  # 10MB — 문서(docx/pdf/txt/md/hwp)
-    # OpenAI Whisper API 자체가 파일당 25MB로 제한한다 — 이보다 크게 받아봐야
-    # 어차피 API 호출에서 거부되므로 업로드 단계에서 미리 막아 헛수고를 줄인다.
-    AUDIO_MAX_SIZE = 25 * 1024 * 1024  # 25MB — 음성 파일
+    AUDIO_MAX_SIZE = 25 * 1024 * 1024  # 25MB — OpenAI Whisper API 자체 제한과 동일하게 맞춤
     AUDIO_EXTENSIONS = ('.mp3', '.mp4', '.mpeg', '.mpga', '.m4a', '.wav', '.webm')
-
-    @extend_schema(
-        tags=['1단계 - 회의록'],
-        summary='회의록 첨부 파일 텍스트 추출',
-        description=(
-            '.docx/.pdf/.txt/.md/.hwp 파일을 업로드하면 텍스트를 추출해서 돌려준다. '
-            '.mp3/.mp4/.wav/.m4a/.webm 등 음성 파일을 업로드하면 OpenAI Whisper로 받아쓰기한 뒤 '
-            'GPT로 필러 단어 제거·문장 정리까지 마친 회의록 형태로 돌려준다. DB에 저장하지 않는다.'
-        ),
-        request={'multipart/form-data': {'type': 'object', 'properties': {'file': {'type': 'string', 'format': 'binary'}}}},
-        responses={200: OpenApiResponse(description='추출된 텍스트')},
-    )
-    def post(self, request):
-        f = request.FILES.get('file')
-        if not f:
-            return Response({"error": "파일이 없습니다."}, status=status.HTTP_400_BAD_REQUEST)
-
-        name = f.name.lower()
-        is_audio = name.endswith(self.AUDIO_EXTENSIONS)
-
-        if is_audio:
-            if f.size > self.AUDIO_MAX_SIZE:
-                return Response({"error": "음성 파일 크기는 25MB를 넘을 수 없습니다."}, status=status.HTTP_400_BAD_REQUEST)
-        elif f.size > self.MAX_SIZE:
-            return Response({"error": "파일 크기는 10MB를 넘을 수 없습니다."}, status=status.HTTP_400_BAD_REQUEST)
-
-        try:
-            if name.endswith('.docx'):
-                document = docx.Document(f)
-                text = self._extract_docx_text(document)
-            elif name.endswith('.pdf'):
-                reader = PdfReader(f)
-                text = "\n".join((page.extract_text() or "") for page in reader.pages)
-            elif name.endswith('.txt') or name.endswith('.md'):
-                text = f.read().decode('utf-8', errors='ignore')
-            elif name.endswith('.hwp'):
-                text = self._extract_hwp_text(f)
-            elif is_audio:
-                transcript = self._transcribe_audio(f)
-                text = self._cleanup_transcript(transcript)
-            else:
-                return Response(
-                    {
-                        "error": "지원하지 않는 파일 형식입니다. .docx, .pdf, .txt, .md, .hwp 또는 "
-                                 ".mp3/.mp4/.wav/.m4a/.webm 등 음성 파일만 업로드해주세요.",
-                    },
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
-        except RuntimeError as e:
-            # OPENAI_API_KEY 미설정 등 설정 문제 — 파일 자체는 문제 없으니 400이 아니라
-            # 서버 설정 오류(500)로 구분해 사용자가 재시도해도 소용없다는 걸 알 수 있게 한다.
-            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-        except Exception as e:
-            return Response({"error": f"파일을 읽는 중 오류가 발생했습니다: {e}"}, status=status.HTTP_400_BAD_REQUEST)
-
-        text = text.strip()
-        if not text:
-            return Response({"error": "파일에서 텍스트를 추출하지 못했습니다."}, status=status.HTTP_400_BAD_REQUEST)
-
-        return Response({"content": text, "filename": f.name}, status=status.HTTP_200_OK)
 
     @staticmethod
     def _get_openai_client():
@@ -714,6 +654,121 @@ class MeetingNoteParseFileView(APIView):
         )
         cleaned = completion.choices[0].message.content
         return cleaned or raw_text
+
+
+class MeetingNoteTranscribeAudioView(_AudioTranscriptionMixin, APIView):
+    """음성 파일 -> 받아쓰기 원문 (1/2단계). 정리 전 원문만 반환 — 정리는
+    MeetingNoteCleanupTranscriptView가 이어서 처리한다(프론트 진행률 표시용 분리)."""
+    permission_classes = [permissions.IsAuthenticated]
+    parser_classes = [parsers.MultiPartParser]
+
+    @extend_schema(
+        tags=['1단계 - 회의록'],
+        summary='음성 파일 받아쓰기 (1/2단계)',
+        description='.mp3/.mp4/.wav/.m4a/.webm 등 음성 파일을 OpenAI Whisper로 받아쓰기해서 원문 텍스트를 돌려준다. DB에 저장하지 않는다.',
+        request={'multipart/form-data': {'type': 'object', 'properties': {'file': {'type': 'string', 'format': 'binary'}}}},
+        responses={200: OpenApiResponse(description='받아쓰기 원문')},
+    )
+    def post(self, request):
+        f = request.FILES.get('file')
+        if not f:
+            return Response({"error": "파일이 없습니다."}, status=status.HTTP_400_BAD_REQUEST)
+        if not f.name.lower().endswith(self.AUDIO_EXTENSIONS):
+            return Response(
+                {"error": "지원하지 않는 음성 파일 형식입니다. .mp3, .mp4, .wav, .m4a, .webm 등만 업로드해주세요."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if f.size > self.AUDIO_MAX_SIZE:
+            return Response({"error": "음성 파일 크기는 25MB를 넘을 수 없습니다."}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            transcript = self._transcribe_audio(f)
+        except RuntimeError as e:
+            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        except Exception as e:
+            return Response({"error": f"음성 인식 중 오류가 발생했습니다: {e}"}, status=status.HTTP_400_BAD_REQUEST)
+
+        transcript = (transcript or "").strip()
+        if not transcript:
+            return Response({"error": "음성에서 텍스트를 인식하지 못했습니다."}, status=status.HTTP_400_BAD_REQUEST)
+
+        return Response({"transcript": transcript}, status=status.HTTP_200_OK)
+
+
+class MeetingNoteCleanupTranscriptView(_AudioTranscriptionMixin, APIView):
+    """받아쓰기 원문 -> 필러 제거·문장 정리 (2/2단계)."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    @extend_schema(
+        tags=['1단계 - 회의록'],
+        summary='받아쓰기 원문 정리 (2/2단계)',
+        description='Whisper 받아쓰기 원문을 GPT로 필러 단어 제거·문장 정리해서 돌려준다. DB에 저장하지 않는다.',
+        request={'application/json': {'type': 'object', 'properties': {'text': {'type': 'string'}}}},
+        responses={200: OpenApiResponse(description='정리된 텍스트')},
+    )
+    def post(self, request):
+        raw_text = (request.data.get('text') or "").strip()
+        if not raw_text:
+            return Response({"error": "정리할 텍스트가 없습니다."}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            cleaned = self._cleanup_transcript(raw_text)
+        except RuntimeError as e:
+            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        except Exception as e:
+            return Response({"error": f"내용 정리 중 오류가 발생했습니다: {e}"}, status=status.HTTP_400_BAD_REQUEST)
+
+        cleaned = (cleaned or raw_text).strip()
+        return Response({"content": cleaned}, status=status.HTTP_200_OK)
+
+
+class MeetingNoteParseFileView(APIView):
+    """회의록 첨부 문서 파일에서 텍스트 추출 (음성 파일은 MeetingNoteTranscribeAudioView/
+    MeetingNoteCleanupTranscriptView 2단계 플로우를 쓴다 — 진행률 표시를 위해 분리됨)"""
+    permission_classes = [permissions.IsAuthenticated]
+    parser_classes = [parsers.MultiPartParser]
+
+    MAX_SIZE = 10 * 1024 * 1024  # 10MB
+
+    @extend_schema(
+        tags=['1단계 - 회의록'],
+        summary='회의록 첨부 파일 텍스트 추출',
+        description='.docx/.pdf/.txt/.md/.hwp 파일을 업로드하면 텍스트를 추출해서 돌려준다. DB에 저장하지 않는다.',
+        request={'multipart/form-data': {'type': 'object', 'properties': {'file': {'type': 'string', 'format': 'binary'}}}},
+        responses={200: OpenApiResponse(description='추출된 텍스트')},
+    )
+    def post(self, request):
+        f = request.FILES.get('file')
+        if not f:
+            return Response({"error": "파일이 없습니다."}, status=status.HTTP_400_BAD_REQUEST)
+        if f.size > self.MAX_SIZE:
+            return Response({"error": "파일 크기는 10MB를 넘을 수 없습니다."}, status=status.HTTP_400_BAD_REQUEST)
+
+        name = f.name.lower()
+        try:
+            if name.endswith('.docx'):
+                document = docx.Document(f)
+                text = self._extract_docx_text(document)
+            elif name.endswith('.pdf'):
+                reader = PdfReader(f)
+                text = "\n".join((page.extract_text() or "") for page in reader.pages)
+            elif name.endswith('.txt') or name.endswith('.md'):
+                text = f.read().decode('utf-8', errors='ignore')
+            elif name.endswith('.hwp'):
+                text = self._extract_hwp_text(f)
+            else:
+                return Response(
+                    {"error": "지원하지 않는 파일 형식입니다. .docx, .pdf, .txt, .md, .hwp 파일만 업로드해주세요."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+        except Exception as e:
+            return Response({"error": f"파일을 읽는 중 오류가 발생했습니다: {e}"}, status=status.HTTP_400_BAD_REQUEST)
+
+        text = text.strip()
+        if not text:
+            return Response({"error": "파일에서 텍스트를 추출하지 못했습니다."}, status=status.HTTP_400_BAD_REQUEST)
+
+        return Response({"content": text, "filename": f.name}, status=status.HTTP_200_OK)
 
     @staticmethod
     def _extract_docx_text(document):
