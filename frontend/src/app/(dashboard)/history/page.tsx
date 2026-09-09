@@ -10,14 +10,8 @@ import { cn } from "@/lib/utils";
 import { apiFetch } from "@/lib/api/client";
 import { useAuth } from "@/lib/auth";
 
-// 2026-09-02: 이 페이지는 원래 문서/업무의 "현재 상태"를 역추적해 이력을 재구성했었다(회의록/
-// 기획서/요구사항정의서 각각에 별도 이벤트 로그가 없다는 전제로). 그런데 백엔드엔 이 화면을
-// 위해 정확히 설계된 PipelineHistory 테이블 + /api/projects/{id}/history/ 가 이미 있어서
-// (projects/serializers.py 주석: "/history 페이지 타임라인 및 로그 조회용 Serializer"),
-// 굳이 재구성할 필요 없이 그 로그를 그대로 보여주면 된다 — 훨씬 정확하고 간단하다.
-// 주의: 지금은 tasks/views.py의 업무 자동배정(TASK_ASSIGNED) 시점만 실제로 로그를 남기고
-// 있어서, 회의록 등록/기획서 검토/요구사항 확정 단계는 아직 이 타임라인에 나타나지 않는다
-// (백엔드에 로그 생성 코드 추가가 필요한 별도 작업).
+// 이 페이지는 백엔드의 PipelineHistory 테이블(/api/projects/{id}/history/)을 그대로
+// 보여준다 — 문서/업무의 "현재 상태"를 프론트에서 역추적하지 않는다.
 
 type ProjectDto = { id: number; name: string };
 
@@ -33,8 +27,11 @@ type HistoryItem = {
 
 const STEP_META: Record<string, { icon: any; className: string }> = {
   MEETING_REGISTERED: { icon: FileText, className: "bg-blue-500/10 text-blue-500" },
+  SPEC_AI_GENERATED: { icon: Bot, className: "bg-teal-500/10 text-teal-500" },
   SPEC_GENERATED: { icon: FileText, className: "bg-violet-500/10 text-violet-500" },
+  REQ_AI_GENERATED: { icon: Bot, className: "bg-teal-500/10 text-teal-500" },
   REQ_DEFINED: { icon: FileText, className: "bg-violet-500/10 text-violet-500" },
+  TASK_AI_SUGGESTED: { icon: Bot, className: "bg-teal-500/10 text-teal-500" },
   TASK_ASSIGNED: { icon: Bot, className: "bg-teal-500/10 text-teal-500" },
   TASK_IN_PROGRESS: { icon: FolderKanban, className: "bg-primary/10 text-primary" },
   COMPLETED: { icon: CheckCircle2, className: "bg-emerald-500/10 text-emerald-500" },
@@ -42,14 +39,15 @@ const STEP_META: Record<string, { icon: any; className: string }> = {
 const DEFAULT_STEP_META = { icon: HistoryIcon, className: "bg-muted text-muted-foreground" };
 
 // heyzzabi2의 히스토리 필터를 참고 — "문서"(회의록/기획서/요구사항정의서)와 "업무"(배정/진행/완료)로
-// 나누고, 그중 AI가 직접 실행한 이벤트만 "에이전트"로 따로 뽑아본다. 지금 실제로 로그가 남는
-// step_type 중 AI가 스스로 실행한 건 업무 자동배정(TASK_ASSIGNED)뿐이라(회의록 등록/기획서
-// 승인/요구사항 확정/업무 진행·완료는 전부 사람이 누른 액션) 에이전트 탭엔 그것만 걸린다 —
-// 업무 탭과 항목이 겹칠 수 있는데, 같은 이벤트가 "업무"이면서 동시에 "AI가 한 일"이기도 하므로
-// 의도된 중복이다.
-const DOCUMENT_STEPS = new Set(["MEETING_REGISTERED", "SPEC_GENERATED", "REQ_DEFINED"]);
-const TASK_STEPS = new Set(["TASK_ASSIGNED", "TASK_IN_PROGRESS", "COMPLETED"]);
-const AGENT_STEPS = new Set(["TASK_ASSIGNED"]);
+// 나누고, 그중 AI가 직접 실행한 이벤트만 "에이전트"로 따로 뽑아본다.
+// 백엔드는 "AI 생성 버튼 클릭" 시점(SPEC_AI_GENERATED/REQ_AI_GENERATED/TASK_AI_SUGGESTED)과
+// "사람이 검토·승인/확정한" 시점(SPEC_GENERATED/REQ_DEFINED/TASK_ASSIGNED)을 서로 다른
+// step_type으로 남긴다 — 같은 값을 재사용하면 사람이 누른 승인까지 에이전트 탭에 섞이기
+// 때문. AI 생성 이벤트는 "문서/업무 파이프라인의 한 단계"이면서 동시에 "AI가 한 일"이므로
+// heyzzabi2와 같은 방식으로 문서·업무 탭과 에이전트 탭에 의도적으로 중복 노출한다.
+const DOCUMENT_STEPS = new Set(["MEETING_REGISTERED", "SPEC_AI_GENERATED", "SPEC_GENERATED", "REQ_AI_GENERATED", "REQ_DEFINED"]);
+const TASK_STEPS = new Set(["TASK_AI_SUGGESTED", "TASK_ASSIGNED", "TASK_IN_PROGRESS", "COMPLETED"]);
+const AGENT_STEPS = new Set(["SPEC_AI_GENERATED", "REQ_AI_GENERATED", "TASK_AI_SUGGESTED", "TASK_ASSIGNED"]);
 
 type FilterKey = "all" | "document" | "task" | "agent";
 const FILTER_TABS: { key: FilterKey; label: string }[] = [
