@@ -471,7 +471,7 @@ class RequirementExtractView(APIView):
 
 
 class RequirementGenerateTasksView(APIView):
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.IsAuthenticated, IsPMUser]
 
     @extend_schema(
         tags=['3단계 - 업무 배정'],
@@ -492,7 +492,7 @@ class RequirementGenerateTasksView(APIView):
 
 
 class RequirementConfirmTasksView(APIView):
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.IsAuthenticated, IsPMUser]
 
     @extend_schema(
         tags=['3단계 - 업무 배정'],

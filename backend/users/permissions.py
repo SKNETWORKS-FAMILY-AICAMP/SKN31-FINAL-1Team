@@ -35,28 +35,30 @@ class IsPMUser(permissions.BasePermission):
 
 class IsOwnerOrPM(permissions.BasePermission):
     """
-    작성자 본인 또는 PM(is_staff=True) 권한 검증 클래스
+    작성자/담당자 본인 또는 PM(is_staff=True) 권한 검증 클래스
     - 개별 객체 접근 권한(has_object_permission) 검증
-    - obj.created_by, obj.meeting.created_by, obj.user, 또는 obj 본인과 비교
+    - obj.created_by, obj.assigned_user, obj.meeting.created_by, obj.user, 또는 obj 본인과 비교
     """
     def has_object_permission(self, request, view, obj):
         if not (request.user and request.user.is_authenticated):
             return False
 
         # PM/관리자인 경우 무조건 허용
-        if request.user.is_staff:
+        if request.user.is_staff or request.user.groups.filter(name='PM').exists():
             return True
 
-        # 작성자(Owner) 여부 판단
-        # 1. obj가 User 모델 자체인 경우
+        # 작성자(Owner) 또는 담당자(Assigned User) 여부 판단
         if obj == request.user:
             return True
         
-        # 2. SpecDocument 처럼 meeting을 거쳐 created_by를 참조해야 하는 경우 확인
         meeting = getattr(obj, 'meeting', None)
         meeting_owner = getattr(meeting, 'created_by', None) if meeting else None
 
-        # 3. obj가 직접 created_by, user 필드를 가지고 있거나 meeting.created_by에 해당하는 경우
-        owner = getattr(obj, 'created_by', None) or getattr(obj, 'user', None) or meeting_owner
+        owner = (
+            getattr(obj, 'created_by', None) or 
+            getattr(obj, 'assigned_user', None) or  # TaskAssignment의 담당자 체크 추가
+            getattr(obj, 'user', None) or 
+            meeting_owner
+        )
         
         return owner == request.user

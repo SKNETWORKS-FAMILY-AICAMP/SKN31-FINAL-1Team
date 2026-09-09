@@ -240,7 +240,7 @@ class AutoTaskAssignView(APIView):
             "task": TaskAssignmentSerializer(task).data
         }, status=status.HTTP_201_CREATED)
 
-
+#tasks/views.py
 class TaskStatusUpdateView(APIView):
     """
     업무 승인, 상태 변경 및 담당자 변경 API
@@ -324,12 +324,23 @@ class TaskStatusUpdateView(APIView):
                     status=status.HTTP_400_BAD_REQUEST
                 )
 
-            # PM이 아니면서, 본인에게 배정된 업무가 아닌 경우 권한 차단
-            if not is_pm and task.assigned_user_id != user.id:
-                return Response(
-                    {"error": "FORBIDDEN", "details": "본인에게 배정된 업무만 상태를 변경할 수 있습니다."},
-                    status=status.HTTP_403_FORBIDDEN
-                )
+            # ── [추가/수정] 상태별 세부 권한 분기 ────────────────────────────
+            # A. 배분 승인(APPROVED) / 반려(REJECTED)는 PM만 가능
+            if new_status in [TaskStatusCode.APPROVED, TaskStatusCode.REJECTED]:
+                if not is_pm:
+                    return Response(
+                        {"error": "FORBIDDEN", "details": "업무 배분 승인 및 반려는 PM 권한이 필요합니다."},
+                        status=status.HTTP_403_FORBIDDEN
+                    )
+
+            # B. 기타 상태 변경(IN_PROGRESS, COMPLETED 등)은 PM 또는 담당자 본인만 가능
+            else:
+                if not is_pm and task.assigned_user_id != user.id:
+                    return Response(
+                        {"error": "FORBIDDEN", "details": "본인에게 배정된 업무만 상태를 변경할 수 있습니다."},
+                        status=status.HTTP_403_FORBIDDEN
+                    )
+            # ─────────────────────────────────────────────────────────────
 
             old_status = task.status_code_id
 
