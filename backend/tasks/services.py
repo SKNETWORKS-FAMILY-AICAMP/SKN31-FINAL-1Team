@@ -15,7 +15,7 @@ from team_sizing import apply_complexity_buffer, estimate_team_size
 from project_scale.agent import assess_project_complexity
 from assignee_mapping.agent import assignee_mapping_node
 from assignee_recommend.agent import assignee_recommend_node
-from assignee_recommend.rule_filter import flatten_assignable_units
+from assignee_recommend.rule_filter import flatten_assignable_units, list_project_workdays
 from common.models import CommonCode
 
 logger = logging.getLogger(__name__)
@@ -90,24 +90,76 @@ def _assignee_display_name(user_id):
     return full_name or u.username
 
 
-def _schedule_suggestion_dates(suggestions: list, start_date: date) -> None:
-    """assignee_id별로 순서대로(같은 순서 유지) 이어붙여 시작/종료일을 매긴다.
-    하루 8시간 기준, 최소 1일. AI가 아닌 결정적 휴리스틱(assignee_recommend는
-    날짜를 계산하지 않는다 — schemas.AssignmentResult에 날짜 필드 없음)."""
-    next_start = {}
+def _schedule_suggestion_dates(suggestions: list, start_date: date, end_date: date) -> None:
+    """
+    assignee_id별로 업무를 프로젝트 기간(평일만) 안에 배치한다. 하루 8시간
+    기준, 최소 1일.
+
+    이전엔 프로젝트 시작일부터 쉬지 않고 몰아서 채우기만 해서, 배정된 시간이
+    적으면 프로젝트 기간이 한참 남았는데도 일찍 끝나버리는 문제가 있었다
+    (2026-09-09 확인 — 21일짜리 프로젝트인데 실제 일정은 3일 만에 끝나버림).
+    또한 달력 일수를 그대로 더해서 주말도 업무일로 계산하는 모순도 있었다.
+
+    규칙(같은 담당자의 업무가 여러 건이면 원래 순서 유지):
+      - 업무가 2건 이상: 첫 업무=프로젝트 첫 평일, 마지막 업무=프로젝트 마지막
+        평일에 정확히 맞추고, 남는 여유는 업무 사이사이에 균등하게 끼워 넣는다.
+        → 시작일이 늦춰지지 않으면서도 마지막 업무가 프로젝트 종료일과 일치한다.
+      - 업무가 1건뿐: "시작일=프로젝트 시작"과 "종료일=프로젝트 종료"를 동시에
+        만족시킬 수 없다(둘 사이 빈 기간을 앞/뒤 어느 한쪽에 둬야 함) — 마지막
+        업무가 프로젝트 종료일과 맞아야 한다는 요건을 우선해, 종료일에 맞추고
+        시작일을 그만큼 늦춘다.
+      - 어느 쪽이든 이 사람의 총 소요일이 프로젝트 평일 수를 넘으면(상한 초과 —
+        원래 스케줄러가 막아주지만 방어적으로) exceeds_project_period=True로
+        표시하고 자르지 않는다 — 강제로 줄이지 않고 PM이 볼 신호로만 남긴다.
+
+    AI가 아닌 결정적 휴리스틱(assignee_recommend는 날짜를 계산하지 않는다 —
+    schemas.AssignmentResult에 날짜 필드 없음). "평일이 뭔지"의 판정 기준은
+    ai/assignee_recommend/rule_filter.py의 list_project_workdays() 하나로
+    통일한다 — calculate_max_hours_per_assignee()(상한 계산)와 어긋나지 않게.
+    """
+    workdays = list_project_workdays(start_date, end_date)
+    total_workdays = len(workdays)
+
+    by_assignee: dict = {}
     for s in suggestions:
-        assignee_id = s["assignee_id"]
-        if assignee_id is None:
+        if s["assignee_id"] is None:
             s["suggested_start_date"] = None
             s["suggested_end_date"] = None
             continue
-        cursor = next_start.get(assignee_id, start_date)
-        duration_days = max(1, round((s["estimated_hours"] or 0) / 8))
-        unit_start = cursor
-        unit_end = cursor + timedelta(days=duration_days - 1)
-        s["suggested_start_date"] = unit_start.isoformat()
-        s["suggested_end_date"] = unit_end.isoformat()
-        next_start[assignee_id] = unit_end + timedelta(days=1)
+        by_assignee.setdefault(s["assignee_id"], []).append(s)
+
+    for items in by_assignee.values():
+        n = len(items)
+        days_needed = [max(1, round((it["estimated_hours"] or 0) / 8)) for it in items]
+        total_real_days = sum(days_needed)
+        idle_total = max(0, total_workdays - total_real_days)
+
+        if n == 1:
+            end_idx = total_workdays - 1
+            start_idx = end_idx - days_needed[0] + 1
+            items[0]["exceeds_project_period"] = start_idx < 0
+            start_idx = max(0, start_idx)
+            items[0]["suggested_start_date"] = workdays[start_idx].isoformat()
+            items[0]["suggested_end_date"] = workdays[end_idx].isoformat()
+            continue
+
+        # n >= 2: 첫 업무=프로젝트 시작, 마지막 업무=프로젝트 종료, 여유는
+        # 업무 사이(내부 gap)에만 균등 분산 — 나머지(remainder)는 마지막 gap에 몰아준다.
+        gap_each = idle_total // (n - 1)
+        leftover = idle_total - gap_each * (n - 1)
+
+        cursor_idx = 0
+        for idx, (item, d) in enumerate(zip(items, days_needed)):
+            if idx > 0:
+                gap = gap_each + (leftover if idx == n - 1 else 0)
+                cursor_idx += gap
+            start_idx = cursor_idx
+            end_idx = start_idx + d - 1
+            item["exceeds_project_period"] = end_idx > total_workdays - 1
+            end_idx = min(end_idx, total_workdays - 1)
+            item["suggested_start_date"] = workdays[start_idx].isoformat()
+            item["suggested_end_date"] = workdays[end_idx].isoformat()
+            cursor_idx = end_idx + 1
 
 
 def generate_task_suggestions(spec_id: int) -> dict:
@@ -246,7 +298,7 @@ def generate_task_suggestions(spec_id: int) -> dict:
             "hold_explanation": a.get("hold_explanation"),
         })
 
-    _schedule_suggestion_dates(suggestions, start_date)
+    _schedule_suggestion_dates(suggestions, start_date, end_date)
 
     return {
         "status": "success",

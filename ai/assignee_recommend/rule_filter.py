@@ -113,6 +113,27 @@ def calculate_max_hours_per_assignee(
     return round(workdays * hours_per_workday, 1)
 
 
+def list_project_workdays(
+    project_start_date: Union[str, date], project_end_date: Union[str, date]
+) -> List[date]:
+    """
+    calculate_max_hours_per_assignee()와 같은 평일(월~금) 판정 기준으로,
+    개수가 아니라 프로젝트 기간 안의 실제 평일 날짜 목록을 반환한다.
+    backend/tasks/services.py의 _schedule_suggestion_dates()가 업무별 시작/
+    종료일을 계산할 때 이 목록을 그대로 쓴다 — "평일이 뭔지"의 기준을 두
+    군데서 따로 정의해 어긋나는 일이 없도록, 이 판정 로직은 여기 한 곳에만 둔다.
+    """
+    start = _to_date(project_start_date)
+    end = _to_date(project_end_date)
+    workdays = []
+    current = start
+    while current <= end:
+        if current.weekday() < 5:
+            workdays.append(current)
+        current += timedelta(days=1)
+    return workdays
+
+
 def flatten_assignable_units(tasks: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """Task/Subtask 목록에서 실제로 배정 가능한 최소 단위만 뽑아낸다."""
     units = []
