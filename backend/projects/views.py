@@ -1,5 +1,3 @@
-#projects/views.py
-
 from rest_framework import generics, permissions
 from drf_spectacular.utils import extend_schema, extend_schema_view, OpenApiParameter, OpenApiTypes
 
@@ -73,7 +71,7 @@ class ProjectDetailView(generics.RetrieveUpdateDestroyAPIView):
 @extend_schema(
     tags=['4단계 - 파이프라인 이력'],
     summary='프로젝트 파이프라인 타임라인 이력 조회',
-    description='특정 프로젝트의 전체 파이프라인 흐름(회의록 $\rightarrow$ 기획서 $\rightarrow$ 요구사항 $\rightarrow$ 업무 배정) 이력 로그를 시간순으로 조회합니다. 프론트엔드의 `/history` 타임라인 페이지에서 사용됩니다.',
+    description='특정 프로젝트의 전체 파이프라인 흐름(회의록 → 기획서 → 요구사항 → 업무 배정) 이력 로그를 시간순으로 조회합니다. 프론트엔드의 `/history` 타임라인 페이지에서 사용됩니다.',
     parameters=[
         OpenApiParameter(
             name='project_id',

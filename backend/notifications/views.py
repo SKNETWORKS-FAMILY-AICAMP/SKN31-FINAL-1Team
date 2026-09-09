@@ -1,9 +1,8 @@
-#notifications/views.py
 from django.shortcuts import get_object_or_404
 from rest_framework import generics, status, permissions
 from rest_framework.views import APIView
 from rest_framework.response import Response
-from drf_spectacular.utils import extend_schema
+from drf_spectacular.utils import extend_schema, OpenApiResponse
 
 from notifications.models import Notification
 from notifications.serializers import NotificationSerializer
@@ -21,6 +20,15 @@ class NotificationListView(generics.ListAPIView):
     def get_queryset(self):
         return Notification.objects.filter(user=self.request.user)
 
+    @extend_schema(
+        tags=['알림'],
+        summary='내 알림 목록 조회',
+        description='로그인한 사용자의 알림 목록을 조회합니다.',
+        responses={200: NotificationSerializer(many=True)}
+    )
+    def get(self, request, *args, **kwargs):
+        return super().get(request, *args, **kwargs)
+
 
 class NotificationMarkReadView(APIView):
     """
@@ -29,7 +37,12 @@ class NotificationMarkReadView(APIView):
     """
     permission_classes = [permissions.IsAuthenticated]
 
-    @extend_schema(tags=['알림'], summary='알림 읽음 처리')
+    @extend_schema(
+        tags=['알림'],
+        summary='알림 읽음 처리',
+        description='특정 알림 단건을 읽음 상태로 변경합니다.',
+        responses={200: NotificationSerializer}
+    )
     def patch(self, request, pk):
         # 본인 알림만 처리 가능 — 다른 사람 알림 id를 넣어도 못 건드리게 request.user로 필터
         notif = get_object_or_404(Notification, pk=pk, user=request.user)
@@ -45,7 +58,12 @@ class NotificationMarkAllReadView(APIView):
     """
     permission_classes = [permissions.IsAuthenticated]
 
-    @extend_schema(tags=['알림'], summary='알림 전체 읽음 처리')
+    @extend_schema(
+        tags=['알림'],
+        summary='알림 전체 읽음 처리',
+        description='로그인한 사용자의 미읽음 알림을 모두 읽음 상태로 일괄 변경합니다.',
+        responses={200: OpenApiResponse(description='모든 알림 읽음 처리 완료')}
+    )
     def patch(self, request):
         Notification.objects.filter(user=request.user, read=False).update(read=True)
         return Response({"message": "모든 알림을 읽음 처리했습니다."}, status=status.HTTP_200_OK)

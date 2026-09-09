@@ -1,9 +1,10 @@
-# tasks/views.py
+#tasks/views.py
+from django.db import transaction
+from django.shortcuts import get_object_or_404
+from django.contrib.auth import get_user_model
 from rest_framework import generics, status, permissions
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from django.shortcuts import get_object_or_404
-from django.contrib.auth import get_user_model
 from drf_spectacular.utils import (
     extend_schema,
     extend_schema_view,
@@ -31,7 +32,30 @@ User = get_user_model()
     get=extend_schema(
         tags=['3단계 - 업무 배정'],
         summary='배정 업무 목록 조회',
-        description='등록된 전체 배정 업무 목록을 조회합니다.',
+        description='등록된 전체 배정 업무 목록을 조회합니다. 프로젝트 ID, 담당자 ID, 상태 코드를 통한 필터링이 가능합니다.',
+        parameters=[
+            OpenApiParameter(
+                name='project',
+                type=OpenApiTypes.INT,
+                location=OpenApiParameter.QUERY,
+                description='프로젝트 ID (Project ID)로 필터링',
+                required=False
+            ),
+            OpenApiParameter(
+                name='assigneeId',
+                type=OpenApiTypes.INT,
+                location=OpenApiParameter.QUERY,
+                description='담당자 유저 ID (User ID)로 필터링',
+                required=False
+            ),
+            OpenApiParameter(
+                name='status',
+                type=OpenApiTypes.STR,
+                location=OpenApiParameter.QUERY,
+                description='업무 상태 코드 (TaskStatusCode)로 필터링',
+                required=False
+            ),
+        ],
         responses={200: TaskAssignmentSerializer(many=True)}
     ),
     post=extend_schema(
@@ -47,7 +71,6 @@ class TaskAssignmentListCreateView(generics.ListCreateAPIView):
     배정 업무 목록 조회 및 수동 생성 API
     GET/POST /api/tasks/assignments/
     """
-    queryset = TaskAssignment.objects.all()
     permission_classes = [permissions.IsAuthenticated]
 
     def get_serializer_class(self):
@@ -59,7 +82,11 @@ class TaskAssignmentListCreateView(generics.ListCreateAPIView):
     # 필요로 하는데, TaskAssignment에는 project 필드가 없다 — 대신 req_item -> req_def -> spec
     # -> meeting -> project로 이어지는 체인을 타고 내려가서 필터링한다.
     def get_queryset(self):
-        qs = TaskAssignment.objects.all()
+        qs = TaskAssignment.objects.select_related(
+            'req_item', 
+            'assigned_user', 
+            'status_code'
+        ).all()
         project_id = self.request.query_params.get('project')
         assignee_id = self.request.query_params.get('assigneeId')
         status_param = self.request.query_params.get('status')
@@ -77,24 +104,56 @@ class TaskAssignmentListCreateView(generics.ListCreateAPIView):
         tags=['3단계 - 업무 배정'],
         summary='배정 업무 상세 조회',
         description='특정 배정 업무의 상세 정보를 조회합니다.',
+        parameters=[
+            OpenApiParameter(
+                name='id',
+                type=OpenApiTypes.INT,
+                location=OpenApiParameter.PATH,
+                description='조회할 배정 업무 ID'
+            )
+        ],
         responses={200: TaskAssignmentSerializer}
     ),
     put=extend_schema(
         tags=['3단계 - 업무 배정'],
         summary='배정 업무 전체 수정',
         description='특정 배정 업무의 전체 정보를 수정합니다.',
+        parameters=[
+            OpenApiParameter(
+                name='id',
+                type=OpenApiTypes.INT,
+                location=OpenApiParameter.PATH,
+                description='수정할 배정 업무 ID'
+            )
+        ],
         responses={200: TaskAssignmentSerializer}
     ),
     patch=extend_schema(
         tags=['3단계 - 업무 배정'],
         summary='배정 업무 부분 수정',
         description='특정 배정 업무의 일부 정보를 수정합니다.',
+        parameters=[
+            OpenApiParameter(
+                name='id',
+                type=OpenApiTypes.INT,
+                location=OpenApiParameter.PATH,
+                description='수정할 배정 업무 ID'
+            )
+        ],
         responses={200: TaskAssignmentSerializer}
     ),
     delete=extend_schema(
         tags=['3단계 - 업무 배정'],
         summary='배정 업무 삭제',
         description='특정 배정 업무를 삭제합니다.',
+        parameters=[
+            OpenApiParameter(
+                name='id',
+                type=OpenApiTypes.INT,
+                location=OpenApiParameter.PATH,
+                description='삭제할 배정 업무 ID'
+            )
+        ],
         responses={204: None}
     )
 )
@@ -103,7 +162,7 @@ class TaskAssignmentDetailView(generics.RetrieveUpdateDestroyAPIView):
     배정 업무 상세 조회 / 수정 / 삭제 API
     GET/PUT/PATCH/DELETE /api/tasks/assignments/{id}/
     """
-    queryset = TaskAssignment.objects.all()
+    queryset = TaskAssignment.objects.select_related('req_item', 'assigned_user', 'status_code').all()
     serializer_class = TaskAssignmentSerializer
     permission_classes = [permissions.IsAuthenticated]
 
@@ -128,14 +187,15 @@ class AutoTaskAssignView(APIView):
             404: OpenApiResponse(description='요구사항 항목 또는 프로젝트를 찾을 수 없음')
         }
     )
+    @transaction.atomic
     def post(self, request):
         req_item_id = request.data.get('req_item_id')
         project_id = request.data.get('project_id')
         
         req_item = get_object_or_404(RequirementItem, pk=req_item_id)
 
-        # 현재 작업 중이지 않은(is_busy=False) 개발자 선별
-        available_users = User.objects.filter(is_active=True, is_busy=False)
+        # 현재 작업 중이지 않은(is_busy=False) 개발자 선별 및 동시성 락 적용
+        available_users = User.objects.select_for_update().filter(is_active=True, is_busy=False)
         
         if not available_users.exists():
             # 가용한 개발자가 없을 경우 전체 유저 중 무작위/첫 번째 유저 매핑
@@ -183,18 +243,23 @@ class AutoTaskAssignView(APIView):
 
 class TaskStatusUpdateView(APIView):
     """
-    업무 승인 및 상태 변경 API
+    업무 승인, 상태 변경 및 담당자 변경 API
     PATCH /api/tasks/assignments/{id}/status/
     """
     permission_classes = [permissions.IsAuthenticated]
 
     @extend_schema(
         tags=['3단계 - 업무 배정'],
-        summary='업무 승인 및 상태 변경',
-        description='배정된 업무의 진행 상태(`status`)를 변경합니다. 상태가 `COMPLETED`(완료)로 변경되면 담당 개발자의 `is_busy` 상태가 `False`로 해제되어 다음 업무를 배정받을 수 있게 됩니다.',
+        summary='업무 승인, 상태 변경 및 담당자 변경',
+        description=(
+            '배정된 업무의 진행 상태(`status_code`) 및 담당자(`assigned_user_id`)를 변경합니다.\n'
+            '- **담당자 변경**: PM만 수행할 수 있습니다.\n'
+            '- **상태 변경**: PM 또는 해당 업무의 담당자 본인(`assigned_user`)만 수행할 수 있습니다.\n'
+            '- 상태가 `COMPLETED`로 변경되면 담당 개발자의 `is_busy` 상태가 `False`로 해제됩니다.'
+        ),
         parameters=[
             OpenApiParameter(
-                name='pk',
+                name='id',
                 type=OpenApiTypes.INT,
                 location=OpenApiParameter.PATH,
                 description='상태를 변경할 배정 업무 ID'
@@ -203,71 +268,124 @@ class TaskStatusUpdateView(APIView):
         request=TaskStatusUpdateSerializer,
         responses={
             200: OpenApiResponse(
-                description='업무 상태 변경 완료',
+                description='업무 상태/담당자 변경 완료',
                 response=TaskAssignmentSerializer
             ),
-            400: OpenApiResponse(description='유효하지 않은 status 값'),
+            400: OpenApiResponse(description='유효하지 않은 요청 파라미터'),
+            403: OpenApiResponse(description='권한 없음 (PM이 아니거나 본인 업무가 아님)'),
             404: OpenApiResponse(description='존재하지 않는 배정 업무')
         }
     )
+    @transaction.atomic
     def patch(self, request, pk):
         task = get_object_or_404(TaskAssignment, pk=pk)
-        # status_code 는 common_code(group_code='TASK_STATUS') 의 code_id 문자열
+        user = request.user
+        is_pm = getattr(user, 'is_staff', False) or user.groups.filter(name='PM').exists()
+
         new_status = request.data.get('status_code') or request.data.get('status')
-        old_status = task.status_code_id
+        new_assignee_id = request.data.get('assigned_user_id') or request.data.get('assigned_user')
 
-        if new_status not in TaskStatusCode.VALUES:
-            return Response({"error": "유효하지 않은 status_code 값입니다."}, status=status.HTTP_400_BAD_REQUEST)
+        # ------------------------------------------------------------------
+        # 1. 담당자 변경 (Assignee Change) 권한 검증
+        # ------------------------------------------------------------------
+        if new_assignee_id and int(new_assignee_id) != task.assigned_user_id:
+            if not is_pm:
+                return Response(
+                    {"error": "FORBIDDEN", "details": "담당자 재배정은 PM 권한이 필요합니다."},
+                    status=status.HTTP_403_FORBIDDEN
+                )
+            
+            new_assignee = get_object_or_404(User, pk=new_assignee_id)
+            
+            # 기존 담당자 is_busy 해제 (해당 개발자가 수행 중인 다른 업무가 없는 경우)
+            old_assignee = task.assigned_user
+            if old_assignee:
+                other_busy_tasks = TaskAssignment.objects.filter(
+                    assigned_user=old_assignee
+                ).exclude(pk=task.pk).exclude(status_code_id=TaskStatusCode.COMPLETED)
+                if not other_busy_tasks.exists():
+                    old_assignee.is_busy = False
+                    old_assignee.save()
 
-        # 반려시는 승인 대기 상태에서만 사유와 함께 — 담당자를 다시 배정 없이 그냥 되돌리면
-        # 사유가 안 남아 왜 반려됐는지 알 방법이 없다.
-        if new_status == TaskStatusCode.REJECTED:
-            reason = request.data.get('reject_reason', '').strip()
-            if not reason:
-                return Response({"error": "반려 사유를 입력해주세요."}, status=status.HTTP_400_BAD_REQUEST)
-            task.reject_reason = reason
-        elif new_status != task.status_code_id:
-            task.reject_reason = None
+            # 새 담당자 지정 및 is_busy 설정
+            task.assigned_user = new_assignee
+            new_assignee.is_busy = True
+            new_assignee.save()
 
-        task.status_code_id = new_status
+            notify_user(new_assignee, f"'{task.title}' 업무의 새로운 담당자로 지정되었습니다.", type='info', link='/tasks')
+
+        # ------------------------------------------------------------------
+        # 2. 업무 카드 상태 변경 (Status Transition) 권한 검증
+        # ------------------------------------------------------------------
+        if new_status:
+            if new_status not in TaskStatusCode.VALUES:
+                return Response(
+                    {"error": "INVALID_STATUS", "details": "유효하지 않은 status_code 값입니다."},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            # PM이 아니면서, 본인에게 배정된 업무가 아닌 경우 권한 차단
+            if not is_pm and task.assigned_user_id != user.id:
+                return Response(
+                    {"error": "FORBIDDEN", "details": "본인에게 배정된 업무만 상태를 변경할 수 있습니다."},
+                    status=status.HTTP_403_FORBIDDEN
+                )
+
+            old_status = task.status_code_id
+
+            # 반려 처리 시 사유 검증
+            if new_status == TaskStatusCode.REJECTED:
+                reason = request.data.get('reject_reason', '').strip()
+                if not reason:
+                    return Response({"error": "REQUIRED_REASON", "details": "반려 사유를 입력해주세요."}, status=status.HTTP_400_BAD_REQUEST)
+                task.reject_reason = reason
+            elif new_status != old_status:
+                task.reject_reason = None
+
+            task.status_code_id = new_status
+
+            # 업무 완료(COMPLETED) 시 담당 개발자 is_busy 해제
+            if new_status == TaskStatusCode.COMPLETED:
+                assigned_dev = task.assigned_user
+                if assigned_dev:
+                    other_busy_tasks = TaskAssignment.objects.filter(
+                        assigned_user=assigned_dev
+                    ).exclude(pk=task.pk).exclude(status_code_id=TaskStatusCode.COMPLETED)
+                    if not other_busy_tasks.exists():
+                        assigned_dev.is_busy = False
+                        assigned_dev.save()
+
+            # 알림 발송
+            if new_status == TaskStatusCode.APPROVED and task.assigned_user:
+                notify_user(task.assigned_user, f"'{task.title}' 업무가 승인되었습니다.", type='success', link='/tasks')
+            elif new_status == TaskStatusCode.REJECTED and task.assigned_user:
+                notify_user(task.assigned_user, f"'{task.title}' 업무가 반려되었습니다: {task.reject_reason}", type='error', link='/tasks')
+
+            # 파이프라인 히스토리 기록 (실제 상태가 변경된 경우)
+            if task.project_id and new_status != old_status:
+                if new_status == TaskStatusCode.APPROVED:
+                    PipelineHistory.objects.create(
+                        project=task.project,
+                        task=task,
+                        step_type='TASK_IN_PROGRESS',
+                        title=f"업무 진행 시작: {task.title}",
+                        description=f"담당자: {task.assigned_user.username if task.assigned_user else '미정'}",
+                        actor=user,
+                    )
+                elif new_status == TaskStatusCode.COMPLETED:
+                    PipelineHistory.objects.create(
+                        project=task.project,
+                        task=task,
+                        step_type='COMPLETED',
+                        title=f"업무 완료: {task.title}",
+                        description=f"담당자: {task.assigned_user.username if task.assigned_user else '미정'}",
+                        actor=user,
+                    )
+
         task.save()
 
-        # 업무가 완료(COMPLETED)되면 개발자의 is_busy 해제
-        if new_status == TaskStatusCode.COMPLETED:
-            user = task.assigned_user
-            user.is_busy = False
-            user.save()
-
-        # 담당자에게 승인/반려 결과를 알린다 (검토요청/승인/반려 알림 패턴과 동일)
-        if new_status == TaskStatusCode.APPROVED:
-            notify_user(task.assigned_user, f"'{task.title}' 업무가 승인되었습니다.", type='success', link='/tasks')
-        elif new_status == TaskStatusCode.REJECTED:
-            notify_user(task.assigned_user, f"'{task.title}' 업무가 반려되었습니다: {task.reject_reason}", type='error', link='/tasks')
-
-        # 파이프라인 이력 로그 — 실제로 상태가 바뀐 전이(transition)일 때만 기록해서
-        # 같은 상태로 재저장하는 PATCH에 중복 로그가 쌓이지 않게 한다.
-        if task.project_id and new_status != old_status:
-            if new_status == TaskStatusCode.APPROVED:
-                PipelineHistory.objects.create(
-                    project=task.project,
-                    task=task,
-                    step_type='TASK_IN_PROGRESS',
-                    title=f"업무 진행 시작: {task.title}",
-                    description=f"담당자: {task.assigned_user.username} 사원",
-                    actor=request.user,
-                )
-            elif new_status == TaskStatusCode.COMPLETED:
-                PipelineHistory.objects.create(
-                    project=task.project,
-                    task=task,
-                    step_type='COMPLETED',
-                    title=f"업무 완료: {task.title}",
-                    description=f"담당자: {task.assigned_user.username} 사원",
-                    actor=request.user,
-                )
-
         return Response({
-            "message": "업무 상태가 성공적으로 변경되었습니다.",
+            "message": "업무 정보가 성공적으로 변경되었습니다.",
             "task": TaskAssignmentSerializer(task).data
         }, status=status.HTTP_200_OK)
 

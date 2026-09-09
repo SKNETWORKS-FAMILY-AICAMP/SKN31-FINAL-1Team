@@ -1,4 +1,3 @@
-#dashboard/views.py
 from datetime import timedelta
 from django.db.models import Count, Avg, F, ExpressionWrapper, fields, Q
 from django.utils import timezone
@@ -6,6 +5,9 @@ from rest_framework import status, permissions
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from drf_spectacular.utils import extend_schema
+
+# users/permissions.py에서 생성한 IsPMUser 임포트
+from users.permissions import IsPMUser
 
 from tasks.models import TaskAssignment, TaskStatusCode
 from projects.models import Project
@@ -33,7 +35,7 @@ class DashboardOverviewView(APIView):
     )
     def get(self, request):
         user = request.user
-        is_pm = user.is_staff
+        is_pm = user.is_staff  # 백엔드 단일 기준(is_staff) 적용
 
         if is_pm:
             task_qs = TaskAssignment.objects.all()
@@ -145,7 +147,8 @@ class DashboardAnalyticsView(APIView):
     GET /api/dashboard/analytics/
     성과 통계 탭 (PM 전용)
     """
-    permission_classes = [permissions.IsAuthenticated]
+    # IsPMUser 권한 추가 적용
+    permission_classes = [permissions.IsAuthenticated, IsPMUser]
 
     @extend_schema(
         tags=['0단계 - 대시보드'],

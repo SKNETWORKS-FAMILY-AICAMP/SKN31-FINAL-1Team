@@ -21,6 +21,8 @@ from requirements.serializers import (
 )
 from meetings.models import SpecDocument
 from common.models import CommonCode
+from users.permissions import IsPMUser, IsOwnerOrPM  # PM 권한 검증
+from notifications.services import notify_user, notify_all_pms  # 알림 서비스
 from projects.models import PipelineHistory
 
 # AI 에이전트 및 Pydantic 스키마 임포트
@@ -28,6 +30,15 @@ from requirement_draft.agent import generate_requirements
 from requirement_draft.schemas import PlanDocument
 
 logger = logging.getLogger(__name__)
+
+
+def get_target_author(req_def):
+    """요구사항 정의서 작성자 또는 기획서 작성자를 안전하게 반환하는 헬퍼 함수"""
+    if getattr(req_def, 'created_by', None):
+        return req_def.created_by
+    if hasattr(req_def, 'spec') and getattr(req_def.spec, 'created_by', None):
+        return req_def.spec.created_by
+    return None
 
 
 def process_ai_requirement_extraction(spec_document, user):
@@ -97,10 +108,6 @@ def process_ai_requirement_extraction(spec_document, user):
 
     # 4. DB 저장 및 기존 요구사항 정의서 연동 (트랜잭션)
     with transaction.atomic():
-        # AI 생성 직후에는 검토요청 전 초안(DRAFT) 상태로 시작한다 — 사용자가 항목을
-        # 확인/수정한 뒤 직접 "검토요청"을 눌러야 PENDING_REVIEW로 넘어간다. 추출 즉시
-        # PENDING_REVIEW로 박히면 PM이 사용자가 아직 수정 중인데도 바로 승인/반려할 수
-        # 있는 절차 문제가 생긴다(프론트 요청으로 수정).
         draft_status = CommonCode.objects.filter(
             group_id='REQSPEC_STATUS',
             code_id='DRAFT'
@@ -116,8 +123,6 @@ def process_ai_requirement_extraction(spec_document, user):
             }
         )
 
-        # 재생성 시 상태를 다시 DRAFT로 초기화 — 반려/검토중이던 상태에서 다시 생성했다면
-        # 그 내용은 폐기되고 새로 검토요청을 받아야 하므로.
         if not created and draft_status:
             req_def.status_code = draft_status
             req_def.save()
@@ -196,11 +201,7 @@ def process_ai_requirement_extraction(spec_document, user):
     )
 )
 class RequirementDefinitionListCreateView(generics.ListCreateAPIView):
-    """
-    요구사항 정의서 목록 조회 및 AI 일괄 생성 API
-    GET /api/requirements/
-    POST /api/requirements/   <- 단 한 번의 호출로 AI 자동 생성까지 일괄 처리
-    """
+    queryset = RequirementDefinition.objects.all()
     permission_classes = [permissions.IsAuthenticated]
 
     def get_serializer_class(self):
@@ -209,23 +210,13 @@ class RequirementDefinitionListCreateView(generics.ListCreateAPIView):
         return RequirementDefinitionSerializer
 
     def get_queryset(self):
-        queryset = RequirementDefinition.objects.all().select_related('spec', 'project', 'status_code', 'created_by')
-        
-        spec_id = self.request.query_params.get('spec')
-        project_id = self.request.query_params.get('project')
-
-        if spec_id:
-            queryset = queryset.filter(spec_id=spec_id)
-        if project_id:
-            queryset = queryset.filter(project_id=project_id)
-
+        queryset = super().get_queryset()
+        req_def_id = self.request.query_params.get('req_def')
+        if req_def_id:
+            queryset = queryset.filter(req_def_id=req_def_id)
         return queryset
 
     def create(self, request, *args, **kwargs):
-        """
-        POST 요청 시 Request Body의 'spec' (또는 'spec_id')를 이용해
-        요구사항 정의서 생성 + AI 세부 항목 추출을 원스톱으로 처리합니다.
-        """
         spec_id = request.data.get('spec') or request.data.get('spec_id')
         
         if not spec_id:
@@ -237,10 +228,7 @@ class RequirementDefinitionListCreateView(generics.ListCreateAPIView):
         spec_document = get_object_or_404(SpecDocument, spec_id=spec_id)
 
         try:
-            # 통합 헬퍼 함수 호출 (정의서 생성 + AI 세부항목 추출 및 DB 저장)
             req_def = process_ai_requirement_extraction(spec_document, request.user)
-            
-            # 생성/수정 완료된 정의서와 세부 항목 결과를 리턴
             serializer = RequirementDefinitionSerializer(req_def)
             return Response(serializer.data, status=status.HTTP_201_CREATED)
 
@@ -260,25 +248,33 @@ class RequirementDefinitionListCreateView(generics.ListCreateAPIView):
     get=extend_schema(
         tags=['2단계 - 요구사항 정의서'],
         summary='요구사항 정의서 상세 조회',
-        description='특정 기획서 ID(`spec_id`)에 연관된 요구사항 정의서의 상세 정보 및 하위 요구사항 항목들을 조회합니다.',
+        parameters=[
+            OpenApiParameter(name='spec_id', type=OpenApiTypes.INT, location=OpenApiParameter.PATH, description='조회할 기획서 ID')
+        ],
         responses={200: RequirementDefinitionSerializer}
     ),
     put=extend_schema(
         tags=['2단계 - 요구사항 정의서'],
         summary='요구사항 정의서 전체 수정',
-        description='특정 기획서 ID(`spec_id`)에 연관된 요구사항 정의서의 전체 필드를 수정합니다.',
+        parameters=[
+            OpenApiParameter(name='spec_id', type=OpenApiTypes.INT, location=OpenApiParameter.PATH, description='수정할 기획서 ID')
+        ],
         responses={200: RequirementDefinitionSerializer}
     ),
     patch=extend_schema(
         tags=['2단계 - 요구사항 정의서'],
         summary='요구사항 정의서 부분 수정',
-        description='특정 기획서 ID(`spec_id`)에 연관된 요구사항 정의서의 일부 필드를 수정합니다.',
+        parameters=[
+            OpenApiParameter(name='spec_id', type=OpenApiTypes.INT, location=OpenApiParameter.PATH, description='수정할 기획서 ID')
+        ],
         responses={200: RequirementDefinitionSerializer}
     ),
     delete=extend_schema(
         tags=['2단계 - 요구사항 정의서'],
         summary='요구사항 정의서 삭제',
-        description='특정 기획서 ID(`spec_id`)에 연관된 요구사항 정의서를 삭제합니다.',
+        parameters=[
+            OpenApiParameter(name='spec_id', type=OpenApiTypes.INT, location=OpenApiParameter.PATH, description='삭제할 기획서 ID')
+        ],
         responses={204: None}
     )
 )
@@ -287,17 +283,32 @@ class RequirementDefinitionDetailView(generics.RetrieveUpdateDestroyAPIView):
         'spec', 'project', 'status_code', 'created_by'
     ).prefetch_related('items__priority_code')
     serializer_class = RequirementDefinitionSerializer
-    permission_classes = [permissions.IsAuthenticated]
+    
+    permission_classes = [permissions.IsAuthenticated, IsOwnerOrPM]
 
     lookup_field = 'spec_id'
     lookup_url_kwarg = 'spec_id'
 
+    def update(self, request, *args, **kwargs):
+        new_status = request.data.get('status_code') or request.data.get('status_code_id')
+        if new_status and not request.user.is_staff:
+            if new_status in ['APPROVED', 'REJECTED']:
+                return Response(
+                    {"error": "FORBIDDEN", "details": "최종 승인(APPROVED) 및 반려(REJECTED)는 PM만 가능합니다."},
+                    status=status.HTTP_403_FORBIDDEN
+                )
+            if new_status != 'PENDING_REVIEW':
+                return Response(
+                    {"error": "INVALID_STATUS", "details": "일반 유저는 검토 요청(PENDING_REVIEW) 상태로만 변경할 수 있습니다."},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+        return super().update(request, *args, **kwargs)
+
     def perform_update(self, serializer):
-        # 전용 승인 API가 없는 범용 PATCH라, 저장 전/후 상태를 비교해서 APPROVED로
-        # "바뀌는 순간"만 잡는다 — 이미 APPROVED인 문서를 다른 필드 수정으로 PATCH해도
-        # 중복 로그가 남지 않도록.
         old_status = serializer.instance.status_code_id
         instance = serializer.save()
+
         if old_status != 'APPROVED' and instance.status_code_id == 'APPROVED' and instance.project_id:
             PipelineHistory.objects.create(
                 project=instance.project,
@@ -310,24 +321,142 @@ class RequirementDefinitionDetailView(generics.RetrieveUpdateDestroyAPIView):
             )
 
 
+class RequirementDefinitionSubmitReviewView(APIView):
+    """요구사항 정의서 검토 요청 제출 (작성자 본인 검증)"""
+    permission_classes = [permissions.IsAuthenticated]
+
+    @extend_schema(
+        tags=['2단계 - 요구사항 정의서'],
+        summary='요구사항 정의서 검토 요청 제출',
+        description='작성자 본인이 PM에게 요구사항 정의서 검토 요청(PENDING_REVIEW 상태 변경)을 제출합니다.',
+        responses={
+            200: OpenApiResponse(description='검토 요청 완료'),
+            403: OpenApiResponse(description='작성자 본인만 검토 요청을 제출할 수 있습니다.')
+        }
+    )
+    def post(self, request, spec_id):
+        req_def = get_object_or_404(
+            RequirementDefinition.objects.select_related('spec', 'created_by', 'spec__created_by'),
+            spec_id=spec_id
+        )
+        
+        # 작성자 검증
+        created_by_user = get_target_author(req_def)
+        if created_by_user and created_by_user != request.user:
+            return Response(
+                {"error": "FORBIDDEN", "details": "요구사항 정의서 작성자 본인만 검토 요청을 제출할 수 있습니다."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        status_code = CommonCode.objects.filter(group_id='REQSPEC_STATUS', code_id='PENDING_REVIEW').first()
+        if status_code:
+            req_def.status_code = status_code
+            req_def.save()
+
+        notify_all_pms(
+            f"'{req_def.title}' 요구사항 정의서 검토 요청이 도착했습니다.",
+            type='info',
+            link=f'/requirements/{spec_id}',
+        )
+        return Response({"message": "검토 요청이 완료되었습니다.", "data": RequirementDefinitionSerializer(req_def).data})
+
+
+class RequirementDefinitionApproveView(APIView):
+    """요구사항 정의서 승인 처리 (PM 전용)"""
+    permission_classes = [permissions.IsAuthenticated, IsPMUser]
+
+    @extend_schema(
+        tags=['2단계 - 요구사항 정의서'],
+        summary='요구사항 정의서 승인',
+        description='PM이 요구사항 정의서를 승인(APPROVED 상태 변경) 처리합니다.',
+        responses={200: OpenApiResponse(description='승인 완료')}
+    )
+    def post(self, request, spec_id):
+        req_def = get_object_or_404(
+            RequirementDefinition.objects.select_related('spec', 'created_by', 'spec__created_by'),
+            spec_id=spec_id
+        )
+        status_code = CommonCode.objects.filter(group_id='REQSPEC_STATUS', code_id='APPROVED').first()
+        if status_code:
+            req_def.status_code = status_code
+        req_def.save()
+
+        # 히스토리 생성
+        if req_def.project_id:
+            PipelineHistory.objects.create(
+                project=req_def.project,
+                spec=req_def.spec,
+                requirement=req_def,
+                step_type='REQ_DEFINED',
+                title=f"요구사항정의서 확정: {req_def.title}",
+                description=f"승인자: {request.user.username} 사원",
+                actor=request.user,
+            )
+
+        # 작성자 알림 발송
+        created_by_user = get_target_author(req_def)
+        if created_by_user:
+            notify_user(
+                created_by_user,
+                f"'{req_def.title}' 요구사항 정의서가 승인되었습니다.",
+                type='info',
+                link=f'/requirements/{spec_id}',
+            )
+
+        return Response({"message": "요구사항 정의서가 승인되었습니다.", "data": RequirementDefinitionSerializer(req_def).data})
+
+
+class RequirementDefinitionRejectView(APIView):
+    """요구사항 정의서 반려 처리 (PM 전용)"""
+    permission_classes = [permissions.IsAuthenticated, IsPMUser]
+
+    @extend_schema(
+        tags=['2단계 - 요구사항 정의서'],
+        summary='요구사항 정의서 반려',
+        description='PM이 요구사항 정의서를 반려(REJECTED 상태 변경) 처리합니다.',
+        responses={200: OpenApiResponse(description='반려 완료')}
+    )
+    def post(self, request, spec_id):
+        req_def = get_object_or_404(
+            RequirementDefinition.objects.select_related('spec', 'created_by', 'spec__created_by'),
+            spec_id=spec_id
+        )
+        status_code = CommonCode.objects.filter(group_id='REQSPEC_STATUS', code_id='REJECTED').first()
+        if status_code:
+            req_def.status_code = status_code
+        req_def.save()
+
+        # 작성자 알림 발송
+        created_by_user = get_target_author(req_def)
+        if created_by_user:
+            notify_user(
+                created_by_user,
+                f"'{req_def.title}' 요구사항 정의서가 반려되었습니다.",
+                type='error',
+                link=f'/requirements/{spec_id}',
+            )
+
+        return Response({"message": "요구사항 정의서가 반려되었습니다.", "data": RequirementDefinitionSerializer(req_def).data})
+
+
 class RequirementExtractView(APIView):
-    """
-    POST /api/requirements/{spec_id}/extract/
-    (기존 단독 재추출 API가 필요할 경우 유지)
-    """
     permission_classes = [permissions.IsAuthenticated]
 
     @extend_schema(
         tags=['2단계 - 요구사항 정의서'],
         summary='기획서 기반 AI 요구사항 재추출',
-        description='특정 기획서(SpecDocument) 원문을 AI 에이전트가 다시 분석하여 세부 항목을 업데이트합니다.',
-        responses={201: RequirementDefinitionSerializer}
+        parameters=[
+            OpenApiParameter(name='spec_id', type=OpenApiTypes.INT, location=OpenApiParameter.PATH, description='AI 세부 항목을 재추출할 기획서 ID')
+        ],
+        responses={
+            201: RequirementDefinitionSerializer,
+            400: OpenApiResponse(description="잘못된 기획서 구조"),
+            500: OpenApiResponse(description="AI 추출 처리 실패")
+        }
     )
     def post(self, request, spec_id):
         spec_document = get_object_or_404(SpecDocument, spec_id=spec_id)
         try:
-            # 공용 헬퍼로 통합 — 생성(RequirementDefinitionListCreateView.create)과 재추출이
-            # 같은 로직(DRAFT 시작, order 채우기)을 쓰도록 한다.
             req_def = process_ai_requirement_extraction(spec_document, request.user)
             serializer = RequirementDefinitionSerializer(req_def)
             return Response(serializer.data, status=status.HTTP_201_CREATED)
@@ -338,22 +467,18 @@ class RequirementExtractView(APIView):
 
 
 class RequirementGenerateTasksView(APIView):
-    """
-    POST /api/requirements/{spec_id}/generate-tasks/
-    heyzzabi2의 "업무 배분 실행" 버튼 — 요구사항정의서가 승인된 뒤 PM이 눌러서
-    실제 AI 파이프라인(업무생성 -> 담당자매핑 -> 담당자추천)을 돌려 미리보기용
-    배정 제안 목록(suggestions)을 만든다. 이 단계에서는 DB에 아무것도 저장하지
-    않는다 — PM이 화면에서 담당자/일정을 검토·수정한 뒤 "확정"을 누르면 그 결과가
-    RequirementConfirmTasksView로 전달되어 그때 TaskAssignment가 생성된다
-    (tasks/services.generate_task_suggestions).
-    """
     permission_classes = [permissions.IsAuthenticated]
 
     @extend_schema(
         tags=['3단계 - 업무 배정'],
         summary='요구사항정의서 기반 업무 배분 제안 생성(AI, 미리보기)',
-        description='승인된 요구사항정의서를 바탕으로 AI가 업무를 생성하고 담당자를 추천합니다. DB에는 저장하지 않고 PM이 검토/수정할 수 있는 제안 목록만 반환합니다.',
-        responses={200: OpenApiResponse(description='업무 배분 제안 목록 (suggestions)')}
+        parameters=[
+            OpenApiParameter(name='spec_id', type=OpenApiTypes.INT, location=OpenApiParameter.PATH, description='업무 배분 제안을 생성할 기획서 ID')
+        ],
+        responses={
+            200: OpenApiResponse(description='업무 배분 제안 목록 (suggestions)'),
+            400: OpenApiResponse(description='업무 제안 생성 실패')
+        }
     )
     def post(self, request, spec_id):
         from tasks.services import generate_task_suggestions
@@ -363,19 +488,18 @@ class RequirementGenerateTasksView(APIView):
 
 
 class RequirementConfirmTasksView(APIView):
-    """
-    POST /api/requirements/{spec_id}/confirm-tasks/
-    PM이 RequirementGenerateTasksView가 반환한 제안 목록을 검토(및 필요시 담당자/
-    일정 수정)한 뒤 "확정" 버튼을 눌러서 호출한다. 이때 비로소 TaskAssignment가
-    실제로 생성된다(tasks/services.confirm_task_assignments).
-    """
     permission_classes = [permissions.IsAuthenticated]
 
     @extend_schema(
         tags=['3단계 - 업무 배정'],
         summary='업무 배분 제안 확정(DB 저장)',
-        description='PM이 검토/수정한 업무 배분 제안 목록(assignments)을 확정하여 TaskAssignment로 저장합니다. 요청 본문: {"req_def_id": <int>, "assignments": [...]}. 같은 요구사항정의서에 대한 기존 배정은 삭제 후 새로 생성됩니다.',
-        responses={200: OpenApiResponse(description='업무 배정 확정 결과')}
+        parameters=[
+            OpenApiParameter(name='spec_id', type=OpenApiTypes.INT, location=OpenApiParameter.PATH, description='업무 배정을 확정할 기획서 ID')
+        ],
+        responses={
+            200: OpenApiResponse(description='업무 배정 확정 결과'),
+            400: OpenApiResponse(description='업무 배정 확정 실패')
+        }
     )
     def post(self, request, spec_id):
         from tasks.services import confirm_task_assignments
@@ -388,16 +512,8 @@ LOCKED_REQDEF_STATUSES = ('APPROVED', 'PENDING_REVIEW')
 
 
 @extend_schema_view(
-    get=extend_schema(
-        tags=['2단계 - 요구사항 정의서'],
-        summary='세부 요구사항 항목 목록 조회',
-        responses={200: RequirementItemSerializer(many=True)}
-    ),
-    post=extend_schema(
-        tags=['2단계 - 요구사항 정의서'],
-        summary='세부 요구사항 항목 직접 추가',
-        responses={201: RequirementItemSerializer}
-    )
+    get=extend_schema(tags=['2단계 - 요구사항 정의서'], summary='세부 요구사항 항목 목록 조회', responses={200: RequirementItemSerializer(many=True)}),
+    post=extend_schema(tags=['2단계 - 요구사항 정의서'], summary='세부 요구사항 항목 직접 추가', responses={201: RequirementItemSerializer, 403: OpenApiResponse(description="승인/검토 중인 요구사항 정의서 잠금으로 추가 불가")})
 )
 class RequirementItemViewSet(generics.ListCreateAPIView):
     queryset = RequirementItem.objects.all().select_related('priority_code', 'req_def')
@@ -405,46 +521,22 @@ class RequirementItemViewSet(generics.ListCreateAPIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def create(self, request, *args, **kwargs):
-        """
-        요구사항정의서가 승인(APPROVED)되었거나 검토중(PENDING_REVIEW)인 경우
-        하위 항목을 새로 추가할 수 없도록 차단한다. req_def id가 없거나 유효하지
-        않은 경우는 별도 검증 없이 기존 serializer 검증에 맡긴다.
-        """
         req_def_id = request.data.get('req_def')
         if req_def_id:
             req_def = RequirementDefinition.objects.filter(pk=req_def_id).select_related('status_code').first()
             if req_def and req_def.status_code_id in LOCKED_REQDEF_STATUSES:
                 return Response(
-                    {
-                        "error": "REQDEF_LOCKED",
-                        "details": "승인되었거나 검토 중인 요구사항정의서의 항목은 수정/삭제할 수 없습니다."
-                    },
+                    {"error": "REQDEF_LOCKED", "details": "승인되었거나 검토 중인 요구사항정의서의 항목은 수정/삭제할 수 없습니다."},
                     status=status.HTTP_403_FORBIDDEN
                 )
         return super().create(request, *args, **kwargs)
 
 
 @extend_schema_view(
-    get=extend_schema(
-        tags=['2단계 - 요구사항 정의서'],
-        summary='세부 요구사항 항목 단건 조회',
-        responses={200: RequirementItemSerializer}
-    ),
-    put=extend_schema(
-        tags=['2단계 - 요구사항 정의서'],
-        summary='세부 요구사항 항목 전체 수정',
-        responses={200: RequirementItemSerializer}
-    ),
-    patch=extend_schema(
-        tags=['2단계 - 요구사항 정의서'],
-        summary='세부 요구사항 항목 부분 수정',
-        responses={200: RequirementItemSerializer}
-    ),
-    delete=extend_schema(
-        tags=['2단계 - 요구사항 정의서'],
-        summary='세부 요구사항 항목 삭제',
-        responses={204: None}
-    )
+    get=extend_schema(tags=['2단계 - 요구사항 정의서'], summary='세부 요구사항 항목 단건 조회', responses={200: RequirementItemSerializer}),
+    put=extend_schema(tags=['2단계 - 요구사항 정의서'], summary='세부 요구사항 항목 전체 수정', responses={200: RequirementItemSerializer, 403: OpenApiResponse(description="승인/검토 중인 요구사항 정의서 잠금으로 수정 불가")}),
+    patch=extend_schema(tags=['2단계 - 요구사항 정의서'], summary='세부 요구사항 항목 부분 수정', responses={200: RequirementItemSerializer, 403: OpenApiResponse(description="승인/검토 중인 요구사항 정의서 잠금으로 수정 불가")}),
+    delete=extend_schema(tags=['2단계 - 요구사항 정의서'], summary='세부 요구사항 항목 삭제', responses={204: None, 403: OpenApiResponse(description="승인/검토 중인 요구사항 정의서 잠금으로 삭제 불가")})
 )
 class RequirementItemDetailView(generics.RetrieveUpdateDestroyAPIView):
     queryset = RequirementItem.objects.all().select_related('priority_code', 'req_def')
@@ -452,17 +544,10 @@ class RequirementItemDetailView(generics.RetrieveUpdateDestroyAPIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def _check_not_locked(self, instance):
-        """
-        상위 요구사항정의서가 승인(APPROVED)되었거나 검토중(PENDING_REVIEW)인 경우
-        해당 항목의 수정/삭제를 차단한다. GET(조회)은 잠금 상태와 무관하게 항상 허용된다.
-        """
         req_def = instance.req_def
         if req_def and req_def.status_code_id in LOCKED_REQDEF_STATUSES:
             return Response(
-                {
-                    "error": "REQDEF_LOCKED",
-                    "details": "승인되었거나 검토 중인 요구사항정의서의 항목은 수정/삭제할 수 없습니다."
-                },
+                {"error": "REQDEF_LOCKED", "details": "승인되었거나 검토 중인 요구사항정의서의 항목은 수정/삭제할 수 없습니다."},
                 status=status.HTTP_403_FORBIDDEN
             )
         return None

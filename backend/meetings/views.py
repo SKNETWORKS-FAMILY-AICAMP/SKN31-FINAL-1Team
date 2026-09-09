@@ -1,3 +1,4 @@
+#meetings/views.py
 import json
 import re
 import html
@@ -20,6 +21,7 @@ from meetings.serializers import (
     SpecDocumentSerializer,
 )
 from common.models import CommonCode
+from users.permissions import IsPMUser, IsOwnerOrPM  # IsOwnerOrPM 추가
 from notifications.services import notify_user, notify_all_pms
 from projects.models import PipelineHistory
 
@@ -45,6 +47,25 @@ class MeetingNoteListCreateView(generics.ListCreateAPIView):
             return MeetingNoteCreateSerializer
         return MeetingNoteSerializer
 
+    @extend_schema(
+        tags=['1단계 - 회의록'],
+        summary='회의록 목록 조회',
+        description='등록된 회의록 전체 목록을 조회합니다.',
+        responses={200: MeetingNoteSerializer(many=True)}
+    )
+    def get(self, request, *args, **kwargs):
+        return super().get(request, *args, **kwargs)
+
+    @extend_schema(
+        tags=['1단계 - 회의록'],
+        summary='회의록 신규 작성',
+        description='새로운 회의록을 작성 및 등록합니다.',
+        request=MeetingNoteCreateSerializer,
+        responses={201: MeetingNoteSerializer}
+    )
+    def post(self, request, *args, **kwargs):
+        return super().post(request, *args, **kwargs)
+
     def perform_create(self, serializer):
         serializer.save(created_by=self.request.user)
 
@@ -53,7 +74,7 @@ class MeetingNoteListCreateView(generics.ListCreateAPIView):
         serializer.is_valid(raise_exception=True)
         instance = serializer.save(created_by=request.user)
 
-        # 파이프라인 이력 로그 생성 — 회의록에 소속 프로젝트가 없는 레거시 흐름도 있어서 있을 때만 기록
+        # 파이프라인 이력 로그 생성
         if instance.project_id:
             PipelineHistory.objects.create(
                 project=instance.project,
@@ -69,13 +90,48 @@ class MeetingNoteListCreateView(generics.ListCreateAPIView):
 
 
 class MeetingNoteDetailView(generics.RetrieveUpdateDestroyAPIView):
-    """회의록 상세 조회, 수정, 삭제"""
+    """회의록 상세 조회, 수정, 삭제 (작성자 본인 또는 PM만 수정/삭제 가능)"""
     queryset = MeetingNote.objects.all()
     serializer_class = MeetingNoteSerializer
-    permission_classes = [permissions.IsAuthenticated]
+    # [수정] 작성자 또는 PM(is_staff=True)만 수정/삭제 가능하도록 IsOwnerOrPM 적용
+    permission_classes = [permissions.IsAuthenticated, IsOwnerOrPM]
 
+    @extend_schema(
+        tags=['1단계 - 회의록'],
+        summary='회의록 상세 조회',
+        description='특정 회의록의 상세 정보를 조회합니다.',
+        responses={200: MeetingNoteSerializer}
+    )
+    def get(self, request, *args, **kwargs):
+        return super().get(request, *args, **kwargs)
 
-# meetings/views.py (MeetingNoteAnalyzeView 클래스 수정)
+    @extend_schema(
+        tags=['1단계 - 회의록'],
+        summary='회의록 수정',
+        description='특정 회의록 정보(전체 수정)를 갱신합니다.',
+        responses={200: MeetingNoteSerializer}
+    )
+    def put(self, request, *args, **kwargs):
+        return super().put(request, *args, **kwargs)
+
+    @extend_schema(
+        tags=['1단계 - 회의록'],
+        summary='회의록 부분 수정',
+        description='특정 회의록 정보(부분 수정)를 갱신합니다.',
+        responses={200: MeetingNoteSerializer}
+    )
+    def patch(self, request, *args, **kwargs):
+        return super().patch(request, *args, **kwargs)
+
+    @extend_schema(
+        tags=['1단계 - 회의록'],
+        summary='회의록 삭제',
+        description='특정 회의록을 삭제합니다.',
+        responses={204: None}
+    )
+    def delete(self, request, *args, **kwargs):
+        return super().delete(request, *args, **kwargs)
+
 
 class MeetingNoteAnalyzeView(APIView):
     """
@@ -84,9 +140,25 @@ class MeetingNoteAnalyzeView(APIView):
     """
     permission_classes = [permissions.IsAuthenticated]
 
+    @extend_schema(
+        tags=['1단계 - 회의록'],
+        summary='회의록 AI 분석 및 기획서 자동 생성',
+        description='회의록 내용을 AI로 분석하여 요약 및 기획서 초안(SpecDocument)을 자동 생성합니다.',
+        responses={
+            200: OpenApiResponse(description='분석 완료 및 기획서 생성 성공'),
+            500: OpenApiResponse(description='AI 분석 중 오류 발생')
+        }
+    )
     def post(self, request, pk):
         meeting = get_object_or_404(MeetingNote, pk=pk)
 
+        # 작성자 본인 확인
+        if meeting.created_by != request.user:
+            return Response(
+                {"error": "작성자 본인만 검토 요청을 할 수 있습니다."}, 
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
         # 1. 상태 업데이트: AI 분석 중
         meeting.status = MeetingNote.Status.PROCESSING
         meeting.save()
@@ -110,19 +182,12 @@ class MeetingNoteAnalyzeView(APIView):
             else:
                 plan_dict = {}
 
-            # [디버깅] AI가 어떤 Key 형태로 반환하는지 서버 콘솔 출력
-            print("=== AI Agent Raw Output Keys ===", plan_dict.keys())
-            print("=== AI Agent Data ===", json.dumps(plan_dict, ensure_ascii=False, indent=2))
-
             # 4. 회의록 상태 업데이트
             summary_val = structured_data.get('summary') if isinstance(structured_data, dict) else None
             meeting.summary_content = summary_val or f"[{meeting.title}] AI 분석이 완료되었습니다."
             meeting.status = MeetingNote.Status.REVIEWED
             meeting.save()
 
-            # AI가 내용을 <p>/<strong>/<ul><li> 같은 HTML 태그를 섞어서 줄 때가 있는데, 화면은
-            # 이걸 그냥 일반 텍스트로 보여주므로 태그가 그대로 노출된다(실제로 사용자가 발견한 문제).
-            # fe6a95c에서 이 제거 함수 자체가 삭제됐던 걸 복구 — html/re는 여전히 import되어 있다.
             def strip_html_tags(text):
                 if not text:
                     return ""
@@ -133,11 +198,6 @@ class MeetingNoteAnalyzeView(APIView):
                 clean_text = re.sub(r'\n\s*\n', '\n', clean_text)
                 return clean_text.strip()
 
-            # 실제 AI 응답 구조 확인 결과(2026-09-01 재확인): 위쪽 레벨에 overview/features 같은
-            # 키가 바로 있는 게 아니라, plan_dict["sections"]가 [{key, title, content_html, items}, ...]
-            # 형태의 리스트로 온다. 팀원 커밋(fe6a95c)이 이걸 top-level 키 매칭으로 바꿔놓는 바람에
-            # 실제로는 전부 매칭 실패 -> "회의에서 논의되지 않았습니다"로만 표시되고 있었다
-            # (내용이 있어도 안 보이는데, 폴백 문구가 그럴듯해서 눈치채기 어려웠다).
             sections_map = {}
             for sec in (plan_dict.get('sections') or []):
                 if not isinstance(sec, dict):
@@ -158,9 +218,6 @@ class MeetingNoteAnalyzeView(APIView):
 
                 sections_map[sec_key] = content
 
-            # 기획서 7개 섹션 중 회의에서 실제로 논의 안 된 항목은 AI가 빈 값을 준다 — 화면에
-            # 그냥 빈 칸으로 두면 "생성이 덜 됐나?" 오해를 살 수 있어서, 비어있으면 명시적으로
-            # "회의에서 논의되지 않았습니다"를 채운다(내용을 지어내지 않는다는 원칙은 그대로 유지).
             NOT_DISCUSSED = "회의에서 논의되지 않았습니다."
 
             def section_or_not_discussed(key):
@@ -178,10 +235,6 @@ class MeetingNoteAnalyzeView(APIView):
                 'final_decisions': section_or_not_discussed('decisions'),
             }
 
-            # 회의록 원문에 "프로젝트 기간: 2026-08-25 ~ 2026-10-24"처럼 명시적인 날짜 범위가
-            # 있으면 정규식으로 추출해 자동으로 채운다. 못 찾으면 spec_defaults에 아예 키를 안 넣어서
-            # (update_or_create는 defaults에 있는 필드만 덮어쓴다) 이미 사용자가 화면에서 직접
-            # 입력해둔 기간이 재생성할 때마다 날아가지 않게 한다.
             period_match = re.search(
                 r'(\d{4}-\d{2}-\d{2})\s*(?:~|-|부터)\s*(\d{4}-\d{2}-\d{2})',
                 meeting.content or "",
@@ -190,7 +243,7 @@ class MeetingNoteAnalyzeView(APIView):
                 spec_defaults['period_start'] = period_match.group(1)
                 spec_defaults['period_end'] = period_match.group(2)
 
-            # 6. 기존 기획서가 있다면 필드 값 업데이트 (get_or_create 대신 update_or_create 적용)
+            # 6. 기존 기획서가 있다면 필드 값 업데이트
             spec, created = SpecDocument.objects.update_or_create(
                 meeting=meeting,
                 defaults=spec_defaults
@@ -221,18 +274,83 @@ class SpecDocumentListCreateView(generics.ListCreateAPIView):
     serializer_class = SpecDocumentSerializer
     permission_classes = [permissions.IsAuthenticated]
 
+    @extend_schema(
+        tags=['2단계 - 기획서'],
+        summary='기획서 목록 조회',
+        description='등록된 전체 기획서 목록을 조회합니다.',
+        responses={200: SpecDocumentSerializer(many=True)}
+    )
+    def get(self, request, *args, **kwargs):
+        return super().get(request, *args, **kwargs)
+
+    @extend_schema(
+        tags=['2단계 - 기획서'],
+        summary='기획서 생성',
+        description='새로운 기획서를 수동으로 작성 및 생성합니다.',
+        responses={201: SpecDocumentSerializer}
+    )
+    def post(self, request, *args, **kwargs):
+        return super().post(request, *args, **kwargs)
+
+    def perform_create(self, serializer):
+        serializer.save(created_by=self.request.user)
+
 
 class SpecDocumentDetailView(generics.RetrieveUpdateDestroyAPIView):
-    """기획서 상세 조회, 수정, 삭제"""
+    """기획서 상세 조회, 수정, 삭제 (작성자 본인 또는 PM만 가능)"""
     queryset = SpecDocument.objects.all()
     serializer_class = SpecDocumentSerializer
-    permission_classes = [permissions.IsAuthenticated]
+    # [수정] 작성자 또는 PM(is_staff=True)만 수정/삭제 가능하도록 IsOwnerOrPM 적용
+    permission_classes = [permissions.IsAuthenticated, IsOwnerOrPM]
+
+    @extend_schema(
+        tags=['2단계 - 기획서'],
+        summary='기획서 상세 조회',
+        description='특정 기획서의 상세 정보를 조회합니다.',
+        responses={200: SpecDocumentSerializer}
+    )
+    def get(self, request, *args, **kwargs):
+        return super().get(request, *args, **kwargs)
+
+    @extend_schema(
+        tags=['2단계 - 기획서'],
+        summary='기획서 전체 수정',
+        description='특정 기획서의 모든 정보를 수정합니다.',
+        responses={200: SpecDocumentSerializer}
+    )
+    def put(self, request, *args, **kwargs):
+        return super().put(request, *args, **kwargs)
+
+    @extend_schema(
+        tags=['2단계 - 기획서'],
+        summary='기획서 부분 수정',
+        description='특정 기획서의 일부 정보를 수정합니다.',
+        responses={200: SpecDocumentSerializer}
+    )
+    def patch(self, request, *args, **kwargs):
+        return super().patch(request, *args, **kwargs)
+
+    @extend_schema(
+        tags=['2단계 - 기획서'],
+        summary='기획서 삭제',
+        description='특정 기획서를 삭제합니다.',
+        responses={204: None}
+    )
+    def delete(self, request, *args, **kwargs):
+        return super().delete(request, *args, **kwargs)
 
 
 class SpecDocumentReviewView(APIView):
-    """기획서 검토 의견 작성/수정"""
-    permission_classes = [permissions.IsAuthenticated]
+    """기획서 검토 의견 작성/수정 (PM 권한)"""
+    # [수정] 코멘트 남기기 및 리뷰어 지정은 PM 전용
+    permission_classes = [permissions.IsAuthenticated, IsPMUser]
 
+    @extend_schema(
+        tags=['2단계 - 기획서'],
+        summary='기획서 검토 코멘트 남기기',
+        description='기획서에 검토 코멘트(review_comment)를 작성하고 검토자를 지정합니다.',
+        responses={200: SpecDocumentSerializer}
+    )
     def post(self, request, pk):
         spec = get_object_or_404(SpecDocument, pk=pk)
         review_comment = request.data.get('review_comment', '')
@@ -245,17 +363,39 @@ class SpecDocumentReviewView(APIView):
 
 
 class SpecDocumentSubmitReviewView(APIView):
-    """기획서 검토 요청 전송"""
+    """기획서 검토 요청 전송 (pk 기준 - 작성자 검증 적용)"""
     permission_classes = [permissions.IsAuthenticated]
 
+    @extend_schema(
+        tags=['2단계 - 기획서'],
+        summary='기획서 검토 요청 제출',
+        description='기획서 작성자 본인이 PM에게 검토 요청을 제출합니다.',
+        responses={
+            200: OpenApiResponse(description='검토 요청 완료'),
+            403: OpenApiResponse(description='작성자 본인만 검토 요청을 할 수 있습니다.')
+        }
+    )
     def post(self, request, pk):
         spec = get_object_or_404(SpecDocument, pk=pk)
-        status_code = CommonCode.objects.filter(code_id='PROPOSAL_PENDING_REVIEW').first()
-        if status_code:
-            spec.status_code = status_code
+        
+        # 작성자 검증
+        created_by_user = getattr(spec, 'created_by', None) or getattr(spec.meeting, 'created_by', None)
+        if created_by_user and created_by_user != request.user:
+            return Response(
+                {"error": "FORBIDDEN", "details": "기획서 작성자 본인만 검토 요청을 제출할 수 있습니다."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        # [수정] CommonCode 검색 조건을 SPEC_STATUS 그룹의 PENDING_REVIEW로 통일
+        pending_status = CommonCode.objects.filter(group_id='SPEC_STATUS', code_id='PENDING_REVIEW').first() \
+                         or CommonCode.objects.filter(code_id='PROPOSAL_PENDING_REVIEW').first()
+        
+        if pending_status:
+            spec.status_code = pending_status
             spec.save()
+
         notify_all_pms(
-            f"'{spec.title}' 기획서 검토요청이 도착했습니다.",
+            message=f"'{spec.title}' 기획서 검토요청이 도착했습니다.",
             type='info',
             link='/documents',
         )
@@ -264,67 +404,136 @@ class SpecDocumentSubmitReviewView(APIView):
     patch = post
 
 
-class SpecDocumentApproveView(APIView):
-    """기획서 승인 처리"""
+class SubmitReviewView(APIView):
+    """
+    POST /api/meetings/specs/{spec_id}/submit-review/
+    기획서 검토 요청 API (spec_id 기준 - 작성자 본인만 가능)
+    """
     permission_classes = [permissions.IsAuthenticated]
 
+    @extend_schema(
+        tags=['1단계 - 기획서/회의록'],
+        summary='기획서 검토 요청 (spec_id)',
+        description='기획서 작성자 본인이 PM에게 검토 요청을 보냅니다.',
+        parameters=[
+            OpenApiParameter(
+                name='spec_id',
+                type=OpenApiTypes.INT,
+                location=OpenApiParameter.PATH,
+                description='검토 요청할 기획서 ID'
+            )
+        ],
+        responses={
+            200: SpecDocumentSerializer,
+            403: OpenApiResponse(description="작성자 본인만 검토 요청을 보낼 수 있습니다."),
+            400: OpenApiResponse(description="잘못된 요청 또는 상태 변환 불가")
+        }
+    )
+    def post(self, request, spec_id):
+        spec = get_object_or_404(SpecDocument, spec_id=spec_id)
+
+        # 작성자 본인 확인
+        created_by_user = getattr(spec, 'created_by', None) or getattr(spec.meeting, 'created_by', None)
+        if created_by_user and created_by_user != request.user:
+            return Response(
+                {"error": "FORBIDDEN", "details": "기획서 작성자 본인만 검토 요청을 제출할 수 있습니다."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        pending_status = CommonCode.objects.filter(group_id='SPEC_STATUS', code_id='PENDING_REVIEW').first() \
+                         or CommonCode.objects.filter(code_id='PROPOSAL_PENDING_REVIEW').first()
+
+        if not pending_status:
+            return Response(
+                {"error": "INVALID_STATUS_CODE", "details": "PENDING_REVIEW 코드가 존재하지 않습니다."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        spec.status_code = pending_status
+        spec.save()
+
+        notify_all_pms(
+            message=f"'{spec.title}' 기획서의 검토 요청이 등록되었습니다.",
+            type='info',
+            link=f"/meetings/specs/{spec.spec_id}"
+        )
+
+        serializer = SpecDocumentSerializer(spec)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+
+class SpecDocumentApproveView(APIView):
+    """기획서 승인 처리 (PM 전용)"""
+    permission_classes = [permissions.IsAuthenticated, IsPMUser]
+
+    @extend_schema(
+        tags=['2단계 - 기획서'],
+        summary='기획서 승인',
+        description='PM이 기획서를 승인 처리합니다.',
+        responses={200: OpenApiResponse(description='승인 완료')}
+    )
     def post(self, request, pk):
         spec = get_object_or_404(SpecDocument, pk=pk)
-        status_code = CommonCode.objects.filter(code_id='PROPOSAL_APPROVED').first()
+        
+        status_code = CommonCode.objects.filter(group_id='SPEC_STATUS', code_id='APPROVED').first() \
+                      or CommonCode.objects.filter(code_id='PROPOSAL_APPROVED').first()
         if status_code:
             spec.status_code = status_code
+        
         spec.reviewer = request.user
+        spec.review_comment = request.data.get('comment', spec.review_comment)
         spec.save()
-        notify_user(
-            spec.meeting.created_by,
-            f"'{spec.title}' 기획서가 승인되었습니다.",
-            type='success',
-            link='/documents',
-        )
-        if spec.meeting.project_id:
-            PipelineHistory.objects.create(
-                project=spec.meeting.project,
-                meeting=spec.meeting,
-                spec=spec,
-                step_type='SPEC_GENERATED',
-                title=f"기획서 승인: {spec.title}",
-                description=f"승인자: {request.user.username} 사원",
-                actor=request.user,
+        
+        created_by_user = getattr(spec, 'created_by', None) or getattr(spec.meeting, 'created_by', None)
+        if created_by_user:
+            notify_user(
+                created_by_user,
+                f"'{spec.title}' 기획서가 승인되었습니다.",
+                type='info',
+                link='/documents',
             )
         return Response({"message": "기획서가 승인되었습니다.", "spec": SpecDocumentSerializer(spec).data})
 
 
 class SpecDocumentRejectView(APIView):
-    """기획서 반려 처리"""
-    permission_classes = [permissions.IsAuthenticated]
+    """기획서 반려 처리 (PM 전용)"""
+    permission_classes = [permissions.IsAuthenticated, IsPMUser]
 
+    @extend_schema(
+        tags=['2단계 - 기획서'],
+        summary='기획서 반려',
+        description='PM이 기획서를 반려 처리하고 이유를 남기며 작성자에게 알림을 발송합니다.',
+        responses={200: OpenApiResponse(description='반려 완료')}
+    )
     def post(self, request, pk):
         spec = get_object_or_404(SpecDocument, pk=pk)
-        status_code = CommonCode.objects.filter(code_id='PROPOSAL_REJECTED').first()
+        
+        status_code = CommonCode.objects.filter(group_id='SPEC_STATUS', code_id='REJECTED').first() \
+                      or CommonCode.objects.filter(code_id='PROPOSAL_REJECTED').first()
         if status_code:
             spec.status_code = status_code
+            
         spec.reviewer = request.user
         spec.review_comment = request.data.get('reason', spec.review_comment)
         spec.save()
-        notify_user(
-            spec.meeting.created_by,
-            f"'{spec.title}' 기획서가 반려되었습니다.",
-            type='error',
-            link='/documents',
-        )
+        
+        created_by_user = getattr(spec, 'created_by', None) or getattr(spec.meeting, 'created_by', None)
+        if created_by_user:
+            notify_user(
+                created_by_user,
+                f"'{spec.title}' 기획서가 반려되었습니다.",
+                type='error',
+                link='/documents',
+            )
         return Response({"message": "기획서가 반려되었습니다.", "spec": SpecDocumentSerializer(spec).data})
 
 
 class MeetingNoteParseFileView(APIView):
-    """
-    회의록 첨부 파일에서 텍스트를 추출해 반환 (저장은 하지 않음 — 프론트가 "원본 내용" 칸을 채우는 용도)
-    POST /api/meetings/notes/parse-file/  (multipart/form-data, key: file)
-    지원 형식: .docx, .pdf, .txt, .md, .hwp(HWPv5 바이너리 포맷 — pyhwp의 hwp5txt CLI를 서브프로세스로 호출)
-    """
+    """회의록 첨부 파일에서 텍스트 추출"""
     permission_classes = [permissions.IsAuthenticated]
     parser_classes = [parsers.MultiPartParser]
 
-    MAX_SIZE = 10 * 1024 * 1024  # 10MB — 회의록 텍스트 추출용이라 크게 둘 이유가 없다
+    MAX_SIZE = 10 * 1024 * 1024  # 10MB
 
     @extend_schema(
         tags=['1단계 - 회의록'],
@@ -368,14 +577,6 @@ class MeetingNoteParseFileView(APIView):
 
     @staticmethod
     def _extract_docx_text(document):
-        """
-        기존엔 document.paragraphs만 이어붙였는데, 이건 표(Table)는 아예 건너뛴다 — python-docx가
-        표와 문단을 별도 컬렉션으로 나눠 두기 때문(표 안의 텍스트는 document.paragraphs에 없다).
-        회의록에 표가 있으면 통째로 사라지던 문제(실제 겪음)를 고치려고, body를 원래 문서 순서
-        그대로 순회하면서 문단은 그대로, 표는 마크다운 파이프 표 형태(| a | b |)로 바꿔 끼워 넣는다
-        — AI 분석 단계도 이 텍스트를 그대로 읽으므로, 표를 없애는 것보다 마크다운으로라도 남기는
-        편이 정보 손실이 적다.
-        """
         lines = []
         for child in document.element.body.iterchildren():
             if child.tag.endswith('}p'):
@@ -395,11 +596,6 @@ class MeetingNoteParseFileView(APIView):
 
     @staticmethod
     def _extract_hwp_text(uploaded_file):
-        """
-        .hwp(HWPv5)는 바이너리 OLE 복합 문서 포맷이라 python-docx/pypdf 같은 순수 파이썬
-        라이브러리로는 못 읽는다 — pyhwp 패키지가 설치하는 hwp5txt CLI를 서브프로세스로
-        불러서 변환한다(파이썬 API가 내부 구현 세부사항이라 CLI가 더 안정적).
-        """
         import subprocess
         import tempfile
         import os
