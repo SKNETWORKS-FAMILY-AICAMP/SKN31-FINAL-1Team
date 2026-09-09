@@ -58,7 +58,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   // TanStack Query로 전환 — 업무관리(/tasks) 화면과 캐시를 공유한다("users" 키가 같으면
   // 두 화면 사이를 오갈 때 다시 안 부른다). 업무 목록도 같은 30초 폴링을 적용해 다른
   // 화면(예: 승인 처리)에서 바뀐 내용이 이 화면에도 반영되게 한다.
-  const { data: projectData, isLoading: projectLoading } = useQuery({
+  const { data: projectData, isLoading: projectLoading, isError: projectError } = useQuery({
     queryKey: ["project", id],
     queryFn: () => apiFetch<any>(`/api/projects/${id}/`),
   });
@@ -150,6 +150,16 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
     return (
       <div className="flex h-[50vh] items-center justify-center">
         <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  if (projectError) {
+    return (
+      <div className="text-center py-20">
+        <h2 className="text-2xl font-bold mb-2">프로젝트를 불러오지 못했습니다.</h2>
+        <p className="text-muted-foreground text-sm mb-4">네트워크 오류일 수 있습니다. 잠시 후 다시 시도해주세요.</p>
+        <button onClick={() => router.push("/")} className="text-primary hover:underline">대시보드로 돌아가기</button>
       </div>
     );
   }
