@@ -210,7 +210,7 @@ class AutoTaskAssignView(APIView):
         task = TaskAssignment.objects.create(
             req_item=req_item,
             assigned_user=assigned_user,
-            project_id=project_id or None,
+            project_id=project_id or req_item.req_def.project_id,
             title=f"[{req_item.req_code}] {req_item.req_name} 개발",
             description=req_item.description,
             status_code_id=TaskStatusCode.PENDING_APPROVAL,
