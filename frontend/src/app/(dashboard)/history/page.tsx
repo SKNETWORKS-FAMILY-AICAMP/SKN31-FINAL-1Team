@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import {
   History as HistoryIcon, FileText, ListTodo, Loader2, CheckCircle2,
-  Clock, FolderKanban, PlusCircle, ChevronLeft, ChevronRight, Bot,
+  Clock, FolderKanban, PlusCircle, ChevronLeft, ChevronRight, Bot, AlertTriangle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { apiFetch } from "@/lib/api/client";
@@ -65,12 +65,17 @@ export default function HistoryPage() {
   const [project, setProject] = useState<ProjectDto | null>(null);
   const [items, setItems] = useState<HistoryItem[]>([]);
   const [loading, setLoading] = useState(true);
+  // 조회 실패 시 project가 null로 남는 건 "프로젝트가 없는 것"과 똑같이 보여서
+  // (아래 !project 분기), 네트워크 오류를 "아직 참여 중인 프로젝트가 없다"는 오해를
+  // 주는 문구로 잘못 표시하는 문제가 있었다 — 실패 여부를 따로 들고 구분해서 보여준다.
+  const [loadError, setLoadError] = useState(false);
   const [filter, setFilter] = useState<FilterKey>("all");
   const [page, setPage] = useState(1);
 
   useEffect(() => {
     const load = async () => {
       setLoading(true);
+      setLoadError(false);
       try {
         // 단일 프로젝트 운영 전제 — 목록의 첫 프로젝트를 그대로 쓴다(다른 화면들과 동일한 패턴).
         const projects = await apiFetch<ProjectDto[]>("/api/projects/");
@@ -82,6 +87,7 @@ export default function HistoryPage() {
         }
       } catch (e) {
         console.error(e);
+        setLoadError(true);
       } finally {
         setLoading(false);
       }
@@ -125,6 +131,15 @@ export default function HistoryPage() {
 
   if (loading) {
     return <div className="flex items-center justify-center h-[60vh]"><Loader2 className="w-8 h-8 animate-spin text-primary" /></div>;
+  }
+
+  if (loadError) {
+    return (
+      <div className="flex flex-col items-center justify-center h-[60vh] text-center gap-3">
+        <AlertTriangle className="w-10 h-10 text-red-500/50" />
+        <p className="text-muted-foreground">이력을 불러오지 못했습니다. 잠시 후 다시 시도해주세요.</p>
+      </div>
+    );
   }
 
   if (!project) {

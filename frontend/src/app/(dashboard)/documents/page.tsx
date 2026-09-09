@@ -376,6 +376,15 @@ export default function DocumentsPage() {
   useEffect(() => {
     if (!selectedNoteId && sortedNotes.length > 0) setSelectedNoteId(sortedNotes[0].id);
   }, [sortedNotes, selectedNoteId]);
+  // taskDrafts/taskDraftsReqDefId는 selectedNote와 무관한 전역 state라, 문서를 바꿔도
+  // 저절로 안 지워진다 — A 문서에서 "업무 배분 실행"으로 draft를 만든 뒤 확정하지 않고
+  // B 문서로 넘어가면, B의 배분 화면에 A의 draft가 그대로 보이고 그 상태로 "배분 확정"을
+  // 누르면 B의 spec에 A의 req_def_id로 확정 요청이 나가는 사고로 이어진다(실제로 코드
+  // 추적해 확인). 선택된 문서가 바뀔 때마다 무조건 리셋해 이 경로를 원천 차단한다.
+  useEffect(() => {
+    setTaskDrafts(null);
+    setTaskDraftsReqDefId(null);
+  }, [selectedNoteId]);
   // 업무배분 탭을 열었을 때 이미 배분된 업무가 있으면 보여준다(재배분 직후뿐 아니라
   // 문서를 다시 열었을 때도).
   useEffect(() => {

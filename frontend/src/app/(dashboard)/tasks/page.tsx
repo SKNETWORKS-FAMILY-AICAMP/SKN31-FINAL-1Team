@@ -74,7 +74,10 @@ export default function TasksPage() {
   // 내가 직접 새로고침하기 전까진 안 보였다(NotificationBell만 30초 폴링하고 있었음).
   // 같은 주기로 업무 목록도 백그라운드에서 갱신해 "거의 실시간"에 가깝게 만든다 — 진짜
   // 실시간(웹소켓 푸시)은 백엔드 지원이 필요해 별도.
-  const { data: tasks = [], isLoading: loading } = useQuery({
+  // isError: 최초 로드 실패 시 tasks가 기본값 []로 남는데, isLoading만 보면 "로딩 끝났으니
+  // 빈 배열이 곧 진짜 데이터"로 취급돼 "업무가 없습니다"가 뜬다 — 실제로는 조회가 실패한
+  // 것뿐인데 업무가 통째로 사라진 것처럼 보이는 문제라 별도로 에러 화면을 보여준다.
+  const { data: tasks = [], isLoading: loading, isError: tasksError } = useQuery({
     queryKey: ["tasks"],
     queryFn: () => apiFetch<Task[]>("/api/tasks/assignments/"),
     refetchInterval: 30_000,
@@ -236,6 +239,11 @@ export default function TasksPage() {
       {loading ? (
         <div className="flex items-center justify-center h-64">
           <Loader2 className="w-8 h-8 animate-spin text-primary/50" />
+        </div>
+      ) : tasksError ? (
+        <div className="flex flex-col items-center justify-center h-64 text-center gap-3">
+          <AlertTriangle className="w-10 h-10 text-red-500/50" />
+          <p className="text-muted-foreground text-sm">업무 목록을 불러오지 못했습니다. 잠시 후 다시 시도해주세요.</p>
         </div>
       ) : (
         <>
