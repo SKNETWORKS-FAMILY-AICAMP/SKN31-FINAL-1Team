@@ -21,6 +21,8 @@ class Project(models.Model):
     
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="생성 일시")
     updated_at = models.DateTimeField(auto_now=True, verbose_name="수정 일시")
+    period_start = models.DateField(null=True, blank=True, verbose_name="프로젝트 시작일")
+    period_end = models.DateField(null=True, blank=True, verbose_name="프로젝트 종료일")
 
     class Meta:
         db_table = "project"
