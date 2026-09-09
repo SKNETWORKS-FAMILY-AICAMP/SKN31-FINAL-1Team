@@ -233,6 +233,21 @@ class RequirementDefinitionListCreateView(generics.ListCreateAPIView):
 
         try:
             req_def = process_ai_requirement_extraction(spec_document, request.user)
+
+            # 파이프라인 이력 로그 생성 — "요구사항정의서 생성" 버튼(AI 호출) 시점.
+            # 확정 시점의 REQ_DEFINED와 구분되는 별도 step_type이라 히스토리
+            # "에이전트" 탭에 실제 AI 실행으로 잡힌다(사람이 누른 확정과 혼동 방지).
+            if req_def.project_id:
+                PipelineHistory.objects.create(
+                    project=req_def.project,
+                    spec=spec_document,
+                    requirement=req_def,
+                    step_type='REQ_AI_GENERATED',
+                    title=f"요구사항정의서 생성: {req_def.title}",
+                    description=f"실행자: {request.user.username} 사원",
+                    actor=request.user,
+                )
+
             serializer = RequirementDefinitionSerializer(req_def)
             return Response(serializer.data, status=status.HTTP_201_CREATED)
 
@@ -488,6 +503,23 @@ class RequirementGenerateTasksView(APIView):
         from tasks.services import generate_task_suggestions
         result = generate_task_suggestions(spec_id)
         http_status = status.HTTP_200_OK if result.get("status") == "success" else status.HTTP_400_BAD_REQUEST
+
+        # 파이프라인 이력 로그 생성 — "업무 배분 AI 추천" 버튼 시점. 이 단계는 아직
+        # TaskAssignment를 저장하지 않는 미리보기라(확정은 RequirementConfirmTasksView가
+        # TASK_ASSIGNED로 별도 로그) 여기서 남기지 않으면 에이전트 탭에서 이 실행 자체가 보이지 않는다.
+        if result.get("status") == "success" and result.get("req_def_id"):
+            req_def = RequirementDefinition.objects.filter(pk=result["req_def_id"]).select_related('spec').first()
+            if req_def and req_def.project_id:
+                PipelineHistory.objects.create(
+                    project=req_def.project,
+                    spec=req_def.spec,
+                    requirement=req_def,
+                    step_type='TASK_AI_SUGGESTED',
+                    title=f"업무 배분 AI 추천: {req_def.title}",
+                    description=f"실행자: {request.user.username} 사원",
+                    actor=request.user,
+                )
+
         return Response(result, status=http_status)
 
 
