@@ -21,6 +21,7 @@ from requirements.serializers import (
 )
 from meetings.models import SpecDocument
 from common.models import CommonCode
+from projects.models import PipelineHistory
 
 # AI 에이전트 및 Pydantic 스키마 임포트
 from requirement_draft.agent import generate_requirements
@@ -290,6 +291,23 @@ class RequirementDefinitionDetailView(generics.RetrieveUpdateDestroyAPIView):
 
     lookup_field = 'spec_id'
     lookup_url_kwarg = 'spec_id'
+
+    def perform_update(self, serializer):
+        # 전용 승인 API가 없는 범용 PATCH라, 저장 전/후 상태를 비교해서 APPROVED로
+        # "바뀌는 순간"만 잡는다 — 이미 APPROVED인 문서를 다른 필드 수정으로 PATCH해도
+        # 중복 로그가 남지 않도록.
+        old_status = serializer.instance.status_code_id
+        instance = serializer.save()
+        if old_status != 'APPROVED' and instance.status_code_id == 'APPROVED' and instance.project_id:
+            PipelineHistory.objects.create(
+                project=instance.project,
+                spec=instance.spec,
+                requirement=instance,
+                step_type='REQ_DEFINED',
+                title=f"요구사항정의서 확정: {instance.title}",
+                description=f"승인자: {self.request.user.username} 사원",
+                actor=self.request.user,
+            )
 
 
 class RequirementExtractView(APIView):
