@@ -11,7 +11,8 @@ from requirements.models import RequirementDefinition, RequirementItem
 from tasks.models import TaskAssignment
 
 from task_generation.agent import generate_tasks
-from team_sizing import estimate_team_size
+from team_sizing import apply_complexity_buffer, estimate_team_size
+from project_scale.agent import assess_project_complexity
 from assignee_mapping.agent import assignee_mapping_node
 from assignee_recommend.agent import assignee_recommend_node
 from assignee_recommend.rule_filter import flatten_assignable_units
@@ -37,6 +38,23 @@ def _build_requirement_doc(req_def: RequirementDefinition) -> dict:
             "priority": PRIORITY_LABEL_FOR_AI.get(priority_name),
         })
     return {"requirements": requirements}
+
+
+def _build_project_context(req_def: RequirementDefinition) -> dict:
+    """
+    project_scale.agent.assess_project_complexity()에 넘길 기획서 상위 맥락.
+    개별 요구사항 항목이 아니라 SpecDocument(기획서) 단계의 "전체 그림"을 본다 —
+    task_generation이 이미 쪼갠 업무 단위 합산(team_sizing.py)만으로는 못 잡는
+    신규 기술 도입/외부 연동/미확정 사항 같은 정성적 리스크를 여기서 판단한다.
+    """
+    spec = req_def.spec
+    return {
+        "overview": spec.overview or "",
+        "problem_definition": spec.problem_definition or "",
+        "key_features": spec.key_features or "",
+        "tech_stack": spec.tech_stack or "",
+        "final_decisions": spec.final_decisions or "",
+    }
 
 
 def _build_employee_profiles() -> list:
@@ -134,7 +152,16 @@ def generate_task_suggestions(spec_id: int) -> dict:
     start_date = req_def.spec.period_start or date.today()
     end_date = req_def.spec.period_end or (start_date + timedelta(days=90))
 
+    project_context = _build_project_context(req_def)
+    try:
+        complexity = assess_project_complexity(project_context)
+    except Exception as e:
+        logger.warning("프로젝트 복잡도 판단 실패, 버퍼 없이 진행 (spec_id=%s): %s", spec_id, e)
+        complexity = None
+
     team_size = estimate_team_size(tasks, start_date, end_date)
+    if complexity is not None:
+        team_size = apply_complexity_buffer(team_size, complexity.complexity.value)
     needed_roles = [r["role"] for r in team_size["team_size_estimate"]["by_role"]]
 
     raw_profiles = _build_employee_profiles()
@@ -225,6 +252,11 @@ def generate_task_suggestions(spec_id: int) -> dict:
         "status": "success",
         "req_def_id": req_def.id,
         "suggestions": suggestions,
+        "team_size_estimate": team_size["team_size_estimate"],
+        "complexity_assessment": (
+            {"complexity": complexity.complexity.value, "reason": complexity.complexity_reason}
+            if complexity is not None else None
+        ),
     }
 
 

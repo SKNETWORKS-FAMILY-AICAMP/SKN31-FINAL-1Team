@@ -133,3 +133,44 @@ def estimate_team_size(
             "assumptions": {"max_hours_per_assignee": max_hours},
         }
     }
+
+
+# project_scale.agent.assess_project_complexity()가 판단한 복잡도 등급(하/중/상)에
+# 곱할 버퍼 비율. 등급 선택은 LLM이 하지만, 등급->숫자 변환은 이 고정 매핑표와
+# apply_complexity_buffer()(코드)가 한다 — "코드가 결정, LLM은 서술만" 원칙
+# (task_generation의 difficulty->difficulty_code 변환과 동일한 패턴).
+COMPLEXITY_BUFFER: Dict[str, float] = {"하": 0.0, "중": 0.15, "상": 0.30}
+
+
+def apply_complexity_buffer(team_size_estimate: Dict[str, Any], complexity: str) -> Dict[str, Any]:
+    """
+    estimate_team_size()가 반환한 dict를 그대로 받아, 역할별 headcount에
+    COMPLEXITY_BUFFER의 비율을 곱해 올림 처리한 새 dict를 반환한다(원본은
+    훼손하지 않음). total_headcount도 보정된 값 기준으로 다시 합산한다.
+
+    estimated_hours 자체는 손대지 않는다 — 그건 task_generation이 계산한
+    실측치라 복잡도 판단과 무관하게 그대로 둔다. 보정 대상은 어디까지나
+    "team_sizing이 놓치는 정성적 리스크를 반영한 인원 여유분"인 headcount뿐이다.
+    """
+    buffer = COMPLEXITY_BUFFER.get(complexity)
+    if buffer is None:
+        raise ValueError(f"알 수 없는 복잡도 값: {complexity!r} (허용값: {sorted(COMPLEXITY_BUFFER)})")
+
+    estimate = team_size_estimate["team_size_estimate"]
+    adjusted_by_role = []
+    for r in estimate["by_role"]:
+        adjusted = dict(r)
+        adjusted["headcount"] = math.ceil(r["headcount"] * (1 + buffer))
+        adjusted_by_role.append(adjusted)
+
+    return {
+        "team_size_estimate": {
+            "total_headcount": sum(r["headcount"] for r in adjusted_by_role),
+            "by_role": adjusted_by_role,
+            "assumptions": {
+                **estimate["assumptions"],
+                "complexity": complexity,
+                "complexity_buffer": buffer,
+            },
+        }
+    }
