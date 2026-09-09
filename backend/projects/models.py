@@ -40,8 +40,11 @@ class PipelineHistory(models.Model):
     """
     STEP_CHOICES = (
         ('MEETING_REGISTERED', '회의록 등록'),
+        ('SPEC_AI_GENERATED', '기획서 AI 생성'),
         ('SPEC_GENERATED', '기획서 생성/검토'),
+        ('REQ_AI_GENERATED', '요구사항정의서 AI 생성'),
         ('REQ_DEFINED', '요구사항정의서 확정'),
+        ('TASK_AI_SUGGESTED', '업무 배분 AI 추천'),
         ('TASK_ASSIGNED', '업무 자동 배정'),
         ('TASK_IN_PROGRESS', '업무 진행 중'),
         ('COMPLETED', '파이프라인 완료'),

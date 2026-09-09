@@ -276,6 +276,20 @@ class MeetingNoteAnalyzeView(APIView):
                 defaults=spec_defaults
             )
 
+            # 파이프라인 이력 로그 생성 — "기획서 생성" 버튼(AI 호출) 시점.
+            # 승인 시점의 SPEC_GENERATED와 구분되는 별도 step_type이라 히스토리
+            # "에이전트" 탭에 실제 AI 실행으로 잡힌다(사람이 누른 승인과 혼동 방지).
+            if meeting.project_id:
+                PipelineHistory.objects.create(
+                    project=meeting.project,
+                    meeting=meeting,
+                    spec=spec,
+                    step_type='SPEC_AI_GENERATED',
+                    title=f"기획서 생성: {spec.title}",
+                    description=f"실행자: {request.user.username} 사원",
+                    actor=request.user,
+                )
+
             return Response({
                 "message": "회의록 AI 분석 및 기획서 초안 생성이 완료되었습니다.",
                 "meeting": MeetingNoteSerializer(meeting).data,
@@ -519,6 +533,19 @@ class SpecDocumentApproveView(APIView):
                 type='info',
                 link='/documents',
             )
+
+        # 파이프라인 이력 로그 생성 (팀원 커밋으로 유실됐던 로직 복구)
+        if spec.meeting.project_id:
+            PipelineHistory.objects.create(
+                project=spec.meeting.project,
+                meeting=spec.meeting,
+                spec=spec,
+                step_type='SPEC_GENERATED',
+                title=f"기획서 승인: {spec.title}",
+                description=f"승인자: {request.user.username} 사원",
+                actor=request.user,
+            )
+
         return Response({"message": "기획서가 승인되었습니다.", "spec": SpecDocumentSerializer(spec).data})
 
 
