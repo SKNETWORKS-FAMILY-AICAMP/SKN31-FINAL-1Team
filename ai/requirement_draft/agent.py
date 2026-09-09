@@ -19,12 +19,47 @@ from .schemas import (
     PlanDocument,
     RequirementDocument,
     RequirementDocumentOutput,
+    RequirementItem,
     ReqType,
     ReviewStatus,
     Source,
 )
 
 logger = logging.getLogger(__name__)
+
+
+def dedupe_requirement_ids(items: List[RequirementItem]) -> List[RequirementItem]:
+    """1차 생성 결과와 baseline 재시도 결과를 합칠 때 id가 겹치는 문제를 막는다.
+
+    RequirementDocument.validate_unique_ids는 "한 번의 LLM 호출 결과 안에서"만
+    중복을 검사한다 — 1차 호출과 재시도 호출은 서로가 이미 무슨 id를 썼는지
+    모르는 채로 각자 만들기 때문에(재시도 프롬프트에 기존 id 목록을 안 넘김),
+    둘을 합친 최종 리스트에는 중복이 생길 수 있다(실제로 재현됨: 재시도 후
+    RequirementDocument 재검증에서 ValidationError 발생). 여기서 접두어
+    (예: "NFR-03")는 유지한 채 같은 접두어 안에서 다음으로 비어있는 일련번호를
+    찾아 다시 매긴다 — id 포맷 검증(N?FR-\\d{2}-\\d{3})을 그대로 지키므로 이후
+    재검증에도 안전하다. 최초로 나온 id는 그대로 두고, 그다음부터 나오는
+    같은 id만 새 번호를 받는다.
+    """
+    used_ids = {item.id for item in items}
+    seen_once: set[str] = set()
+    result: List["RequirementItem"] = []
+    for item in items:
+        if item.id not in seen_once:
+            seen_once.add(item.id)
+            result.append(item)
+            continue
+        prefix = item.id.rsplit("-", 1)[0]  # "NFR-03-001" -> "NFR-03"
+        seq = 1
+        while True:
+            candidate = f"{prefix}-{seq:03d}"
+            if candidate not in used_ids:
+                break
+            seq += 1
+        used_ids.add(candidate)
+        logger.warning("요구사항 ID 중복 발견 — %s를 %s로 재번호 부여", item.id, candidate)
+        result.append(item.model_copy(update={"id": candidate}))
+    return result
 
 
 def verify_baseline_coverage(doc: RequirementDocument) -> List[str]:
@@ -107,7 +142,10 @@ def generate_requirements(plan: PlanDocument, plan_id: str | None = None) -> Req
         except Exception as e:
             logger.warning("baseline 재시도 호출 실패(재시도 %d/%d): %s", attempt + 1, MAX_RETRIES, e)
             continue
-        all_items.extend(retry_doc.requirements)
+        # 재시도 호출은 1차 호출이 이미 쓴 id를 모르는 채로 새로 만들기 때문에, 합친
+        # 리스트에는 중복이 생길 수 있다 — 다음 줄의 재검증(RequirementDocument 재생성)이
+        # 그 중복을 걸러내기 전에 먼저 재번호를 매겨 통과하게 한다.
+        all_items = dedupe_requirement_ids(all_items + list(retry_doc.requirements))
 
     remaining = verify_baseline_coverage(RequirementDocument(requirements=all_items))
     if remaining:
