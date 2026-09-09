@@ -47,6 +47,7 @@ class SpecDocumentSerializer(serializers.ModelSerializer):
             'user_scenarios',
             'tech_stack',
             'final_decisions',
+            'evidence_data',
             'period_start',
             'period_end',
             'background',
