@@ -845,26 +845,36 @@ export default function DocumentsPage() {
       </div>
 
       {/* Pipeline stepper — 기획서 → 요구사항정의서 → 업무배분이 하나로 이어지는
-          파이프라인임을 보여준다(heyzzabi2 참고). 완료된 단계는 초록 자물쇠 아이콘으로
-          "끝났다"는 것만 표시하고, 탭 자체는 항상 클릭 가능하다(과거 열람용) — 예전엔
-          done이면 disabled까지 걸어서 승인된 기획서를 다시 못 열어보는(PDF/PPTX
-          다운로드도 못 하는) 버그가 있었다. 지금 선택한 문서가 있는 단계는 강조 링. */}
+          파이프라인임을 보여준다(heyzzabi2 참고). 2026-09-09 사용자 요청으로 방향을
+          바꿈: "아직 안 온" 미래 단계는 미리 못 보게 잠그고(예: 요구사항정의서가 안
+          끝났는데 업무배분 탭을 눌러 미리 볼 수 있던 문제), 이미 지나온 완료 단계는
+          예전처럼 계속 클릭 가능하게 둔다 — 승인된 기획서를 다시 못 열어보는(PDF/PPTX
+          다운로드도 못 하는) 예전 버그는 "완료=잠금"이 아니라 "미래=잠금"이라 재현되지
+          않는다. 지금 진행 중인 단계는 강조 링 + 완료는 체크, 미래는 자물쇠 아이콘. */}
       <div className="flex items-center">
         {(() => {
           const hasConfirmedTasks = hasConfirmedTasksFor(activeReqDef);
+          const currentStage = stageOf(activeSpec, activeReqDef, hasConfirmedTasks);
+          const currentStageIndex = PIPELINE_STEPS.indexOf(currentStage);
           return PIPELINE_STEPS.map((step, i) => {
             const done = stepDone(activeSpec, step, activeReqDef, hasConfirmedTasks);
-            const isDocStage = selectedNote ? stageOf(activeSpec, activeReqDef, hasConfirmedTasks) === step : false;
+            const isDocStage = i === currentStageIndex;
             const isViewed = activeTab === step;
             const prevDone = i > 0 ? stepDone(activeSpec, PIPELINE_STEPS[i - 1], activeReqDef, hasConfirmedTasks) : false;
+            // 문서를 아직 안 골랐으면(selectedNote 없음) 잠글 기준 자체가 없으니 전부 열어둔다.
+            const locked = selectedNote ? i > currentStageIndex : false;
             return (
               <Fragment key={step}>
                 {i > 0 && <div className={cn("h-0.5 w-6 md:w-10 rounded-full transition-colors", prevDone ? "bg-emerald-500/50" : "bg-black/10 dark:bg-white/10")} />}
                 <button
-                  onClick={() => setActiveTab(step)}
+                  onClick={() => !locked && setActiveTab(step)}
+                  disabled={locked}
+                  title={locked ? "이전 단계를 먼저 진행해야 볼 수 있습니다." : undefined}
                   className={cn(
                     "flex items-center gap-2 pb-1 px-1 text-base font-medium transition-colors border-b-2",
-                    isViewed ? "border-primary text-primary font-bold" : "border-transparent text-muted-foreground hover:text-foreground"
+                    locked
+                      ? "border-transparent text-muted-foreground/40 cursor-not-allowed"
+                      : isViewed ? "border-primary text-primary font-bold" : "border-transparent text-muted-foreground hover:text-foreground"
                   )}
                 >
                   <span className={cn(
@@ -873,7 +883,7 @@ export default function DocumentsPage() {
                       : isDocStage ? "bg-primary text-primary-foreground ring-4 ring-primary/20"
                       : "bg-black/10 dark:bg-white/10 text-muted-foreground"
                   )}>
-                    {done ? <Lock className="w-3 h-3" /> : i + 1}
+                    {done ? <CheckCircle2 className="w-3 h-3" /> : locked ? <Lock className="w-3 h-3" /> : i + 1}
                   </span>
                   {PIPELINE_TAB_LABEL[step]}
                 </button>
