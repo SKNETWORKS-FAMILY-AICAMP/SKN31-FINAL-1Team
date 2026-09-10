@@ -7,13 +7,15 @@ import {
   FileText, Plus, Bot, Loader2, Send, CheckCircle2, XCircle,
   AlertCircle, Clock, RotateCcw, MessageSquare, X, FolderKanban,
   Download, Printer, Trash2, Save, Pencil, Lock, ChevronDown, Briefcase,
-  UserIcon, CalendarIcon,
+  UserIcon, CalendarIcon, FileSpreadsheet,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { NewDocumentModal } from "@/components/projects/NewDocumentModal";
 import { ProposalTemplate, type ProposalEvidence } from "@/components/documents/ProposalTemplate";
 import { exportProposalPptx } from "@/lib/exportProposalPptx";
-import type { ProposalDoc } from "@/lib/documentTemplates";
+import { exportReqSpecExcel } from "@/lib/exportReqSpecExcel";
+import { exportReqSpecPptx } from "@/lib/exportReqSpecPptx";
+import type { ProposalDoc, ReqSpecDoc } from "@/lib/documentTemplates";
 import { Toast } from "@/components/ui/Toast";
 import {
   bareStatus, stepDone, stageOf,
@@ -278,6 +280,27 @@ function proposalDocToPatch(doc: ProposalDoc) {
     final_decisions: doc.finalDecisions,
     period_start: doc.projectPeriod?.start || null,
     period_end: doc.projectPeriod?.end || null,
+  };
+}
+
+// 요구사항정의서(ReqDefDto, DB에서 온 실제 데이터) -> ReqSpecDoc(엑셀/PPTX 내보내기
+// 전용 스키마) 변환. relatedFeature/inputOutput/acceptanceCriteria/note는 지금
+// RequirementItem에 대응하는 필드가 없어서 빈 문자열로 둔다 — 없는 내용을 지어내지
+// 않는다(이 프로젝트 전반의 환각 방지 원칙과 동일).
+function reqDefToReqSpecDoc(reqDef: ReqDefDto): ReqSpecDoc {
+  return {
+    items: reqDef.items.map(item => ({
+      id: item.req_code,
+      category: item.category || "",
+      subCategory: item.category_2 || "",
+      name: item.req_name,
+      description: item.description || "",
+      priority: (item.priority_info?.code_name || item.priority_code || "") as any,
+      relatedFeature: "",
+      inputOutput: "",
+      acceptanceCriteria: "",
+      note: "",
+    })),
   };
 }
 
@@ -2128,6 +2151,18 @@ function RequirementSection({
   // 없다 — 이건 화면에서 버튼/입력을 미리 비활성화해 사용자 경험을 매끄럽게 하는 역할.
   const itemsLocked = reqStatus === "APPROVED" || reqStatus === "PENDING_REVIEW";
 
+  // 기획서 탭의 PDF/PPTX 다운로드와 동일한 자리 — 요구사항정의서는 표 형태라 PDF 대신
+  // 엑셀(원본 양식과 같은 컬럼)과 PPTX(표 슬라이드)로 내보낸다. reqDef는 위에서
+  // null 체크 전이라 이 시점엔 아직 null일 수 있어 각 핸들러에서 다시 확인한다.
+  const handleReqSpecExcel = async () => {
+    if (!reqDef) return;
+    await exportReqSpecExcel(reqDefToReqSpecDoc(reqDef), spec.title);
+  };
+  const handleReqSpecPptx = async () => {
+    if (!reqDef) return;
+    await exportReqSpecPptx(reqDefToReqSpecDoc(reqDef), spec.title);
+  };
+
   if (!reqDef) {
     return (
       <div className="border-t border-border pt-5 mt-2">
@@ -2676,11 +2711,24 @@ function RequirementSection({
             </button>
           )
         )}
-        {/* 검토요청은 하단 우측 — 기획서 탭과 동일한 위치(승인/반려는 상단, 검토요청/
-            직접수정 성격의 액션은 하단). reqStatus===null은 REQSPEC_STATUS 도입 전
-            기존 데이터라 DRAFT로 간주해 검토요청을 받을 수 있게 한다. */}
-        {!isPM && canGenerate && !itemsLocked && (reqStatus === "DRAFT" || reqStatus === "REJECTED" || reqStatus === null) && (
-          <div className="flex justify-end mt-3">
+        {/* 기획서 탭의 하단 액션 줄(flex justify-end items-center gap-3 pt-2 +
+            mr-auto 다운로드 그룹)과 구조·클래스를 그대로 맞춘다(사용자 요청 —
+            "요구사항정의서 다운로드 버튼도 기획서와 통일"). 요구사항정의서는 표라서
+            PDF 대신 엑셀(원본 양식과 같은 컬럼)로, PPTX는 표 슬라이드로 내보낸다.
+            상태와 무관하게 항상 노출(초안 단계에서도 팀 공유용으로 뽑아볼 수 있어야 함). */}
+        <div className="flex justify-end items-center gap-3 pt-2">
+          <div className="flex items-center gap-2 mr-auto">
+            <button onClick={handleReqSpecExcel} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 text-xs font-semibold transition-colors">
+              <FileSpreadsheet className="w-3.5 h-3.5" /> Excel 다운로드
+            </button>
+            <button onClick={handleReqSpecPptx} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 text-xs font-semibold transition-colors">
+              <Download className="w-3.5 h-3.5" /> PPTX 다운로드
+            </button>
+          </div>
+          {/* 검토요청은 하단 우측 — 기획서 탭과 동일한 위치(승인/반려는 상단, 검토요청/
+              직접수정 성격의 액션은 하단). reqStatus===null은 REQSPEC_STATUS 도입 전
+              기존 데이터라 DRAFT로 간주해 검토요청을 받을 수 있게 한다. */}
+          {!isPM && canGenerate && !itemsLocked && (reqStatus === "DRAFT" || reqStatus === "REJECTED" || reqStatus === null) && (
             <button
               onClick={() => onStatusChange("PENDING_REVIEW")}
               disabled={!!submittingReview}
@@ -2689,8 +2737,8 @@ function RequirementSection({
               {submittingReview ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
               검토요청
             </button>
-          </div>
-        )}
+          )}
+        </div>
         </>
         );
       })()}
