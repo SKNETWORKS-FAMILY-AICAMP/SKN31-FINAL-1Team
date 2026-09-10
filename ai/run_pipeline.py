@@ -22,11 +22,15 @@ load_dotenv(dotenv_path=Path(__file__).resolve().parent.parent / ".env")
 from meeting_analysis.agent import analyze_meeting
 from meeting_analysis.schemas import Meeting
 from plan_draft.agent import generate_plan_document
+from shared.retry_config import describe
 
 TRANSCRIPT_PATH = "sample_meeting.txt"
 
 
 def main() -> None:
+    print(describe())
+    print()
+
     with open(TRANSCRIPT_PATH, encoding="utf-8") as f:
         transcript = f.read()
 

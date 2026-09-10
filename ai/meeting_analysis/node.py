@@ -31,8 +31,8 @@ except ImportError:  # 구버전 instructor 호환
     from instructor.exceptions import InstructorRetryException
 
 from shared.errors import NodeGenerationError
-from shared.llm_client import get_client
-from shared.retry_config import MAX_RETRIES, MAX_TOKENS, MODEL, PROVIDER, TEMPERATURE
+from shared.llm_client import build_chat_kwargs, get_client
+from shared.retry_config import MAX_RETRIES, MAX_TOKENS, MODEL, TEMPERATURE
 
 from .prompts import SYSTEM_PROMPT, build_messages
 from .schemas import MeetingExtraction, MeetingStructured
@@ -58,22 +58,16 @@ def run(meeting_text: str, meeting_id: str) -> NodeResult:
         client = get_client()
         messages = build_messages(meeting_text)
 
-        kwargs = dict(
-            model=MODEL,
-            response_model=MeetingExtraction,
-            max_retries=MAX_RETRIES,
-            temperature=TEMPERATURE,
-            messages=messages,
-        )
-        if PROVIDER == "anthropic":
-            extraction = client.messages.create(
-                system=SYSTEM_PROMPT, max_tokens=MAX_TOKENS, **kwargs
-            )
-        else:
-            extraction = client.chat.completions.create(
+        extraction = client.chat.completions.create(
+            **build_chat_kwargs(
+                model=MODEL,
                 messages=[{"role": "system", "content": SYSTEM_PROMPT}] + messages,
-                **{k: v for k, v in kwargs.items() if k != "messages"},
+                response_model=MeetingExtraction,
+                max_tokens=MAX_TOKENS,
+                max_retries=MAX_RETRIES,
+                temperature=TEMPERATURE,
             )
+        )
     except InstructorRetryException as e:
         logger.exception(
             "노드① 회의록 구조화 실패 — 재시도 %s회 모두 스키마 검증 실패 "

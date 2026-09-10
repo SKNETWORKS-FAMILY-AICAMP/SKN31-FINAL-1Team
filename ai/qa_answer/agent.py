@@ -9,7 +9,7 @@ from typing import Any, Dict
 
 from pydantic import ValidationError
 
-from shared.llm_client import get_client
+from shared.llm_client import build_chat_kwargs, get_client
 from shared.retry_config import DEFAULT_MAX_TOKENS, DEFAULT_MODEL, MAX_RETRIES, TEMPERATURE_GENERATIVE
 
 from .prompt_builder import build_system_prompt
@@ -23,13 +23,17 @@ def answer_query(query: str, chunks: list[dict]) -> Answer:
     system_prompt = build_system_prompt(query, chunks)
 
     return client.chat.completions.create(
-        model=DEFAULT_MODEL,
-        max_tokens=DEFAULT_MAX_TOKENS,
-        temperature=TEMPERATURE_GENERATIVE,
-        system=system_prompt,
-        messages=[{"role": "user", "content": "위 청크를 근거로 질문에 답하라."}],
-        response_model=Answer,
-        max_retries=MAX_RETRIES,
+        **build_chat_kwargs(
+            model=DEFAULT_MODEL,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": "위 청크를 근거로 질문에 답하라."},
+            ],
+            response_model=Answer,
+            max_tokens=DEFAULT_MAX_TOKENS,
+            max_retries=MAX_RETRIES,
+            temperature=TEMPERATURE_GENERATIVE,
+        )
     )
 
 
