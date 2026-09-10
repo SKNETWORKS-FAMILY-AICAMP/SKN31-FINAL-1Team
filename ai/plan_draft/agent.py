@@ -57,7 +57,7 @@ def _call(system: str, messages: list[dict], response_model, context: str = ""):
     어떤 호출이 실패했는지 로그만 보고 알 수 있게 하기 위함이다.
     """
     try:
-        client = get_client()
+        client = get_client(MODEL)
         return client.chat.completions.create(
             **build_chat_kwargs(
                 model=MODEL,

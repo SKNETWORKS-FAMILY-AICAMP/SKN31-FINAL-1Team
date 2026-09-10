@@ -96,9 +96,20 @@ def get_raw_client() -> OpenAI:
     return OpenAI(api_key=api_key)
 
 
-def get_client() -> instructor.Instructor:
-    """Instructor로 감싼 OpenAI 클라이언트. 스키마 강제 파싱 + 자동 재시도를 담당."""
-    return instructor.from_openai(get_raw_client())
+_INSTRUCTOR_MODES = {
+    "tools": instructor.Mode.TOOLS,
+    "json": instructor.Mode.JSON,
+}
+
+
+def get_client(model: str = DEFAULT_MODEL) -> instructor.Instructor:
+    """Instructor로 감싼 OpenAI 클라이언트. 스키마 강제 파싱 + 자동 재시도를 담당.
+
+    구조화 출력 방식(function tools / JSON)은 모델 프로필에 따라 정해진다 —
+    gpt-6-astra는 chat completions에서 function tools를 못 써서 JSON 모드로 돈다.
+    """
+    mode = _INSTRUCTOR_MODES.get(resolve_profile(model).instructor_mode, instructor.Mode.TOOLS)
+    return instructor.from_openai(get_raw_client(), mode=mode)
 
 
 def create_structured(
@@ -118,7 +129,7 @@ def create_structured(
 
     temperature=None이면(추론 모델) 호출 인자에서 자동으로 빠진다.
     """
-    client = get_client()
+    client = get_client(openai_model)
     return client.chat.completions.create(
         **build_chat_kwargs(
             model=openai_model,

@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 
 
 def answer_query(query: str, chunks: list[dict]) -> Answer:
-    client = get_client()
+    client = get_client(DEFAULT_MODEL)
     system_prompt = build_system_prompt(query, chunks)
 
     return client.chat.completions.create(

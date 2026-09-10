@@ -55,7 +55,7 @@ def run(meeting_text: str, meeting_id: str) -> NodeResult:
     # ── [1] AI 구조화 + 스키마 검증 ──────────────────────────
     # Instructor가 JSON 파싱 · Pydantic 검증 · 실패 시 재호출까지 처리합니다.
     try:
-        client = get_client()
+        client = get_client(MODEL)
         messages = build_messages(meeting_text)
 
         extraction = client.chat.completions.create(

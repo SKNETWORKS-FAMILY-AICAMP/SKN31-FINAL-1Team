@@ -1,110 +1,81 @@
 """
 run_pipeline.py
 
-실제 LLM을 호출해서 회의록 -> 구조화 JSON -> 기획서 12항목까지
-전체 파이프라인을 눈으로 확인하기 위한 스크립트.
+실제 LLM을 호출해서 회의록 → 구조화 JSON → 기획서까지 전체 파이프라인을
+DB 없이 눈으로 확인하는 스크립트. 모델별 결과 비교용.
 
 사용법:
-    python run_pipeline.py
+    python run_pipeline.py                          # sample_meeting.txt 사용
+    python run_pipeline.py path/to/회의록.txt        # 다른 회의록 파일 지정
+    OPENAI_MODEL=gpt-5.6-luna python run_pipeline.py # 모델 바꿔 실행
+
+결과는 out/plan_document_output.json 에 저장된다(DB에는 아무것도 안 쓴다).
+DB의 실제 회의록으로 돌리려면 test_db_meeting_to_plan.py 를 쓴다.
 """
 
 from __future__ import annotations
 
 import json
-from datetime import datetime
+import sys
+import time
 from pathlib import Path
 
 from dotenv import load_dotenv
 
-# .env 가 ai/ 의 상위 폴더(프로젝트 루트)에 있으므로 경로를 명시한다.
+# .env 는 프로젝트 루트(ai/의 상위)에 있다.
 load_dotenv(dotenv_path=Path(__file__).resolve().parent.parent / ".env")
 
-from meeting_analysis.agent import analyze_meeting
-from meeting_analysis.schemas import Meeting
-from plan_draft.agent import generate_plan_document
+from meeting_analysis.node import run as analyze_meeting
+from plan_draft.agent import run as generate_plan
 from shared.retry_config import describe
 
-TRANSCRIPT_PATH = "sample_meeting.txt"
+AI_DIR = Path(__file__).resolve().parent
+DEFAULT_TRANSCRIPT = AI_DIR / "sample_meeting.txt"
 
 
 def main() -> None:
+    transcript_path = Path(sys.argv[1]) if len(sys.argv) > 1 else DEFAULT_TRANSCRIPT
+    transcript = transcript_path.read_text(encoding="utf-8")
+
     print(describe())
-    print()
+    print(f"\n회의록: {transcript_path.name} ({len(transcript)}자)")
 
-    with open(TRANSCRIPT_PATH, encoding="utf-8") as f:
-        transcript = f.read()
-
-    meeting = Meeting(
-        id="MTG-2026-08-25-DEMO",
-        title="AI 회의 분석 서비스 1차 기능 정의 회의",
-        participants=["정하늘", "오세진", "문가영"],
-        created_at=datetime(2026, 8, 25, 15, 0),
-    )
-
+    print("\n" + "=" * 70)
+    print("1단계: 회의록 → 구조화 JSON (LLM 호출)")
     print("=" * 70)
-    print("1단계: 회의록 -> 구조화 JSON (LLM 호출)")
-    print("=" * 70)
-
-    plan, report = analyze_meeting(
-        transcript=transcript,
-        meeting=meeting,
-        purpose="AI 회의 분석 서비스의 1차 개발 기능과 제외 범위를 결정한다.",
-        project_id="PJT-DEMO",
-    )
-
-    print("\n[후처리 리포트]")
-    print(report.summary())
-
+    t0 = time.time()
+    result = analyze_meeting(transcript, "MTG-DEMO")
+    structured = result.data
+    print(f"완료 ({time.time() - t0:.1f}초)")
+    if result.notes:
+        print("notes:", result.notes)
+    unresolved = structured.get("unresolved") or []
+    if unresolved:
+        print(f"unresolved {len(unresolved)}건:", unresolved)
     print("\n[구조화 JSON 일부]")
-    print(json.dumps(plan.model_dump(mode="json"), ensure_ascii=False, indent=2)[:2000])
+    print(json.dumps(structured, ensure_ascii=False, indent=2)[:2000])
     print("...(생략)...")
 
     print("\n" + "=" * 70)
-    print("2단계: 구조화 JSON -> 기획서 12항목 (LLM 미사용, 규칙 기반)")
+    print("2단계: 구조화 JSON → 기획서 (LLM 호출)")
     print("=" * 70)
+    t1 = time.time()
+    doc = generate_plan(structured, proposal_id="TEST-DEMO")
+    plan = doc.model_dump(mode="json")
+    print(f"완료 ({time.time() - t1:.1f}초) · 총 {time.time() - t0:.1f}초")
 
-    doc = generate_plan_document(plan)
+    sections = plan.get("sections", [])
+    print(f"\n[섹션 {len(sections)}개]")
+    for s in sections:
+        flag = "⚠️ 비어있음" if s.get("is_incomplete") else "OK"
+        body = (s.get("content_html") or "").replace("\n", " ")[:80]
+        print(f"  [{s.get('key', '?'):14}] {s.get('title', '?'):16} {flag:10} {body}")
 
-    print(f"\n제목: {doc.head.title}")
-    print(f"출처 회의: {doc.head.meeting_title} ({doc.head.date})")
-    print(f"참석자: {', '.join(doc.head.participants)}")
-
-    print("\n[목차]")
-    for entry in doc.toc:
-        status = "비어있음" if entry.is_empty else "내용 있음"
-        print(f"  {entry.no}. {entry.title} - {status}")
-
-    print("\n[전체 섹션 상세]")
-    for section in doc.sections:
-        print(f"\n--- {section.no}. {section.title} ---")
-        if section.is_empty:
-            print(f"  ({section.empty_message})")
-            continue
-        for block in section.blocks:
-            if block.kind == "field":
-                print(f"  [{block.label}] {block.text}")
-            elif block.kind == "list":
-                if block.heading:
-                    print(f"  <{block.heading}>")
-                for item in block.items:
-                    prefix = f"{item.prefix}: " if item.prefix else ""
-                    print(f"    - {prefix}{item.text}")
-            elif block.kind == "table":
-                print(f"  컬럼: {block.columns}")
-                for row, badge in zip(block.rows, block.badges or [""] * len(block.rows)):
-                    badge_str = f" [{badge}]" if badge else ""
-                    print(f"    {row}{badge_str}")
-            elif block.kind == "flow":
-                print(f"  <{block.heading}>")
-                print(f"    단계: {' -> '.join(block.steps)}")
-                print(f"    결과: {block.result}")
-            elif block.kind == "note":
-                print(f"  * {block.text}")
-
-    # 최종 결과 파일로 저장
-    with open("plan_document_output.json", "w", encoding="utf-8") as f:
-        json.dump(doc.model_dump(mode="json"), f, ensure_ascii=False, indent=2)
-    print("\n\n전체 결과가 plan_document_output.json 에 저장되었습니다.")
+    out_dir = AI_DIR / "out"
+    out_dir.mkdir(exist_ok=True)
+    out_path = out_dir / "plan_document_output.json"
+    out_path.write_text(json.dumps(plan, ensure_ascii=False, indent=2), encoding="utf-8")
+    print(f"\n전체 결과 저장: {out_path}")
 
 
 if __name__ == "__main__":

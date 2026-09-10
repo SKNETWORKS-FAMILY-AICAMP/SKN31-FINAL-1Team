@@ -51,14 +51,14 @@ def requirement_review_gate(state: PipelineState) -> dict:
 
 def route_after_plan_review(state: PipelineState) -> str:
     if state.get("plan_rejection_reason"):
-        return "a1_2_plan_draft"          # 반려 -> A1-2로 되돌아감
-    return "a2_1_requirement_draft"       # 승인 -> 다음 단계
+        return "plan_draft"          # 반려 -> A1-2로 되돌아감
+    return "requirement_draft"       # 승인 -> 다음 단계
 
 
 def route_after_requirement_review(state: PipelineState) -> str:
     if state.get("requirement_rejection_reason"):
-        return "a2_1_requirement_draft"   # 반려 -> A2-1로 되돌아감
-    return "a2_2_task_generation"         # 승인 -> 다음 단계
+        return "requirement_draft"   # 반려 -> A2-1로 되돌아감
+    return "task_generation"         # 승인 -> 다음 단계
 
 
 # ---------------------------------------------------------------------------
@@ -68,35 +68,35 @@ def route_after_requirement_review(state: PipelineState) -> str:
 def build_graph() -> StateGraph:
     graph = StateGraph(PipelineState)
 
-    graph.add_node("a1_1_meeting_analysis", meeting_analysis_node)
-    graph.add_node("a1_2_plan_draft", plan_draft_node)
+    graph.add_node("meeting_analysis", meeting_analysis_node)
+    graph.add_node("plan_draft", plan_draft_node)
     graph.add_node("plan_review_gate", plan_review_gate)
-    graph.add_node("a2_1_requirement_draft", requirement_draft_node)
+    graph.add_node("requirement_draft", requirement_draft_node)
     graph.add_node("requirement_review_gate", requirement_review_gate)
-    graph.add_node("a2_2_task_generation", task_generation_node)
+    graph.add_node("task_generation", task_generation_node)
     graph.add_node("assignee_mapping", assignee_mapping_node)
-    graph.add_node("a2_3_assignee_recommend", assignee_recommend_node)
+    graph.add_node("assignee_recommend", assignee_recommend_node)
 
-    graph.set_entry_point("a1_1_meeting_analysis")
-    graph.add_edge("a1_1_meeting_analysis", "a1_2_plan_draft")
-    graph.add_edge("a1_2_plan_draft", "plan_review_gate")
+    graph.set_entry_point("meeting_analysis")
+    graph.add_edge("meeting_analysis", "plan_draft")
+    graph.add_edge("plan_draft", "plan_review_gate")
     graph.add_conditional_edges(
         "plan_review_gate",
         route_after_plan_review,
-        {"a1_2_plan_draft": "a1_2_plan_draft", "a2_1_requirement_draft": "a2_1_requirement_draft"},
+        {"plan_draft": "plan_draft", "requirement_draft": "requirement_draft"},
     )
-    graph.add_edge("a2_1_requirement_draft", "requirement_review_gate")
+    graph.add_edge("requirement_draft", "requirement_review_gate")
     graph.add_conditional_edges(
         "requirement_review_gate",
         route_after_requirement_review,
         {
-            "a2_1_requirement_draft": "a2_1_requirement_draft",
-            "a2_2_task_generation": "a2_2_task_generation",
+            "requirement_draft": "requirement_draft",
+            "task_generation": "task_generation",
         },
     )
-    graph.add_edge("a2_2_task_generation", "assignee_mapping")
-    graph.add_edge("assignee_mapping", "a2_3_assignee_recommend")
-    graph.add_edge("a2_3_assignee_recommend", END)
+    graph.add_edge("task_generation", "assignee_mapping")
+    graph.add_edge("assignee_mapping", "assignee_recommend")
+    graph.add_edge("assignee_recommend", END)
 
     return graph
 

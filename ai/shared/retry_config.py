@@ -18,8 +18,9 @@ OPENAI_MODEL 한 줄만 바꾸고 파이프라인을 다시 돌리면 된다.
     OPENAI_REASONING_EFFORT=low    # (선택) 추론 계열에서만 의미. minimal|low|medium|high
 
 모델마다 호출 규격이 다르다 — gpt-4o는 temperature를 받고 상한이 16384,
-gpt-5/o-시리즈(추론)는 temperature를 못 받고(기본값 1 고정) max_completion_tokens만
-받으며 reasoning_effort를 추가로 받는다. 이 차이를 아래 MODEL_PROFILES 표에
+gpt-5/gpt-6/o-시리즈(추론)는 temperature를 못 받고(기본값 1 고정)
+max_completion_tokens만 받으며 reasoning_effort를 추가로 받는다.
+이 차이를 아래 MODEL_PROFILES 표에
 계열별로 한 줄씩 적어두고, resolve_profile(model)이 모델명을 보고 해당 프로필을
 고른다. llm_client.build_chat_kwargs()가 그 프로필대로 호출 인자를 조립한다.
 
@@ -62,6 +63,10 @@ class ModelProfile:
     token_param             : 출력 토큰 상한을 넘길 인자 이름
     default_max_tokens      : OPENAI_MAX_TOKENS 미설정 시 기본 상한
     default_reasoning_effort: OPENAI_REASONING_EFFORT 미설정 시 기본값
+    instructor_mode         : 구조화 출력 방식.
+        "tools" = function calling (기본, gpt-4o·gpt-5에서 가장 안정적)
+        "json"  = response_format=json_object (gpt-6-astra는 chat completions에서
+                  function tools를 못 써서 이쪽만 됨)
     """
     label: str
     supports_temperature: bool
@@ -69,10 +74,11 @@ class ModelProfile:
     default_max_tokens: int
     token_param: str = "max_completion_tokens"
     default_reasoning_effort: str | None = None
+    instructor_mode: str = "tools"
 
 
 # 위에서부터 첫 번째로 접두사가 맞는 프로필을 쓴다. 순서 주의:
-# 더 구체적인 접두사(gpt-5-chat)를 넓은 접두사(gpt-5)보다 먼저 둔다.
+# 더 구체적인 접두사(gpt-5-chat, gpt-5.6)를 넓은 접두사(gpt-5)보다 먼저 둔다.
 MODEL_PROFILES: list[tuple[tuple[str, ...], ModelProfile]] = [
     (
         ("gpt-4o", "gpt-4.1", "gpt-4-", "gpt-3.5"),
@@ -93,9 +99,25 @@ MODEL_PROFILES: list[tuple[tuple[str, ...], ModelProfile]] = [
         ),
     ),
     (
+        # gpt-5.6-* / gpt-6-* 는 /v1/chat/completions에서 function tools를
+        # reasoning_effort와 함께 못 쓴다 (400: "use /v1/responses or set
+        # reasoning_effort to 'none'"). instructor를 JSON 모드로 돌리면
+        # reasoning_effort까지 정상 동작한다. gpt-5(무印) / o-시리즈는 tools 그대로 OK.
+        # ── 반드시 아래 ("gpt-5", ...) 항목보다 먼저 와야 gpt-5.6-*가 여기 걸린다.
+        ("gpt-5.6", "gpt-6"),
+        ModelProfile(
+            label="추론 계열 gpt-5.6 / gpt-6 (JSON 모드)",
+            supports_temperature=False,
+            supports_reasoning_effort=True,
+            default_max_tokens=32768,
+            default_reasoning_effort="low",
+            instructor_mode="json",
+        ),
+    ),
+    (
         ("gpt-5", "o1", "o1-", "o3", "o3-", "o4", "o4-"),
         ModelProfile(
-            label="추론 계열 (gpt-5 / gpt-5.6-* / o-시리즈)",
+            label="추론 계열 (gpt-5 / o-시리즈)",
             supports_temperature=False,
             supports_reasoning_effort=True,
             default_max_tokens=32768,
@@ -169,9 +191,9 @@ if PROFILE is FALLBACK_PROFILE:
         DEFAULT_MODEL, DEFAULT_MAX_TOKENS,
     )
 logger.info(
-    "LLM 모델=%s (%s) · max_tokens=%d · temperature=%s · reasoning_effort=%s",
+    "LLM 모델=%s (%s) · max_tokens=%d · temperature=%s · reasoning_effort=%s · mode=%s",
     DEFAULT_MODEL, PROFILE.label, DEFAULT_MAX_TOKENS,
-    TEMPERATURE_STRUCTURED, REASONING_EFFORT,
+    TEMPERATURE_STRUCTURED, REASONING_EFFORT, PROFILE.instructor_mode,
 )
 
 
@@ -195,6 +217,7 @@ def describe() -> str:
             if PROFILE.supports_reasoning_effort
             else "미지원",
         ),
+        ("구조화 출력 방식", f"{PROFILE.instructor_mode}  (tools=function calling / json=response_format)"),
         ("스키마 재시도", str(MAX_RETRIES)),
         ("요청 타임아웃(초)", str(REQUEST_TIMEOUT_SECONDS)),
     ]
