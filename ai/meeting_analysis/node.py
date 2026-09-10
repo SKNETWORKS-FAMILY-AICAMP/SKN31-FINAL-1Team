@@ -7,14 +7,11 @@
   2. Evidence 원문 검증
   3. 교차 규칙 검증
 
-개발과 무관한 회의이거나 개발 의도를 판단하기 어려운 회의는
+개발과 무관하거나 개발 의도를 판단하기 어려운 회의는
 구조화와 기획서 생성을 진행하지 않습니다.
 
 개발 관련 내용과 무관한 내용이 섞여 있으면
 개발 관련 원문만 구조화 단계에 전달합니다.
-
-스키마 검증은 Instructor가 처리하고 재시도를 포함합니다.
-Evidence 검증과 교차 규칙 검증은 LLM을 호출하지 않습니다.
 """
 
 import logging
@@ -28,18 +25,26 @@ except ImportError:
     from instructor.exceptions import InstructorRetryException
 
 from shared.errors import NodeGenerationError
-from shared.llm_client import get_client
+from shared.llm_client import build_chat_kwargs, get_client
 from shared.retry_config import (
     MAX_RETRIES,
     MAX_TOKENS,
     MODEL,
-    PROVIDER,
     TEMPERATURE,
 )
 
-from .eligibility import MeetingEligibilityError, assess_meeting
-from .prompts import build_messages, build_system_prompt
-from .schemas import MeetingExtraction, MeetingStructured
+from .eligibility import (
+    MeetingEligibilityError,
+    assess_meeting,
+)
+from .prompts import (
+    SYSTEM_PROMPT,
+    build_messages,
+)
+from .schemas import (
+    MeetingExtraction,
+    MeetingStructured,
+)
 from .validators import cross_rules
 from .validators.evidence import (
     EvidenceReport,
@@ -69,7 +74,7 @@ def run(
     회의록의 개발 관련성을 판별하고 관련 내용만 구조화합니다.
 
     glossary_text는 선택값입니다.
-    용어집이 없거나 빈 문자열이어도 정상적으로 실행되어야 합니다.
+    용어집이 없거나 빈 문자열이어도 정상적으로 실행됩니다.
     """
 
     try:
@@ -79,14 +84,8 @@ def run(
                 cause_code="MEETING_NEEDS_CLARIFICATION",
             )
 
-        client = get_client()
+        client = get_client(MODEL)
 
-        # 개발 관련성 판별
-        #
-        # relevant이면 개발 관련 원문을 그대로 사용합니다.
-        # mixed이면 개발과 관련된 부분만 relevant_text로 반환합니다.
-        # irrelevant 또는 needs_clarification이면 예외가 발생하여
-        # 아래 구조화 호출까지 진행되지 않습니다.
         eligibility, relevant_text = assess_meeting(
             client=client,
             meeting_text=meeting_text,
@@ -96,45 +95,26 @@ def run(
             temperature=TEMPERATURE,
         )
 
-        # 개발 관련 내용만 기존 구조화 프롬프트에 전달합니다.
         messages = build_messages(relevant_text)
-        system_prompt = build_system_prompt(glossary_text)
 
-        kwargs = {
-            "model": MODEL,
-            "response_model": MeetingExtraction,
-            "max_retries": MAX_RETRIES,
-            "temperature": TEMPERATURE,
-            "messages": messages,
-        }
-
-        if PROVIDER == "anthropic":
-            extraction = client.messages.create(
-                system=system_prompt,
-                max_tokens=MAX_TOKENS,
-                **kwargs,
-            )
-        else:
-            extraction = client.chat.completions.create(
+        extraction = client.chat.completions.create(
+            **build_chat_kwargs(
+                model=MODEL,
                 messages=[
                     {
                         "role": "system",
-                        "content": system_prompt,
+                        "content": SYSTEM_PROMPT,
                     },
                     *messages,
                 ],
-                **{
-                    key: value
-                    for key, value in kwargs.items()
-                    if key != "messages"
-                },
+                response_model=MeetingExtraction,
+                max_tokens=MAX_TOKENS,
+                max_retries=MAX_RETRIES,
+                temperature=TEMPERATURE,
             )
+        )
 
     except MeetingEligibilityError as error:
-        # 입력 내용에 따른 정상적인 생성 중단입니다.
-        #
-        # 백엔드에서 cause_code를 확인하여 서버 장애와 구분할 수 있도록
-        # 공통 NodeGenerationError로 변환합니다.
         raise NodeGenerationError(
             str(error),
             cause_code=error.cause_code,
@@ -143,20 +123,26 @@ def run(
         ) from error
 
     except InstructorRetryException as error:
+        attempt_count = getattr(
+            error,
+            "n_attempts",
+            MAX_RETRIES + 1,
+        )
+
         logger.exception(
             (
                 "노드 1 회의록 구조화 실패. "
                 "재시도 %s회를 모두 사용했습니다. "
                 "meeting_id=%s"
             ),
-            error.n_attempts,
+            attempt_count,
             meeting_id,
         )
 
         raise NodeGenerationError(
             (
                 "AI가 회의록을 정해진 형식으로 구조화하지 못했습니다. "
-                f"재시도 {error.n_attempts}회를 모두 사용했습니다. "
+                f"총 {attempt_count}회의 시도를 완료했습니다. "
                 "회의록 내용이 너무 짧거나 모호하지 않은지 확인해 주세요."
             ),
             cause_code="LLM_RETRY_EXHAUSTED",
@@ -198,7 +184,10 @@ def run(
 
     except Exception as error:
         logger.exception(
-            "노드 1 회의록 구조화 중 예상하지 못한 오류. meeting_id=%s",
+            (
+                "노드 1 회의록 구조화 중 "
+                "예상하지 못한 오류. meeting_id=%s"
+            ),
             meeting_id,
         )
 
@@ -209,20 +198,16 @@ def run(
             original=error,
         ) from error
 
-    # 저장 및 다음 노드 전달용 데이터 생성
     data = MeetingStructured(
         meeting_id=meeting_id,
         **extraction.model_dump(),
     ).model_dump(mode="json")
 
-    # 혼합 회의의 무관한 부분이 구조화 결과에 다시 포함되는 것을 확인하기 위해
-    # 전체 회의록이 아니라 판별 단계에서 선별한 원문을 기준으로 검증합니다.
     evidence_report = verify_and_mark(
         data,
         relevant_text,
     )
 
-    # 필드 간 정합성 검증
     validation_notes = cross_rules.check(data)
     data["validation_notes"] = validation_notes
 
@@ -275,7 +260,10 @@ if __name__ == "__main__":
     output_directory = Path("out")
     output_directory.mkdir(exist_ok=True)
 
-    output_path = output_directory / f"{meeting_path.stem}.json"
+    output_path = (
+        output_directory
+        / f"{meeting_path.stem}.json"
+    )
 
     output_path.write_text(
         json.dumps(
@@ -292,7 +280,10 @@ if __name__ == "__main__":
     print("-" * 64)
     print(format_report(result.evidence))
 
-    unresolved = result.data.get("unresolved", [])
+    unresolved = result.data.get(
+        "unresolved",
+        [],
+    )
 
     if unresolved:
         print()
@@ -320,7 +311,9 @@ if __name__ == "__main__":
         "technical",
     ]:
         count = len(requirements[category])
-        print(f"  requirements.{category}: {count}")
+        print(
+            f"  requirements.{category}: {count}"
+        )
 
     for category in [
         "users",

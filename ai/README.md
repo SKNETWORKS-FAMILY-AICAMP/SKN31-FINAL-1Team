@@ -44,5 +44,23 @@ pip install instructor anthropic pydantic pyyaml langgraph pytest
 export OPEN_API_KEY=...
 python -m pytest tests/ -v
 ```
-test
+
+## AI 모델 교체 및 현재 설정된 모델 확인 방법
+
+
+## 0. 준비 (터미널 열 때마다)
+
+```bash
+cd ~/projects/SKN31-FINAL-1Team/ai
+source ../.venv/bin/activate
+```
+
+이후 `python` = 프로젝트 venv입니다. (activate 안 하려면 아래 모든 `python`을 `../.venv/bin/python`으로)
+
+## 1. 지금 설정된 모델 확인
+
+```bash
+python -m shared.retry_config
+```
+
 

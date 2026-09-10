@@ -1,0 +1,335 @@
+{
+  "proposal_id": "TEST-DEMO",
+  "meeting_id": "MTG-DEMO",
+  "status": "draft",
+  "sections": [
+    {
+      "no": 1,
+      "key": "overview",
+      "title": "프로젝트 개요",
+      "section_type": "narrative",
+      "content_html": "<p><strong>회의록 분석 및 요구사항 정리 시스템</strong></p>\n<p>사용자가 회의록 파일을 업로드하면 AI가 내용을 분석해서 요구사항을 정리하도록 한다.</p>",
+      "items": [],
+      "source_fields": [
+        "project.name",
+        "project.background"
+      ],
+      "evidence": [
+        {
+          "quote": "사용자는 회의록 파일을 업로드하면 AI가 내용을 분석해서 요구사항을 정리하도록 한다. 이건 핵심 기능이다.",
+          "status": "verified"
+        }
+      ],
+      "features": [],
+      "groups": [],
+      "needs_input": "",
+      "is_incomplete": false,
+      "edited_by_pm": false,
+      "review": {
+        "state": "pending",
+        "comment": null,
+        "reject_type": null
+      }
+    },
+    {
+      "no": 2,
+      "key": "problem",
+      "title": "문제 정의",
+      "section_type": "narrative",
+      "content_html": "<p>효율적인 요구사항 정리가 필요하다</p>",
+      "items": [],
+      "source_fields": [
+        "project.problem"
+      ],
+      "evidence": [
+        {
+          "quote": "사용자는 회의록 파일을 업로드하면 AI가 내용을 분석해서 요구사항을 정리하도록 한다. 이건 핵심 기능이다.",
+          "status": "verified"
+        }
+      ],
+      "features": [],
+      "groups": [],
+      "needs_input": "",
+      "is_incomplete": false,
+      "edited_by_pm": false,
+      "review": {
+        "state": "pending",
+        "comment": null,
+        "reject_type": null
+      }
+    },
+    {
+      "no": 3,
+      "key": "users",
+      "title": "대상 사용자",
+      "section_type": "narrative",
+      "content_html": "<ul>\n<li><strong>사용자:</strong> 회의록 파일을 업로드하고 분석 결과를 확인하는 사용자. 필요: 회의록 파일 업로드, 분석 결과 확인, 요구사항 검토 및 승인.</li>\n<li><strong>관리자:</strong> 프로젝트별 요구사항을 확인하고 관리하는 관리자. 필요: 프로젝트별 요구사항 확인.</li>\n</ul>",
+      "items": [],
+      "source_fields": [
+        "users"
+      ],
+      "evidence": [
+        {
+          "quote": "사용자는 회의록을 업로드하고, 분석 결과를 확인한 뒤, 요구사항을 검토하고, 승인 버튼을 눌러 기획서를 생성한다.",
+          "status": "verified"
+        },
+        {
+          "quote": "관리자는 프로젝트별 요구사항을 확인할 수 있어야 한다. 이것도 핵심 기능으로 넣는다.",
+          "status": "verified"
+        }
+      ],
+      "features": [],
+      "groups": [],
+      "needs_input": "",
+      "is_incomplete": false,
+      "edited_by_pm": false,
+      "review": {
+        "state": "pending",
+        "comment": null,
+        "reject_type": null
+      }
+    },
+    {
+      "no": 4,
+      "key": "features",
+      "title": "주요 기능",
+      "section_type": "narrative",
+      "content_html": "<p><strong>회의록 파일 업로드</strong></p><p>사용자는 회의록 파일을 업로드할 수 있다.</p><p><strong>AI 기반 요구사항 분석</strong></p><p>AI가 회의록 내용을 분석해서 요구사항을 정리한다.</p><p><strong>프로젝트별 요구사항 관리</strong></p><p>관리자는 프로젝트별 요구사항을 확인할 수 있다.</p><p><strong>Markdown 형식 기획서 다운로드</strong></p><p>기획서는 Markdown 파일로 다운로드할 수 있다.</p><p><strong>요구사항 검토 및 승인</strong></p><p>사용자는 분석 결과를 확인하고 요구사항을 검토한 뒤 승인 버튼을 눌러 기획서를 생성한다.</p>",
+      "items": [
+        "회의록 파일 업로드",
+        "AI 기반 요구사항 분석",
+        "프로젝트별 요구사항 관리",
+        "Markdown 형식 기획서 다운로드",
+        "요구사항 검토 및 승인"
+      ],
+      "source_fields": [
+        "requirements.functional",
+        "decisions[feature]"
+      ],
+      "evidence": [
+        {
+          "quote": "사용자는 회의록 파일을 업로드하면 AI가 내용을 분석해서 요구사항을 정리하도록 한다.",
+          "status": "verified"
+        },
+        {
+          "quote": "관리자는 프로젝트별 요구사항을 확인할 수 있어야 한다. 이것도 핵심 기능으로 넣는다.",
+          "status": "verified"
+        },
+        {
+          "quote": "기획서는 최종적으로 Markdown 파일로 다운로드할 수 있도록 한다.",
+          "status": "verified"
+        },
+        {
+          "quote": "사용자는 회의록을 업로드하고, 분석 결과를 확인한 뒤, 요구사항을 검토하고, 승인 버튼을 눌러 기획서를 생성한다.",
+          "status": "verified"
+        },
+        {
+          "quote": "사용자는 회의록 파일을 업로드하면 AI가 내용을 분석해서 요구사항을 정리하도록 한다. 이건 핵심 기능이다.",
+          "status": "verified"
+        }
+      ],
+      "features": [
+        {
+          "title": "회의록 파일 업로드",
+          "description": "사용자는 회의록 파일을 업로드할 수 있다."
+        },
+        {
+          "title": "AI 기반 요구사항 분석",
+          "description": "AI가 회의록 내용을 분석해서 요구사항을 정리한다."
+        },
+        {
+          "title": "프로젝트별 요구사항 관리",
+          "description": "관리자는 프로젝트별 요구사항을 확인할 수 있다."
+        },
+        {
+          "title": "Markdown 형식 기획서 다운로드",
+          "description": "기획서는 Markdown 파일로 다운로드할 수 있다."
+        },
+        {
+          "title": "요구사항 검토 및 승인",
+          "description": "사용자는 분석 결과를 확인하고 요구사항을 검토한 뒤 승인 버튼을 눌러 기획서를 생성한다."
+        }
+      ],
+      "groups": [],
+      "needs_input": "",
+      "is_incomplete": false,
+      "edited_by_pm": false,
+      "review": {
+        "state": "pending",
+        "comment": null,
+        "reject_type": null
+      }
+    },
+    {
+      "no": 5,
+      "key": "scenarios",
+      "title": "사용자 시나리오",
+      "section_type": "narrative",
+      "content_html": "<p><strong>사용자 시나리오:</strong></p>\n<ul>\n<li>사용자가 회의록 파일을 업로드하면 AI가 회의록 내용을 분석한다.</li>\n<li>분석 결과를 화면에 표시한다.</li>\n<li>사용자가 요구사항을 검토한다.</li>\n<li>사용자가 승인 버튼을 누르면 기획서가 생성된다.</li>\n</ul>",
+      "items": [],
+      "source_fields": [
+        "scenarios"
+      ],
+      "evidence": [
+        {
+          "quote": "사용자는 회의록을 업로드하고, 분석 결과를 확인한 뒤, 요구사항을 검토하고, 승인 버튼을 눌러 기획서를 생성한다.",
+          "status": "verified"
+        }
+      ],
+      "features": [],
+      "groups": [],
+      "needs_input": "",
+      "is_incomplete": false,
+      "edited_by_pm": false,
+      "review": {
+        "state": "pending",
+        "comment": null,
+        "reject_type": null
+      }
+    },
+    {
+      "no": 6,
+      "key": "tech_scope",
+      "title": "기술 및 제약사항",
+      "section_type": "list",
+      "content_html": "<p><strong>기술 스택</strong></p><ul><li>백엔드는 FastAPI와 LangGraph를 사용한다</li><li>로그인은 Google 로그인만 지원한다</li></ul><p><strong>성능·보안 요구</strong></p><ul><li>분석 결과는 5초 이내에 화면에 표시되어야 한다</li></ul><p><strong>데이터 요구</strong></p><ul><li>회의록 원문은 회의별로 90일간 보관한다</li></ul><p><strong>제약사항</strong></p><ul><li>[기타] 한 번에 업로드할 수 있는 회의록 파일은 최대 20MB로 제한한다</li><li>사원별 업무 자동 배분 기능은 이번 1차 범위에서 제외한다</li></ul>",
+      "items": [
+        "백엔드는 FastAPI와 LangGraph를 사용한다",
+        "로그인은 Google 로그인만 지원한다",
+        "분석 결과는 5초 이내에 화면에 표시되어야 한다",
+        "회의록 원문은 회의별로 90일간 보관한다",
+        "[기타] 한 번에 업로드할 수 있는 회의록 파일은 최대 20MB로 제한한다",
+        "사원별 업무 자동 배분 기능은 이번 1차 범위에서 제외한다"
+      ],
+      "source_fields": [
+        "requirements.technical",
+        "requirements.non_functional",
+        "requirements.data",
+        "decisions[tech]",
+        "constraints",
+        "decisions[scope]"
+      ],
+      "evidence": [
+        {
+          "quote": "백엔드는 FastAPI와 LangGraph를 사용하기로 했다.",
+          "status": "verified"
+        },
+        {
+          "quote": "로그인은 처음에는 Google 로그인만 지원하기로 했다.",
+          "status": "verified"
+        },
+        {
+          "quote": "분석 결과는 5초 이내에 화면에 표시되어야 한다.",
+          "status": "verified"
+        },
+        {
+          "quote": "회의록 원문은 회의별로 90일간 보관한다.",
+          "status": "verified"
+        },
+        {
+          "quote": "한 번에 업로드할 수 있는 회의록 파일은 최대 20MB로 제한한다.",
+          "status": "verified"
+        },
+        {
+          "quote": "사원별 업무 자동 배분 기능은 이번 1차 범위에서 제외하고 다음 버전에서 다루기로 했다.",
+          "status": "verified"
+        }
+      ],
+      "features": [],
+      "groups": [
+        {
+          "subtitle": "기술 스택",
+          "items": [
+            "백엔드는 FastAPI와 LangGraph를 사용한다",
+            "로그인은 Google 로그인만 지원한다"
+          ]
+        },
+        {
+          "subtitle": "성능·보안 요구",
+          "items": [
+            "분석 결과는 5초 이내에 화면에 표시되어야 한다"
+          ]
+        },
+        {
+          "subtitle": "데이터 요구",
+          "items": [
+            "회의록 원문은 회의별로 90일간 보관한다"
+          ]
+        },
+        {
+          "subtitle": "제약사항",
+          "items": [
+            "[기타] 한 번에 업로드할 수 있는 회의록 파일은 최대 20MB로 제한한다",
+            "사원별 업무 자동 배분 기능은 이번 1차 범위에서 제외한다"
+          ]
+        }
+      ],
+      "needs_input": "",
+      "is_incomplete": false,
+      "edited_by_pm": false,
+      "review": {
+        "state": "pending",
+        "comment": null,
+        "reject_type": null
+      }
+    },
+    {
+      "no": 7,
+      "key": "decisions",
+      "title": "최종 결정사항",
+      "section_type": "list",
+      "content_html": "<ul><li>[기능] 사용자는 회의록 파일을 업로드하면 AI가 내용을 분석해서 요구사항을 정리하도록 한다</li><li>[기능] 관리자는 프로젝트별 요구사항을 확인할 수 있어야 한다</li><li>[기능] 기획서는 최종적으로 Markdown 파일로 다운로드할 수 있도록 한다</li><li>[기술] 백엔드는 FastAPI와 LangGraph를 사용한다</li><li>[범위] 사원별 업무 자동 배분 기능은 이번 1차 범위에서 제외한다</li><li>[범위] 로그인은 Google 로그인만 지원한다</li></ul>",
+      "items": [
+        "[기능] 사용자는 회의록 파일을 업로드하면 AI가 내용을 분석해서 요구사항을 정리하도록 한다",
+        "[기능] 관리자는 프로젝트별 요구사항을 확인할 수 있어야 한다",
+        "[기능] 기획서는 최종적으로 Markdown 파일로 다운로드할 수 있도록 한다",
+        "[기술] 백엔드는 FastAPI와 LangGraph를 사용한다",
+        "[범위] 사원별 업무 자동 배분 기능은 이번 1차 범위에서 제외한다",
+        "[범위] 로그인은 Google 로그인만 지원한다"
+      ],
+      "source_fields": [
+        "decisions"
+      ],
+      "evidence": [
+        {
+          "quote": "사용자는 회의록 파일을 업로드하면 AI가 내용을 분석해서 요구사항을 정리하도록 한다. 이건 핵심 기능이다.",
+          "status": "verified"
+        },
+        {
+          "quote": "관리자는 프로젝트별 요구사항을 확인할 수 있어야 한다. 이것도 핵심 기능으로 넣는다.",
+          "status": "verified"
+        },
+        {
+          "quote": "기획서는 최종적으로 Markdown 파일로 다운로드할 수 있도록 한다.",
+          "status": "verified"
+        },
+        {
+          "quote": "백엔드는 FastAPI와 LangGraph를 사용하기로 했다.",
+          "status": "verified"
+        },
+        {
+          "quote": "사원별 업무 자동 배분 기능은 이번 1차 범위에서 제외하고 다음 버전에서 다루기로 했다.",
+          "status": "verified"
+        },
+        {
+          "quote": "로그인은 처음에는 Google 로그인만 지원하기로 했다.",
+          "status": "verified"
+        }
+      ],
+      "features": [],
+      "groups": [],
+      "needs_input": "",
+      "is_incomplete": false,
+      "edited_by_pm": false,
+      "review": {
+        "state": "pending",
+        "comment": null,
+        "reject_type": null
+      }
+    }
+  ],
+  "unresolved": [
+    "카카오 로그인 지원 여부가 결정되지 않았습니다.",
+    "관리자 페이지 대시보드의 필요성이 결정되지 않았습니다."
+  ]
+}

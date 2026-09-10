@@ -28,6 +28,15 @@ class DecisionCategory(str, Enum):
     TECH = "tech"
     SCOPE = "scope"
 
+class ProjectGoal(BaseModel):
+    content: str = Field(
+        ...,
+        description="회의에서 확인된 프로젝트 목표",
+    )
+    evidence: Evidence = Field(
+        ...,
+        description="프로젝트 목표를 뒷받침하는 회의록 원문",
+    )
 
 class Project(BaseModel):
     """
@@ -47,7 +56,7 @@ class Project(BaseModel):
     name: str = Field(..., description="프로젝트명")
     background: str = Field(..., description="프로젝트 배경")
     problem: str = Field(..., description="해결하려는 문제")
-    goals: list[str] = Field(..., min_length=1, description="프로젝트 목표")
+    goals: list[ProjectGoal] = Field(default_factory=list, description="회의에서 확인된 프로젝트 목표와 원문 근거",)
     background_evidence: Evidence = Field(..., description="background 문장의 근거")
     problem_evidence: Evidence = Field(..., description="problem 문장의 근거")
 

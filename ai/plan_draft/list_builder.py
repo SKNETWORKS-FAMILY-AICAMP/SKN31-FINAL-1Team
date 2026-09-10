@@ -1,5 +1,5 @@
 """
-나열형 섹션(6, 7번) 조립.
+목록형 섹션(3, 6, 7번) 조립.
 
 LLM을 부르지 않습니다. 구조화 JSON의 배열을 HTML 목록으로 옮기는 일이라
 코드가 하는 게 맞습니다.
@@ -64,7 +64,7 @@ def collect_source_evidence(structured: dict, source_fields: list[str]) -> list[
     왜 필요한가: NarrativeSection.evidence는 노드②의 LLM이 문장을 쓰면서
     스스로 인용한 것이라, 원문과 실제로 대조된 적이 없습니다(unverified가
     아니라 아예 검증 자체가 없음). 반면 requirements.functional, users,
-    scenarios, decisions, project 같은 원본 항목들은 verify_and_mark()가
+    decisions, project 같은 원본 항목들은 verify_and_mark()가
     이미 evidence_status를 붙여둔 상태입니다. LLM에게 근거를 다시 찾게
     시키는 대신(모델이 더 그럴듯한 인용을 지어냄 — evidence.py 주석 참조),
     agent.py가 SECTION_SPEC의 source_fields 경로를 그대로 따라가서 이
@@ -77,7 +77,7 @@ def collect_source_evidence(structured: dict, source_fields: list[str]) -> list[
           → problem_evidence를 가져옵니다.
             (project는 background_evidence/problem_evidence로 근거가 나뉘어
             있습니다 — meeting_analysis/schemas.py Project 참고)
-      "users" / "scenarios" / "requirements.functional"
+      "users" / "requirements.functional"
           → 배열입니다. 각 항목의 evidence를 전부 모읍니다.
       "decisions[feature]"
           → decisions 중 category가 "feature"인 것만 모읍니다
@@ -135,6 +135,164 @@ def collect_source_evidence(structured: dict, source_fields: list[str]) -> list[
 
     return out
 
+def build_goals(
+    structured: dict,
+    generated_goals: list | None = None,
+) -> PlanSection:
+    """
+    3. 프로젝트 목표
+
+    노드 1의 목표가 있으면 그대로 사용합니다.
+    노드 1의 목표가 없으면 노드 2가 생성한 목표 중 검증된 원문 근거를
+    정확히 사용한 목표만 채택합니다.
+    """
+    project = structured.get("project") or {}
+    extracted_goals = project.get("goals") or []
+
+    source_fields = [
+        "project.goals",
+        "project.background",
+        "project.problem",
+        "requirements.functional",
+        "decisions[feature]",
+    ]
+
+    if extracted_goals:
+        lines: list[str] = []
+        used: list[dict] = []
+        seen: set[str] = set()
+
+        for goal in extracted_goals:
+            if not isinstance(goal, dict):
+                continue
+
+            content = str(goal.get("content", "")).strip()
+            normalized = _norm(content)
+
+            if not normalized or normalized in seen:
+                continue
+
+            seen.add(normalized)
+            lines.append(content)
+            used.append(goal)
+
+        return PlanSection(
+            no=3,
+            key="goals",
+            title="프로젝트 목표",
+            section_type=SectionType.LIST,
+            content_html=_ul(lines) if lines else "",
+            items=lines,
+            source_fields=source_fields,
+            evidence=_ev(used),
+            is_incomplete=not lines,
+        )
+
+    allowed_evidence: dict[str, str] = {}
+
+    def register(
+        item: dict,
+        evidence_key: str = "evidence",
+        status_key: str = "evidence_status",
+    ) -> None:
+        if not isinstance(item, dict):
+            return
+
+        evidence = item.get(evidence_key)
+        if not isinstance(evidence, dict):
+            return
+
+        quote = str(evidence.get("quote", "")).strip()
+        status = str(item.get(status_key, "unverified"))
+
+        if quote:
+            allowed_evidence[quote] = status
+
+    register(
+        project,
+        "background_evidence",
+        "background_evidence_status",
+    )
+    register(
+        project,
+        "problem_evidence",
+        "problem_evidence_status",
+    )
+
+    requirements = structured.get("requirements") or {}
+
+    for requirement in requirements.get("functional", []):
+        register(requirement)
+
+    for decision in structured.get("decisions", []):
+        if decision.get("category") == "feature":
+            register(decision)
+
+    lines: list[str] = []
+    verified: list[VerifiedEvidence] = []
+    seen_contents: set[str] = set()
+    seen_quotes: set[str] = set()
+
+    for generated_goal in generated_goals or []:
+        if hasattr(generated_goal, "model_dump"):
+            goal = generated_goal.model_dump()
+        elif isinstance(generated_goal, dict):
+            goal = generated_goal
+        else:
+            continue
+
+        content = str(goal.get("content", "")).strip()
+        normalized = _norm(content)
+
+        if not normalized or normalized in seen_contents:
+            continue
+
+        matched: list[VerifiedEvidence] = []
+
+        for evidence in goal.get("evidence", []):
+            if hasattr(evidence, "model_dump"):
+                evidence = evidence.model_dump()
+
+            if not isinstance(evidence, dict):
+                continue
+
+            quote = str(evidence.get("quote", "")).strip()
+
+            if allowed_evidence.get(quote) != "verified":
+                continue
+
+            matched.append(
+                VerifiedEvidence(
+                    quote=quote,
+                    status="verified",
+                )
+            )
+
+        # 검증된 근거가 하나도 없는 LLM 목표는 기획서에 넣지 않습니다.
+        if not matched:
+            continue
+
+        seen_contents.add(normalized)
+        lines.append(content)
+
+        for evidence in matched:
+            if evidence.quote in seen_quotes:
+                continue
+
+            seen_quotes.add(evidence.quote)
+            verified.append(evidence)
+
+    return PlanSection(
+        no=3,
+        key="goals",
+        title="프로젝트 목표",
+        section_type=SectionType.LIST,
+        content_html=_ul(lines) if lines else "",
+        items=lines,
+        source_fields=source_fields,
+        evidence=verified,
+        is_incomplete=not lines,
+    )
 
 def build_tech_scope(structured: dict) -> PlanSection:
     """
@@ -209,7 +367,7 @@ def build_tech_scope(structured: dict) -> PlanSection:
     )
 
     return PlanSection(
-        no=6, key="tech_scope", title="기술 및 제약사항",
+        no=6, key="tech_scope", title="기술 스택 및 제약사항",
         section_type=SectionType.LIST,
         content_html="".join(parts),
         items=items,
@@ -264,6 +422,13 @@ def build_decisions(structured: dict) -> PlanSection:
     )
 
 
-def build_all(structured: dict) -> list[PlanSection]:
-    """나열형 섹션 전부."""
-    return [build_tech_scope(structured), build_decisions(structured)]
+def build_all(
+    structured: dict,
+    generated_goals: list | None = None,
+) -> list[PlanSection]:
+    """목록형 섹션을 조립합니다."""
+    return [
+        build_goals(structured, generated_goals),
+        build_tech_scope(structured),
+        build_decisions(structured),
+    ]

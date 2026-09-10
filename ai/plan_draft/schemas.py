@@ -7,7 +7,7 @@
 |---|-------------|-----------------|-----------|------|
 | 1 | overview    | 프로젝트 개요   | narrative | LLM  |
 | 2 | problem     | 문제 정의       | narrative | LLM  |
-| 3 | users       | 대상 사용자     | narrative | LLM  |
+| 3 | goals       | 프로젝트 목표   | list      | 혼합  |
 | 4 | features    | 주요 기능       | narrative | LLM  |
 | 5 | scenarios   | 사용자 시나리오 | narrative | LLM  |
 | 6 | tech_scope  | 기술 스택 및 제약사항 | list | 코드 |
@@ -21,8 +21,8 @@
 
 ## 스키마가 두 개인 이유
 
-PlanSections     : LLM이 생성하는 서술형 5개만
-PlanDocument     : 위 + 코드가 조립하는 2개 + 시스템 필드
+PlanSections : LLM이 생성하는 서술형 3개, 조건부 목표와 주요 기능
+PlanDocument : 위 결과와 목록형 섹션 및 시스템 필드를 합친 최종 문서
 
 is_incomplete 같은 시스템 필드를 LLM 스키마에 넣으면
 모델이 "이것도 채워야 하나?" 하고 뭔가 써넣습니다.
@@ -47,33 +47,68 @@ class SectionType(str, Enum):
 # 프롬프트와 조립 코드 양쪽이 이걸 참조합니다.
 # ─────────────────────────────────────────────────────────────
 SECTION_SPEC = [
-    {"no": 1, "key": "overview",   "title": "프로젝트 개요",
-     "type": SectionType.NARRATIVE,
-     "source_fields": ["project.name", "project.background"]},
-
-    {"no": 2, "key": "problem",    "title": "문제 정의",
-     "type": SectionType.NARRATIVE,
-     "source_fields": ["project.problem"]},
-
-    {"no": 3, "key": "users",      "title": "대상 사용자",
-     "type": SectionType.NARRATIVE,
-     "source_fields": ["users"]},
-
-    {"no": 4, "key": "features",   "title": "주요 기능",
-     "type": SectionType.NARRATIVE,
-     "source_fields": ["requirements.functional", "decisions[feature]"]},
-
-    {"no": 5, "key": "scenarios",  "title": "사용자 시나리오",
-     "type": SectionType.NARRATIVE,
-     "source_fields": ["scenarios"]},
-
-    {"no": 6, "key": "tech_scope", "title": "기술 스택 및 제약사항",
-     "type": SectionType.LIST,
-     "source_fields": ["requirements.technical", "decisions[tech]", "constraints"]},
-
-    {"no": 7, "key": "decisions",  "title": "최종 결정사항",
-     "type": SectionType.LIST,
-     "source_fields": ["decisions"]},
+    {
+        "no": 1,
+        "key": "overview",
+        "title": "프로젝트 개요",
+        "type": SectionType.NARRATIVE,
+        "source_fields": ["project.name", "project.background"],
+    },
+    {
+        "no": 2,
+        "key": "problem",
+        "title": "문제 정의",
+        "type": SectionType.NARRATIVE,
+        "source_fields": ["project.problem"],
+    },
+    {
+        "no": 3,
+    "key": "goals",
+    "title": "프로젝트 목표",
+    "type": SectionType.LIST,
+    "source_fields": [
+        "project.goals",
+        "project.background",
+        "project.problem",
+        "requirements.functional",
+        "decisions[feature]",
+        ],
+    },
+    {
+        "no": 4,
+        "key": "users",
+        "title": "대상 사용자",
+        "type": SectionType.NARRATIVE,
+        "source_fields": ["users"],
+    },
+    {
+        "no": 5,
+        "key": "features",
+        "title": "주요 기능",
+        "type": SectionType.NARRATIVE,
+        "source_fields": [
+            "requirements.functional",
+            "decisions[feature]",
+        ],
+    },
+    {
+        "no": 6,
+        "key": "tech_scope",
+        "title": "기술 스택 및 제약사항",
+        "type": SectionType.LIST,
+        "source_fields": [
+            "requirements.technical",
+            "decisions[tech]",
+            "constraints",
+        ],
+    },
+    {
+        "no": 7,
+        "key": "decisions",
+        "title": "최종 결정사항",
+        "type": SectionType.LIST,
+        "source_fields": ["decisions"],
+    },
 ]
 
 NARRATIVE_KEYS = [s["key"] for s in SECTION_SPEC if s["type"] == SectionType.NARRATIVE]
@@ -82,7 +117,7 @@ LIST_KEYS = [s["key"] for s in SECTION_SPEC if s["type"] == SectionType.LIST]
 
 class Feature(BaseModel):
     """
-    4번 주요 기능의 항목 하나.
+    5번 주요 기능의 항목 하나.
 
     프론트 수정 화면이 항목 단위로 편집하는 구조라
     HTML 덩어리가 아니라 배열로 담습니다.
@@ -124,16 +159,38 @@ class NarrativeSection(BaseModel):
         ),
     )
 
+class GeneratedGoal(BaseModel):
+    """노드 1에서 목표를 찾지 못했을 때 노드 2가 보완하는 목표."""
+
+    content: str = Field(
+        ...,
+        description="배경, 문제, 기능 또는 확정된 기능 결정을 바탕으로 작성한 목표",
+    )
+    evidence: list[Evidence] = Field(
+        ...,
+        min_length=1,
+        description="목표 생성에 사용한 구조화 JSON의 원문 근거",
+    )
+
 
 class PlanSections(BaseModel):
     """LLM 응답 형태. Instructor의 response_model로 씁니다."""
+
     sections: list[NarrativeSection] = Field(..., min_length=1)
 
-    # 4번 주요 기능만 별도 배열로 받습니다.
-    # sections 안에 HTML로 넣으면 프론트가 항목별로 편집할 수 없습니다.
+    goals: list[GeneratedGoal] = Field(
+        default_factory=list,
+        max_length=3,
+        description=(
+            "project.goals가 비어 있을 때만 생성하는 보완 목표. "
+            "기존 목표가 있거나 근거가 부족하면 빈 배열."
+        ),
+    )
+
     features: list[Feature] = Field(
         default_factory=list,
-        min_length=0, max_length=7,
+        min_length=0,
+        max_length=7,
         description="주요 기능 3~7개. 원본에 기능 정보가 없으면 빈 배열.",
     )
 

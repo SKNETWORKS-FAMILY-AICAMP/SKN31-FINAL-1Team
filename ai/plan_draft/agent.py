@@ -1,11 +1,11 @@
 """
 노드 ② 기획서 생성 — 실행.
 
-  [1] 서술형 5개 생성       LLM (Instructor가 검증·재시도)
-  [2] 나열형 2개 조립       코드
-  [3] 섹션 정렬·병합        코드
-  [4] is_incomplete 판정    코드
-  [5] unresolved 전달       코드
+[1] 서술형 3개, 주요 기능, 조건부 목표 생성   LLM
+[2] 목록형 3개 섹션 조립                    코드
+[3] 섹션 정렬과 병합                       코드
+[4] is_incomplete 판정                     코드
+[5] unresolved 전달                        코드
 
 실패 처리:
   _call()이 노드②의 유일한 LLM 호출 지점이다(run()·regenerate_section()
@@ -26,8 +26,8 @@ except ImportError:  # 구버전 instructor 호환
     from instructor.exceptions import InstructorRetryException
 
 from shared.errors import NodeGenerationError
-from shared.llm_client import get_client
-from shared.retry_config import MAX_RETRIES, MAX_TOKENS, MODEL, PROVIDER, TEMPERATURE
+from shared.llm_client import build_chat_kwargs, get_client
+from shared.retry_config import MAX_RETRIES, MAX_TOKENS, MODEL, TEMPERATURE
 
 from . import list_builder
 from .prompts import (
@@ -50,25 +50,23 @@ ALLOWED_TAGS = {"p", "ul", "li", "strong"}
 
 
 def _call(system: str, messages: list[dict], response_model, context: str = ""):
-    """provider별 호출 차이를 흡수합니다.
+    """노드②의 유일한 LLM 호출 지점. 호출 인자 조립은 build_chat_kwargs()가
+    모델 계열(gpt-4o / gpt-5)에 맞게 처리한다.
 
     context: 로그에 남길 짧은 설명(예: "run" 또는 재생성 대상 section_key).
     어떤 호출이 실패했는지 로그만 보고 알 수 있게 하기 위함이다.
     """
     try:
-        client = get_client()
-        common = dict(
-            model=MODEL,
-            response_model=response_model,
-            max_retries=MAX_RETRIES,
-            temperature=TEMPERATURE,
-        )
-        if PROVIDER == "anthropic":
-            return client.messages.create(
-                system=system, max_tokens=MAX_TOKENS, messages=messages, **common
-            )
+        client = get_client(MODEL)
         return client.chat.completions.create(
-            messages=[{"role": "system", "content": system}] + messages, **common
+            **build_chat_kwargs(
+                model=MODEL,
+                messages=[{"role": "system", "content": system}] + messages,
+                response_model=response_model,
+                max_tokens=MAX_TOKENS,
+                max_retries=MAX_RETRIES,
+                temperature=TEMPERATURE,
+            )
         )
     except InstructorRetryException as e:
         logger.exception(
@@ -154,7 +152,12 @@ def run(structured: dict, proposal_id: str, glossary_text: str = "") -> PlanDocu
     by_key = {s.key: s for s in result.sections}
 
     # ── [2] 나열형 2개 조립 ──────────────────────────────────
-    list_sections = {s.key: s for s in list_builder.build_all(structured)}
+    list_sections = {
+    section.key: section
+    for section in list_builder.build_all(
+        structured,
+        generated_goals=result.goals,)
+    }
 
     # ── [3] 병합 + [4] is_incomplete 판정 ────────────────────
     sections: list[PlanSection] = []
