@@ -27,7 +27,6 @@ SYSTEM_PROMPT = """당신은 회의록에서 프로젝트 정보를 추출하는
    functional(기능) / non_functional(성능·보안·사용성)
    / data(저장·연동 데이터) / technical(기술 스택·환경)
 5. decisions.category는 feature, tech, scope 중 하나입니다.
-
 6. 한 문장 안에 "결정된 부분"과 "다음으로 미뤄진 부분"이 섞여 있으면,
    두 가지를 모두 하십시오 — 하나만 하고 끝내지 마십시오.
 
@@ -68,7 +67,7 @@ D라는 흐름(예: 재고 확인 — 검색·스캔으로 재고를 조회한�
 - tech    : 어떤 기술을 쓸지 정한 것
 - scope   : 무엇을 빼거나 미룰지 정한 것
             "제외한다", "범위에서 뺀다", "2차 개발로 이관한다",
-            "MVP에 포함하지 않는다", "~만 포함한다"가 여기 해당합니다.
+            "MVP에 포함하지 않는다", "~만 포함한다"가 여기 해당합니다. 
 
 ### constraints
 일정·기간, 인력 규모, 예산, 외부 의존성.
@@ -149,7 +148,16 @@ FEWSHOT_OUTPUT = """{
   ]
 }"""
 
+
 # 규칙 6번("결정된 부분" + "미뤄진 부분"이 한 문장에 섞인 경우) 전용 예시.
+#
+# 이 규칙을 프롬프트에 글로만 적어뒀을 때는, 모델이 결정된 부분과 미뤄진
+# 부분을 "scope" 결정 하나로 뭉뚱그리면서 이미 결정된 원칙("추가로
+# 부과한다")을 통째로 놓치는 경향이 관찰됐다(예: 핫존 가중치 정산 사례).
+# 글로 된 규칙보다 실제 입출력 예시가 이런 패턴 교정에 더 효과적이라,
+# FEWSHOT_INPUT/OUTPUT과는 다른 도메인(배송비 정책)으로 별도 예시를 둔다 —
+# 같은 도메인으로 만들면 모델이 규칙을 일반화하지 않고 표면적인 단어만
+# 따라할 위험이 있다.
 FEWSHOT_INPUT_2 = """[회의 기본정보]
 - 일시: 2026-04-02
 - 참석자: 이기획, 최개발
@@ -201,9 +209,33 @@ FEWSHOT_OUTPUT_2 = """{
 }"""
 
 
+def build_system_prompt(glossary_text: str = "") -> str:
+    """SYSTEM_PROMPT + (있다면) 사내 용어집 섹션을 붙여서 반환한다.
+
+    glossary_text가 빈 문자열이면 기존 SYSTEM_PROMPT를 그대로 반환한다 —
+    즉 용어집이 없는 호출부는 동작이 바뀌지 않는다.
+    """
+    if not glossary_text.strip():
+        return SYSTEM_PROMPT
+    return (
+        SYSTEM_PROMPT
+        + "\n\n## 사내 용어집\n"
+        "아래는 이 회사/팀에서 쓰는 용어와 그 의미입니다. 회의록에 이 용어가 "
+        "나오면 아래 정의를 기준으로 해석하십시오. 정의에 없는 용어는 기존 "
+        "규칙(회의록에 없는 내용을 만들지 않는다)을 그대로 따르십시오 — "
+        "용어집에 없다고 뜻을 지어내지 마십시오.\n\n"
+        f"{glossary_text.strip()}"
+    )
+
 
 def build_messages(meeting_text: str) -> list[dict]:
-    """few-shot 한 쌍 + 실제 입력."""
+    """few-shot 두 쌍 + 실제 입력.
+
+    두 번째 쌍(FEWSHOT_INPUT_2/OUTPUT_2)은 규칙 6번(결정된 부분과 미뤄진
+    부분이 한 문장에 섞인 경우) 전용 예시다. 첫 번째 예시만으로는 이
+    패턴에서 실패가 관찰되어 추가했다 — 관련 설명은 FEWSHOT_INPUT_2 위
+    주석 참고.
+    """
     return [
         {"role": "user", "content": FEWSHOT_INPUT},
         {"role": "assistant", "content": FEWSHOT_OUTPUT},

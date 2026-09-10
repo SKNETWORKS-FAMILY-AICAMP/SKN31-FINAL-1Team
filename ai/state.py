@@ -15,6 +15,7 @@ class PipelineState(TypedDict, total=False):
     # ---- 입력 ----
     meeting_id: str
     project_id: str
+    glossary_text: Optional[str]  # 사내 용어집 원문(선택) — 있으면 A1-1 프롬프트에 주입
 
     # ---- A1-1 출력 ----
     structured_analysis: Dict[str, Any]

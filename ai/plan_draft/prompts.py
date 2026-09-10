@@ -139,8 +139,118 @@ needs_input은 작성자에게 그대로 보여집니다.
 "어떤 정보가 있으면 채울 수 있는지"를 한 문장으로 적으십시오."""
 
 
-def build_messages(structured: dict) -> list[dict]:
-    """서술형 5개를 한 번에 생성하는 메시지."""
+def build_system_prompt(glossary_text: str = "") -> str:
+    """SYSTEM_PROMPT + (있다면) 사내 용어집 섹션을 붙여서 반환한다.
+
+    meeting_analysis/prompts.py의 build_system_prompt와 동일한 패턴.
+    구조화 JSON 안에 "핫존"처럼 정의 없는 사내 용어가 고유명사로 남아있으면,
+    node①은 그걸 그대로 옮겨 담기만 하면 되지만 node②는 문장으로 풀어
+    써야 하므로(예: "핫존에는 ~") 뜻을 모르면 설명을 생략하거나 지어낼
+    위험이 node①보다 더 큽니다 — 그래서 여기도 동일하게 주입합니다.
+    """
+    if not glossary_text.strip():
+        return SYSTEM_PROMPT
+    return (
+        SYSTEM_PROMPT
+        + "\n\n## 사내 용어집 (절대 규칙 1·2의 예외)\n"
+        "아래는 이 회사/팀에서 쓰는 용어와 그 의미입니다. 원본 JSON에 이 "
+        "용어가 나오면, 정의를 반영해 그 용어가 무엇인지 자연스러운 문장으로 "
+        "함께 설명하십시오 — 이건 절대 규칙 1·2가 금지하는 '새로운 사실 "
+        "추가'가 아닙니다. 용어의 뜻을 정확히 전달하는 것도 이 문서의 역할이며, "
+        "정의를 무시하고 용어만 반복하는 것이 오히려 더 나쁜 처리입니다. "
+        "(용어집에 없는 용어의 뜻은 여전히 지어내지 마십시오 — 이건 그대로입니다.)\n\n"
+        "예: 원본에 \"핫존 지정 및 해제는 영업 담당자가 매주 갱신한다\"가 있고, "
+        "용어집에 \"핫존: 유동인구가 많아 배포 효율이 높은 구역\"이 있으면\n"
+        "  나쁜 예: \"영업 담당자가 핫존을 지정·해제합니다\" "
+        "(정의를 무시하고 용어만 반복 — 하지 마십시오)\n"
+        "  좋은 예: \"영업 담당자가 유동인구가 많아 배포 효율이 높은 구역인 "
+        "핫존을 매주 지정·해제합니다\" (정의를 반영해 풀어 씀)\n\n"
+        f"{glossary_text.strip()}"
+    )
+
+
+# 용어집 few-shot 전용 예시.
+#
+# build_system_prompt만으로(글로 된 규칙 + 예외 명시 + 좋은예/나쁜예) 두 번
+# 시도했으나 둘 다 핫존을 정의 없이 그대로 반복하기만 했다 — "절대 규칙
+# 1·2에 없는 사실을 추가하지 말라"는 지시가 뒤에 붙은 용어집 예외 설명보다
+# 더 강하게 작동하는 것으로 보인다. node①에서도 프롬프트 글만으로는 규칙
+# 6번(결정+유보 혼재 문장)이 반영되지 않다가 실제 입출력 예시(FEWSHOT_INPUT_2)를
+# 추가하고서야 반영된 전례가 있다 — 같은 패턴이라 여기도 few-shot으로 간다.
+#
+# 실제 테스트 픽스처(hotzone_test.txt, 핫존)와 다른 도메인(고객센터 티켓
+# 관리, 패스트레인)을 쓴다. 같은 도메인이면 모델이 규칙을 일반화하지 않고
+# "핫존"이라는 표면적인 글자만 패턴매칭할 위험이 있기 때문 — node①의
+# FEWSHOT_INPUT_2가 배송비 정책이라는 별도 도메인을 쓴 이유와 동일하다.
+#
+# 용어집 정의는 실제 호출에서는 시스템 프롬프트(build_system_prompt)에
+# 들어가지만, 이 few-shot 예시의 가상 용어(패스트레인)는 실제 용어집에
+# 없으므로 이 예시 자체의 user 메시지 안에 [사내 용어집] 블록으로 직접
+# 넣어준다 — 그래야 모델이 "이 예시에서 어떤 정의를 보고 어떻게 반영했는지"를
+# 학습할 수 있다.
+FEWSHOT_GLOSSARY_INPUT = """[사내 용어집]
+패스트레인: 접수 후 1시간 이내 응답이 필요한 것으로 분류된 고객 불만 티켓
+그룹. 팀장이 매일 지정·해제하며, 패스트레인으로 지정된 티켓은 상담원 배정이
+자동으로 최우선 순위로 바뀐다.
+
+[구조화 JSON]
+{
+  "project": {
+    "name": "고객센터 티켓 관리 시스템",
+    "background": "문의량이 늘면서 응답이 늦어진다는 불만이 반복적으로 접수되고 있다",
+    "problem": "일부 문의는 처리가 지연되면 고객 이탈로 이어질 수 있다"
+  },
+  "users": [
+    {"type": "상담원", "description": "고객 문의 티켓을 확인하고 처리하는 담당자",
+     "needs": ["패스트레인으로 지정된 티켓을 놓치지 않고 먼저 확인하고 싶다"],
+     "evidence": {"quote": "상담원이 패스트레인 티켓을 놓치는 사례가 있었다"}}
+  ],
+  "requirements": {
+    "functional": [
+      {"content": "패스트레인 지정 및 해제는 팀장이 수동으로 한다",
+       "evidence": {"quote": "패스트레인 지정과 해제는 팀장이 직접 한다"}}
+    ]
+  },
+  "scenarios": [],
+  "decisions": [
+    {"category": "feature", "content": "패스트레인 티켓은 담당자 배정을 최우선으로 처리한다",
+     "evidence": {"quote": "패스트레인 티켓은 배정 순위를 최우선으로 둔다"}}
+  ]
+}"""
+
+
+FEWSHOT_GLOSSARY_OUTPUT = """{
+  "sections": [
+    {"key": "overview",
+     "content_html": "<p>고객센터 티켓 관리 시스템은 문의량이 늘면서 응답이 늦어진다는 불만이 반복적으로 접수되는 상황을 개선하기 위해 기획되었다.</p>",
+     "evidence": [{"quote": "문의량이 늘면서 응답이 늦어진다는 불만이 반복적으로 접수되고 있다"}],
+     "needs_input": ""},
+    {"key": "problem",
+     "content_html": "<p>일부 문의는 처리가 지연되면 고객 이탈로 이어질 수 있다는 문제가 있다.</p>",
+     "evidence": [{"quote": "일부 문의는 처리가 지연되면 고객 이탈로 이어질 수 있다"}],
+     "needs_input": ""},
+    {"key": "users",
+     "content_html": "<p><strong>상담원</strong>은 고객 문의 티켓을 확인하고 처리하는 담당자로, 접수 후 1시간 이내 응답이 필요한 것으로 분류된 티켓 그룹인 패스트레인 티켓을 놓치지 않고 먼저 확인하기를 원한다.</p>",
+     "evidence": [{"quote": "상담원이 패스트레인 티켓을 놓치는 사례가 있었다"}],
+     "needs_input": ""},
+    {"key": "scenarios",
+     "content_html": "",
+     "evidence": [],
+     "needs_input": ""}
+  ],
+  "features": [
+    {"title": "패스트레인 우선 처리",
+     "description": "접수 후 1시간 이내 응답이 필요한 것으로 분류된 티켓 그룹인 패스트레인을 팀장이 매일 지정·해제한다. 패스트레인으로 지정된 티켓은 담당자 배정을 최우선으로 처리한다."}
+  ]
+}"""
+
+
+def build_messages(structured: dict, glossary_text: str = "") -> list[dict]:
+    """서술형 5개를 한 번에 생성하는 메시지.
+
+    glossary_text가 있으면 FEWSHOT_GLOSSARY_INPUT/OUTPUT을 실제 입력 앞에
+    붙인다. 없으면(기존 호출부) 붙이지 않는다 — 동작 변화 없음.
+    """
     import json
 
     # LLM에 넘길 필드만 추립니다.
@@ -157,10 +267,18 @@ def build_messages(structured: dict) -> list[dict]:
             if d.get("category") == "feature"
         ],
     }
-    return [{
+
+    messages: list[dict] = []
+    if glossary_text.strip():
+        messages += [
+            {"role": "user", "content": FEWSHOT_GLOSSARY_INPUT},
+            {"role": "assistant", "content": FEWSHOT_GLOSSARY_OUTPUT},
+        ]
+    messages.append({
         "role": "user",
         "content": json.dumps(payload, ensure_ascii=False, indent=2),
-    }]
+    })
+    return messages
 
 
 def build_regenerate_messages(

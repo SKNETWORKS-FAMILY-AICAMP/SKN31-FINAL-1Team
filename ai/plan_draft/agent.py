@@ -32,9 +32,9 @@ from shared.retry_config import MAX_RETRIES, MAX_TOKENS, MODEL, PROVIDER, TEMPER
 from . import list_builder
 from .prompts import (
     REGENERATE_PROMPT,
-    SYSTEM_PROMPT,
     build_messages,
     build_regenerate_messages,
+    build_system_prompt,
 )
 from .schemas import (
     SECTION_SPEC,
@@ -144,10 +144,11 @@ def _source_is_empty(structured: dict, source_fields: list[str]) -> bool:
     return True
 
 
-def run(structured: dict, proposal_id: str) -> PlanDocument:
+def run(structured: dict, proposal_id: str, glossary_text: str = "") -> PlanDocument:
     # ── [1] 서술형 5개 생성 ──────────────────────────────────
     result: PlanSections = _call(
-        SYSTEM_PROMPT, build_messages(structured), PlanSections,
+        build_system_prompt(glossary_text), build_messages(structured, glossary_text),
+        PlanSections,
         context=f"run proposal_id={proposal_id}",
     )
     by_key = {s.key: s for s in result.sections}
@@ -274,6 +275,9 @@ def regenerate_section(
 # 개발 중 단독 실행.
 #     python -m meeting_analysis.node tests/fixtures/meeting_01.txt
 #     python -m plan_draft.agent out/meeting_01.json
+#     python -m plan_draft.agent out/hotzone_test.json tests/fixtures/glossary_sample.txt
+#                                                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+#                                          두 번째 인자(선택) — 용어집 텍스트 파일
 # ─────────────────────────────────────────────────────────────
 if __name__ == "__main__":
     import json
@@ -282,8 +286,13 @@ if __name__ == "__main__":
 
     path = Path(sys.argv[1] if len(sys.argv) > 1 else "out/meeting_01.json")
     structured = json.loads(path.read_text(encoding="utf-8"))
+    glossary_path = Path(sys.argv[2]) if len(sys.argv) > 2 else None
+    glossary_text = (
+        glossary_path.read_text(encoding="utf-8") if glossary_path else ""
+    )
+    print(f"[debug] glossary_text 길이: {len(glossary_text)}자")
 
-    doc = run(structured, proposal_id=f"P-{path.stem}")
+    doc = run(structured, proposal_id=f"P-{path.stem}", glossary_text=glossary_text)
 
     out = Path("out")
     out.mkdir(exist_ok=True)

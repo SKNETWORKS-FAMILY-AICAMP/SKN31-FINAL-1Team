@@ -1,23 +1,20 @@
 """
-노드 1 회의록 구조화 — 실행.
+노드 1 회의록 구조화 실행.
 
 검증 순서:
-  [1] 스키마 검증        Instructor가 처리 (재시도 포함)
-  [2] Evidence 원문 검증  코드 — 항목에 evidence_status 부여, 삭제 안 함
-  [3] 교차 규칙 검증      코드
+  0. 개발 관련성 판별
+  1. 스키마 검증
+  2. Evidence 원문 검증
+  3. 교차 규칙 검증
 
-[1] 이후로는 LLM을 부르지 않으므로 같은 입력에 항상 같은 결과가 나옵니다.
+개발과 무관한 회의이거나 개발 의도를 판단하기 어려운 회의는
+구조화와 기획서 생성을 진행하지 않습니다.
 
-※ 기존의 [3] 항목 처리(삭제) 단계가 사라졌습니다.
-  보존 방식으로 바뀌면서 verify_and_mark()가 검사와 표시를 함께 합니다.
+개발 관련 내용과 무관한 내용이 섞여 있으면
+개발 관련 원문만 구조화 단계에 전달합니다.
 
-실패 처리:
-  Instructor가 재시도(초기 시도 + MAX_RETRIES회)를 모두 소진하면
-  InstructorRetryException을 던진다. 이걸 그대로 위로 흘려보내면
-  호출부가 원인을 알 수 없는 채로 뭉뚱그려 처리하게 되므로, 여기서
-  로그를 남기고 원인별로 구분된 NodeGenerationError로 다시 던진다.
-  (호출부가 cause_code별로 다른 안내문을 고르는 부분은 별도 작업 —
-  shared/errors.py 참고.)
+스키마 검증은 Instructor가 처리하고 재시도를 포함합니다.
+Evidence 검증과 교차 규칙 검증은 LLM을 호출하지 않습니다.
 """
 
 import logging
@@ -27,167 +24,311 @@ from openai import APIError
 
 try:
     from instructor.core import InstructorRetryException
-except ImportError:  # 구버전 instructor 호환
+except ImportError:
     from instructor.exceptions import InstructorRetryException
 
 from shared.errors import NodeGenerationError
 from shared.llm_client import get_client
-from shared.retry_config import MAX_RETRIES, MAX_TOKENS, MODEL, PROVIDER, TEMPERATURE
+from shared.retry_config import (
+    MAX_RETRIES,
+    MAX_TOKENS,
+    MODEL,
+    PROVIDER,
+    TEMPERATURE,
+)
 
-from .prompts import SYSTEM_PROMPT, build_messages
+from .eligibility import MeetingEligibilityError, assess_meeting
+from .prompts import build_messages, build_system_prompt
 from .schemas import MeetingExtraction, MeetingStructured
 from .validators import cross_rules
-from .validators.evidence import EvidenceReport, format_report, verify_and_mark
+from .validators.evidence import (
+    EvidenceReport,
+    format_report,
+    verify_and_mark,
+)
+
 
 logger = logging.getLogger(__name__)
 
 
 @dataclass
 class NodeResult:
-    """노드 출력 + 품질 지표. graph.py에서 State로 옮겨 담습니다."""
+    """노드 출력과 품질 검증 결과."""
 
     data: dict
     evidence: EvidenceReport = None
     notes: list[str] = field(default_factory=list)
 
 
-def run(meeting_text: str, meeting_id: str) -> NodeResult:
-    # ── [1] AI 구조화 + 스키마 검증 ──────────────────────────
-    # Instructor가 JSON 파싱 · Pydantic 검증 · 실패 시 재호출까지 처리합니다.
-    try:
-        client = get_client()
-        messages = build_messages(meeting_text)
+def run(
+    meeting_text: str,
+    meeting_id: str,
+    glossary_text: str = "",
+) -> NodeResult:
+    """
+    회의록의 개발 관련성을 판별하고 관련 내용만 구조화합니다.
 
-        kwargs = dict(
+    glossary_text는 선택값입니다.
+    용어집이 없거나 빈 문자열이어도 정상적으로 실행되어야 합니다.
+    """
+
+    try:
+        if not meeting_text.strip():
+            raise MeetingEligibilityError(
+                "회의록 내용이 비어 있습니다. 회의 내용을 입력해 주세요.",
+                cause_code="MEETING_NEEDS_CLARIFICATION",
+            )
+
+        client = get_client()
+
+        # 개발 관련성 판별
+        #
+        # relevant이면 개발 관련 원문을 그대로 사용합니다.
+        # mixed이면 개발과 관련된 부분만 relevant_text로 반환합니다.
+        # irrelevant 또는 needs_clarification이면 예외가 발생하여
+        # 아래 구조화 호출까지 진행되지 않습니다.
+        eligibility, relevant_text = assess_meeting(
+            client=client,
+            meeting_text=meeting_text,
+            glossary_text=glossary_text,
             model=MODEL,
-            response_model=MeetingExtraction,
             max_retries=MAX_RETRIES,
             temperature=TEMPERATURE,
-            messages=messages,
         )
+
+        # 개발 관련 내용만 기존 구조화 프롬프트에 전달합니다.
+        messages = build_messages(relevant_text)
+        system_prompt = build_system_prompt(glossary_text)
+
+        kwargs = {
+            "model": MODEL,
+            "response_model": MeetingExtraction,
+            "max_retries": MAX_RETRIES,
+            "temperature": TEMPERATURE,
+            "messages": messages,
+        }
+
         if PROVIDER == "anthropic":
             extraction = client.messages.create(
-                system=SYSTEM_PROMPT, max_tokens=MAX_TOKENS, **kwargs
+                system=system_prompt,
+                max_tokens=MAX_TOKENS,
+                **kwargs,
             )
         else:
             extraction = client.chat.completions.create(
-                messages=[{"role": "system", "content": SYSTEM_PROMPT}] + messages,
-                **{k: v for k, v in kwargs.items() if k != "messages"},
+                messages=[
+                    {
+                        "role": "system",
+                        "content": system_prompt,
+                    },
+                    *messages,
+                ],
+                **{
+                    key: value
+                    for key, value in kwargs.items()
+                    if key != "messages"
+                },
             )
-    except InstructorRetryException as e:
-        logger.exception(
-            "노드① 회의록 구조화 실패 — 재시도 %s회 모두 스키마 검증 실패 "
-            "(meeting_id: %s)",
-            e.n_attempts, meeting_id,
-        )
+
+    except MeetingEligibilityError as error:
+        # 입력 내용에 따른 정상적인 생성 중단입니다.
+        #
+        # 백엔드에서 cause_code를 확인하여 서버 장애와 구분할 수 있도록
+        # 공통 NodeGenerationError로 변환합니다.
         raise NodeGenerationError(
-            "AI가 회의록을 정해진 형식으로 구조화하지 못했습니다"
-            f"(재시도 {e.n_attempts}회 모두 실패). "
-            "회의록 내용이 너무 짧거나 모호하지 않은지 확인해 주세요.",
+            str(error),
+            cause_code=error.cause_code,
+            node="meeting_analysis",
+            original=error,
+        ) from error
+
+    except InstructorRetryException as error:
+        logger.exception(
+            (
+                "노드 1 회의록 구조화 실패. "
+                "재시도 %s회를 모두 사용했습니다. "
+                "meeting_id=%s"
+            ),
+            error.n_attempts,
+            meeting_id,
+        )
+
+        raise NodeGenerationError(
+            (
+                "AI가 회의록을 정해진 형식으로 구조화하지 못했습니다. "
+                f"재시도 {error.n_attempts}회를 모두 사용했습니다. "
+                "회의록 내용이 너무 짧거나 모호하지 않은지 확인해 주세요."
+            ),
             cause_code="LLM_RETRY_EXHAUSTED",
             node="meeting_analysis",
-            original=e,
-        ) from e
-    except RuntimeError as e:
-        # get_client()가 OPENAI_API_KEY 미설정 시 던지는 예외.
+            original=error,
+        ) from error
+
+    except RuntimeError as error:
         logger.exception(
-            "노드① 회의록 구조화 실패 — 설정 오류 (meeting_id: %s)", meeting_id,
+            "노드 1 회의록 구조화 설정 오류. meeting_id=%s",
+            meeting_id,
         )
+
         raise NodeGenerationError(
-            "AI 서비스 설정에 문제가 있어 회의록을 분석할 수 없습니다. "
-            "관리자에게 문의해 주세요.",
+            (
+                "AI 서비스 설정에 문제가 있어 회의록을 분석할 수 없습니다. "
+                "관리자에게 문의해 주세요."
+            ),
             cause_code="CONFIG_ERROR",
             node="meeting_analysis",
-            original=e,
-        ) from e
-    except APIError as e:
+            original=error,
+        ) from error
+
+    except APIError as error:
         logger.exception(
-            "노드① 회의록 구조화 실패 — OpenAI API 호출 오류 (meeting_id: %s)",
+            "노드 1 OpenAI API 호출 오류. meeting_id=%s",
             meeting_id,
         )
+
         raise NodeGenerationError(
-            "AI 서비스 호출에 실패했습니다(네트워크 또는 서비스 오류). "
-            "잠시 후 다시 시도해 주세요.",
+            (
+                "AI 서비스 호출에 실패했습니다. "
+                "잠시 후 다시 시도해 주세요."
+            ),
             cause_code="LLM_API_ERROR",
             node="meeting_analysis",
-            original=e,
-        ) from e
-    except Exception as e:
+            original=error,
+        ) from error
+
+    except Exception as error:
         logger.exception(
-            "노드① 회의록 구조화 실패 — 알 수 없는 오류 (meeting_id: %s)",
+            "노드 1 회의록 구조화 중 예상하지 못한 오류. meeting_id=%s",
             meeting_id,
         )
+
         raise NodeGenerationError(
-            "회의록 분석 중 예상치 못한 오류가 발생했습니다.",
+            "회의록 분석 중 예상하지 못한 오류가 발생했습니다.",
             cause_code="UNKNOWN",
             node="meeting_analysis",
-            original=e,
-        ) from e
+            original=error,
+        ) from error
 
+    # 저장 및 다음 노드 전달용 데이터 생성
     data = MeetingStructured(
-        meeting_id=meeting_id, **extraction.model_dump()
+        meeting_id=meeting_id,
+        **extraction.model_dump(),
     ).model_dump(mode="json")
 
-    # ── [2] Evidence 검증 — 표시만, 삭제 안 함 ───────────────
-    report = verify_and_mark(data, meeting_text)
+    # 혼합 회의의 무관한 부분이 구조화 결과에 다시 포함되는 것을 확인하기 위해
+    # 전체 회의록이 아니라 판별 단계에서 선별한 원문을 기준으로 검증합니다.
+    evidence_report = verify_and_mark(
+        data,
+        relevant_text,
+    )
 
-    # ── [3] 교차 규칙 검증 ───────────────────────────────────
-    notes = cross_rules.check(data)
-    data["validation_notes"] = notes
+    # 필드 간 정합성 검증
+    validation_notes = cross_rules.check(data)
+    data["validation_notes"] = validation_notes
 
-    return NodeResult(data=data, evidence=report, notes=notes)
+    logger.info(
+        (
+            "회의록 구조화 완료. meeting_id=%s, "
+            "eligibility=%s, evidence_pass_rate=%.2f"
+        ),
+        meeting_id,
+        eligibility.status,
+        evidence_report.pass_rate,
+    )
+
+    return NodeResult(
+        data=data,
+        evidence=evidence_report,
+        notes=validation_notes,
+    )
 
 
-# ─────────────────────────────────────────────────────────────
-# 개발 중 단독 실행.
-#     python -m meeting_analysis.node tests/fixtures/meeting_note_1_complete.md
-# ─────────────────────────────────────────────────────────────
 if __name__ == "__main__":
     import json
     import sys
     from pathlib import Path
 
-    path = Path(sys.argv[1] if len(sys.argv) > 1
-                else "tests/fixtures/meeting_note_1_complete.md")
-    result = run(path.read_text(encoding="utf-8"), path.stem)
+    meeting_path = Path(
+        sys.argv[1]
+        if len(sys.argv) > 1
+        else "tests/fixtures/meeting_note_1_complete.md"
+    )
 
-    out = Path("out")
-    out.mkdir(exist_ok=True)
-    out_path = out / f"{path.stem}.json"
-    out_path.write_text(
-        json.dumps(result.data, ensure_ascii=False, indent=2), encoding="utf-8"
+    glossary_path = (
+        Path(sys.argv[2])
+        if len(sys.argv) > 2
+        else None
+    )
+
+    glossary_text = (
+        glossary_path.read_text(encoding="utf-8")
+        if glossary_path
+        else ""
+    )
+
+    result = run(
+        meeting_text=meeting_path.read_text(encoding="utf-8"),
+        meeting_id=meeting_path.stem,
+        glossary_text=glossary_text,
+    )
+
+    output_directory = Path("out")
+    output_directory.mkdir(exist_ok=True)
+
+    output_path = output_directory / f"{meeting_path.stem}.json"
+
+    output_path.write_text(
+        json.dumps(
+            result.data,
+            ensure_ascii=False,
+            indent=2,
+        ),
+        encoding="utf-8",
     )
 
     print("=" * 64)
-    print(f"입력: {path}")
-    print(f"출력: {out_path}")
+    print(f"입력: {meeting_path}")
+    print(f"출력: {output_path}")
     print("-" * 64)
     print(format_report(result.evidence))
 
-    if result.data.get("unresolved"):
-        print(f"\n[unresolved] {len(result.data['unresolved'])}건 "
-              "— 회의에서 논의되지 않은 항목")
-        for u in result.data["unresolved"]:
-            print(f"  · {u}")
+    unresolved = result.data.get("unresolved", [])
+
+    if unresolved:
+        print()
+        print(f"미해결 항목: {len(unresolved)}건")
+
+        for item in unresolved:
+            print(f"  {item}")
 
     if result.notes:
-        print("\n[교차 규칙 위반]")
-        for n in result.notes:
-            print(f"  · {n}")
+        print()
+        print("교차 규칙 검증 결과")
 
-    reqs = result.data["requirements"]
-    print("\n[추출 건수]")
-    for k in ["functional", "non_functional", "data", "technical"]:
-        print(f"  requirements.{k:15}: {len(reqs[k])}")
-    for k in ["users", "scenarios", "decisions", "constraints"]:
-        print(f"  {k:28}: {len(result.data[k])}")
+        for note in result.notes:
+            print(f"  {note}")
 
-    # decisions 분류별 집계 — feature/tech/scope가 골고루 나오는지 확인
-    from collections import Counter
-    cats = Counter(d["category"] for d in result.data["decisions"])
-    if cats:
-        print("\n[decisions 분류]")
-        for c, n in cats.items():
-            print(f"  {c:28}: {n}")
+    requirements = result.data["requirements"]
+
+    print()
+    print("추출 건수")
+
+    for category in [
+        "functional",
+        "non_functional",
+        "data",
+        "technical",
+    ]:
+        count = len(requirements[category])
+        print(f"  requirements.{category}: {count}")
+
+    for category in [
+        "users",
+        "scenarios",
+        "decisions",
+        "constraints",
+    ]:
+        count = len(result.data[category])
+        print(f"  {category}: {count}")
 
     print("=" * 64)

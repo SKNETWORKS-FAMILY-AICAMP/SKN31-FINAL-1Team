@@ -1,0 +1,276 @@
+{
+  "proposal_id": "P-hotzone_test",
+  "meeting_id": "hotzone_test",
+  "status": "draft",
+  "sections": [
+    {
+      "no": 1,
+      "key": "overview",
+      "title": "프로젝트 개요",
+      "section_type": "narrative",
+      "content_html": "<p>전단지 제작·관리 프로그램 2차 개발은 1차 회의에서 배포 방식 선택 기능의 필요성이 확정되었으나, 배포 방식별 세부 운영 방식과 현장 확인 절차가 정리되지 않아 이를 구체화하기 위해 진행된다.</p>",
+      "items": [],
+      "source_fields": [
+        "project.name",
+        "project.background"
+      ],
+      "evidence": [
+        {
+          "quote": "1차 회의에서 배포 방식 선택 기능의 필요성은 확정되었으나, 배포 방식별 세부 운영 방식과 현장 확인 절차가 정리되지 않아 이번 회의에서 구체화하기로 함.",
+          "status": "verified"
+        }
+      ],
+      "features": [],
+      "groups": [],
+      "needs_input": "",
+      "is_incomplete": false,
+      "edited_by_pm": false,
+      "review": {
+        "state": "pending",
+        "comment": null,
+        "reject_type": null
+      }
+    },
+    {
+      "no": 2,
+      "key": "problem",
+      "title": "문제 정의",
+      "section_type": "narrative",
+      "content_html": "<p>배포 방식별 세부 운영 방식과 현장 확인 절차가 정리되지 않은 문제가 있다.</p>",
+      "items": [],
+      "source_fields": [
+        "project.problem"
+      ],
+      "evidence": [
+        {
+          "quote": "1차 회의에서 배포 방식 선택 기능의 필요성은 확정되었으나, 배포 방식별 세부 운영 방식과 현장 확인 절차가 정리되지 않아 이번 회의에서 구체화하기로 함.",
+          "status": "verified"
+        }
+      ],
+      "features": [],
+      "groups": [],
+      "needs_input": "",
+      "is_incomplete": false,
+      "edited_by_pm": false,
+      "review": {
+        "state": "pending",
+        "comment": null,
+        "reject_type": null
+      }
+    },
+    {
+      "no": 3,
+      "key": "users",
+      "title": "대상 사용자",
+      "section_type": "narrative",
+      "content_html": "<p><strong>배포 담당자</strong>는 각 구역 배포를 마치면 스캔을 완료해야 하는 사용자로, 배포 완료 후 스캔(사진 업로드) 절차가 필요하다.</p><p><strong>영업 담당자</strong>는 유동인구가 많아 전단지 배포 효율이 높은 것으로 지정된 구역인 핫존을 관리하며, 핫존 지정 및 해제 관리 기능이 필요하다.</p>",
+      "items": [],
+      "source_fields": [
+        "users"
+      ],
+      "evidence": [
+        {
+          "quote": "배포 담당자는 각 구역 배포를 마치면 반드시 스캔을 완료해야 한다.",
+          "status": "verified"
+        },
+        {
+          "quote": "핫존 지정 및 해제는 영업 담당자가 매주 갱신한다.",
+          "status": "verified"
+        }
+      ],
+      "features": [],
+      "groups": [],
+      "needs_input": "",
+      "is_incomplete": false,
+      "edited_by_pm": false,
+      "review": {
+        "state": "pending",
+        "comment": null,
+        "reject_type": null
+      }
+    },
+    {
+      "no": 4,
+      "key": "features",
+      "title": "주요 기능",
+      "section_type": "narrative",
+      "content_html": "<p><strong>배포 방식별 운영 규칙 설정</strong></p><p>배포 방식은 직투, 가두, 삽지 세 가지로 운영하며, 각 방식에 따른 운영 규칙을 설정한다.</p><p><strong>핫존 관리</strong></p><p>유동인구가 많아 전단지 배포 효율이 높은 구역인 핫존을 영업 담당자가 매주 지정·해제하며, 핫존 지정 지역은 직투를 우선 배정한다.</p><p><strong>배포 완료 스캔 처리</strong></p><p>배포 담당자는 구역별 배포 완료 시 스캔(사진 업로드)을 반드시 완료해야 하며, 직투는 우편함 사진, 가두는 배포 장소 사진을 첨부한다.</p><p><strong>정산 대상 집계</strong></p><p>배포 완료 건에 한해 정산 대상으로 집계하며, 스캔 미완료 건은 정산에서 제외한다.</p>",
+      "items": [
+        "배포 방식별 운영 규칙 설정",
+        "핫존 관리",
+        "배포 완료 스캔 처리",
+        "정산 대상 집계"
+      ],
+      "source_fields": [
+        "requirements.functional",
+        "decisions[feature]"
+      ],
+      "evidence": [
+        {
+          "quote": "배포 방식은 직투, 가두, 삽지 세 가지로 운영한다.",
+          "status": "verified"
+        },
+        {
+          "quote": "핫존 지정 및 해제는 영업 담당자가 매주 갱신한다.",
+          "status": "verified"
+        },
+        {
+          "quote": "배포 담당자는 각 구역 배포를 마치면 반드시 스캔을 완료해야 한다.",
+          "status": "verified"
+        },
+        {
+          "quote": "배포 완료 건에 한해 정산 대상으로 집계하며, 스캔 미완료 건은 정산에서 제외한다.",
+          "status": "verified"
+        },
+        {
+          "quote": "핫존 지정 지역은 직투를 우선 배정하며, 지정·해제는 영업 담당자가 매주 갱신한다.",
+          "status": "verified"
+        },
+        {
+          "quote": "배포 담당자는 구역별 배포 완료 시 스캔(사진 업로드)을 반드시 완료해야 한다.",
+          "status": "verified"
+        },
+        {
+          "quote": "스캔 미완료 건은 정산 대상에서 제외한다.",
+          "status": "verified"
+        },
+        {
+          "quote": "직투는 우편함 사진, 가두는 배포 장소 사진을 스캔 시 첨부하도록 한다.",
+          "status": "verified"
+        }
+      ],
+      "features": [
+        {
+          "title": "배포 방식별 운영 규칙 설정",
+          "description": "배포 방식은 직투, 가두, 삽지 세 가지로 운영하며, 각 방식에 따른 운영 규칙을 설정한다."
+        },
+        {
+          "title": "핫존 관리",
+          "description": "유동인구가 많아 전단지 배포 효율이 높은 구역인 핫존을 영업 담당자가 매주 지정·해제하며, 핫존 지정 지역은 직투를 우선 배정한다."
+        },
+        {
+          "title": "배포 완료 스캔 처리",
+          "description": "배포 담당자는 구역별 배포 완료 시 스캔(사진 업로드)을 반드시 완료해야 하며, 직투는 우편함 사진, 가두는 배포 장소 사진을 첨부한다."
+        },
+        {
+          "title": "정산 대상 집계",
+          "description": "배포 완료 건에 한해 정산 대상으로 집계하며, 스캔 미완료 건은 정산에서 제외한다."
+        }
+      ],
+      "groups": [],
+      "needs_input": "",
+      "is_incomplete": false,
+      "edited_by_pm": false,
+      "review": {
+        "state": "pending",
+        "comment": null,
+        "reject_type": null
+      }
+    },
+    {
+      "no": 5,
+      "key": "scenarios",
+      "title": "사용자 시나리오",
+      "section_type": "narrative",
+      "content_html": "",
+      "items": [],
+      "source_fields": [
+        "scenarios"
+      ],
+      "evidence": [],
+      "features": [],
+      "groups": [],
+      "needs_input": "",
+      "is_incomplete": true,
+      "edited_by_pm": false,
+      "review": {
+        "state": "pending",
+        "comment": null,
+        "reject_type": null
+      }
+    },
+    {
+      "no": 6,
+      "key": "tech_scope",
+      "title": "기술 및 제약사항",
+      "section_type": "list",
+      "content_html": "",
+      "items": [],
+      "source_fields": [
+        "requirements.technical",
+        "requirements.non_functional",
+        "requirements.data",
+        "decisions[tech]",
+        "constraints",
+        "decisions[scope]"
+      ],
+      "evidence": [],
+      "features": [],
+      "groups": [],
+      "needs_input": "",
+      "is_incomplete": true,
+      "edited_by_pm": false,
+      "review": {
+        "state": "pending",
+        "comment": null,
+        "reject_type": null
+      }
+    },
+    {
+      "no": 7,
+      "key": "decisions",
+      "title": "최종 결정사항",
+      "section_type": "list",
+      "content_html": "<ul><li>[기능] 배포 방식은 직투, 가두, 삽지 세 가지로 운영한다.</li><li>[기능] 핫존 지정 지역은 직투를 우선 배정하며, 지정·해제는 영업 담당자가 매주 갱신한다.</li><li>[기능] 배포 담당자는 구역별 배포 완료 시 스캔(사진 업로드)을 반드시 완료해야 한다.</li><li>[기능] 스캔 미완료 건은 정산 대상에서 제외한다.</li><li>[기능] 직투는 우편함 사진, 가두는 배포 장소 사진을 스캔 시 첨부하도록 한다.</li></ul>",
+      "items": [
+        "[기능] 배포 방식은 직투, 가두, 삽지 세 가지로 운영한다.",
+        "[기능] 핫존 지정 지역은 직투를 우선 배정하며, 지정·해제는 영업 담당자가 매주 갱신한다.",
+        "[기능] 배포 담당자는 구역별 배포 완료 시 스캔(사진 업로드)을 반드시 완료해야 한다.",
+        "[기능] 스캔 미완료 건은 정산 대상에서 제외한다.",
+        "[기능] 직투는 우편함 사진, 가두는 배포 장소 사진을 스캔 시 첨부하도록 한다."
+      ],
+      "source_fields": [
+        "decisions"
+      ],
+      "evidence": [
+        {
+          "quote": "배포 방식은 직투, 가두, 삽지 세 가지로 운영한다.",
+          "status": "verified"
+        },
+        {
+          "quote": "핫존 지정 지역은 직투를 우선 배정하며, 지정·해제는 영업 담당자가 매주 갱신한다.",
+          "status": "verified"
+        },
+        {
+          "quote": "배포 담당자는 구역별 배포 완료 시 스캔(사진 업로드)을 반드시 완료해야 한다.",
+          "status": "verified"
+        },
+        {
+          "quote": "스캔 미완료 건은 정산 대상에서 제외한다.",
+          "status": "verified"
+        },
+        {
+          "quote": "직투는 우편함 사진, 가두는 배포 장소 사진을 스캔 시 첨부하도록 한다.",
+          "status": "verified"
+        }
+      ],
+      "features": [],
+      "groups": [],
+      "needs_input": "",
+      "is_incomplete": false,
+      "edited_by_pm": false,
+      "review": {
+        "state": "pending",
+        "comment": null,
+        "reject_type": null
+      }
+    }
+  ],
+  "unresolved": [
+    "핫존 가중치 정산 수치가 정해지지 않았습니다.",
+    "삽지 배포 업체 연동 방식이 논의되지 않았습니다.",
+    "비기능 요구사항(성능·보안)이 회의에서 논의되지 않았습니다.",
+    "사용자 시나리오가 회의에서 구체적으로 언급되지 않았습니다.",
+    "데이터 저장 방식이 논의되지 않았습니다."
+  ]
+}
