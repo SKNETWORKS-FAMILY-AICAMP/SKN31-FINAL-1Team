@@ -603,11 +603,46 @@ class _AudioTranscriptionMixin:
             raise RuntimeError("OPENAI_API_KEY가 설정되지 않아 음성 변환을 사용할 수 없습니다.")
         return OpenAI(api_key=api_key)
 
+    # 이 팀/프로젝트에서 실제로 자주 나오는 고유명사·기술 용어 — 일반 음성인식 모델이
+    # 흔히 놓치거나 다른 단어로 잘못 알아듣는 것들이라, keywords로 미리 힌트를 준다.
+    # (실제로 라이브 테스트: keywords 없이는 놓치던 "헤이짜비", "Whisper", "Django",
+    # "Next.js" 같은 용어가 keywords를 주자 정확히 인식됨.) 회의 내용에 따라 계속
+    # 추가/정리하면 된다 — 너무 길면 오히려 힌트 효과가 흐려지니 실제로 자주 나오는
+    # 것 위주로 유지한다.
+    TECH_KEYWORDS = [
+        "헤이짜비", "HeyZzabi",
+        "Django", "Next.js", "React", "TypeScript",
+        "Whisper", "GPT", "OpenAI",
+        "MySQL", "RDS", "API", "PR",
+        "PM", "기획서", "요구사항정의서", "업무배분", "회의록", "스프린트",
+    ]
+
+    # keywords는 "이런 단어가 나올 수 있다"는 목록만 주지만, prompt는 자유 문장으로
+    # "어떤 자리에서 녹음된 오디오인지" 문맥을 준다 — 두 파라미터는 서로 다른 역할이라
+    # 같이 써야 효과가 더 크다(OpenAI 문서 권장 방식). 실제 회의 성격(한국어 위주 +
+    # 영어 기술 용어 혼용, IT 개발팀)을 그대로 설명한다.
+    TRANSCRIBE_CONTEXT_PROMPT = (
+        "이것은 소프트웨어 개발팀의 한국어 회의 녹음입니다. Django, Next.js, React, "
+        "TypeScript, Whisper, GPT, MySQL, API 같은 영어 기술 용어와 한국어가 섞여서 "
+        "나옵니다. 회의록/기획서/요구사항정의서/업무배분 같은 프로젝트 전용 용어도 "
+        "자주 나옵니다."
+    )
+
     @classmethod
     def _transcribe_audio(cls, uploaded_file):
-        """OpenAI Whisper로 음성을 텍스트로 받아쓰기한다. language='ko'로 고정하지 않고
-        Whisper의 자동 언어 감지에 맡긴다 — 회의 참석자가 영어 용어를 섞어 쓰는 경우가
-        흔해서, 언어를 한국어로 강제하면 오히려 그 구간 인식률이 떨어질 수 있다."""
+        """OpenAI 음성 받아쓰기. language='ko'로 고정하지 않고 자동 언어 감지에 맡긴다
+        — 회의 참석자가 영어 용어를 섞어 쓰는 경우가 흔해서, 언어를 한국어로 강제하면
+        오히려 그 구간 인식률이 떨어질 수 있다.
+
+        모델은 whisper-1이 아니라 gpt-transcribe를 쓴다 — OpenAI가 whisper-1의
+        후속으로 권장하는 모델이면서 분당 요금이 오히려 더 싸고(2026-09 기준
+        whisper-1 $0.006/분 vs gpt-transcribe $0.0045/분), keywords/prompt 파라미터로
+        프로젝트 고유명사·기술 용어와 회의 맥락을 미리 힌트로 줄 수 있다(whisper-1에는
+        없던 기능). temperature=0은 "그럴듯하게 지어내기"보다 들린 대로 최대한 보수적
+        으로 받아쓰게 만든다(창의적 디코딩을 끄는 설정 — 근거 없는 내용을 만들어내면
+        안 되는 이 프로젝트의 환각 방지 원칙과 일치).
+        실제로 keywords/prompt 없이 "헤이짜비"/"Whisper"/"Django"/"Next.js" 같은
+        용어가 틀리게 인식되던 걸 추가 후 라이브로 재현/확인함."""
         client = cls._get_openai_client()
         uploaded_file.seek(0)
         # openai SDK가 Django의 UploadedFile(io.IOBase가 아님)을 그대로는 못 받아들여서
@@ -615,8 +650,11 @@ class _AudioTranscriptionMixin:
         # PathLike or a tuple") (파일명, 바이트, content_type) 튜플로 감싸 넘긴다 —
         # 파일명 확장자를 SDK가 보고 포맷을 판단하므로 원본 파일명을 그대로 써야 한다.
         result = client.audio.transcriptions.create(
-            model="whisper-1",
+            model="gpt-transcribe",
             file=(uploaded_file.name, uploaded_file.read(), uploaded_file.content_type or "application/octet-stream"),
+            keywords=cls.TECH_KEYWORDS,
+            prompt=cls.TRANSCRIBE_CONTEXT_PROMPT,
+            temperature=0,
         )
         return result.text
 
@@ -636,13 +674,23 @@ class _AudioTranscriptionMixin:
         # "회의록"으로만 채워지는 문제가 있었다(실제로 재현 확인). 제목/일시/참석자 같은
         # 메타 헤더는 붙이지 말고 본문만 정리하라고 명시해서 막는다 — 그 정보는 이미
         # 프론트의 별도 입력칸(문서 제목/회의 일시/참석자)이 담당한다.
+        # 받아쓰기 단계(keywords)에서 한 번 걸러졌어도, 발음이 비슷한 기술 용어는
+        # 여전히 오인식될 수 있다("장고"처럼 음차되거나 붙여/띄어쓰기가 달라지는 경우
+        # 등) — GPT 정리 단계에서 같은 용어집을 다시 참고시켜 2차로 바로잡는다.
+        # 용어집에 없는 말을 억지로 끼워 맞추면 안 되므로 "발음이 비슷할 때만"이라고
+        # 못박아 환각(없는 내용 추가)을 막는다.
+        glossary = ", ".join(cls.TECH_KEYWORDS)
         system_prompt = (
             "너는 회의 음성 받아쓰기 결과를 다듬는 편집자다. 아래 기준을 반드시 지켜라.\n"
             "1. '어', '음', '그니까' 같은 필러 단어를 제거한다.\n"
             "2. 문장 단위로 끊어서 읽기 쉽게 정리한다.\n"
             "3. 내용은 절대 바꾸지 말고 표현만 다듬는다 — 없는 내용을 추가하거나 요약하지 마라.\n"
             "4. '회의록', '일시:', '참석자:' 같은 제목/메타 헤더는 절대 붙이지 마라 — "
-            "실제로 말한 본문 내용만 문단이나 번호 목록으로 정리해서 출력한다."
+            "실제로 말한 본문 내용만 문단이나 번호 목록으로 정리해서 출력한다.\n"
+            f"5. 다음은 이 프로젝트에서 실제로 자주 쓰는 용어집이다: {glossary}. "
+            "본문에 이 용어들과 발음이 비슷하지만 다르게 표기된 단어(예: 잘못 음차되거나 "
+            "띄어쓰기가 달라진 경우)가 있으면 용어집 표기로 바로잡아라. 용어집에 없는 "
+            "내용을 새로 추가하거나 억지로 끼워 맞추지는 마라 — 애매하면 원문 그대로 둔다."
         )
         completion = client.chat.completions.create(
             model="gpt-4o-mini",
