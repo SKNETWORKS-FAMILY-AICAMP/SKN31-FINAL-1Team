@@ -11,12 +11,14 @@ attrs==26.1.0
 billiard==4.2.4
 celery==5.6.3
 certifi==2026.7.22
+cffi==2.1.1
 charset-normalizer==3.5.1
 click==8.4.2
 click-didyoumean==0.3.1
 click-plugins==1.1.1.2
 click-repl==0.3.0
 comm==0.2.3
+cryptography==50.0.1
 debugpy==1.8.21
 distro==1.9.0
 django==6.0.7
@@ -76,6 +78,7 @@ multidict==6.7.1
 mysqlclient==2.2.8
 nest-asyncio2==1.7.2
 numpy==2.5.2
+olefile==0.47
 openai==2.54.0
 openpyxl==3.1.5
 orjson==3.12.0
@@ -93,17 +96,13 @@ psutil==7.2.2
 psycopg2-binary==2.9.12
 ptyprocess==0.7.0
 pure-eval==0.2.3
+pycparser==3.0
 pydantic==2.13.4
 pydantic-core==2.46.4
 pydantic-settings==2.15.0
 pygments==2.21.0
 pygraphviz==2.0.1
-# .hwp(HWPv5) 회의록 첨부파일 텍스트 추출용 — hwp5txt CLI를 서브프로세스로 호출 (2026-09-01 추가)
 pyhwp==0.1b15
-cffi==2.1.1
-cryptography==50.0.1
-olefile==0.47
-pycparser==3.0
 pyjwt==2.13.0
 pymysql==1.2.0
 pypdf==6.16.2
