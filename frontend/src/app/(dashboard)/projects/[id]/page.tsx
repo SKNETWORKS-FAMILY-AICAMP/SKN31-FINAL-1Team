@@ -48,7 +48,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   const [activeTab, setActiveTab] = useState<"KANBAN" | "WBS" | "SETTINGS">("KANBAN");
   const [search, setSearch] = useState("");
 
-  // Project Settings form
+  // 프로젝트 설정(이름/설명 수정) 폼 상태
   const [settingsName, setSettingsName] = useState("");
   const [settingsDescription, setSettingsDescription] = useState("");
   const [savingSettings, setSavingSettings] = useState(false);

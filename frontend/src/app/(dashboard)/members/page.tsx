@@ -116,7 +116,7 @@ export default function MembersPage() {
   const [jobRoleOptions, setJobRoleOptions] = useState<CodeOption[]>([]);
   const [statusOptions, setStatusOptions] = useState<CodeOption[]>([]);
 
-  // Add Employee Modal
+  // 직원 추가 모달
   const [addModal, setAddModal] = useState(false);
   const [newUsername, setNewUsername] = useState("");
   const [newLastName, setNewLastName] = useState("");
@@ -128,7 +128,7 @@ export default function MembersPage() {
   const [newHireDate, setNewHireDate] = useState("");
   const [adding, setAdding] = useState(false);
 
-  // Edit Modal
+  // 직원 수정 모달
   const [editModal, setEditModal] = useState<{
     id: string; lastName: string; firstName: string; department: string; roleCode: string;
     phone: string; employeeNo: string; position: string; jobRole: string; status: EmployeeStatus;
@@ -136,7 +136,7 @@ export default function MembersPage() {
   } | null>(null);
   const [editing, setEditing] = useState(false);
 
-  // Delete Confirm Modal
+  // 삭제 확인 모달
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
 
   const menuRef = useRef<HTMLDivElement>(null);
@@ -625,7 +625,7 @@ export default function MembersPage() {
         ))}
       </div>
 
-      {/* Add Employee Modal */}
+      {/* 직원 추가 모달 */}
       {addModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
           <div className="bg-background border border-border rounded-2xl p-6 shadow-2xl max-w-sm w-full mx-4">
@@ -754,7 +754,7 @@ export default function MembersPage() {
         </div>
       )}
 
-      {/* Delete Confirm Modal */}
+      {/* 삭제 확인 모달 */}
       {deleteTarget && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
           <div className="bg-background border border-border rounded-2xl p-6 shadow-2xl max-w-sm w-full mx-4">

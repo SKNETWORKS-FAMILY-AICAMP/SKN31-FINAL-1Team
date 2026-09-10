@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { useAuth } from "@/lib/auth";
 import { apiFetch } from "@/lib/api/client";
-import { User as UserIcon, Mail, Shield, KeyRound, Loader2, CheckCircle2, X, Phone, Pencil } from "lucide-react";
+import { Mail, Shield, KeyRound, Loader2, CheckCircle2, X, Phone, Pencil } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { PROJECT_SUGGESTIONS } from "@/lib/employeeOptions";
 import TagAutocomplete from "@/components/ui/TagAutocomplete";

@@ -5,7 +5,7 @@ import {
   LineChart, Line, BarChart, Bar, AreaChart, Area, XAxis, YAxis, 
   CartesianGrid, ResponsiveContainer, PieChart, Pie, Cell, Tooltip
 } from "recharts";
-import { Loader2, TrendingUp, Users, Clock, Target, CheckCircle2, AlertTriangle, Layers } from "lucide-react";
+import { Loader2, TrendingUp, Users, Clock, Target, CheckCircle2, Layers } from "lucide-react";
 import { apiFetch } from "@/lib/api/client";
 
 type AnalyticsDto = {
