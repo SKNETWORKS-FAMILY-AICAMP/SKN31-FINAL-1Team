@@ -2711,12 +2711,13 @@ function RequirementSection({
             </button>
           )
         )}
-        {/* 기획서 탭의 PDF/PPTX 다운로드와 같은 자리(하단 좌측) — 요구사항정의서는
-            표라서 PDF 대신 엑셀(원본 양식과 같은 컬럼)로, PPTX는 표 슬라이드로
-            내보낸다. 상태와 무관하게 항상 노출(초안 단계에서도 팀 공유용으로 뽑아볼
-            수 있어야 함). */}
-        <div className="flex justify-between items-center mt-3">
-          <div className="flex items-center gap-2">
+        {/* 기획서 탭의 하단 액션 줄(flex justify-end items-center gap-3 pt-2 +
+            mr-auto 다운로드 그룹)과 구조·클래스를 그대로 맞춘다(사용자 요청 —
+            "요구사항정의서 다운로드 버튼도 기획서와 통일"). 요구사항정의서는 표라서
+            PDF 대신 엑셀(원본 양식과 같은 컬럼)로, PPTX는 표 슬라이드로 내보낸다.
+            상태와 무관하게 항상 노출(초안 단계에서도 팀 공유용으로 뽑아볼 수 있어야 함). */}
+        <div className="flex justify-end items-center gap-3 pt-2">
+          <div className="flex items-center gap-2 mr-auto">
             <button onClick={handleReqSpecExcel} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 text-xs font-semibold transition-colors">
               <FileSpreadsheet className="w-3.5 h-3.5" /> Excel 다운로드
             </button>
