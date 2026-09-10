@@ -7,6 +7,7 @@ import {
   MessageSquare, RotateCcw, ShieldCheck
 } from "lucide-react";
 import { apiFetch } from "@/lib/api/client";
+import { Toast } from "@/components/ui/Toast";
 
 type Task = {
   id: number;
@@ -29,6 +30,7 @@ export default function ApprovalsPage() {
   const [processingId, setProcessingId] = useState<number | null>(null);
   const [rejectModal, setRejectModal] = useState<{ id: number; title: string } | null>(null);
   const [rejectReason, setRejectReason] = useState("");
+  const [errorToast, setErrorToast] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchTasks = async () => {
@@ -44,8 +46,8 @@ export default function ApprovalsPage() {
 
         const data = await apiFetch<Task[]>(url);
         setTasks(data);
-      } catch (e) {
-        console.error(e);
+      } catch (e: any) {
+        setErrorToast(e.message || "승인 대기 목록을 불러오지 못했습니다.");
       } finally {
         setLoading(false);
       }
@@ -61,8 +63,8 @@ export default function ApprovalsPage() {
         body: JSON.stringify({ status_code: "APPROVED" }),
       });
       setTasks(prev => prev.filter(t => t.id !== taskId));
-    } catch (e) {
-      console.error(e);
+    } catch (e: any) {
+      setErrorToast(e.message || "승인 처리에 실패했습니다.");
     } finally {
       setProcessingId(null);
     }
@@ -79,8 +81,8 @@ export default function ApprovalsPage() {
       setTasks(prev => prev.filter(t => t.id !== rejectModal.id));
       setRejectModal(null);
       setRejectReason("");
-    } catch (e) {
-      console.error(e);
+    } catch (e: any) {
+      setErrorToast(e.message || "반려 처리에 실패했습니다.");
     } finally {
       setProcessingId(null);
     }
@@ -258,6 +260,8 @@ export default function ApprovalsPage() {
           </div>
         </div>
       )}
+
+      <Toast message={errorToast} variant="error" onDismiss={() => setErrorToast(null)} />
     </div>
   );
 }
