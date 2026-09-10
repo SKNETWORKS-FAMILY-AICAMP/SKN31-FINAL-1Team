@@ -1394,6 +1394,26 @@ function NoteDetail({
           </button>
         )}
 
+        {/* 2026-09-10: 팀원 요청으로 추가한 "재생성" 버튼 — analyze 엔드포인트가 이미
+            update_or_create라 기존 기획서 위에 덮어써도 백엔드 수정 없이 안전하다. 다만
+            검토요청 이후(PENDING_REVIEW/APPROVED)에는 노출하지 않는다 — 승인된 기획서 내용이
+            사용자가 인지하지 못한 채 AI 재생성으로 통째로 바뀌면 안 되기 때문(검토요청 버튼과
+            같은 조건). "직접수정"으로 손댄 내용도 재생성하면 사라지므로 실행 전 확인창을 띄운다. */}
+        {spec && !isPM && canGenerate && (status === "DRAFT" || status === "REJECTED") && (
+          <button
+            onClick={() => {
+              if (window.confirm("기획서를 다시 생성하면 현재 내용(직접 수정한 부분 포함)이 AI 결과로 덮어써집니다. 계속하시겠습니까?")) {
+                onGenerateSpec();
+              }
+            }}
+            disabled={busy === busyKey("generate")}
+            className="flex items-center gap-2 px-3 py-2 rounded-lg bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 text-xs font-semibold transition-colors disabled:opacity-50"
+          >
+            {busy === busyKey("generate") ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RotateCcw className="w-3.5 h-3.5" />}
+            재생성
+          </button>
+        )}
+
         {/* 검토요청은 하단, 승인/반려는 상단 우측 — "직접수정"도 하단에 있어서 사용자
             흐름상 하단에 두는 게 더 자연스럽다는 판단으로 다시 하단으로 내렸다. */}
         {spec && !isPM && canGenerate && (status === "DRAFT" || status === "REJECTED") && (
