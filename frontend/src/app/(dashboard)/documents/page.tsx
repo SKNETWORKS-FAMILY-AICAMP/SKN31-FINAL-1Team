@@ -1117,8 +1117,13 @@ export default function DocumentsPage() {
           )}
         </div>
 
-        {/* Detail panel */}
-        <div className="glass rounded-2xl border border-border p-6 min-h-[500px]">
+        {/* Detail panel. min-w-0: 이 div는 2단 그리드(360px_minmax(0,1fr))의 직접
+            그리드 아이템이다. 트랙 자체를 minmax(0,1fr)로 잡아도 그리드 "아이템"의
+            기본 min-width는 auto(=콘텐츠의 최소 폭)라서, 안쪽 깊숙이 있는 넓은 콘텐츠
+            (Gantt 등)가 있으면 이 아이템이, 결국 트랙 전체가 같이 넓어져 버린다(팀원
+            리포트: WBS 펼쳐도 하단 스크롤이 안 생기고 카드 자체가 넓어짐) — min-w-0으로
+            그 기본값을 꺼야 안쪽의 overflow-x-auto가 실제로 스크롤로 동작한다. */}
+        <div className="glass rounded-2xl border border-border p-6 min-h-[500px] min-w-0">
           {!selectedNote ? (
             <div className="h-full flex items-center justify-center text-muted-foreground text-sm py-20">
               왼쪽에서 문서를 선택하거나 새로 등록해주세요.
