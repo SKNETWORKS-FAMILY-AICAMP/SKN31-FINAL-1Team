@@ -867,7 +867,7 @@ export default function DocumentsPage() {
 
   return (
     <div className="w-full space-y-6 animate-in fade-in duration-500">
-      <div className="flex items-center justify-between flex-wrap gap-4">
+      <div className="flex items-center justify-between flex-wrap gap-4 print:hidden">
         <div>
           <h1 className="text-xl font-bold">문서생성</h1>
           <p className="text-sm text-muted-foreground mt-1">
@@ -883,7 +883,7 @@ export default function DocumentsPage() {
           예전처럼 계속 클릭 가능하게 둔다 — 승인된 기획서를 다시 못 열어보는(PDF/PPTX
           다운로드도 못 하는) 예전 버그는 "완료=잠금"이 아니라 "미래=잠금"이라 재현되지
           않는다. 지금 진행 중인 단계는 강조 링 + 완료는 체크, 미래는 자물쇠 아이콘. */}
-      <div className="flex items-center">
+      <div className="flex items-center print:hidden">
         {(() => {
           const hasConfirmedTasks = hasConfirmedTasksFor(activeReqDef);
           const currentStage = stageOf(activeSpec, activeReqDef, hasConfirmedTasks);
@@ -926,8 +926,13 @@ export default function DocumentsPage() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-[360px_minmax(0,1fr)] gap-6 items-start">
-        {/* Document list */}
-        <div className="glass rounded-2xl border border-border p-4 space-y-3">
+        {/* Document list — PDF 다운로드(window.print())는 #print-area 외 나머지를
+            visibility:hidden으로만 숨기는데, 이 목록은 스크롤 없이 카드 전부(100개+)를
+            그대로 렌더링해서 visibility:hidden이어도 레이아웃 높이는 그대로 차지한다.
+            그 결과 body 전체 높이가 목록 길이만큼 부풀어서 실제 기획서 뒤에 빈 페이지가
+            수십 장 따라붙는 버그가 있었다(실제 보고됨) — print-area의 조상이 아니라
+            형제 요소라 display:none(print:hidden)으로 완전히 레이아웃에서 빼도 안전하다. */}
+        <div className="glass rounded-2xl border border-border p-4 space-y-3 print:hidden">
           {!isPM && (
             <button
               onClick={() => setNewDocModalOpen(true)}
