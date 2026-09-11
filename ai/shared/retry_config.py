@@ -78,7 +78,7 @@ class ModelProfile:
 
 
 # 위에서부터 첫 번째로 접두사가 맞는 프로필을 쓴다. 순서 주의:
-# 더 구체적인 접두사(gpt-5-chat, gpt-5.6)를 넓은 접두사(gpt-5)보다 먼저 둔다.
+# 더 구체적인 접두사(gpt-5-chat)를 넓은 접두사(gpt-5)보다 먼저 둔다.
 MODEL_PROFILES: list[tuple[tuple[str, ...], ModelProfile]] = [
     (
         ("gpt-4o", "gpt-4.1", "gpt-4-", "gpt-3.5"),
@@ -99,29 +99,27 @@ MODEL_PROFILES: list[tuple[tuple[str, ...], ModelProfile]] = [
         ),
     ),
     (
-        # gpt-5.6-* / gpt-6-* 는 /v1/chat/completions에서 function tools를
-        # reasoning_effort와 함께 못 쓴다 (400: "use /v1/responses or set
-        # reasoning_effort to 'none'"). instructor를 JSON 모드로 돌리면
-        # reasoning_effort까지 정상 동작한다. gpt-5(무印) / o-시리즈는 tools 그대로 OK.
-        # ── 반드시 아래 ("gpt-5", ...) 항목보다 먼저 와야 gpt-5.6-*가 여기 걸린다.
-        ("gpt-5.6", "gpt-6"),
+        ("gpt-5", "o1", "o1-", "o3", "o3-", "o4", "o4-"),
         ModelProfile(
-            label="추론 계열 gpt-5.6 / gpt-6 (JSON 모드)",
+            label="추론 계열 (gpt-5 / gpt-5.6-* / o-시리즈)",
+            supports_temperature=False,
+            supports_reasoning_effort=True,
+            default_max_tokens=32768,
+            default_reasoning_effort="low",
+        ),
+    ),
+    (
+        # gpt-6-astra는 /v1/chat/completions에서 function tools를 못 쓴다
+        # ("use /v1/responses or set reasoning_effort to 'none'") — 그래서
+        # instructor를 JSON 모드로 돌린다. reasoning_effort는 JSON 모드에서는 OK.
+        ("gpt-6",),
+        ModelProfile(
+            label="추론 계열 gpt-6 (JSON 모드)",
             supports_temperature=False,
             supports_reasoning_effort=True,
             default_max_tokens=32768,
             default_reasoning_effort="low",
             instructor_mode="json",
-        ),
-    ),
-    (
-        ("gpt-5", "o1", "o1-", "o3", "o3-", "o4", "o4-"),
-        ModelProfile(
-            label="추론 계열 (gpt-5 / o-시리즈)",
-            supports_temperature=False,
-            supports_reasoning_effort=True,
-            default_max_tokens=32768,
-            default_reasoning_effort="low",
         ),
     ),
 ]

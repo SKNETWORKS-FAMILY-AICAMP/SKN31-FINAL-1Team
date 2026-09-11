@@ -107,7 +107,7 @@ def extract_experience_tags_batch(
 
 
 def assignee_mapping_node(state: Dict[str, Any]) -> Dict[str, Any]:
-    missing = [k for k in ("raw_employee_profiles", "tasks", "needed_roles") if k not in state]
+    missing = [k for k in ("raw_employee_profiles", "tasks") if k not in state]
     if missing:
         return {"error": f"MISSING_INPUT: state{missing} — 호출부가 미리 채워야 함"}
 
@@ -126,7 +126,7 @@ def assignee_mapping_node(state: Dict[str, Any]) -> Dict[str, Any]:
             _experience_tags_cache[text] = tags
 
     # LLM 호출 전, 후보를 코드로 먼저 추린다 (rule_filter.py 참고)
-    candidates = filter_candidates(raw_profiles, state["tasks"], state["needed_roles"])
+    candidates = filter_candidates(raw_profiles, state["tasks"])
 
     tags_by_employee: Dict[str, ExtractedExperienceTags] = {}
     to_call: List[RawEmployeeProfile] = []
@@ -173,6 +173,7 @@ def assignee_mapping_node(state: Dict[str, Any]) -> Dict[str, Any]:
             EmployeeFitnessProfile(
                 employee_id=profile.employee_id,
                 skills=profile.skills,  # 이미 구조화된 값 — 코드가 그대로 복사, LLM 관여 없음
+                skill_levels=profile.skill_levels,  # 2026-09-11 (Phase 3): 숙련도도 그대로 통과
                 certifications=profile.certifications,  # 이미 구조화된 값 — 코드가 그대로 복사
                 past_similar_tasks=tags.tags,  # LLM이 만든 값
             ).model_dump(mode="json")

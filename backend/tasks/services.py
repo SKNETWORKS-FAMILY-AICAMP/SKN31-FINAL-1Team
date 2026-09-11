@@ -11,12 +11,33 @@ from requirements.models import RequirementDefinition, RequirementItem
 from tasks.models import TaskAssignment
 
 from task_generation.agent import generate_tasks
-from team_sizing import apply_complexity_buffer, estimate_team_size
+from team_sizing import apply_complexity_buffer, build_skill_role_map, estimate_team_size
+from work_package import apply_split_decisions, assemble_packages, assert_full_coverage, build_work_packages
+
+from tasks.planning_context import build_employee_profiles
 from project_scale.agent import assess_project_complexity
 from assignee_mapping.agent import assignee_mapping_node
 from assignee_recommend.agent import assignee_recommend_node
-from assignee_recommend.rule_filter import flatten_assignable_units, list_project_workdays
+from assignee_recommend.rule_filter import (
+    calculate_max_hours_per_assignee,
+    flatten_assignable_units,
+    list_project_workdays,
+)
+from assignment_ranking.agent import decide_package_splits
+from assignment_explanation.agent import summarize_plan
 from common.models import CommonCode
+
+# 2026-09-11 (Phase 1): 일정 배치는 tasks.scheduler(결정적 순수 모듈)에 위임한다.
+from tasks.scheduler import (
+    DEFAULT_RISK_BUFFER,
+    FOCUS_HOURS_PER_DAY,
+    ScheduleError,
+    plan_days,
+    schedule,
+)
+
+# Phase 0에서 이 모듈에 있던 이름들 — 기존 import(테스트 등)를 깨지 않도록 재노출.
+_planned_days = plan_days
 
 logger = logging.getLogger(__name__)
 User = get_user_model()
@@ -57,28 +78,6 @@ def _build_project_context(req_def: RequirementDefinition) -> dict:
     }
 
 
-def _build_employee_profiles() -> list:
-    """User + UserSkill + UserCertification -> RawEmployeeProfile 원본 그대로.
-    필터링(재직 여부/직무/스킬)은 여기서 하지 않는다 — assignee_mapping의
-    rule_filter.filter_candidates()가 코드로 직접 거른다(ai/ 설계 문서 참고)."""
-    users = User.objects.all().select_related('job_role_code', 'status_code').prefetch_related(
-        'skills__skill_code', 'certifications__cert_code'
-    )
-    profiles = []
-    for u in users:
-        profiles.append({
-            "employee_id": str(u.id),
-            "employee_no": u.emp_no or str(u.id),
-            "name": u.get_full_name() or u.username,
-            "job_role": u.job_role_code_id or "",
-            "is_active": (u.status_code_id == "ACTIVE") and not u.resign_date,
-            "skills": [s.skill_code.code_name for s in u.skills.all()],
-            "certifications": [c.cert_code.code_name for c in u.certifications.all()],
-            "career_history_text": u.past_projects or "",
-        })
-    return profiles
-
-
 def _assignee_display_name(user_id):
     """TaskAssignmentSerializer.get_assigned_user_name과 동일한 성+이름 규칙."""
     if user_id is None:
@@ -90,94 +89,95 @@ def _assignee_display_name(user_id):
     return full_name or u.username
 
 
-def _schedule_suggestion_dates(suggestions: list, start_date: date, end_date: date) -> None:
+def _schedule_suggestion_dates(suggestions: list, start_date: date, end_date: date) -> dict:
     """
-    assignee_id별로 업무를 프로젝트 기간(평일만) 안에 배치한다. 하루 8시간
-    기준, 최소 1일.
+    suggestions 각 항목에 suggested_start_date / suggested_end_date /
+    exceeds_project_period 를 채우고, 일정 요약(summary) dict를 반환한다.
 
-    이전엔 프로젝트 시작일부터 쉬지 않고 몰아서 채우기만 해서, 배정된 시간이
-    적으면 프로젝트 기간이 한참 남았는데도 일찍 끝나버리는 문제가 있었다
-    (2026-09-09 확인 — 21일짜리 프로젝트인데 실제 일정은 3일 만에 끝나버림).
-    또한 달력 일수를 그대로 더해서 주말도 업무일로 계산하는 모순도 있었다.
+    2026-09-11 (Phase 1): 실제 배치 계산은 tasks.scheduler.schedule()에 위임한다.
+    이 함수는 suggestions <-> scheduler 입출력 형태만 변환한다(정책·알고리즘은
+    scheduler.py 한 곳에만 둔다). 의존성(depends_on)은 Phase 2에서 채워지며
+    없으면 Phase 0과 동일하게 담당자별 ASAP 연속 배치가 된다.
 
-    규칙(같은 담당자의 업무가 여러 건이면 원래 순서 유지):
-      - 업무가 2건 이상: 첫 업무=프로젝트 첫 평일, 마지막 업무=프로젝트 마지막
-        평일에 정확히 맞추고, 남는 여유는 업무 사이사이에 균등하게 끼워 넣는다.
-        → 시작일이 늦춰지지 않으면서도 마지막 업무가 프로젝트 종료일과 일치한다.
-      - 업무가 1건뿐: "시작일=프로젝트 시작"과 "종료일=프로젝트 종료"를 동시에
-        만족시킬 수 없다(둘 사이 빈 기간을 앞/뒤 어느 한쪽에 둬야 함) — 마지막
-        업무가 프로젝트 종료일과 맞아야 한다는 요건을 우선해, 종료일에 맞추고
-        시작일을 그만큼 늦춘다.
-      - 어느 쪽이든 이 사람의 총 소요일이 프로젝트 평일 수를 넘으면(상한 초과 —
-        원래 스케줄러가 막아주지만 방어적으로) exceeds_project_period=True로
-        표시하고 자르지 않는다 — 강제로 줄이지 않고 PM이 볼 신호로만 남긴다.
-
-    AI가 아닌 결정적 휴리스틱(assignee_recommend는 날짜를 계산하지 않는다 —
-    schemas.AssignmentResult에 날짜 필드 없음). "평일이 뭔지"의 판정 기준은
-    ai/assignee_recommend/rule_filter.py의 list_project_workdays() 하나로
-    통일한다 — calculate_max_hours_per_assignee()(상한 계산)와 어긋나지 않게.
+    반환 summary: {"projected_finish_date": iso|None, "project_buffer_days": int,
+                   "exceeds_project_period": bool, "feasible": bool}.
+    project_buffer_days는 종료일을 넘기면 음수(초과 일수) — 남는 기간을 가짜
+    버퍼로 흡수하지 않고 그대로 노출한다. 의존성 순환이면 ScheduleError.
     """
     workdays = list_project_workdays(start_date, end_date)
-    total_workdays = len(workdays)
+    units = [
+        {
+            "unit_id": s["unit_id"],
+            "title": s.get("title"),  # schedule_reason 문구에 쓰임 (Phase 4)
+            "assignee_id": s["assignee_id"],
+            "estimated_hours": s.get("estimated_hours"),
+            "risk_buffer_factor": s.get("risk_buffer_factor"),
+            "depends_on": s.get("depends_on") or [],
+        }
+        for s in suggestions
+    ]
+    result = schedule(units, workdays)
 
-    by_assignee: dict = {}
     for s in suggestions:
-        if s["assignee_id"] is None:
-            s["suggested_start_date"] = None
-            s["suggested_end_date"] = None
-            continue
-        by_assignee.setdefault(s["assignee_id"], []).append(s)
+        placed = result["units"].get(s["unit_id"], {})
+        s["suggested_start_date"] = placed.get("start_date")
+        s["suggested_end_date"] = placed.get("end_date")
+        s["exceeds_project_period"] = placed.get("exceeds_project_period", False)
+        s["schedule_reason"] = placed.get("schedule_reason", "")  # Phase 4
 
-    # 프로젝트 기간에 평일이 하루도 없으면(주말만 있거나 종료일이 시작일보다 이른
-    # 잘못된 입력) workdays가 빈 리스트라 아래 인덱싱이 전부 IndexError로 죽는다 —
-    # 날짜를 배정할 기준 자체가 없으므로 전부 초과로 표시하고 날짜는 비워둔다.
-    if total_workdays == 0:
-        for items in by_assignee.values():
-            for item in items:
-                item["exceeds_project_period"] = True
-                item["suggested_start_date"] = None
-                item["suggested_end_date"] = None
-        return
+    return result["summary"]
 
-    for items in by_assignee.values():
-        n = len(items)
-        days_needed = [max(1, round((it["estimated_hours"] or 0) / 8)) for it in items]
-        total_real_days = sum(days_needed)
-        idle_total = max(0, total_workdays - total_real_days)
 
-        if n == 1:
-            end_idx = total_workdays - 1
-            start_idx = end_idx - days_needed[0] + 1
-            items[0]["exceeds_project_period"] = start_idx < 0
-            start_idx = max(0, start_idx)
-            items[0]["suggested_start_date"] = workdays[start_idx].isoformat()
-            items[0]["suggested_end_date"] = workdays[end_idx].isoformat()
-            continue
+# 2026-09-11 (Phase 4): 계획 검토 요약(결정적) + LLM 브리핑 컨텍스트.
+def _build_plan_review(suggestions: list) -> dict:
+    """PM이 확정 전에 손봐야 할 항목만 모은다 — 전부 코드로 집계(LLM 아님)."""
+    held = [
+        {"unit_id": s["unit_id"], "title": s["title"], "reason": s.get("hold_explanation") or ""}
+        for s in suggestions
+        if s.get("review_required")
+    ]
+    over = [
+        {"unit_id": s["unit_id"], "title": s["title"], "assignee_name": s.get("assignee_name")}
+        for s in suggestions
+        if s.get("exceeds_project_period") and s.get("assignee_id") is not None
+    ]
+    return {"held_units": held, "over_period_units": over, "needs_attention": bool(held or over)}
 
-        # n >= 2: 첫 업무=프로젝트 시작, 마지막 업무=프로젝트 종료, 여유는
-        # 업무 사이(내부 gap)에만 균등 분산 — 나머지(remainder)는 마지막 gap에 몰아준다.
-        gap_each = idle_total // (n - 1)
-        leftover = idle_total - gap_each * (n - 1)
 
-        cursor_idx = 0
-        for idx, (item, d) in enumerate(zip(items, days_needed)):
-            if idx > 0:
-                gap = gap_each + (leftover if idx == n - 1 else 0)
-                cursor_idx += gap
-            # 이 담당자의 총 소요일이 프로젝트 평일 수를 넘으면(위 idle_total=0인
-            # 경우) cursor_idx가 total_workdays를 넘어설 수 있다 — end_idx는 이미
-            # 클램프하고 있었지만 start_idx는 안 하고 있어서, 그다음 업무의
-            # start_idx가 workdays 범위를 벗어나 IndexError로 죽는 사고가 실제로
-            # 재현됐다(담당자 1명에게 프로젝트 평일 수보다 많은 업무를 몰아준 경우).
-            # exceeds_project_period=True로 표시하는 건 그대로 두되, 조회용
-            # 인덱스는 마지막 평일로 고정해 죽지 않게 한다.
-            start_idx = min(cursor_idx, total_workdays - 1)
-            end_idx = start_idx + d - 1
-            item["exceeds_project_period"] = end_idx > total_workdays - 1
-            end_idx = min(end_idx, total_workdays - 1)
-            item["suggested_start_date"] = workdays[start_idx].isoformat()
-            item["suggested_end_date"] = workdays[end_idx].isoformat()
-            cursor_idx = end_idx + 1
+def _build_briefing_context(
+    suggestions: list, schedule_summary: dict, complexity, split_decisions: dict
+) -> dict:
+    assigned = [s for s in suggestions if s.get("assignee_id") is not None]
+    load: dict = {}
+    for s in assigned:
+        name = s.get("assignee_name") or str(s.get("assignee_id"))
+        entry = load.setdefault(name, {"assignee_name": name, "hours": 0.0, "unit_count": 0})
+        entry["hours"] += float(s.get("estimated_hours") or 0)
+        entry["unit_count"] += 1
+    top_load = sorted(load.values(), key=lambda e: -e["hours"])[:5]
+    review = _build_plan_review(suggestions)
+    return {
+        "complexity": (
+            {"grade": complexity.complexity.value, "reason": complexity.complexity_reason}
+            if complexity is not None else None
+        ),
+        "schedule": {
+            k: schedule_summary.get(k)
+            for k in ("projected_finish_date", "project_end_date",
+                      "project_buffer_days", "exceeds_project_period")
+        },
+        "total_units": len(suggestions),
+        "assigned_units": len(assigned),
+        "held_units": [{"title": h["title"], "reason": h["reason"]} for h in review["held_units"]],
+        "over_period_units": [
+            {"title": o["title"], "assignee_name": o["assignee_name"]}
+            for o in review["over_period_units"]
+        ],
+        "package_splits": [{"reason": d.get("reason", "")} for d in split_decisions.values()],
+        "assignee_load": [
+            {**e, "hours": round(e["hours"], 1)} for e in top_load
+        ],
+    }
 
 
 def generate_task_suggestions(spec_id: int) -> dict:
@@ -212,15 +212,24 @@ def generate_task_suggestions(spec_id: int) -> dict:
     )
     requirement_doc = _build_requirement_doc(req_def)
 
+    # 2026-09-11(팀 결정): estimated_hours 산정 때 프로젝트 기간을 참고 신호로
+    # 주기 위해, 날짜 계산을 업무 생성보다 먼저 한다.
+    start_date = req_def.spec.period_start or date.today()
+    end_date = req_def.spec.period_end or (start_date + timedelta(days=90))
+    project_period = {
+        "start_date": str(start_date),
+        "end_date": str(end_date),
+        "workdays": len(list_project_workdays(start_date, end_date)),
+    }
+
     try:
-        task_items = generate_tasks(requirement_doc, available_skills=available_skills)
+        task_items = generate_tasks(
+            requirement_doc, available_skills=available_skills, project_period=project_period
+        )
     except Exception as e:
         logger.exception("업무 생성 실패 (spec_id=%s)", spec_id)
         return {"status": "error", "message": f"업무 생성 실패: {e}"}
     tasks = [t.model_dump(mode="json") for t in task_items]
-
-    start_date = req_def.spec.period_start or date.today()
-    end_date = req_def.spec.period_end or (start_date + timedelta(days=90))
 
     project_context = _build_project_context(req_def)
     try:
@@ -229,17 +238,38 @@ def generate_task_suggestions(spec_id: int) -> dict:
         logger.warning("프로젝트 복잡도 판단 실패, 버퍼 없이 진행 (spec_id=%s): %s", spec_id, e)
         complexity = None
 
-    team_size = estimate_team_size(tasks, start_date, end_date)
+    # 2026-09-11: skill->role 매핑을 하드코딩 표 대신 실제 인력에서 도출한다.
+    # raw_profiles는 담당자 매핑에도 재사용하므로 여기서 한 번만 조회한다.
+    raw_profiles = build_employee_profiles()
+    skill_role_map = build_skill_role_map(raw_profiles)
+    team_size = estimate_team_size(tasks, start_date, end_date, skill_role_map=skill_role_map)
     if complexity is not None:
         team_size = apply_complexity_buffer(team_size, complexity.complexity.value)
-    needed_roles = [r["role"] for r in team_size["team_size_estimate"]["by_role"]]
 
-    raw_profiles = _build_employee_profiles()
+    # 2026-09-11 (Phase 2 item 7 + Phase 3): 배정 단위를 WorkPackage(기능 묶음)로
+    # 묶고, LLM(assignment_ranking)이 "한 사람에게 다 맡길지 / 나눌지"만 판단한 뒤
+    # 코드가 그 결과대로 하위 패키지로 쪼갠다. 이 package_by_unit을 assignee_recommend에
+    # 넘겨 배정을 같은 그룹핑으로 몰아준다. LLM이 실패하면 분할 없이 진행한다.
+    flat_units = flatten_assignable_units(tasks)
+    unit_lookup = {u["unit_id"]: u for u in flat_units}
+    wp = build_work_packages(flat_units)
+    try:
+        max_hours_per_assignee = calculate_max_hours_per_assignee(str(start_date), str(end_date))
+    except ValueError:
+        max_hours_per_assignee = 0.0
+    try:
+        split_decisions = decide_package_splits(wp["packages"], unit_lookup, max_hours_per_assignee)
+    except Exception:
+        logger.exception("패키지 분할 판단 중 오류 — 분할 없이 진행 (spec_id=%s)", spec_id)
+        split_decisions = {}
+    package_by_unit = apply_split_decisions(flat_units, wp["package_by_unit"], split_decisions)
+    assert_full_coverage(package_by_unit, flat_units)
+    work_packages_view = assemble_packages(flat_units, package_by_unit)
+
     try:
         mapping_result = assignee_mapping_node({
             "raw_employee_profiles": raw_profiles,
             "tasks": tasks,
-            "needed_roles": needed_roles,
         })
     except Exception as e:
         logger.exception("담당자 매핑 실패 (spec_id=%s)", spec_id)
@@ -248,7 +278,7 @@ def generate_task_suggestions(spec_id: int) -> dict:
         return {"status": "error", "message": f"담당자 매핑 실패: {mapping_result['error']}"}
     member_profiles = mapping_result["member_profiles"]
     if not member_profiles:
-        return {"status": "error", "message": "조건에 맞는 담당자 후보가 없습니다(직무/스킬 불일치)."}
+        return {"status": "error", "message": "업무에 필요한 스킬을 가진 재직 사원이 없습니다."}
 
     # 프로젝트 전체 누적 부하 — 취소된 업무는 실제 부하가 아니므로 제외.
     workload_qs = (
@@ -267,6 +297,7 @@ def generate_task_suggestions(spec_id: int) -> dict:
             "project_end_date": str(end_date),
             "tasks": tasks,
             "requirement_doc": requirement_doc,
+            "package_by_unit": package_by_unit,  # Phase 3: 분할 반영된 그룹핑
         })
     except Exception as e:
         logger.exception("담당자 추천 실패 (spec_id=%s)", spec_id)
@@ -275,7 +306,6 @@ def generate_task_suggestions(spec_id: int) -> dict:
         return {"status": "error", "message": f"담당자 추천 실패: {recommend_result['error']}"}
     assignments = recommend_result["assignments"]
 
-    unit_lookup = {u["unit_id"]: u for u in flatten_assignable_units(tasks)}
     epic_lookup = {}
     difficulty_lookup = {}
     for t in tasks:
@@ -314,9 +344,32 @@ def generate_task_suggestions(spec_id: int) -> dict:
             "experience_fit": reason.get("similar_experience"),
             "review_required": a.get("review_required", False),
             "hold_explanation": a.get("hold_explanation"),
+            # 2026-09-11 (Phase 2): 일정 스케줄러 입력. flatten_assignable_units가
+            # Task 의존성을 unit 단위로 펴서 채운 값을 그대로 넘긴다.
+            "depends_on": unit.get("depends_on", []),
+            "risk_buffer_factor": unit.get("risk_buffer_factor"),
+            "feature_area": unit.get("feature_area"),
+            "package_id": package_by_unit.get(a["unit_id"]),  # Phase 2 item 7
         })
 
-    _schedule_suggestion_dates(suggestions, start_date, end_date)
+    # 2026-09-11 (Phase 2): LLM이 만든 의존성에 순환이 있으면 여기서 잡힌다.
+    try:
+        schedule_summary = _schedule_suggestion_dates(suggestions, start_date, end_date)
+    except ScheduleError as e:
+        logger.warning("업무 일정 계산 실패 (spec_id=%s): %s", spec_id, e)
+        return {"status": "error", "message": f"업무 일정 계산 실패: {e}"}
+
+    schedule_summary_full = {
+        **schedule_summary,
+        "project_start_date": str(start_date),
+        "project_end_date": str(end_date),
+    }
+
+    # 2026-09-11 (Phase 4): 검토 요약(결정적) + LLM 브리핑. 브리핑은 실패해도 계속.
+    plan_review = _build_plan_review(suggestions)
+    briefing = summarize_plan(
+        _build_briefing_context(suggestions, schedule_summary_full, complexity, split_decisions)
+    )
 
     return {
         "status": "success",
@@ -327,6 +380,21 @@ def generate_task_suggestions(spec_id: int) -> dict:
             {"complexity": complexity.complexity.value, "reason": complexity.complexity_reason}
             if complexity is not None else None
         ),
+        # 2026-09-10 (Phase 0): 남는 프로젝트 기간을 업무 사이 갭으로 숨기지 않고
+        # PM에게 그대로 보여준다. projected_finish_date=마지막 업무 종료일,
+        # project_buffer_days=그날부터 프로젝트 종료일까지 남는 평일 수.
+        "schedule_summary": schedule_summary_full,
+        # 2026-09-11 (Phase 2 item 7 + Phase 3): 기능(WorkPackage) 단위 묶음.
+        # LLM 분할 판단이 반영된 최종 그룹핑. PM이 "이 기능은 누가 이어서 맡는지 /
+        # 왜 나뉘었는지"를 확인하는 용도. 저장하지 않는 임시 계획 객체.
+        "work_packages": work_packages_view,
+        "package_splits": [
+            {"package_id": pid, "reason": d.get("reason", "")}
+            for pid, d in split_decisions.items()
+        ],
+        # 2026-09-11 (Phase 4): PM이 확정 전 손봐야 할 항목(결정적 집계) + LLM 브리핑.
+        "plan_review": plan_review,
+        "plan_briefing": {"risks": briefing.risks, "checkpoints": briefing.checkpoints},
     }
 
 
@@ -371,8 +439,11 @@ def confirm_task_assignments(req_def_id: int, assignments: list) -> dict:
                     )
                     continue
 
+                # 2026-09-11 (Phase 4): 프론트가 schedule_reason을 실어 보내면 배정
+                # 근거에 함께 저장한다(없으면 무시 — 별도 컬럼은 두지 않음).
                 reason_text = " / ".join(filter(None, [
                     item.get("tech_fit"), item.get("workload_fit"), item.get("experience_fit"),
+                    item.get("schedule_reason"),
                 ]))
 
                 TaskAssignment.objects.create(

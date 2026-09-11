@@ -14,6 +14,18 @@ constraints: |
   - required_skills에는 이 업무를 수행하는 데 실제로 필요한 기술 스택을 구체적으로
     나열하라(예: "Django", "REST API"). "개발 능력"처럼 뭉뚱그리지 마라. 이 값은
     다음 단계에서 담당자를 매칭하는 기준으로 그대로 쓰인다.
+  - 업무 간 선후 관계가 있으면 dependency_task_ids에 선행 업무의 task_id를 넣어라
+    (설계 -> 개발 -> 테스트가 대표적). 이 값이 일정 배치에서 시작일 순서를 결정한다.
+    같은 응답 안의 task_id만 참조하고, 선행이 없으면 빈 리스트로 둔다.
+  - risk_buffer_factor에는 estimated_hours에 곱할 여유 배율을 1.0 이상으로 정하라.
+    불확실성이 클수록 크게 잡는다(잘 정의된 CRUD ~1.2, 안 써본 기술·외부 연동 ~2.0).
+    판단이 어려우면 null로 두어라(코드가 기본값을 쓴다). 절대 1.0 미만은 쓰지 마라.
+  - feature_area에는 같은 기능 영역을 묶는 짧은 라벨을 붙여라(예: "주문", "결제").
+    같은 영역 업무를 같은 담당자에게 몰아주는 근거가 된다. 애매하면 null.
+  - estimated_hours는 아래 예시에 일부러 값을 적지 않았다 — 예시 숫자를 흉내 내지
+    말고, 이 업무 자체의 실제 범위(검증 로직 개수, 화면 필드 수, 연동 대상, 예외
+    케이스 수 등 difficulty_reason에 쓸 근거)만 보고 매번 새로 판단하라. 간단한
+    업무는 1~2시간도, 복잡한 업무는 20시간을 넘어도 된다 — 정해진 스케일은 없다.
   - 출력은 JSON 외의 부가 설명을 포함하지 마라.
 
 few_shot_examples:
@@ -22,6 +34,10 @@ few_shot_examples:
       TASK-002는 서로 다른 두 검증 로직(시간대 검증, 일정 중복 확인)이 섞여 있어
       "산출물이 하나로 특정된다" 원칙을 못 만족해 Subtask로 쪼갰고,
       TASK-001·TASK-003은 이미 3원칙을 만족해 Subtask 없이 둔 예시.
+      설계(TASK-001) -> 개발(TASK-002) -> 테스트(TASK-003) 순서라
+      dependency_task_ids로 선후 관계를 명시했다. 세 업무 모두 같은 기능
+      영역이라 feature_area가 같다. estimated_hours는 실제 응답에서 각자
+      판단해서 채울 값이라 예시에는 일부러 넣지 않았다.
     input:
       project_id: "PJT-100"
       requirements:
@@ -43,7 +59,9 @@ few_shot_examples:
             title: "산책 예약 API 설계"
             description: "예약 요청/응답 스펙과 상태 코드를 정의한 API 명세 작성"
             required_skills: ["REST API 설계"]
-            estimated_hours: 3
+            dependency_task_ids: []
+            risk_buffer_factor: 1.2
+            feature_area: "산책 예약"
             difficulty: "하"
             difficulty_reason: "요청/응답 필드와 상태 코드만 정의하면 되고 별도의 복잡한 판단 로직이 없어 설계 범위가 명확함"
             source_req_id: "FR-01-001"
@@ -54,7 +72,9 @@ few_shot_examples:
             title: "산책 예약 API 개발"
             description: "예약 가능 시간대 검증과 도우미 일정 중복 확인을 포함한 예약 생성 엔드포인트 구현"
             required_skills: ["Django", "REST API"]
-            estimated_hours: 8
+            dependency_task_ids: ["TASK-001"]
+            risk_buffer_factor: 1.3
+            feature_area: "산책 예약"
             difficulty: "중"
             difficulty_reason: "예약 가능 시간대(오전 7시~오후 8시) 검증과 도우미 일정 중복 확인이라는 서로 다른 두 검증 로직이 함께 필요해 산출물이 하나로 특정되지 않음"
             source_req_id: "FR-01-001"
@@ -62,18 +82,18 @@ few_shot_examples:
               - subtask_id: "SUBTASK-002-1"
                 title: "예약 가능 시간대 검증 로직 구현"
                 description: "오전 7시~오후 8시 범위를 벗어난 예약 요청을 400으로 거부하는 로직 구현"
-                estimated_hours: 4
               - subtask_id: "SUBTASK-002-2"
                 title: "도우미 일정 중복 확인 로직 구현"
-                description: "선택한 도우미의 동일 시간대 기존 예약과 겹치는지 확인하는 로직 구현"
-                estimated_hours: 4
+                description: "선택한 도우미의 동일 시간대 기존 예약과 겹치는지 확인하는 로직 구현 — 시작/종료 시각이 겹치는 기존 예약 전부를 조회해야 함"
           - task_id: "TASK-003"
             epic_id: "EPIC-001"
             epic_title: "산책 예약 기능"
             title: "예약 시나리오 통합 테스트"
             description: "정상 예약, 시간대 외 예약, 도우미 일정 중복 시나리오에 대한 통합 테스트 작성"
             required_skills: ["pytest"]
-            estimated_hours: 4
+            dependency_task_ids: ["TASK-002"]
+            risk_buffer_factor: 1.2
+            feature_area: "산책 예약"
             difficulty: "하"
             difficulty_reason: "정상/시간대 외/일정 중복 3가지 시나리오로 테스트 범위가 명확히 한정됨"
             source_req_id: "FR-01-001"
@@ -87,6 +107,9 @@ few_shot_examples:
       독립된 FR-02-003은 별도 Epic(EPIC-002)으로 분리된다. task_id는
       어느 요구사항 소속이든 상관없이 전체를 통틀어 하나의 순번
       (TASK-001~004)으로 이어진다 — 요구사항마다 번호가 다시 시작되지 않는다.
+      TASK-002는 TASK-001이 만든 조회 API 위에 검색 조건을 얹으므로
+      dependency_task_ids로 TASK-001을 선행으로 건다. EPIC-002의 두 업무는
+      서로 독립이라 선행이 없다(빈 리스트).
     input:
       project_id: "PJT-100"
       requirements:
@@ -126,7 +149,9 @@ few_shot_examples:
             title: "상태별 탭 필터 API 구현"
             description: "전체/활성/휴직/퇴사/잠금 상태값으로 직원 목록을 필터링하는 조회 API 구현"
             required_skills: ["Django", "REST API"]
-            estimated_hours: 4
+            dependency_task_ids: []
+            risk_buffer_factor: 1.2
+            feature_area: "직원 목록"
             difficulty: "하"
             difficulty_reason: "상태값 기준 단순 조건 필터링만 필요해 판단 로직이 간단함"
             source_req_id: "FR-02-001"
@@ -138,7 +163,9 @@ few_shot_examples:
             title: "검색어 기반 실시간 필터링 구현"
             description: "이름/이메일 등 검색어 입력에 따라 조건별로 실시간 필터링되는 목록 조회 로직 구현"
             required_skills: ["Django", "REST API"]
-            estimated_hours: 5
+            dependency_task_ids: ["TASK-001"]
+            risk_buffer_factor: 1.3
+            feature_area: "직원 목록"
             difficulty: "중"
             difficulty_reason: "검색어 조건과 상태 탭 조건이 동시에 적용될 때의 조합 케이스를 고려해야 함"
             source_req_id: "FR-02-002"
@@ -150,7 +177,9 @@ few_shot_examples:
             title: "직원 등록 폼 UI 구현"
             description: "이름/이메일/연락처 등 입력 필드와 유효성 검사를 포함한 등록 폼 화면 구현"
             required_skills: ["React"]
-            estimated_hours: 4
+            dependency_task_ids: []
+            risk_buffer_factor: 1.2
+            feature_area: "직원 등록"
             difficulty: "하"
             difficulty_reason: "정해진 필드 목록에 대한 입력/검증 UI만 필요해 범위가 명확함"
             source_req_id: "FR-02-003"
@@ -161,7 +190,9 @@ few_shot_examples:
             title: "직원 등록 API 구현"
             description: "입력받은 직원 정보를 검증하고 저장하는 등록 엔드포인트 구현"
             required_skills: ["Django", "REST API"]
-            estimated_hours: 5
+            dependency_task_ids: []
+            risk_buffer_factor: 1.3
+            feature_area: "직원 등록"
             difficulty: "중"
             difficulty_reason: "이메일 중복 검사, 필수 필드 검증 등 여러 유효성 규칙을 함께 처리해야 함"
             source_req_id: "FR-02-003"

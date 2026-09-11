@@ -34,9 +34,13 @@ from .prompt_builder import (
     build_reason_batch_prompt,
     build_reason_prompt,
 )
+from assignment_ranking.agent import score_candidate_fit
+from work_package import build_work_packages
+
 from .rule_filter import (
     calculate_max_hours_per_assignee,
     flatten_assignable_units,
+    list_project_workdays,
     schedule_assignments,
     sort_units_by_priority,
 )
@@ -144,17 +148,38 @@ def assignee_recommend_node(state: Dict[str, Any]) -> Dict[str, Any]:
         )
     except ValueError as e:
         return {"error": f"INVALID_INPUT: {e}"}
+    # 2026-09-11: schedule_assignments의 실제 용량 게이트는 평일 수 기준이다
+    # (rule_filter.schedule_assignments 참고 — 시간 기준 상한과 어긋나던 문제 수정).
+    total_workdays = len(list_project_workdays(state["project_start_date"], state["project_end_date"]))
 
     requirement_doc = state.get("requirement_doc", {})
     priority_map = _priority_by_req_id(requirement_doc)
 
     # 1. 배정 대상 단위를 뽑아 우선순위 순으로 정렬한다 (Task별 독립 처리가 아니라
     #    프로젝트 전체를 한 번에 순회해야 부하 누적이 순서대로 반영된다).
+    #    2026-09-11 (Phase 2 item 7): 각 unit에 WorkPackage id를 달아, 정렬·배정이
+    #    "같은 기능을 한 사람이 이어서" 처리하도록 한다.
+    #    2026-09-11 (Phase 3): 호출부(services)가 LLM 분할 판단까지 반영한
+    #    package_by_unit을 넘겨주면 그걸 쓴다. 없으면(graph.py 경로 등) 여기서 계산.
     units = flatten_assignable_units(state.get("tasks", []))
+    package_by_unit = state.get("package_by_unit") or build_work_packages(units)["package_by_unit"]
+    for u in units:
+        u["package_id"] = package_by_unit.get(u["unit_id"])
     units = sort_units_by_priority(units, priority_map)
 
-    # 2. 코드가 전체 배정을 한 번에 확정한다 (LLM 개입 없음).
-    scheduled = schedule_assignments(units, members, current_workload, max_hours_per_assignee)
+    # 1.5. 2026-09-11: 스킬로 이미 좁혀진 소수 후보의 경력·자격증·숙련도 "내용"을
+    #      업무 설명과 대조해 질적 적합도를 판단시킨다(코드가 개수만 세던 것 대체).
+    #      실패해도 빈 dict로 진행 — _fit_score가 개수 기반 계산으로 폴백한다.
+    try:
+        fit_scores = score_candidate_fit(units, members)
+    except Exception:
+        logger.exception("후보 질적 적합도 판단 실패 — 개수 기반으로 폴백")
+        fit_scores = {}
+
+    # 2. 코드가 전체 배정을 한 번에 확정한다 (최종 선택·용량 추적은 LLM 개입 없음).
+    scheduled = schedule_assignments(
+        units, members, current_workload, max_hours_per_assignee, total_workdays, fit_scores=fit_scores
+    )
 
     # 3. 확정된 결과를 배정 성공/보류로 나눠 각각 배치로 LLM 호출한다
     #    (유닛 1개당 1회 호출하면 OpenAI TPM 한도를 넘기 쉬워, 묶어서 호출 수를 줄인다).

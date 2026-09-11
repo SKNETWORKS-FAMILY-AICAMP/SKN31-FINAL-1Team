@@ -19,40 +19,41 @@ assignee_mapping/rule_filter.py
 여부는 assignee_recommend(A2-3)의 schedule_assignments()가 이미 걸러준다.
 """
 
-from typing import Any, Dict, List
+import logging
+from typing import Any, Dict, List, Optional
 
 from .schemas import RawEmployeeProfile
+
+logger = logging.getLogger(__name__)
 
 
 def filter_candidates(
     raw_profiles: List[RawEmployeeProfile],
     tasks: List[Dict[str, Any]],
-    needed_roles: List[str],
+    needed_roles: Optional[List[str]] = None,
 ) -> List[RawEmployeeProfile]:
     """
-    LLM 호출 전, 후보를 3단계로 거른다. 순서대로 하나라도 안 맞으면 제외한다.
+    LLM 호출 전 후보를 거른다: 재직 중이고, 업무에 필요한 스킬을 하나라도 가진 사람.
 
     Args:
-        raw_profiles: 필터링 전 사원 원본 목록 (재직 여부와 무관하게 전부 포함될 수 있음)
-        tasks: 업무 생성(A2-2) 출력 그대로 — required_skills 합집합을 만드는 데 씀
-        needed_roles: 팀 규모 추정(team_sizing) 출력의 by_role[].role 목록 —
-            이 프로젝트에 필요하다고 판단된 직무 코드들
+        raw_profiles: 필터링 전 사원 원본 목록
+        tasks: 업무 생성(A2-2) 출력 — required_skills 합집합을 만드는 데 씀
+        needed_roles: 더 이상 쓰지 않는다. 호출부 호환을 위해 시그니처만 남겨둠.
 
-    Returns:
-        세 조건을 모두 통과한 후보만 남긴 목록. 하나도 안 남으면 빈 리스트를
-        반환한다(에이전트 쪽에서 별도 에러 처리 안 함 — 그냥 아무도 LLM을
-        안 타는 것뿐이다).
+    2026-09-11: 직무(needed_roles) 게이트를 제거했다. 직무는 스킬의 거친 대리
+    지표일 뿐이고 — assignee_recommend의 _fit_score도 직무를 안 본다 —, team_sizing의
+    skill->role 매핑이 조금만 비어도 후보가 전원 탈락해 배분이 죽는 사고가 있었다
+    (spec 108). 자격 판정은 "스킬을 실제로 갖고 있는가" 하나로 충분하다.
     """
     required_skills = {s for t in tasks for s in t.get("required_skills", [])}
-    needed_role_set = set(needed_roles)
-
-    filtered = []
-    for p in raw_profiles:
-        if not p.is_active:
-            continue
-        if needed_role_set and p.job_role not in needed_role_set:
-            continue
-        if required_skills and not (required_skills & set(p.skills)):
-            continue
-        filtered.append(p)
+    filtered = [
+        p
+        for p in raw_profiles
+        if p.is_active and (not required_skills or (required_skills & set(p.skills)))
+    ]
+    if not filtered:
+        logger.warning(
+            "후보 0명 — 업무 required_skills(%s)를 가진 재직 사원이 없음",
+            sorted(required_skills)[:10],
+        )
     return filtered

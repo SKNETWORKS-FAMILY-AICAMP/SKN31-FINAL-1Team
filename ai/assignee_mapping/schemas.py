@@ -15,7 +15,7 @@ assignee_mapping/schemas.py
           전혀 수정하지 않아도 되게 한다.
 """
 
-from typing import List
+from typing import Dict, List
 
 from pydantic import BaseModel, Field
 
@@ -37,6 +37,13 @@ class RawEmployeeProfile(BaseModel):
     skills: List[str] = Field(
         default_factory=list,
         description="UserSkill 조회 결과(skill_code_id → CommonCode.code_name) — 이미 구조화됨, LLM 필요 없음",
+    )
+    # 2026-09-11 (Phase 3): UserSkill.proficiency_level(1~5). A2-3 _fit_score가
+    # 스킬 매칭 점수를 숙련도로 가중하는 데 쓴다. 비어 있으면(레벨 정보 없는 경로)
+    # A2-3이 예전처럼 "보유 여부"만 본다.
+    skill_levels: Dict[str, int] = Field(
+        default_factory=dict,
+        description="스킬 code_name -> 숙련도(1~5). skills와 같은 원천, LLM 관여 없음",
     )
     certifications: List[str] = Field(
         default_factory=list,
@@ -92,6 +99,10 @@ class EmployeeFitnessProfile(BaseModel):
 
     employee_id: str
     skills: List[str] = Field(..., description="RawEmployeeProfile.skills를 코드가 그대로 복사 — LLM 관여 없음")
+    skill_levels: Dict[str, int] = Field(
+        default_factory=dict,
+        description="RawEmployeeProfile.skill_levels를 코드가 그대로 복사 — A2-3 _fit_score의 숙련도 가중에 쓰임",
+    )
     certifications: List[str] = Field(
         default_factory=list,
         description="RawEmployeeProfile.certifications를 코드가 그대로 복사 — LLM 관여 없음. "
