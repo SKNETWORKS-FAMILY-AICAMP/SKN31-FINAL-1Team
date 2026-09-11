@@ -120,6 +120,12 @@ export function NewDocumentModal({
     return base || `새 문서 ${new Date().toLocaleTimeString()}`;
   };
 
+  // 파일을 첨부하면 그 파일명을 제목 기본값으로 쓴다 — 내용에서 제목을 뽑는 방식
+  // (deriveTitleFromContent)은 원본이 "# 회의록" 같은 마크다운 헤더나 표로 시작하면
+  // 엉뚱한 제목이 되는 문제가 있었다(실제로 겪음). 파일명은 보통 이미 "개발_기획회의_0911"
+  // 처럼 회의를 식별할 수 있게 지어져 있어 확장자만 떼면 바로 쓸 만한 제목이 된다.
+  const filenameToTitle = (filename: string) => filename.replace(/\.[^./\\]+$/, "");
+
   const extractMeetingDate = (text: string): string | null => {
     const keywordLine = text.split("\n").find(l => /(일자|날짜|회의일시|작성일)/.test(l));
     const searchIn = keywordLine ?? text;
@@ -195,6 +201,8 @@ export function NewDocumentModal({
       return;
     }
 
+    if (!title.trim()) setTitle(filenameToTitle(file.name));
+
     setUploadingFile(true);
     try {
       if (audio) {
@@ -210,7 +218,6 @@ export function NewDocumentModal({
           })
         );
         setContent(cleaned);
-        if (!title.trim()) setTitle(deriveTitleFromContent(cleaned));
       } else {
         const formData = new FormData();
         formData.append("file", file);
@@ -219,7 +226,6 @@ export function NewDocumentModal({
           { method: "POST", body: formData }
         );
         setContent(result.content);
-        if (!title.trim()) setTitle(deriveTitleFromContent(result.content));
       }
     } catch (err: any) {
       setError(err.message || (audio ? "음성 파일을 텍스트로 변환하지 못했습니다." : "파일에서 텍스트를 추출하지 못했습니다."));
