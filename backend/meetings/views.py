@@ -201,13 +201,12 @@ class MeetingNoteAnalyzeView(APIView):
             # ai/plan_draft/schemas.py의 SECTION_SPEC(노드②의 설계도)과 동일한 key ↔
             # SpecDocument 필드명 매핑. 근거자료(evidence_data)도 이 키로 저장해야 프론트
             # (documents/page.tsx의 EVIDENCE_KEY_ALIASES)가 올바른 섹션에 붙여준다.
-            # 2026-09-10: 사용자 시나리오를 프로젝트 목표로 변경했습니다.
             SECTION_KEY_TO_FIELD = {
                 'overview': 'overview',
                 'problem': 'problem_definition',
                 'users': 'target_users',
                 'features': 'key_features',
-                'goals': 'goals',
+                'scenarios': 'user_scenarios',
                 'tech_scope': 'tech_stack',
                 'decisions': 'final_decisions',
             }
@@ -256,7 +255,7 @@ class MeetingNoteAnalyzeView(APIView):
                 'problem_definition': section_or_not_discussed('problem'),
                 'target_users': section_or_not_discussed('users'),
                 'key_features': section_or_not_discussed('features'),
-                'goals': section_or_not_discussed('goals'),
+                'user_scenarios': section_or_not_discussed('scenarios'),
                 'tech_stack': section_or_not_discussed('tech_scope'),
                 'final_decisions': section_or_not_discussed('decisions'),
             }
