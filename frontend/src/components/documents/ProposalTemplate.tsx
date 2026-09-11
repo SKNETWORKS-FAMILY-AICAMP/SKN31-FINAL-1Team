@@ -97,7 +97,7 @@ export function ProposalTemplate({
         )}
       </Section>
 
-      <Section num="2" title="문제 정의" evidence={evidence} evidenceKey="problemDefinition">
+      <Section num="2" title="핵심 목표" evidence={evidence} evidenceKey="problemDefinition">
         {editable ? (
           <textarea
             value={doc.problemDefinition}
@@ -109,12 +109,12 @@ export function ProposalTemplate({
         )}
       </Section>
 
-      <Section num="3" title="프로젝트 목표" evidence={evidence} evidenceKey="projectGoals">
+      <Section num="3" title="세부 목표 및 문제 정의" evidence={evidence} evidenceKey="projectGoals">
         {editable ? (
           <textarea
             value={doc.projectGoals}
             onChange={e => set("projectGoals", e.target.value)}
-            placeholder="프로젝트 목표를 입력하세요."
+            placeholder="세부 목표 및 문제 정의를 입력하세요."
             className={`${inputCls} h-24 resize-none whitespace-pre-wrap`}
           />
         ) : (

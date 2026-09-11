@@ -29,8 +29,8 @@ export async function exportProposalPptx(doc: ProposalDoc, title: string) {
   };
 
   addSectionSlide("1. 프로젝트 개요", doc.projectOverview);
-  addSectionSlide("2. 문제 정의", doc.problemDefinition);
-  addSectionSlide("3. 프로젝트 목표", doc.projectGoals);
+  addSectionSlide("2. 핵심 목표", doc.problemDefinition);
+  addSectionSlide("3. 세부 목표 및 문제 정의", doc.projectGoals);
   addSectionSlide("4. 대상 사용자", doc.target);
   addSectionSlide("5. 주요 기능", doc.features);
   addSectionSlide("6. 기술 스택 및 제약사항", doc.techStackConstraints);
