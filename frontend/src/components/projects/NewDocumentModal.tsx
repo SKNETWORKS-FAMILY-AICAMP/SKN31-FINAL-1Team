@@ -18,6 +18,13 @@ const NEW_PROJECT_VALUE = "__new__";
 const AUDIO_EXTENSIONS = [".mp3", ".mp4", ".mpeg", ".mpga", ".m4a", ".wav", ".webm"];
 const isAudioFile = (filename: string) => AUDIO_EXTENSIONS.some(ext => filename.toLowerCase().endsWith(ext));
 
+// 이 도구는 개발 회의록 전문 서비스라, 개발과 무관한 회의록/음성이 섞여 들어오면 안 된다는
+// 요청(팀원)에 따라 첨부 파일명이 "개발_"로 시작하는지를 서버 호출 전에 먼저 막는다 — 파일
+// 내용을 읽고 나서 걸러내면 이미 Whisper/파일 파싱 API를 호출해 비용이 든 뒤라, 파일명만
+// 보고 바로 거부하는 게 가장 저렴하고 빠르다.
+const REQUIRED_FILENAME_PREFIX = "개발_";
+const hasRequiredPrefix = (filename: string) => filename.startsWith(REQUIRED_FILENAME_PREFIX);
+
 type AudioStage = "transcribing" | "cleaning" | null;
 // 각 단계 안에서는 실제 서버 진행률을 알 수 없어(요청-응답 1회짜리라 중간 이벤트가 없음)
 // 단계 시작/끝 지점만 확실한 값으로 잡고, 그 사이는 "곧 끝날 것 같은" 느낌만 주도록
@@ -113,6 +120,12 @@ export function NewDocumentModal({
     return base || `새 문서 ${new Date().toLocaleTimeString()}`;
   };
 
+  // 파일을 첨부하면 그 파일명을 제목 기본값으로 쓴다 — 내용에서 제목을 뽑는 방식
+  // (deriveTitleFromContent)은 원본이 "# 회의록" 같은 마크다운 헤더나 표로 시작하면
+  // 엉뚱한 제목이 되는 문제가 있었다(실제로 겪음). 파일명은 보통 이미 "개발_기획회의_0911"
+  // 처럼 회의를 식별할 수 있게 지어져 있어 확장자만 떼면 바로 쓸 만한 제목이 된다.
+  const filenameToTitle = (filename: string) => filename.replace(/\.[^./\\]+$/, "");
+
   const extractMeetingDate = (text: string): string | null => {
     const keywordLine = text.split("\n").find(l => /(일자|날짜|회의일시|작성일)/.test(l));
     const searchIn = keywordLine ?? text;
@@ -180,6 +193,16 @@ export function NewDocumentModal({
 
     const audio = isAudioFile(file.name);
     setError("");
+
+    if (!hasRequiredPrefix(file.name)) {
+      setError(
+        `회의록 제목이 개발과 관련되어 있지 않습니다. 파일명이 "${REQUIRED_FILENAME_PREFIX}"로 시작해야 합니다. (예: 개발_기획회의_0911)`
+      );
+      return;
+    }
+
+    if (!title.trim()) setTitle(filenameToTitle(file.name));
+
     setUploadingFile(true);
     try {
       if (audio) {
@@ -195,7 +218,6 @@ export function NewDocumentModal({
           })
         );
         setContent(cleaned);
-        if (!title.trim()) setTitle(deriveTitleFromContent(cleaned));
       } else {
         const formData = new FormData();
         formData.append("file", file);
@@ -204,7 +226,6 @@ export function NewDocumentModal({
           { method: "POST", body: formData }
         );
         setContent(result.content);
-        if (!title.trim()) setTitle(deriveTitleFromContent(result.content));
       }
     } catch (err: any) {
       setError(err.message || (audio ? "음성 파일을 텍스트로 변환하지 못했습니다." : "파일에서 텍스트를 추출하지 못했습니다."));
