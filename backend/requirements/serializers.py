@@ -26,6 +26,13 @@ class RequirementItemSerializer(serializers.ModelSerializer):
             'req_code',
             'req_name',
             'description',
+            'related_feature',
+            'input_output',
+            'acceptance_criteria',
+            'note',
+            'source',
+            'review_status',
+
             'priority_code',
             'priority_info',
             'difficulty',

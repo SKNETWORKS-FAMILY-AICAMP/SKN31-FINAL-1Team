@@ -50,6 +50,13 @@ type SpecDto = {
 };
 
 type ReqItemDto = {
+  related_feature?: string;
+  input_output?: string;
+  acceptance_criteria?: string;
+  note?: string;
+  source?: string;
+  review_status?: string;
+
   id: number;
   req_def: number;
   req_code: string;
@@ -284,9 +291,7 @@ function proposalDocToPatch(doc: ProposalDoc) {
 }
 
 // 요구사항정의서(ReqDefDto, DB에서 온 실제 데이터) -> ReqSpecDoc(엑셀/PPTX 내보내기
-// 전용 스키마) 변환. relatedFeature/inputOutput/acceptanceCriteria/note는 지금
-// RequirementItem에 대응하는 필드가 없어서 빈 문자열로 둔다 — 없는 내용을 지어내지
-// 않는다(이 프로젝트 전반의 환각 방지 원칙과 동일).
+// 전용 스키마) 변환. 저장된 상세 필드와 출처·검토 상태를 내보낸다.
 function reqDefToReqSpecDoc(reqDef: ReqDefDto): ReqSpecDoc {
   return {
     items: reqDef.items.map(item => ({
@@ -296,10 +301,10 @@ function reqDefToReqSpecDoc(reqDef: ReqDefDto): ReqSpecDoc {
       name: item.req_name,
       description: item.description || "",
       priority: (item.priority_info?.code_name || item.priority_code || "") as any,
-      relatedFeature: "",
-      inputOutput: "",
-      acceptanceCriteria: "",
-      note: "",
+      relatedFeature: item.related_feature || "",
+      inputOutput: item.input_output || "",
+      acceptanceCriteria: item.acceptance_criteria || "",
+      note: [item.source === "baseline_default" ? "추가 도출 제안·승인 필요" : item.source === "requirement_text" ? "기획서 근거" : "", item.review_status ? `AI 항목 상태: ${item.review_status} (문서 승인과 별개)` : "", item.note].filter(Boolean).join(" / "),
     })),
   };
 }
@@ -624,9 +629,9 @@ export default function DocumentsPage() {
       });
       setReqDefs(prev => prev.map(r => r.id === reqDefId ? updatedReqDef : r));
       const itemCount = updatedReqDef.items?.length || 0;
-      setToastMessage(`요구사항 항목 ${itemCount}건이 추출되었습니다`);
+      setToastMessage(`요구사항정의서가 재생성되었습니다 (${itemCount}건)`);
     } catch (err: any) {
-      setErrorToast(err.message || "요구사항 추출에 실패했습니다.");
+      setErrorToast(err.message || "요구사항정의서 재생성에 실패했습니다.");
     } finally {
       setBusy(null);
     }
@@ -2211,7 +2216,7 @@ function RequirementSection({
   }
 
   return (
-    <div className="border-t border-border pt-5 mt-2 space-y-4">
+    <fieldset disabled={busy !== null} aria-busy={!!extracting} className="min-w-0 border-t border-border pt-5 mt-2 space-y-4">
       <div className="flex items-center justify-between">
         <div>
           <div className="flex items-center gap-2">
@@ -2245,20 +2250,6 @@ function RequirementSection({
           )}
         </div>
         <div className="flex items-center gap-2">
-          {/* 재추출은 버전 관리 없이 기존 항목을 통째로 지우고 새로 만든다(RequirementExtractView
-              참고 — 되돌릴 방법이 없음) — 당분간 쓰지 않기로 해서 숨긴다(사용자 요청). 항목은
-              이제 표의 +버튼으로 하나씩 추가한다. 다시 켜려면 아래 주석만 풀면 된다. */}
-          {false && !isPM && canGenerate && !itemsLocked && (
-            <button
-              onClick={() => onExtract(spec.id, reqDef!.id)}
-              disabled={!!extracting}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-primary/10 text-primary text-xs font-semibold hover:bg-primary/20 disabled:opacity-50"
-              title="기획서를 분석하여 요구사항 항목을 자동으로 추출합니다."
-            >
-              {extracting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Bot className="w-3.5 h-3.5" />}
-              AI 자동 추출
-            </button>
-          )}
           {reqStatus === "APPROVED" && (
             <span className="flex items-center gap-1 text-[11px] text-muted-foreground/70">
               <Lock className="w-3 h-3" /> 승인되어 항목이 잠겼습니다
@@ -2750,6 +2741,24 @@ function RequirementSection({
               <Download className="w-3.5 h-3.5" /> PPTX 다운로드
             </button>
           </div>
+          {!isPM && canGenerate && !tasksAlreadyAssigned && (reqStatus === "DRAFT" || reqStatus === "REJECTED" || reqStatus === null) && (
+            <button
+              onClick={() => {
+                if (busy !== null) return;
+                if (window.confirm("요구사항정의서를 다시 생성하면 현재 항목(직접 추가·수정한 내용 포함)이 AI 결과로 교체됩니다. 계속하시겠습니까?")) {
+                  setEditingItemId(null);
+                  setAddFormAt(null);
+                  setBottomAddOpen(false);
+                  onExtract(spec.id, reqDef.id);
+                }
+              }}
+              disabled={busy !== null}
+              className="flex items-center gap-2 px-3 py-2 rounded-lg bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 text-xs font-semibold transition-colors disabled:opacity-50"
+            >
+              {extracting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RotateCcw className="w-3.5 h-3.5" />}
+              {extracting ? "재생성 중…" : "재생성"}
+            </button>
+          )}
           {/* 검토요청은 하단 우측 — 기획서 탭과 동일한 위치(승인/반려는 상단, 검토요청/
               직접수정 성격의 액션은 하단). reqStatus===null은 REQSPEC_STATUS 도입 전
               기존 데이터라 DRAFT로 간주해 검토요청을 받을 수 있게 한다. */}
@@ -2767,6 +2776,6 @@ function RequirementSection({
         </>
         );
       })()}
-    </div>
+    </fieldset>
   );
 }

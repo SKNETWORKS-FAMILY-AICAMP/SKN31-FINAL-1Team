@@ -165,6 +165,13 @@ def process_ai_requirement_extraction(spec_document, user):
                     req_code=getattr(req_item, "id", f"REQ-{index:02d}"),
                     req_name=getattr(req_item, "title", f"요구사항 {index}"),
                     description=getattr(req_item, "description", ""),
+                    related_feature=getattr(req_item, "related_feature", ""),
+                    input_output=getattr(req_item, "input_output", ""),
+                    acceptance_criteria=getattr(req_item, "acceptance_criteria", ""),
+                    note=getattr(req_item, "note", ""),
+                    source=getattr(getattr(req_item, "source", ""), "value", getattr(req_item, "source", "")),
+                    review_status=getattr(getattr(req_item, "review_status", ""), "value", getattr(req_item, "review_status", "")),
+
                     priority_code=priority_code_obj,
                     difficulty=getattr(req_item, "difficulty", "중"),
                     category=getattr(req_item, "category_1", getattr(req_item, "category", "기타")),
