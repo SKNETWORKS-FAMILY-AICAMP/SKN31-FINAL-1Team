@@ -2198,6 +2198,24 @@ function GanttChart({ items }: { items: GanttItem[] }) {
   // 올려야만 스크롤바가 나타나는 오버레이 방식이라 "스크롤이 안 된다"는 오해를 사기
   // 쉽다(요구사항정의서 미리보기 박스에서 같은 이유로 .doc-scroll을 쓴 전례 참고,
   // globals.css) — 여기도 .doc-scroll을 적용해 스크롤바를 항상 보이게 한다.
+  // 2026-09-11: 그래도 스크롤바가 맨 아래에 있어서 위쪽 막대들을 보면서 오른쪽으로
+  // 이동하기 불편하다는 피드백 — 마우스 휠(세로 스크롤 입력)을 가로 스크롤로 바꿔서
+  // 어디에 마우스를 올려두든 휠만 굴리면 이동할 수 있게 한다. React의 onWheel은 기본
+  // passive 리스너라 preventDefault가 안 먹으므로, ref로 DOM에 직접 { passive:false }로
+  // 붙인다.
+  const scrollRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const onWheel = (e: WheelEvent) => {
+      if (el.scrollWidth <= el.clientWidth) return; // 스크롤할 게 없으면 그냥 페이지 스크롤에 맡긴다
+      if (Math.abs(e.deltaY) <= Math.abs(e.deltaX)) return; // 이미 좌우로 휠질하는 트랙패드는 그대로 둔다
+      e.preventDefault();
+      el.scrollLeft += e.deltaY;
+    };
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onWheel);
+  }, []);
   if (items.length === 0) return null;
 
   const toLocalMidnight = (iso: string) => {
@@ -2251,11 +2269,15 @@ function GanttChart({ items }: { items: GanttItem[] }) {
   // 아니라 그냥 옆으로 계속 넓어지기만 하는 문제가 있었다(팀원 리포트: 펼쳤을 때 하단
   // 스크롤이 안 생김). 이 두 클래스로 "부모 너비를 절대 넘지 않는다"를 강제해야
   // overflow-x-auto가 실제로 스크롤로 동작한다.
+  // 담당자 이름 칸(96px)은 sticky left-0으로 고정한다 — 오른쪽으로 한참 스크롤해도
+  // "이게 누구 일정인지"를 계속 볼 수 있게(팀원 요청). bg-background로 배경을 채워야
+  // 뒤에서 막대가 스크롤돼 지나갈 때 이름 위로 겹쳐 보이지 않는다.
+  const stickyNameCls = "sticky left-0 z-10 bg-background";
   return (
-    <div className="doc-scroll border border-border rounded-xl p-4 overflow-x-auto max-w-full min-w-0">
+    <div ref={scrollRef} className="doc-scroll border border-border rounded-xl p-4 overflow-x-auto max-w-full min-w-0">
       <div style={{ minWidth: `${96 + dayCount * 52}px` }}>
         <div className="grid gap-y-2" style={{ gridTemplateColumns: `96px 1fr` }}>
-          <div />
+          <div className={stickyNameCls} />
           <div className="flex items-center gap-2 pb-1.5 w-full">
             <span className="text-[11px] font-semibold text-muted-foreground shrink-0">{fmtDate(days[0])}</span>
             <span className="flex-1 border-t border-dashed border-border relative h-0">
@@ -2274,7 +2296,7 @@ function GanttChart({ items }: { items: GanttItem[] }) {
             const narrow = width < 14;
             return (
               <Fragment key={item.id}>
-                <p className="text-xs font-bold text-muted-foreground flex items-center gap-1 truncate pt-1">
+                <p className={cn("text-xs font-bold text-muted-foreground flex items-center gap-1 truncate pt-1", stickyNameCls)}>
                   {label && (<><UserIcon className="w-3 h-3 shrink-0" /><span className="truncate">{label}</span></>)}
                 </p>
                 <div className="relative h-6">
