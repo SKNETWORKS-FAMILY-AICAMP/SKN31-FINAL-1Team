@@ -7,7 +7,7 @@ import {
   FileText, Plus, Bot, Loader2, Send, CheckCircle2, XCircle,
   AlertCircle, Clock, RotateCcw, MessageSquare, X, FolderKanban,
   Download, Printer, Trash2, Save, Pencil, Lock, ChevronDown, Briefcase,
-  UserIcon, CalendarIcon, FileSpreadsheet,
+  UserIcon, CalendarIcon, FileSpreadsheet, PanelLeftClose, PanelLeft,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { NewDocumentModal } from "@/components/projects/NewDocumentModal";
@@ -372,6 +372,11 @@ export default function DocumentsPage() {
   const [selectedNoteId, setSelectedNoteId] = useState<number | null>(null);
   const [activeTab, setActiveTab] = useState<PipelineTab>("proposal");
   const [newDocModalOpen, setNewDocModalOpen] = useState(false);
+  // 좌측 전체 사이드바와 별개로, 이 화면 안의 문서 목록 패널도 접을 수 있게 해달라는
+  // 요청 — 문서 하나를 골라 기획서/요구사항정의서를 오래 들여다볼 때는 목록이 필요
+  // 없어서 공간을 넓게 쓰고 싶은 경우가 많다. 세션 중에만 유지하면 되는 UI 상태라
+  // localStorage 등에 영속시키지 않는다.
+  const [listCollapsed, setListCollapsed] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [rejectTarget, setRejectTarget] = useState<
     { kind: "spec"; specId: number } | { kind: "reqdef"; specId: number; reqDefId: number } | null
@@ -971,7 +976,10 @@ export default function DocumentsPage() {
         })()}
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-[360px_minmax(0,1fr)] gap-6 items-start">
+      <div className={cn(
+        "grid grid-cols-1 gap-6 items-start transition-[grid-template-columns] duration-200",
+        listCollapsed ? "lg:grid-cols-[56px_minmax(0,1fr)]" : "lg:grid-cols-[360px_minmax(0,1fr)]"
+      )}>
         {/* Document list — PDF 다운로드(window.print())는 #print-area 외 나머지를
             visibility:hidden으로만 숨기는데, 이 목록은 스크롤 없이 카드 전부(100개+)를
             그대로 렌더링해서 visibility:hidden이어도 레이아웃 높이는 그대로 차지한다.
@@ -979,6 +987,30 @@ export default function DocumentsPage() {
             수십 장 따라붙는 버그가 있었다(실제 보고됨) — print-area의 조상이 아니라
             형제 요소라 display:none(print:hidden)으로 완전히 레이아웃에서 빼도 안전하다. */}
         <div className="glass rounded-2xl border border-border p-4 space-y-3 print:hidden">
+          <div className="flex items-center justify-between gap-2">
+            {!listCollapsed && <span className="text-sm font-bold text-muted-foreground pl-1">문서 목록</span>}
+            <button
+              onClick={() => setListCollapsed(v => !v)}
+              title={listCollapsed ? "문서 목록 펼치기" : "문서 목록 접기"}
+              aria-label={listCollapsed ? "문서 목록 펼치기" : "문서 목록 접기"}
+              className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-black/5 dark:hover:bg-white/5 transition-colors shrink-0 mx-auto"
+            >
+              {listCollapsed ? <PanelLeft className="w-4 h-4" /> : <PanelLeftClose className="w-4 h-4" />}
+            </button>
+          </div>
+
+          {listCollapsed ? (
+            !isPM && (
+              <button
+                onClick={() => setNewDocModalOpen(true)}
+                title="새 회의록 / 문서"
+                className="w-full flex items-center justify-center py-2.5 rounded-xl bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
+              >
+                <Plus className="w-4 h-4" />
+              </button>
+            )
+          ) : (
+            <>
           {!isPM && (
             <button
               onClick={() => setNewDocModalOpen(true)}
@@ -1065,6 +1097,8 @@ export default function DocumentsPage() {
               })
             )}
           </div>
+            </>
+          )}
         </div>
 
         {/* Detail panel */}
