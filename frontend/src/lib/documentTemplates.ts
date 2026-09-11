@@ -10,10 +10,10 @@ export type ProjectPeriod = {
   end: string; // YYYY-MM-DD, 없으면 ""
 };
 
-// 기획서 템플릿: 프로젝트 개요 / 문제 정의 / 프로젝트 목표 / 대상 사용자 / 주요 기능 /
+// 기획서 템플릿: 프로젝트 개요 / 핵심 목표 / 세부 목표 및 문제 정의 / 대상 사용자 / 주요 기능 /
 // 기술 스택 및 제약사항 / 최종 결정사항 — 7개 섹션.
 // 2026-09-10: 회의록에는 구체적인 사용자 시나리오가 명시되지 않는 경우가 많아 "5. 사용자
-// 시나리오" 섹션을 제거하고, 회의록에서 추출/보완한 "프로젝트 목표"를 3번 섹션으로 넣도록
+// 시나리오" 섹션을 제거하고, 회의록에서 추출/보완한 "세부 목표 및 문제 정의"를 3번 섹션으로 넣도록
 // AI/백엔드 구조가 바뀌었다(백엔드 SpecDocument.user_scenarios → goals).
 // 2026-08-31: Django SpecDocument 모델과 1:1로 맞추면서(overview/problem_definition/target_users/
 // key_features/goals/tech_stack/final_decisions 전부 TextField) 팀 결정에 따라 7개
@@ -22,8 +22,8 @@ export type ProjectPeriod = {
 // 정해져서 프론트도 그에 맞춰 문자열로 단순화한다(줄바꿈으로 항목을 구분).
 export type ProposalDoc = {
   projectOverview: string; // 1. 프로젝트 개요
-  problemDefinition: string; // 2. 문제 정의
-  projectGoals: string; // 3. 프로젝트 목표
+  problemDefinition: string; // 2. 핵심 목표
+  projectGoals: string; // 3. 세부 목표 및 문제 정의
   target: string; // 4. 대상 사용자
   features: string; // 5. 주요 기능 — 자유 텍스트(줄바꿈 구분)
   techStackConstraints: string; // 6. 기술 스택 및 제약사항

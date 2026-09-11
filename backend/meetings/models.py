@@ -79,10 +79,10 @@ class SpecDocument(models.Model):
     # 팀 결정: 7개 섹션 전부 자유 텍스트(한 덩어리)로 관리 — 4/5/7번(주요기능/시나리오/결정사항)도
     # 카드·리스트로 행 단위 저장하지 않고 줄바꿈으로 구분된 하나의 텍스트로 둔다.
     overview = models.TextField(null=True, blank=True, verbose_name="1. 프로젝트 개요")
-    problem_definition = models.TextField(null=True, blank=True, verbose_name="2. 문제 정의")
+    problem_definition = models.TextField(null=True, blank=True, verbose_name="2. 핵심 목표")
     target_users = models.TextField(null=True, blank=True, verbose_name="4. 대상 사용자")
     key_features = models.TextField(null=True, blank=True, verbose_name="5. 주요 기능")
-    goals = models.TextField(null=True, blank=True, verbose_name="3. 프로젝트 목표")
+    goals = models.TextField(null=True, blank=True, verbose_name="3. 세부 목표 및 문제 정의")
     # 기존 시나리오는 보존하며 목표로 변환하지 않습니다.
     user_scenarios = models.TextField(null=True, blank=True, verbose_name="5. 사용자 시나리오")
     tech_stack = models.TextField(null=True, blank=True, verbose_name="6. 기술 스택 및 제약사항")
