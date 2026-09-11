@@ -1,6 +1,5 @@
 #tasks/services.py
 import logging
-from concurrent.futures import ThreadPoolExecutor
 from datetime import date, timedelta
 
 from django.contrib.auth import get_user_model
@@ -223,30 +222,28 @@ def generate_task_suggestions(spec_id: int) -> dict:
         "workdays": len(list_project_workdays(start_date, end_date)),
     }
 
-    # 2026-09-11: 업무 생성(LLM, 가장 무거운 단일 호출)과 복잡도 판단(LLM)은
-    # 서로의 결과를 안 쓴다 — complexity는 tasks가 아니라 spec/req_def 필드만
-    # 본다. 순차로 하면 둘 다 기다려야 하니 동시에 돌린다(둘 다 I/O 대기라
-    # 스레드로 충분 — CPU 작업이 아님).
-    project_context = _build_project_context(req_def)
-    with ThreadPoolExecutor(max_workers=2) as executor:
-        task_future = executor.submit(
-            generate_tasks, requirement_doc, available_skills=available_skills, project_period=project_period
+    try:
+        task_items = generate_tasks(
+            requirement_doc, available_skills=available_skills, project_period=project_period
         )
-        complexity_future = executor.submit(assess_project_complexity, project_context)
-
-        try:
-            task_items = task_future.result()
-        except Exception as e:
-            logger.exception("업무 생성 실패 (spec_id=%s)", spec_id)
-            return {"status": "error", "message": f"업무 생성 실패: {e}"}
-
-        try:
-            complexity = complexity_future.result()
-        except Exception as e:
-            logger.warning("프로젝트 복잡도 판단 실패, 버퍼 없이 진행 (spec_id=%s): %s", spec_id, e)
-            complexity = None
-
+    except Exception as e:
+        logger.exception("업무 생성 실패 (spec_id=%s)", spec_id)
+        return {"status": "error", "message": f"업무 생성 실패: {e}"}
     tasks = [t.model_dump(mode="json") for t in task_items]
+
+    # 2026-09-11: 병렬 호출을 시도했다가 되돌렸다 — 이 계정의 OpenAI 분당 토큰
+    # 한도(TPM)가 이미 호출 하나로 거의 다 차는 수준이라(단일 호출이 2만 토큰
+    # 넘게 요청하는 경우 실측됨), 두 LLM 호출을 동시에 보내면 같은 예산을
+    # 두고 서로 부딪혀 429(rate_limit_exceeded)가 오히려 더 빨리·더 자주
+    # 났다(실측: 순차 대비 병렬 적용 후 이전보다 이른 단계에서 429 재현).
+    # 병목이 "순차 대기시간"이 아니라 "분당 토큰 예산" 자체라 병렬화가
+    # 역효과였다 — 순차 호출로 되돌린다.
+    project_context = _build_project_context(req_def)
+    try:
+        complexity = assess_project_complexity(project_context)
+    except Exception as e:
+        logger.warning("프로젝트 복잡도 판단 실패, 버퍼 없이 진행 (spec_id=%s): %s", spec_id, e)
+        complexity = None
 
     # 2026-09-11: skill->role 매핑을 하드코딩 표 대신 실제 인력에서 도출한다.
     # raw_profiles는 담당자 매핑에도 재사용하므로 여기서 한 번만 조회한다.
@@ -268,32 +265,26 @@ def generate_task_suggestions(spec_id: int) -> dict:
     except ValueError:
         max_hours_per_assignee = 0.0
 
-    # 2026-09-11: 패키지 분할 판단(LLM)과 담당자 매핑(LLM, 경력 태그 추출)은
-    # 둘 다 tasks만 있으면 되고 서로의 결과를 안 기다린다 — 동시에 돌린다.
-    with ThreadPoolExecutor(max_workers=2) as executor:
-        split_future = executor.submit(
-            decide_package_splits, wp["packages"], unit_lookup, max_hours_per_assignee
-        )
-        mapping_future = executor.submit(
-            assignee_mapping_node, {"raw_employee_profiles": raw_profiles, "tasks": tasks}
-        )
-
-        try:
-            split_decisions = split_future.result()
-        except Exception:
-            logger.exception("패키지 분할 판단 중 오류 — 분할 없이 진행 (spec_id=%s)", spec_id)
-            split_decisions = {}
-
-        try:
-            mapping_result = mapping_future.result()
-        except Exception as e:
-            logger.exception("담당자 매핑 실패 (spec_id=%s)", spec_id)
-            return {"status": "error", "message": "담당자 매핑 중 오류가 발생했습니다(AI 서버 요청량 초과일 수 있습니다). 잠시 후 다시 시도해주세요."}
-
+    try:
+        split_decisions = decide_package_splits(wp["packages"], unit_lookup, max_hours_per_assignee)
+    except Exception:
+        logger.exception("패키지 분할 판단 중 오류 — 분할 없이 진행 (spec_id=%s)", spec_id)
+        split_decisions = {}
     package_by_unit = apply_split_decisions(flat_units, wp["package_by_unit"], split_decisions)
     assert_full_coverage(package_by_unit, flat_units)
     work_packages_view = assemble_packages(flat_units, package_by_unit)
 
+    # 2026-09-11: 패키지 분할 판단과 담당자 매핑을 동시에 돌려봤다가 되돌렸다 —
+    # 위 주석(업무 생성/복잡도 판단 근처) 참고, 이 계정 TPM 한도에서는 병렬
+    # 호출이 429를 더 빨리·자주 유발해 순차 호출로 되돌렸다.
+    try:
+        mapping_result = assignee_mapping_node({
+            "raw_employee_profiles": raw_profiles,
+            "tasks": tasks,
+        })
+    except Exception as e:
+        logger.exception("담당자 매핑 실패 (spec_id=%s)", spec_id)
+        return {"status": "error", "message": "담당자 매핑 중 오류가 발생했습니다(AI 서버 요청량 초과일 수 있습니다). 잠시 후 다시 시도해주세요."}
     if mapping_result.get("error"):
         return {"status": "error", "message": f"담당자 매핑 실패: {mapping_result['error']}"}
     member_profiles = mapping_result["member_profiles"]
