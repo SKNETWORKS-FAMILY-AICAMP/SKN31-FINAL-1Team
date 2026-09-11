@@ -752,11 +752,22 @@ export default function DocumentsPage() {
     }
   };
 
+  // 문서를 빠르게 번갈아 클릭하면(예: A → B → A) 각 클릭마다 이 요청이 새로 나가는데,
+  // 네트워크 응답은 보낸 순서대로 도착한다는 보장이 없다 — B의 응답이 A로 돌아온 뒤에
+  // 도착하면 taskAssignments(전역 state)가 B(다른 프로젝트)의 데이터로 덮어써져서,
+  // 지금 보고 있는 A 문서의 파이프라인 단계가 잠깐 엉뚱하게(B의 진행 단계로) 표시됐다가
+  // A의 응답이 뒤늦게 도착해야 다시 돌아오는 버그가 있었다(실제로 재현해서 확인). 가장
+  // 최근에 요청한 projectId만 결과를 반영하도록 최신 요청을 기록해두고, 응답이 왔을 때
+  // 그사이 더 최근 요청이 나갔으면(=이 응답은 이미 낡음) 무시한다.
+  const latestTaskFetchRef = useRef<number | null>(null);
   const fetchTaskAssignments = async (projectId: number) => {
+    latestTaskFetchRef.current = projectId;
     try {
       const list = await apiFetch<TaskAssignmentDto[]>(`/api/tasks/assignments/?project=${projectId}`);
+      if (latestTaskFetchRef.current !== projectId) return; // 낡은 응답 — 그사이 다른 문서로 넘어감
       setTaskAssignments(list);
     } catch (err: any) {
+      if (latestTaskFetchRef.current !== projectId) return;
       setErrorToast(err.message || "업무 목록을 불러오지 못했습니다.");
     }
   };
@@ -1717,10 +1728,10 @@ function TaskTitleCell({
   );
 }
 
-function ReasonRow({ techFit, workloadFit, experienceFit, scheduleReason }: { techFit: string | null; workloadFit: string | null; experienceFit: string | null; scheduleReason?: string | null }) {
+function ReasonRow({ techFit, workloadFit, experienceFit, scheduleReason, colSpan = 4 }: { techFit: string | null; workloadFit: string | null; experienceFit: string | null; scheduleReason?: string | null; colSpan?: number }) {
   return (
     <tr className="bg-black/[0.02] dark:bg-white/[0.02]">
-      <td colSpan={4} className="px-4 pb-3 pt-0">
+      <td colSpan={colSpan} className="px-4 pb-3 pt-0">
         <ul className="text-xs text-muted-foreground space-y-1 pl-5">
           <li>🛠 기술 적합도: {techFit ?? "-"}</li>
           <li>📊 업무 여유도: {workloadFit ?? "-"}</li>
@@ -1957,16 +1968,18 @@ function TaskAssignmentList({
         <table className="w-full text-sm text-left">
           <thead className="text-xs text-muted-foreground uppercase bg-black/5 dark:bg-white/5">
             <tr>
-              <th className="px-4 py-3 font-bold">업무명 / 배정 근거</th>
+              <th className="px-4 py-3 font-bold w-12">번호</th>
+              <th className="px-4 py-3 font-bold">업무명 / 배정 근거 <span className="normal-case font-semibold text-muted-foreground/70">(총 {tasks.length}건)</span></th>
               <th className="px-4 py-3 font-bold w-44">담당자</th>
               <th className="px-4 py-3 font-bold w-40">일정</th>
               <th className="px-4 py-3 font-bold w-28">상태</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
-            {tasks.map(t => (
+            {tasks.map((t, idx) => (
               <Fragment key={t.id}>
                 <tr className="align-top">
+                  <td className="px-4 py-3 text-xs font-semibold text-muted-foreground">{idx + 1}</td>
                   <td className="px-4 py-3">
                     <TaskTitleCell
                       title={t.title}
@@ -2073,6 +2086,7 @@ function TaskAssignmentList({
                     techFit={t.assignment_reason.split(" / ")[0] ?? null}
                     workloadFit={t.assignment_reason.split(" / ")[1] ?? null}
                     experienceFit={t.assignment_reason.split(" / ")[2] ?? null}
+                    colSpan={5}
                   />
                 )}
               </Fragment>
@@ -2169,6 +2183,11 @@ function HeadcountSummary({ assigneeIds, members }: { assigneeIds: (number | nul
 // 그대로 이식, 필드명만 이 파일의 GanttItem에 맞춤). 하루=한 칸인 날짜 그리드라 기간이
 // 짧아도(며칠) 눈금이 중복되지 않는다.
 function GanttChart({ items }: { items: GanttItem[] }) {
+  // 프로젝트 기간이 길면 하루씩 다 펼쳐 그리는 게 옆으로 한참 길어져서(팀원 요청) 기본은
+  // 시작일 ~ 종료일만 보여주고 가운데를 "···"로 접어둔다. 막대(bar)는 어차피 퍼센트
+  // 좌표(left/width)로 그려서 날짜 칸을 몇 개 그리든 위치가 정확하니, 접힌 상태에서도
+  // 막대 자체는 그대로 보여주고 배경의 날짜별 점선 격자만 생략한다.
+  const [expanded, setExpanded] = useState(false);
   if (items.length === 0) return null;
 
   const toLocalMidnight = (iso: string) => {
@@ -2220,17 +2239,34 @@ function GanttChart({ items }: { items: GanttItem[] }) {
 
   return (
     <div className="border border-border rounded-xl p-4 overflow-x-auto">
-      <div style={{ minWidth: `${96 + dayCount * 52}px` }}>
+      <div style={{ minWidth: expanded ? `${96 + dayCount * 52}px` : undefined }}>
         <div className="grid gap-y-2" style={{ gridTemplateColumns: `96px 1fr` }}>
           <div />
-          <div className="grid" style={dayGridStyle}>
-            {days.map((d, i) => (
-              <div key={i} className={cn("text-center pb-1.5", dayColClass(i))}>
-                <p className={cn("text-[10px] font-semibold", i === todayIndex ? "text-primary" : "text-muted-foreground")}>{fmtDate(d)}</p>
-                <p className="text-[9px] text-muted-foreground/60">{fmtWeekday(d)}</p>
-              </div>
-            ))}
-          </div>
+          {expanded ? (
+            <div className="grid" style={dayGridStyle}>
+              {days.map((d, i) => (
+                <div key={i} className={cn("text-center pb-1.5", dayColClass(i))}>
+                  <p className={cn("text-[10px] font-semibold", i === todayIndex ? "text-primary" : "text-muted-foreground")}>{fmtDate(d)}</p>
+                  <p className="text-[9px] text-muted-foreground/60">{fmtWeekday(d)}</p>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setExpanded(true)}
+              title="전체 일정 펼치기"
+              className="group flex items-center gap-2 pb-1.5 w-full text-left"
+            >
+              <span className="text-[11px] font-semibold text-muted-foreground shrink-0">{fmtDate(days[0])}</span>
+              <span className="flex-1 border-t border-dashed border-border relative h-0">
+                <span className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 bg-background px-2 text-[11px] font-bold text-muted-foreground group-hover:text-primary transition-colors">
+                  ···
+                </span>
+              </span>
+              <span className="text-[11px] font-semibold text-muted-foreground shrink-0">{fmtDate(days[dayCount - 1])}</span>
+            </button>
+          )}
 
           {rows.map(({ label, item }) => {
             const s = dayIndexOf(item.start);
@@ -2244,9 +2280,11 @@ function GanttChart({ items }: { items: GanttItem[] }) {
                   {label && (<><UserIcon className="w-3 h-3 shrink-0" /><span className="truncate">{label}</span></>)}
                 </p>
                 <div className="relative h-6">
-                  <div className="absolute inset-0 grid" style={dayGridStyle}>
-                    {days.map((_, i) => <div key={i} className={dayColClass(i)} />)}
-                  </div>
+                  {expanded && (
+                    <div className="absolute inset-0 grid" style={dayGridStyle}>
+                      {days.map((_, i) => <div key={i} className={dayColClass(i)} />)}
+                    </div>
+                  )}
                   <div
                     title={`${item.title} · ${fmtDate(days[s])} ~ ${fmtDate(days[e])}`}
                     className="absolute top-0 h-full rounded-md flex items-center px-2 bg-primary/80 hover:bg-primary transition-colors overflow-hidden"
@@ -2268,6 +2306,15 @@ function GanttChart({ items }: { items: GanttItem[] }) {
           })}
         </div>
       </div>
+      {expanded && (
+        <button
+          type="button"
+          onClick={() => setExpanded(false)}
+          className="mt-3 text-[11px] font-semibold text-muted-foreground hover:text-primary transition-colors"
+        >
+          접기
+        </button>
+      )}
     </div>
   );
 }
