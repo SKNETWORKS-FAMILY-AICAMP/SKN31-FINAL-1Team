@@ -44,6 +44,7 @@ class SpecDocumentSerializer(serializers.ModelSerializer):
             'problem_definition',
             'target_users',
             'key_features',
+            'goals',
             'user_scenarios',
             'tech_stack',
             'final_decisions',

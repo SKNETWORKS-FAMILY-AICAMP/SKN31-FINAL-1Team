@@ -206,7 +206,7 @@ class MeetingNoteAnalyzeView(APIView):
                 'problem': 'problem_definition',
                 'users': 'target_users',
                 'features': 'key_features',
-                'scenarios': 'user_scenarios',
+                'goals': 'goals',
                 'tech_scope': 'tech_stack',
                 'decisions': 'final_decisions',
             }
@@ -255,7 +255,7 @@ class MeetingNoteAnalyzeView(APIView):
                 'problem_definition': section_or_not_discussed('problem'),
                 'target_users': section_or_not_discussed('users'),
                 'key_features': section_or_not_discussed('features'),
-                'user_scenarios': section_or_not_discussed('scenarios'),
+                'goals': section_or_not_discussed('goals'),
                 'tech_stack': section_or_not_discussed('tech_scope'),
                 'final_decisions': section_or_not_discussed('decisions'),
             }
