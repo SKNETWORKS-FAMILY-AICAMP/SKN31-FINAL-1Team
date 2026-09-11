@@ -75,6 +75,13 @@ class RequirementItem(models.Model):
     req_code = models.CharField(max_length=50, verbose_name="요구사항 코드 (예: REQ-01)")
     req_name = models.CharField(max_length=200, verbose_name="요구사항명")
     description = models.TextField(verbose_name="요구사항 상세 내용")
+    related_feature = models.TextField(blank=True, default="")
+    input_output = models.TextField(blank=True, default="")
+    acceptance_criteria = models.TextField(blank=True, default="")
+    note = models.TextField(blank=True, default="")
+    source = models.TextField(blank=True, default="")
+    review_status = models.TextField(blank=True, default="")
+
     
     # 우선순위 (common 앱의 CommonCode 연동 - 예: HIGH, MEDIUM, LOW)
     priority_code = models.ForeignKey(
