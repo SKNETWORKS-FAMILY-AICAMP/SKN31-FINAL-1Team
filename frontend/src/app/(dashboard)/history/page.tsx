@@ -72,27 +72,41 @@ export default function HistoryPage() {
   const [filter, setFilter] = useState<FilterKey>("all");
   const [page, setPage] = useState(1);
 
+  // 마운트 시 한 번만 불러오고 끝이라, 히스토리 탭을 열어둔 채로 다른 화면(승인/배분 등)에서
+  // 새 이력이 쌓여도 여기 화면엔 반영이 안 되는 문제가 있었다(실제 사용자 리포트). 탭을
+  // 벗어났다 돌아오는(다른 창 보다가, 또는 다른 화면 갔다 옴) 흐름에서 최소한의 부담으로
+  // 최신 상태를 다시 받아오도록, 마운트 시뿐 아니라 창이 다시 포커스될 때도 재조회한다.
   useEffect(() => {
+    let cancelled = false;
     const load = async () => {
       setLoading(true);
       setLoadError(false);
       try {
         // 단일 프로젝트 운영 전제 — 목록의 첫 프로젝트를 그대로 쓴다(다른 화면들과 동일한 패턴).
         const projects = await apiFetch<ProjectDto[]>("/api/projects/");
+        if (cancelled) return;
         const current = projects[0] ?? null;
         setProject(current);
         if (current) {
           const history = await apiFetch<HistoryItem[]>(`/api/projects/${current.id}/history/`);
+          if (cancelled) return;
           setItems(history);
         }
       } catch (e) {
+        if (cancelled) return;
         console.error(e);
         setLoadError(true);
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     };
     load();
+    const onFocus = () => load();
+    window.addEventListener("focus", onFocus);
+    return () => {
+      cancelled = true;
+      window.removeEventListener("focus", onFocus);
+    };
   }, []);
 
   // PM은 전체를 보고, 일반유저는 본인이 실행한 이력만 본다(사용자 요청, heyzzabi2 참고).
