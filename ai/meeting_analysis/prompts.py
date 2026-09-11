@@ -1,258 +1,81 @@
 """
-노드 ① 회의록 구조화 프롬프트.
+노드 1 회의록 구조화 프롬프트 연결 모듈.
 
-프롬프트를 코드에 두는 이유:
-  - git diff로 변경 이력을 추적할 수 있다
-  - 평가 점수와 프롬프트 버전을 연결할 수 있다
+실제 추출 규칙과 퓨샷 예시는 prompt_templates 디렉터리의
+YAML 파일에서 관리합니다.
 
-※ Instructor가 스키마를 자동으로 프롬프트에 주입하므로
-  스키마 전문을 손으로 넣지 않습니다. 규칙과 예시만 씁니다.
+프롬프트 규칙:
+    prompt_templates/extraction.yaml
+
+퓨샷 예시:
+    prompt_templates/extraction_fewshots.yaml
+
+이 모듈은 기존 호출부가 사용하는 공개 이름을 유지합니다.
+
+    SYSTEM_PROMPT
+    build_system_prompt
+    build_messages
 """
 
-SYSTEM_PROMPT = """당신은 회의록에서 프로젝트 정보를 추출하는 분석가입니다.
-당신의 역할은 '받아쓰기'이지 '작문'이 아닙니다.
-
-## 절대 규칙
-1. 회의록에 없는 내용을 만들지 마십시오. 일반적인 프로젝트라면 당연히
-   있을 법한 내용이라도, 이 회의록에 없으면 넣지 마십시오.
-2. 모든 항목에 evidence.quote가 있어야 합니다.
-   quote는 회의록 원문에 그대로 존재하는 문장이어야 하며,
-   요약·의역·조사 변경 없이 복사하십시오.
-   project는 background_evidence와 problem_evidence를 각각 따로 채웁니다.
-   두 값이 같은 문장일 필요는 없습니다 — background는 배경을 설명하는
-   문장에서, problem은 문제 상황을 설명하는 문장에서 각각 인용하십시오.
-3. 근거를 찾을 수 없는 항목은 비워두고, unresolved 배열에
-   "무엇이 없어서 채우지 못했는지"를 적으십시오.
-4. requirements는 4개 하위 분류에만 넣습니다.
-   functional(기능) / non_functional(성능·보안·사용성)
-   / data(저장·연동 데이터) / technical(기술 스택·환경)
-5. decisions.category는 feature, tech, scope 중 하나입니다.
-6. 한 문장 안에 "결정된 부분"과 "다음으로 미뤄진 부분"이 섞여 있으면,
-   두 가지를 모두 하십시오 — 하나만 하고 끝내지 마십시오.
-
-   예: 회의록에 "원거리 지역은 배송비를 추가로 부과한다(구체 금액은 차주
-       회의에서 확정)"라는 문장이 있으면:
-       가) decisions에 다음을 추가하십시오:
-          {"category": "feature", "content": "원거리 지역은 배송비를
-           추가로 부과한다"}
-       나) unresolved에 다음을 추가하십시오:
-          "원거리 지역 추가 배송비의 구체적인 금액이 정해지지 않았습니다."
-
-   "일부가 미정이니 전체를 안 쓴다"와 "미정인 부분만 쓰고 결정된 부분은
-   빠뜨린다" 둘 다 잘못된 처리입니다. 가)와 나) 둘 다 반드시 하십시오.
-   아래 두 번째 few-shot 예시(배송비 정책 사례)가 이 처리를 그대로
-   보여줍니다.
-
-7. project.goals에는 회의에서 확인할 수 있는 프로젝트 목표만 작성하십시오.
-각 목표는 content와 evidence를 가져야 합니다.
-evidence.quote는 해당 목표를 뒷받침하는 회의록 원문이어야 합니다.
+from .prompt_loader import (
+    build_extraction_fewshot_messages,
+    build_extraction_system_prompt,
+)
 
 
-## 분류가 애매할 때
-### requirements 4분류
-- functional     : 시스템이 무엇을 하는지 (기능)
-- non_functional : 성능(응답시간·동시접속), 접근성·사용성
-                   (폰트 크기, 터치 영역 크기, 버튼 배치, 반응형 설계), 보안
-- data           : 저장·연동 데이터
-- technical      : 기술 스택, 개발 환경
-- functional은 "최종 결정 사항" 목록에 있는 항목만 뽑는 게 아닙니다.
-회의 본문에서 사용자 흐름·화면 동작으로 구체적으로 설명된 내용은,
-별도로 "결정했다"는 언급이 없어도 전부 기능 요구사항입니다.
-
-예: 최종 결정 사항에는 A, B, C 흐름만 명시돼 있어도, 회의 본문에
-D라는 흐름(예: 재고 확인 — 검색·스캔으로 재고를 조회한다)이 구체적으로
-설명돼 있다면 D도 반드시 functional에 포함하십시오. "결정 목록에
-없으니 덜 중요하다"고 판단해서 누락시키지 마십시오.
-
-
-### decisions.category
-- feature : 무엇을 만들지 정한 것
-- tech    : 어떤 기술을 쓸지 정한 것
-- scope   : 무엇을 빼거나 미룰지 정한 것
-            "제외한다", "범위에서 뺀다", "2차 개발로 이관한다",
-            "MVP에 포함하지 않는다", "~만 포함한다"가 여기 해당합니다. 
-
-### constraints
-일정·기간, 인력 규모, 예산, 외부 의존성.
-"개발 기간 3개월", "백엔드 2명, 프론트엔드 1명" 같은 항목입니다.
-
-
-## 잘못된 출력 예시 — 이렇게 하지 마십시오
-non_functional: [
-  {content: "응답 속도는 3초 이내여야 한다",
-   evidence: {quote: "빠르게 처리되어야 한다"}
-]
-문제점:
-1. "3초"는 회의록에 없습니다. 일반적인 기준을 임의로 넣지 마십시오.
-2. evidence.quote "빠르게 처리되어야 한다"도 회의록에 없는 문장입니다.
-3. 올바른 처리는 non_functional을 비우고 unresolved에
-   "성능 기준이 논의되지 않았습니다"를 적는 것입니다."""
-
-
-FEWSHOT_INPUT = """[회의 기본정보]
-- 일시: 2026-03-04
-- 참석자: 김기획, 박개발
-- 회의명: 회의록 자동화 범위 확정
-
-[회의 목적]
-회의록 자동화 기능의 범위를 확정한다.
-
-[회의 내용]
-서기가 회의록을 직접 텍스트로 입력하는 방식으로 간다.
-음성 녹음 인식은 정확도 문제도 있고 개발 기간이 8주밖에 안 되니 이번엔 뺀다.
-입력은 최소 항목만 받자. 기본정보, 목적, 내용, 결정사항 네 개.
-서기 부담이 크면 아무도 안 쓴다.
-
-[최종 결정사항]
-- 회의록 입력은 텍스트 방식으로 한다
-- 음성 인식은 이번 범위에서 제외한다"""
-
-
-FEWSHOT_OUTPUT = """{
-  "project": {
-    "name": "회의록 자동화 기능",
-    "background": "회의록 작성 부담으로 인해 실제 사용이 저조할 수 있다는 문제 인식",
-    "problem": "서기 부담이 크면 아무도 사용하지 않는다",
-    "goals": [{
-    "content": "서기가 최소 항목만 입력해도 동작하는 회의록 입력 방식을 확보한다",
-    "evidence": {
-      "quote": "입력은 최소 항목만 받자. 기본정보, 목적, 내용, 결정사항 네 개."
-    }
-  }],
-    "background_evidence": {"quote": "서기 부담이 크면 아무도 안 쓴다"},
-    "problem_evidence": {"quote": "서기 부담이 크면 아무도 안 쓴다"}
-  },
-  "users": [
-    {"type": "서기", "description": "회의 내용을 직접 텍스트로 입력하는 담당자",
-     "needs": ["입력 항목이 적을 것"],
-     "evidence": {"quote": "서기가 회의록을 직접 텍스트로 입력하는 방식으로 간다"}}
-  ],
-  "requirements": {
-    "functional": [
-      {"content": "회의록을 텍스트로 입력받는다",
-       "evidence": {"quote": "서기가 회의록을 직접 텍스트로 입력하는 방식으로 간다"}},
-      {"content": "입력 항목은 기본정보, 목적, 내용, 결정사항 4개로 한정한다",
-       "evidence": {"quote": "기본정보, 목적, 내용, 결정사항 네 개"}}
-    ],
-    "non_functional": [], "data": [], "technical": []
-  },
-  "scenarios": [],
-  "decisions": [
-    {"category": "feature", "content": "회의록 입력은 텍스트 방식으로 한다",
-     "rationale": "음성 인식은 정확도 문제와 일정 제약이 있음",
-     "evidence": {"quote": "회의록 입력은 텍스트 방식으로 한다"}},
-    {"category": "scope", "content": "음성 인식은 이번 범위에서 제외한다",
-     "rationale": "정확도 문제와 8주 일정 제약",
-     "evidence": {"quote": "음성 인식은 이번 범위에서 제외한다"}}
-  ],
-  "constraints": [
-    {"type": "일정", "content": "개발 기간 8주",
-     "evidence": {"quote": "개발 기간이 8주밖에 안 되니"}}
-  ],
-  "unresolved": [
-    "비기능 요구사항(성능·보안)이 회의에서 논의되지 않았습니다.",
-    "사용자 시나리오가 회의에서 구체적으로 언급되지 않았습니다.",
-    "데이터 저장 방식이 논의되지 않았습니다."
-  ]
-}"""
-
-
-# 규칙 6번("결정된 부분" + "미뤄진 부분"이 한 문장에 섞인 경우) 전용 예시.
-#
-# 이 규칙을 프롬프트에 글로만 적어뒀을 때는, 모델이 결정된 부분과 미뤄진
-# 부분을 "scope" 결정 하나로 뭉뚱그리면서 이미 결정된 원칙("추가로
-# 부과한다")을 통째로 놓치는 경향이 관찰됐다(예: 핫존 가중치 정산 사례).
-# 글로 된 규칙보다 실제 입출력 예시가 이런 패턴 교정에 더 효과적이라,
-# FEWSHOT_INPUT/OUTPUT과는 다른 도메인(배송비 정책)으로 별도 예시를 둔다 —
-# 같은 도메인으로 만들면 모델이 규칙을 일반화하지 않고 표면적인 단어만
-# 따라할 위험이 있다.
-FEWSHOT_INPUT_2 = """[회의 기본정보]
-- 일시: 2026-04-02
-- 참석자: 이기획, 최개발
-- 회의명: 배송비 정책 확정
-
-[회의 목적]
-지역별 배송비 정책을 확정한다.
-
-[회의 내용]
-원거리 지역은 배송비를 추가로 부과한다. 다만 추가 요금이 정확히 얼마일지는
-물류팀 견적을 받아봐야 해서 다음 회의에서 정하기로 했다.
-결제 수단은 카드와 계좌이체만 우선 지원한다.
-
-[최종 결정사항]
-- 원거리 지역은 배송비를 추가 부과한다(구체 금액은 차주 회의에서 확정)
-- 결제 수단은 카드/계좌이체로 한정한다"""
-
-
-FEWSHOT_OUTPUT_2 = """{
-  "project": {
-    "name": "배송비 정책",
-    "background": "지역별로 배송 비용 차이가 있어 정책 정리가 필요함",
-    "problem": "원거리 지역 배송비 기준이 없어 정산이 불명확함",
-    "goals": [{
-    "content": "지역별 배송비 부과 기준을 확정한다",
-    "evidence": {
-      "quote": "지역별 배송비 정책을 확정한다."
-    }
-  }],
-    "background_evidence": {"quote": "원거리 지역은 배송비를 추가로 부과한다"},
-    "problem_evidence": {"quote": "원거리 지역은 배송비를 추가로 부과한다"}
-  },
-  "users": [],
-  "requirements": {
-    "functional": [
-      {"content": "결제는 카드와 계좌이체 방식만 지원한다",
-       "evidence": {"quote": "결제 수단은 카드와 계좌이체만 우선 지원한다"}}
-    ],
-    "non_functional": [], "data": [], "technical": []
-  },
-  "scenarios": [],
-  "decisions": [
-    {"category": "feature", "content": "원거리 지역은 배송비를 추가로 부과한다",
-     "rationale": "원거리 배송에 따른 비용 증가를 반영하기 위함",
-     "evidence": {"quote": "원거리 지역은 배송비를 추가로 부과한다"}},
-    {"category": "scope", "content": "결제 수단은 카드와 계좌이체로 한정한다",
-     "rationale": "우선 지원 범위를 최소화하기 위함",
-     "evidence": {"quote": "결제 수단은 카드/계좌이체로 한정한다"}}
-  ],
-  "constraints": [],
-  "unresolved": [
-    "원거리 지역 추가 배송비의 구체적인 금액이 정해지지 않았습니다."
-  ]
-}"""
+SYSTEM_PROMPT = build_extraction_system_prompt()
 
 
 def build_system_prompt(glossary_text: str = "") -> str:
-    """SYSTEM_PROMPT + (있다면) 사내 용어집 섹션을 붙여서 반환한다.
+    """
+    회의록 구조화 시스템 프롬프트를 반환합니다.
 
-    glossary_text가 빈 문자열이면 기존 SYSTEM_PROMPT를 그대로 반환한다 —
-    즉 용어집이 없는 호출부는 동작이 바뀌지 않는다.
+    용어집이 전달되면 기본 추출 규칙 뒤에 용어집 사용 규칙과
+    용어집 내용을 추가합니다.
+
+    용어집은 표현을 해석하는 참고 자료일 뿐이며,
+    회의록에 없는 내용을 새로 만드는 근거로 사용할 수 없습니다.
     """
     if not glossary_text.strip():
         return SYSTEM_PROMPT
-    return (
-        SYSTEM_PROMPT
-        + "\n\n## 사내 용어집\n"
-        "아래는 이 회사/팀에서 쓰는 용어와 그 의미입니다. 회의록에 이 용어가 "
-        "나오면 아래 정의를 기준으로 해석하십시오. 정의에 없는 용어는 기존 "
-        "규칙(회의록에 없는 내용을 만들지 않는다)을 그대로 따르십시오 — "
-        "용어집에 없다고 뜻을 지어내지 마십시오.\n\n"
-        f"{glossary_text.strip()}"
+
+    return "\n\n".join(
+        [
+            SYSTEM_PROMPT,
+            (
+                "사내 용어집\n"
+                "아래 용어집은 회의록의 사내 용어와 약어를 해석할 때만 "
+                "참고하십시오.\n"
+                "용어집에만 있고 회의록 원문에 없는 내용을 추출하거나 "
+                "근거로 사용하지 마십시오.\n"
+                "evidence.quote에는 반드시 회의록 원문에 실제로 존재하는 "
+                "문장만 작성하십시오.\n\n"
+                f"{glossary_text.strip()}"
+            ),
+        ]
     )
 
 
 def build_messages(meeting_text: str) -> list[dict]:
-    """few-shot 두 쌍 + 실제 입력.
-
-    두 번째 쌍(FEWSHOT_INPUT_2/OUTPUT_2)은 규칙 6번(결정된 부분과 미뤄진
-    부분이 한 문장에 섞인 경우) 전용 예시다. 첫 번째 예시만으로는 이
-    패턴에서 실패가 관찰되어 추가했다 — 관련 설명은 FEWSHOT_INPUT_2 위
-    주석 참고.
     """
-    return [
-        {"role": "user", "content": FEWSHOT_INPUT},
-        {"role": "assistant", "content": FEWSHOT_OUTPUT},
-        {"role": "user", "content": FEWSHOT_INPUT_2},
-        {"role": "assistant", "content": FEWSHOT_OUTPUT_2},
-        {"role": "user", "content": meeting_text},
-    ]
+    퓨샷 예시와 실제 회의록 입력을 메시지 배열로 구성합니다.
+
+    시스템 프롬프트는 node.py에서 별도로 전달하므로
+    이 함수에서는 user와 assistant 메시지만 반환합니다.
+    """
+    if not isinstance(meeting_text, str):
+        raise TypeError("meeting_text는 문자열이어야 합니다.")
+
+    if not meeting_text.strip():
+        raise ValueError("meeting_text가 비어 있습니다.")
+
+    messages = build_extraction_fewshot_messages()
+
+    messages.append(
+        {
+            "role": "user",
+            "content": meeting_text.strip(),
+        }
+    )
+
+    return messages

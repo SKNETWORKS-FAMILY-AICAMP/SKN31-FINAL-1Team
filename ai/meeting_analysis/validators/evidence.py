@@ -31,6 +31,7 @@ from dataclasses import dataclass, field
 # evidence를 가진 항목들이 들어 있는 경로.
 # project는 단일 객체라 별도 처리합니다.
 ARRAY_PATHS = [
+    "project.problem_items",
     "project.goals",
     "users",
     "requirements.functional",

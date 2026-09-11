@@ -143,7 +143,7 @@ def _source_is_empty(structured: dict, source_fields: list[str]) -> bool:
 
 
 def run(structured: dict, proposal_id: str, glossary_text: str = "") -> PlanDocument:
-    # ── [1] 서술형 5개 생성 ──────────────────────────────────
+    # ── [1] 서술형 3개, 세부 목표, 주요 기능 생성 ──────────────────────────────────
     result: PlanSections = _call(
         build_system_prompt(glossary_text), build_messages(structured, glossary_text),
         PlanSections,
@@ -151,7 +151,7 @@ def run(structured: dict, proposal_id: str, glossary_text: str = "") -> PlanDocu
     )
     by_key = {s.key: s for s in result.sections}
 
-    # ── [2] 나열형 2개 조립 ──────────────────────────────────
+    # ── [2] 목록형 3개 조립 ──────────────────────────────────
     list_sections = {
     section.key: section
     for section in list_builder.build_all(
@@ -166,7 +166,7 @@ def run(structured: dict, proposal_id: str, glossary_text: str = "") -> PlanDocu
             sections.append(list_sections[spec["key"]])
             continue
 
-        # ── 4번 주요 기능은 features 배열로 별도 처리 ───────
+        # ── 5번 주요 기능은 features 배열로 별도 처리 ───────
         # 프론트가 항목 단위로 편집·삭제하므로 HTML 덩어리로 두면
         # 항목 하나만 고칠 수 없습니다.
         if spec["key"] == "features":

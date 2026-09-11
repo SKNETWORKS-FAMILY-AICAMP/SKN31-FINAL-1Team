@@ -1,0 +1,272 @@
+metadata:
+  name: plan_generation_fewshots
+  version: "2.0"
+  purpose: 핵심 목표와 세부 목표 및 문제 정의 생성 예시를 관리한다
+
+examples:
+  - id: detailed_goals_from_extracted_goals
+    description: 노드 1에서 개별 문제와 목표가 모두 추출된 경우
+    input:
+      project:
+        name: 소상공인 매장 재고 관리 서비스
+        background: 소상공인 매장에서 재고를 수기와 엑셀로 관리하고 있다
+        problem: 재고 관리의 비효율성으로 품절과 과재고가 발생한다
+        problem_items:
+          - content: 수기와 엑셀로 관리하여 발주 시점을 놓치고 품절이 발생한다
+            evidence:
+              quote: 현재 매장에서는 재고를 수기와 엑셀로 관리하고 있어 발주 시점을 놓치고 품절이 발생합니다.
+            evidence_status: verified
+          - content: 담당자의 경험에 의존한 발주로 과재고와 폐기 손실이 발생한다
+            evidence:
+              quote: 담당자의 경험에 의존해 발주하면서 과재고가 쌓이고 상품 폐기 손실이 발생합니다.
+            evidence_status: verified
+        goals:
+          - content: 발주 시점 누락을 줄이고 품절을 방지한다
+            evidence:
+              quote: 재고가 임계치 이하로 내려가면 발주 알림을 제공하기로 했습니다.
+            evidence_status: verified
+          - content: 판매량에 맞는 발주를 지원하여 과재고를 줄인다
+            evidence:
+              quote: 최근 4주 평균 판매량을 기준으로 추천 발주 수량을 계산하기로 했습니다.
+            evidence_status: verified
+        background_evidence:
+          quote: 소상공인 매장에서는 재고를 수기와 엑셀로 관리하고 있습니다.
+        background_evidence_status: verified
+        problem_evidence:
+          quote: 재고 관리의 비효율성으로 품절과 과재고가 발생하고 있습니다.
+        problem_evidence_status: verified
+
+      users:
+        - type: 매장 관리자
+          description: 매장의 재고를 확인하고 상품을 발주하는 사용자
+          needs:
+            - 발주가 필요한 상품을 빠르게 확인하고 싶다
+          evidence:
+            quote: 매장 관리자는 발주가 필요한 상품을 빠르게 확인해야 합니다.
+          evidence_status: verified
+
+      requirements:
+        functional:
+          - content: 재고가 임계치 이하로 내려가면 알림을 제공한다
+            evidence:
+              quote: 재고가 임계치 이하로 내려가면 발주 알림을 제공하기로 했습니다.
+            evidence_status: verified
+          - content: 최근 4주 평균 판매량을 기준으로 추천 발주 수량을 계산한다
+            evidence:
+              quote: 최근 4주 평균 판매량을 기준으로 추천 발주 수량을 계산하기로 했습니다.
+            evidence_status: verified
+        non_functional: []
+        data: []
+        technical: []
+
+      decisions:
+        - category: feature
+          content: 재고 임계치 알림을 제공한다
+          rationale: null
+          evidence:
+            quote: 재고 임계치 알림은 1차 개발 범위에 포함합니다.
+          evidence_status: verified
+
+    output:
+      sections:
+        - key: overview
+          content_html: <p>소상공인 매장 재고 관리 서비스는 재고를 수기와 엑셀로 관리하는 환경을 개선하기 위해 기획되었다.</p>
+          evidence:
+            - quote: 소상공인 매장에서는 재고를 수기와 엑셀로 관리하고 있습니다.
+          needs_input: ""
+
+        - key: problem
+          content_html: <p>소상공인 매장의 비효율적인 재고 및 발주 관리 문제를 해결하여 품절과 과재고로 인한 손실을 줄인다.</p>
+          evidence:
+            - quote: 재고 관리의 비효율성으로 품절과 과재고가 발생하고 있습니다.
+          needs_input: ""
+
+        - key: users
+          content_html: <p><strong>매장 관리자</strong>는 매장의 재고를 확인하고 상품을 발주하며, 발주가 필요한 상품을 빠르게 확인하기를 원한다.</p>
+          evidence:
+            - quote: 매장 관리자는 발주가 필요한 상품을 빠르게 확인해야 합니다.
+          needs_input: ""
+
+      goals:
+        - title: 발주 시점 누락 및 품절 방지
+          problem: 수기와 엑셀로 재고를 관리하여 발주 시점을 놓치고 품절이 발생한다.
+          goal: 재고 임계치 알림을 제공하여 발주 시점 누락을 줄이고 품절을 방지한다.
+          problem_evidence:
+            - quote: 현재 매장에서는 재고를 수기와 엑셀로 관리하고 있어 발주 시점을 놓치고 품절이 발생합니다.
+          goal_evidence:
+            - quote: 재고가 임계치 이하로 내려가면 발주 알림을 제공하기로 했습니다.
+
+        - title: 과재고 및 폐기 손실 감소
+          problem: 담당자의 경험에 의존해 발주하여 과재고와 상품 폐기 손실이 발생한다.
+          goal: 최근 판매량에 맞는 추천 발주 수량을 제공하여 과재고를 줄인다.
+          problem_evidence:
+            - quote: 담당자의 경험에 의존해 발주하면서 과재고가 쌓이고 상품 폐기 손실이 발생합니다.
+          goal_evidence:
+            - quote: 최근 4주 평균 판매량을 기준으로 추천 발주 수량을 계산하기로 했습니다.
+
+      features:
+        - title: 재고 임계치 알림
+          description: 재고가 설정된 임계치 이하로 내려가면 발주가 필요하다는 알림을 제공한다.
+
+        - title: 추천 발주 수량
+          description: 최근 4주 평균 판매량을 기준으로 상품별 추천 발주 수량을 계산한다.
+
+  - id: detailed_goals_without_extracted_goals
+    description: 노드 1 목표가 없고 기능 요구사항을 이용해 목표를 보완하는 경우
+    input:
+      project:
+        name: 사내 휴가 신청 시스템
+        background: 휴가 신청을 이메일로 접수하여 신청 형식이 일정하지 않다
+        problem: 반차 신청에서 오전과 오후 구분이 누락된다
+        problem_items:
+          - content: 반차 신청에서 오전과 오후 구분이 누락된다
+            evidence:
+              quote: 반차 신청에서 오전과 오후 구분이 누락되는 사례가 반복되고 있습니다.
+            evidence_status: verified
+        goals: []
+        background_evidence:
+          quote: 휴가 신청을 이메일로 접수하고 있어 신청 형식이 일정하지 않습니다.
+        background_evidence_status: verified
+        problem_evidence:
+          quote: 반차 신청에서 오전과 오후 구분이 누락되는 사례가 반복되고 있습니다.
+        problem_evidence_status: verified
+
+      users: []
+
+      requirements:
+        functional:
+          - content: 휴가 신청 화면에서 오전 반차와 오후 반차를 선택할 수 있게 한다
+            evidence:
+              quote: 휴가 신청 화면에 오전 반차와 오후 반차 선택 항목을 추가합니다.
+            evidence_status: verified
+        non_functional: []
+        data: []
+        technical: []
+
+      decisions:
+        - category: feature
+          content: 반차 유형 선택 기능을 추가한다
+          rationale: null
+          evidence:
+            quote: 반차 유형 선택 기능은 이번 개발 범위에 포함하기로 했습니다.
+          evidence_status: verified
+
+    output:
+      sections:
+        - key: overview
+          content_html: <p>사내 휴가 신청 시스템은 이메일로 접수하여 신청 형식이 일정하지 않은 휴가 신청 방식을 개선하기 위해 기획되었다.</p>
+          evidence:
+            - quote: 휴가 신청을 이메일로 접수하고 있어 신청 형식이 일정하지 않습니다.
+          needs_input: ""
+
+        - key: problem
+          content_html: <p>휴가 유형을 정확하게 입력할 수 있는 신청 환경을 제공하여 반차 정보 누락을 줄인다.</p>
+          evidence:
+            - quote: 반차 신청에서 오전과 오후 구분이 누락되는 사례가 반복되고 있습니다.
+          needs_input: ""
+
+        - key: users
+          content_html: ""
+          evidence: []
+          needs_input: ""
+
+      goals:
+        - title: 반차 신청 정보 누락 방지
+          problem: 반차 신청 과정에서 오전과 오후 구분이 누락된다.
+          goal: 오전 반차와 오후 반차를 선택할 수 있게 하여 신청 정보 누락을 줄인다.
+          problem_evidence:
+            - quote: 반차 신청에서 오전과 오후 구분이 누락되는 사례가 반복되고 있습니다.
+          goal_evidence:
+            - quote: 휴가 신청 화면에 오전 반차와 오후 반차 선택 항목을 추가합니다.
+
+      features:
+        - title: 반차 유형 선택
+          description: 휴가 신청 화면에서 오전 반차와 오후 반차를 선택할 수 있다.
+
+glossary_examples:
+  - id: glossary_definition_in_document
+    description: 구조화 JSON에 등장하는 사내 용어를 용어집 정의로 설명하는 경우
+    glossary: |
+      패스트레인: 접수 후 1시간 이내 응답이 필요한 고객 불만 티켓 그룹이다. 패스트레인 티켓은 상담원 배정 순위가 가장 높다.
+
+    input:
+      project:
+        name: 고객센터 티켓 관리 시스템
+        background: 문의량이 증가하면서 고객 문의에 대한 응답이 늦어지고 있다
+        problem: 우선 처리가 필요한 문의가 일반 문의와 구분되지 않아 대응이 지연된다
+        problem_items:
+          - content: 우선 처리가 필요한 문의가 일반 문의와 구분되지 않아 대응이 지연된다
+            evidence:
+              quote: 우선 처리가 필요한 문의가 일반 문의와 구분되지 않아 대응이 지연되고 있습니다.
+            evidence_status: verified
+        goals:
+          - content: 우선 처리가 필요한 문의의 대응 지연을 줄인다
+            evidence:
+              quote: 패스트레인 티켓은 상담원 배정 순위를 가장 높게 처리하기로 했습니다.
+            evidence_status: verified
+        background_evidence:
+          quote: 문의량이 증가하면서 고객 문의에 대한 응답이 늦어지고 있습니다.
+        background_evidence_status: verified
+        problem_evidence:
+          quote: 우선 처리가 필요한 문의가 일반 문의와 구분되지 않아 대응이 지연되고 있습니다.
+        problem_evidence_status: verified
+
+      users:
+        - type: 상담원
+          description: 고객 문의 티켓을 확인하고 처리하는 사용자
+          needs:
+            - 패스트레인 티켓을 놓치지 않고 먼저 확인하고 싶다
+          evidence:
+            quote: 상담원이 패스트레인 티켓을 놓치는 사례가 있었습니다.
+          evidence_status: verified
+
+      requirements:
+        functional:
+          - content: 패스트레인 티켓을 일반 티켓보다 먼저 배정한다
+            evidence:
+              quote: 패스트레인 티켓은 상담원 배정 순위를 가장 높게 처리하기로 했습니다.
+            evidence_status: verified
+        non_functional: []
+        data: []
+        technical: []
+
+      decisions:
+        - category: feature
+          content: 패스트레인 티켓을 최우선으로 배정한다
+          rationale: null
+          evidence:
+            quote: 패스트레인 티켓은 상담원 배정 순위를 가장 높게 처리하기로 했습니다.
+          evidence_status: verified
+
+    output:
+      sections:
+        - key: overview
+          content_html: <p>고객센터 티켓 관리 시스템은 문의량 증가로 고객 문의에 대한 응답이 늦어지는 상황을 개선하기 위해 기획되었다.</p>
+          evidence:
+            - quote: 문의량이 증가하면서 고객 문의에 대한 응답이 늦어지고 있습니다.
+          needs_input: ""
+
+        - key: problem
+          content_html: <p>우선 처리가 필요한 고객 문의를 빠르게 구분하고 배정하여 대응 지연을 줄인다.</p>
+          evidence:
+            - quote: 우선 처리가 필요한 문의가 일반 문의와 구분되지 않아 대응이 지연되고 있습니다.
+          needs_input: ""
+
+        - key: users
+          content_html: <p><strong>상담원</strong>은 고객 문의 티켓을 처리하며, 접수 후 1시간 이내 응답이 필요한 고객 불만 티켓 그룹인 패스트레인을 놓치지 않고 먼저 확인하기를 원한다.</p>
+          evidence:
+            - quote: 상담원이 패스트레인 티켓을 놓치는 사례가 있었습니다.
+          needs_input: ""
+
+      goals:
+        - title: 우선 문의 대응 지연 감소
+          problem: 우선 처리가 필요한 문의가 일반 문의와 구분되지 않아 대응이 지연된다.
+          goal: 패스트레인 티켓을 최우선으로 배정하여 우선 문의의 대응 지연을 줄인다.
+          problem_evidence:
+            - quote: 우선 처리가 필요한 문의가 일반 문의와 구분되지 않아 대응이 지연되고 있습니다.
+          goal_evidence:
+            - quote: 패스트레인 티켓은 상담원 배정 순위를 가장 높게 처리하기로 했습니다.
+
+      features:
+        - title: 패스트레인 우선 배정
+          description: 접수 후 1시간 이내 응답이 필요한 고객 불만 티켓 그룹인 패스트레인 티켓을 일반 티켓보다 먼저 상담원에게 배정한다.

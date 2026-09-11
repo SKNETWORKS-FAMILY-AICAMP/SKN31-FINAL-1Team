@@ -3,21 +3,26 @@
 
 ## 섹션 구성
 
-| # | key         | 섹션            | 유형      | 생성 |
-|---|-------------|-----------------|-----------|------|
-| 1 | overview    | 프로젝트 개요   | narrative | LLM  |
-| 2 | problem     | 문제 정의       | narrative | LLM  |
-| 3 | goals       | 프로젝트 목표   | list      | 혼합  |
-| 4 | features    | 주요 기능       | narrative | LLM  |
-| 5 | scenarios   | 사용자 시나리오 | narrative | LLM  |
-| 6 | tech_scope  | 기술 스택 및 제약사항 | list | 코드 |
-| 7 | decisions   | 최종 결정사항   | list      | 코드 |
+| 번호 | key        | 화면 제목                    | 생성 방식 |
+|------|------------|------------------------------|-----------|
+| 1    | overview   | 프로젝트 개요                | LLM       |
+| 2    | problem    | 핵심 목표                    | LLM       |
+| 3    | goals      | 세부 목표 및 문제 정의       | LLM + 코드 검증 |
+| 4    | users      | 대상 사용자                  | LLM       |
+| 5    | features   | 주요 기능                    | LLM       |
+| 6    | tech_scope | 기술 스택 및 제약사항        | 코드      |
+| 7    | decisions  | 최종 결정사항                | 코드      |
 
-## 12개에서 7개로 줄인 내역
+## PlanSections는 LLM이 생성하는 다음 결과를 담습니다.
 
-- 프로젝트 목표 → 삭제 (개요·문제 정의와 내용이 겹침)
-- 기능/비기능/데이터 요구사항 → 삭제 (실무 기획서에 상세 명세를 담지 않음)
-- 기술 요구사항 + 서비스 범위·제약 → 6번으로 통합
+    서술형 섹션:
+        overview
+        problem
+        users
+
+    구조화 배열:
+        goals
+        features
 
 ## 스키마가 두 개인 이유
 
@@ -38,7 +43,7 @@ from shared.schemas_base import Evidence, ReviewStatus
 
 
 class SectionType(str, Enum):
-    NARRATIVE = "narrative"   # LLM 작문 — 반려 시 재생성이 의미 있음
+    NARRATIVE = "narrative"   # LLM 작문
     LIST = "list"             # 코드 조립 — 재생성해도 같은 결과
 
 
@@ -52,26 +57,35 @@ SECTION_SPEC = [
         "key": "overview",
         "title": "프로젝트 개요",
         "type": SectionType.NARRATIVE,
-        "source_fields": ["project.name", "project.background"],
+        "source_fields": [
+            "project.name",
+            "project.background",
+        ],
     },
     {
         "no": 2,
         "key": "problem",
-        "title": "문제 정의",
+        "title": "핵심 목표",
         "type": SectionType.NARRATIVE,
-        "source_fields": ["project.problem"],
+        "source_fields": [
+            "project.name",
+            "project.background",
+            "project.problem",
+            "project.problem_items",
+            "project.goals",
+        ],
     },
     {
         "no": 3,
-    "key": "goals",
-    "title": "프로젝트 목표",
-    "type": SectionType.LIST,
-    "source_fields": [
-        "project.goals",
-        "project.background",
-        "project.problem",
-        "requirements.functional",
-        "decisions[feature]",
+        "key": "goals",
+        "title": "세부 목표 및 문제 정의",
+        "type": SectionType.LIST,
+            "source_fields": [
+            "project.problem",
+            "project.problem_items",
+            "project.goals",
+            "requirements.functional",
+            "decisions[feature]",
         ],
     },
     {
@@ -159,17 +173,38 @@ class NarrativeSection(BaseModel):
         ),
     )
 
-class GeneratedGoal(BaseModel):
-    """노드 1에서 목표를 찾지 못했을 때 노드 2가 보완하는 목표."""
+class DetailedGoal(BaseModel):
+    """기획서의 세부 목표 및 문제 정의 항목."""
 
-    content: str = Field(
-        ...,
-        description="배경, 문제, 기능 또는 확정된 기능 결정을 바탕으로 작성한 목표",
-    )
-    evidence: list[Evidence] = Field(
+    title: str = Field(
         ...,
         min_length=1,
-        description="목표 생성에 사용한 구조화 JSON의 원문 근거",
+        max_length=60,
+        description="해결하려는 문제와 목표를 요약한 짧은 항목 제목",
+    )
+
+    problem: str = Field(
+        ...,
+        min_length=1,
+        description="회의록에서 확인된 현재 문제를 한 문장으로 작성",
+    )
+
+    goal: str = Field(
+        ...,
+        min_length=1,
+        description="해당 문제를 개선하기 위한 목표를 한 문장으로 작성",
+    )
+
+    problem_evidence: list[Evidence] = Field(
+        ...,
+        min_length=1,
+        description="문제 작성에 사용한 구조화 JSON의 원문 근거",
+    )
+
+    goal_evidence: list[Evidence] = Field(
+        ...,
+        min_length=1,
+        description="목표 작성에 사용한 구조화 JSON의 원문 근거",
     )
 
 
@@ -178,13 +213,13 @@ class PlanSections(BaseModel):
 
     sections: list[NarrativeSection] = Field(..., min_length=1)
 
-    goals: list[GeneratedGoal] = Field(
-        default_factory=list,
-        max_length=3,
-        description=(
-            "project.goals가 비어 있을 때만 생성하는 보완 목표. "
-            "기존 목표가 있거나 근거가 부족하면 빈 배열."
-        ),
+    goals: list[DetailedGoal] = Field(
+    default_factory=list,
+    max_length=4,
+    description=(
+        "세부 목표 및 문제 정의 항목. "
+        "각 항목은 제목, 문제, 목표와 각각의 원문 근거를 포함합니다. "
+        "근거가 부족하면 빈 배열로 출력합니다."),
     )
 
     features: list[Feature] = Field(

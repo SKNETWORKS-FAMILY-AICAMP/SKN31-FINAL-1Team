@@ -140,158 +140,349 @@ def build_goals(
     generated_goals: list | None = None,
 ) -> PlanSection:
     """
-    3. 프로젝트 목표
+    3. 세부 목표 및 문제 정의
 
-    노드 1의 목표가 있으면 그대로 사용합니다.
-    노드 1의 목표가 없으면 노드 2가 생성한 목표 중 검증된 원문 근거를
-    정확히 사용한 목표만 채택합니다.
+    노드 2가 생성한 DetailedGoal을 검증한 뒤 기획서 섹션으로 조립합니다.
+
+    각 세부 목표에는 다음 항목이 필요합니다.
+
+        title
+        problem
+        goal
+        problem_evidence
+        goal_evidence
+
+    노드 1에 project.goals가 있더라도 그대로 목록으로 출력하지 않습니다.
+    노드 2가 문제와 목표의 관계를 묶어 만든 결과를 사용합니다.
+
+    단, 노드 2가 제출한 근거가 노드 1의 검증된 근거와 일치할 때만
+    최종 기획서에 포함합니다.
     """
+    from html import escape
+
     project = structured.get("project") or {}
-    extracted_goals = project.get("goals") or []
+    requirements = structured.get("requirements") or {}
+    decisions = structured.get("decisions") or []
 
     source_fields = [
-        "project.goals",
-        "project.background",
         "project.problem",
+        "project.problem_items",
+        "project.goals",
         "requirements.functional",
-        "decisions[feature]",
+        "decisions",
     ]
 
-    if extracted_goals:
-        lines: list[str] = []
-        used: list[dict] = []
-        seen: set[str] = set()
+    # 문제에 사용할 수 있는 검증된 근거입니다.
+    #
+    # project.problem_evidence와
+    # project.problem_items[].evidence만 등록합니다.
+    allowed_problem_evidence: dict[str, str] = {}
 
-        for goal in extracted_goals:
-            if not isinstance(goal, dict):
-                continue
+    # 목표에 사용할 수 있는 검증된 근거입니다.
+    #
+    # project.goals, requirements.functional,
+    # feature 범주의 decisions 근거만 등록합니다.
+    allowed_goal_evidence: dict[str, str] = {}
 
-            content = str(goal.get("content", "")).strip()
-            normalized = _norm(content)
-
-            if not normalized or normalized in seen:
-                continue
-
-            seen.add(normalized)
-            lines.append(content)
-            used.append(goal)
-
-        return PlanSection(
-            no=3,
-            key="goals",
-            title="프로젝트 목표",
-            section_type=SectionType.LIST,
-            content_html=_ul(lines) if lines else "",
-            items=lines,
-            source_fields=source_fields,
-            evidence=_ev(used),
-            is_incomplete=not lines,
-        )
-
-    allowed_evidence: dict[str, str] = {}
-
-    def register(
+    def register_evidence(
+        destination: dict[str, str],
         item: dict,
         evidence_key: str = "evidence",
         status_key: str = "evidence_status",
     ) -> None:
+        """
+        노드 1에서 verified로 판정된 근거만 허용 목록에 등록합니다.
+
+        딕셔너리의 key에는 공백과 줄바꿈을 정규화한 문장을 저장하고,
+        value에는 노드 1이 가진 원래 quote를 저장합니다.
+
+        이렇게 하면 LLM이 줄바꿈을 공백으로 바꾼 경우에도 비교할 수 있지만,
+        최종 기획서에는 노드 1의 원래 quote가 들어갑니다.
+        """
         if not isinstance(item, dict):
             return
 
         evidence = item.get(evidence_key)
+
+        if hasattr(evidence, "model_dump"):
+            evidence = evidence.model_dump()
+
         if not isinstance(evidence, dict):
             return
 
-        quote = str(evidence.get("quote", "")).strip()
-        status = str(item.get(status_key, "unverified"))
+        quote = str(
+            evidence.get("quote", "")
+        ).strip()
 
-        if quote:
-            allowed_evidence[quote] = status
+        status = str(
+            item.get(status_key)
+            or evidence.get("status")
+            or "unverified"
+        ).strip()
 
-    register(
+        normalized_quote = _norm(quote)
+
+        if (
+            not normalized_quote
+            or status != "verified"
+        ):
+            return
+
+        destination[normalized_quote] = quote
+
+    # 전체 문제의 근거를 등록합니다.
+    register_evidence(
+        allowed_problem_evidence,
         project,
-        "background_evidence",
-        "background_evidence_status",
-    )
-    register(
-        project,
-        "problem_evidence",
-        "problem_evidence_status",
+        evidence_key="problem_evidence",
+        status_key="problem_evidence_status",
     )
 
-    requirements = structured.get("requirements") or {}
+    # 개별 문제의 근거를 등록합니다.
+    for problem_item in (
+        project.get("problem_items")
+        or []
+    ):
+        register_evidence(
+            allowed_problem_evidence,
+            problem_item,
+        )
 
-    for requirement in requirements.get("functional", []):
-        register(requirement)
+    # 노드 1에서 추출한 목표 근거를 등록합니다.
+    for project_goal in (
+        project.get("goals")
+        or []
+    ):
+        register_evidence(
+            allowed_goal_evidence,
+            project_goal,
+        )
 
-    for decision in structured.get("decisions", []):
-        if decision.get("category") == "feature":
-            register(decision)
+    # 기능 요구사항의 근거를 목표 근거로 등록합니다.
+    for requirement in (
+        requirements.get("functional")
+        or []
+    ):
+        register_evidence(
+            allowed_goal_evidence,
+            requirement,
+        )
 
-    lines: list[str] = []
-    verified: list[VerifiedEvidence] = []
-    seen_contents: set[str] = set()
-    seen_quotes: set[str] = set()
-
-    for generated_goal in generated_goals or []:
-        if hasattr(generated_goal, "model_dump"):
-            goal = generated_goal.model_dump()
-        elif isinstance(generated_goal, dict):
-            goal = generated_goal
-        else:
+    # 기능 범주의 최종 결정만 목표 근거로 등록합니다.
+    for decision in decisions:
+        if not isinstance(decision, dict):
             continue
 
-        content = str(goal.get("content", "")).strip()
-        normalized = _norm(content)
-
-        if not normalized or normalized in seen_contents:
+        if decision.get("category") != "feature":
             continue
 
+        register_evidence(
+            allowed_goal_evidence,
+            decision,
+        )
+
+    def match_evidence(
+        evidence_items: list,
+        allowed_evidence: dict[str, str],
+    ) -> list[VerifiedEvidence]:
+        """
+        노드 2가 제출한 근거가 검증된 허용 근거인지 확인합니다.
+
+        허용되지 않은 근거는 제외합니다.
+        같은 근거가 여러 번 전달되면 한 번만 사용합니다.
+        """
         matched: list[VerifiedEvidence] = []
+        seen_quotes: set[str] = set()
 
-        for evidence in goal.get("evidence", []):
+        for evidence in evidence_items:
             if hasattr(evidence, "model_dump"):
                 evidence = evidence.model_dump()
 
             if not isinstance(evidence, dict):
                 continue
 
-            quote = str(evidence.get("quote", "")).strip()
+            submitted_quote = str(
+                evidence.get("quote", "")
+            ).strip()
 
-            if allowed_evidence.get(quote) != "verified":
+            normalized_quote = _norm(
+                submitted_quote
+            )
+
+            # 노드 2가 작성한 quote가 노드 1의 verified 근거와
+            # 일치하지 않으면 사용하지 않습니다.
+            original_quote = allowed_evidence.get(
+                normalized_quote
+            )
+
+            if not original_quote:
                 continue
+
+            if original_quote in seen_quotes:
+                continue
+
+            seen_quotes.add(original_quote)
 
             matched.append(
                 VerifiedEvidence(
-                    quote=quote,
+                    quote=original_quote,
                     status="verified",
                 )
             )
 
-        # 검증된 근거가 하나도 없는 LLM 목표는 기획서에 넣지 않습니다.
-        if not matched:
+        return matched
+
+    accepted_goals: list[dict] = []
+    items: list[str] = []
+    section_evidence: list[VerifiedEvidence] = []
+
+    seen_goal_pairs: set[tuple[str, str]] = set()
+    seen_section_quotes: set[str] = set()
+
+    for generated_goal in generated_goals or []:
+        if hasattr(generated_goal, "model_dump"):
+            goal_data = generated_goal.model_dump()
+        elif isinstance(generated_goal, dict):
+            goal_data = generated_goal
+        else:
             continue
 
-        seen_contents.add(normalized)
-        lines.append(content)
+        title = str(
+            goal_data.get("title", "")
+        ).strip()
 
-        for evidence in matched:
-            if evidence.quote in seen_quotes:
+        problem = str(
+            goal_data.get("problem", "")
+        ).strip()
+
+        goal = str(
+            goal_data.get("goal", "")
+        ).strip()
+
+        # 제목, 문제, 목표 중 하나라도 비어 있으면
+        # 완전한 세부 목표 항목이 아니므로 제외합니다.
+        if not title or not problem or not goal:
+            continue
+
+        normalized_pair = (
+            _norm(problem),
+            _norm(goal),
+        )
+
+        # 같은 문제와 목표의 조합은 한 번만 사용합니다.
+        if normalized_pair in seen_goal_pairs:
+            continue
+
+        problem_evidence = match_evidence(
+            goal_data.get(
+                "problem_evidence",
+                [],
+            ),
+            allowed_problem_evidence,
+        )
+
+        goal_evidence = match_evidence(
+            goal_data.get(
+                "goal_evidence",
+                [],
+            ),
+            allowed_goal_evidence,
+        )
+
+        # 문제 근거와 목표 근거가 모두 있어야 합니다.
+        #
+        # 한쪽 근거만 있으면 문제와 목표의 연결 관계를
+        # 검증할 수 없으므로 해당 항목을 제외합니다.
+        if (
+            not problem_evidence
+            or not goal_evidence
+        ):
+            continue
+
+        seen_goal_pairs.add(normalized_pair)
+
+        accepted_goals.append(
+            {
+                "title": title,
+                "problem": problem,
+                "goal": goal,
+            }
+        )
+
+        # items에는 편집과 확인에 사용할 수 있는
+        # 일반 텍스트 형태를 저장합니다.
+        items.append(
+            "\n".join(
+                [
+                    title,
+                    f"문제: {problem}",
+                    f"목표: {goal}",
+                ]
+            )
+        )
+
+        # 섹션 전체 근거에는 문제 근거와 목표 근거를 합칩니다.
+        # 같은 quote는 한 번만 저장합니다.
+        for evidence in (
+            problem_evidence
+            + goal_evidence
+        ):
+            if evidence.quote in seen_section_quotes:
                 continue
 
-            seen_quotes.add(evidence.quote)
-            verified.append(evidence)
+            seen_section_quotes.add(
+                evidence.quote
+            )
+
+            section_evidence.append(evidence)
+
+        # 스키마와 프롬프트의 최대 개수는 4개입니다.
+        if len(accepted_goals) >= 4:
+            break
+
+    # 화면 표시용 HTML을 만듭니다.
+    #
+    # 항목 번호는 넣지 않습니다.
+    # ul과 li가 글머리 기호를 표시합니다.
+    html_items: list[str] = []
+
+    for item in accepted_goals:
+        html_items.append(
+            "".join(
+                [
+                    "<li>",
+                    f"<strong>{escape(item['title'])}</strong>",
+                    "<p>",
+                    "<strong>문제:</strong> ",
+                    f"{escape(item['problem'])}",
+                    "</p>",
+                    "<p>",
+                    "<strong>목표:</strong> ",
+                    f"{escape(item['goal'])}",
+                    "</p>",
+                    "</li>",
+                ]
+            )
+        )
+
+    content_html = (
+        "<ul>"
+        + "".join(html_items)
+        + "</ul>"
+        if html_items
+        else ""
+    )
 
     return PlanSection(
         no=3,
         key="goals",
-        title="프로젝트 목표",
+        title="세부 목표 및 문제 정의",
         section_type=SectionType.LIST,
-        content_html=_ul(lines) if lines else "",
-        items=lines,
+        content_html=content_html,
+        items=items,
         source_fields=source_fields,
-        evidence=verified,
-        is_incomplete=not lines,
+        evidence=section_evidence,
+        is_incomplete=not accepted_goals,
     )
 
 def build_tech_scope(structured: dict) -> PlanSection:

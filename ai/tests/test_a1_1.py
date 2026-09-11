@@ -23,7 +23,7 @@ def _base(**overrides) -> dict:
     data = {
         "meeting_id": "M-TEST",
         "project": {
-            "name": "테스트", "background": "b", "problem": "p", "goals": ["g"],
+            "name": "테스트", "background": "b", "problem": "p", "goals": [],
             "background_evidence": {"quote": "개발 기간은 8주다"},
             "problem_evidence": {"quote": "개발 기간은 8주다"},
         },
@@ -108,7 +108,7 @@ def test_project의_background와_problem은_evidence가_따로_검증된다():
     다른 하나까지 같이 UNVERIFIED가 되면 안 됩니다 — 서로 독립적이어야 합니다.
     """
     data = _base(project={
-        "name": "테스트", "background": "b", "problem": "p", "goals": ["g"],
+        "name": "테스트", "background": "b", "problem": "p", "goals": [],
         "background_evidence": {"quote": "개발 기간은 8주다"},        # 원문에 있음
         "problem_evidence": {"quote": "회의록에 없는 문장입니다"},     # 원문에 없음
     })
