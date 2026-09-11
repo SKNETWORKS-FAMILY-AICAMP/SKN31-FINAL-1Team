@@ -32,7 +32,7 @@ class SpecDocumentSerializer(serializers.ModelSerializer):
     id = serializers.ReadOnlyField(source='pk')
     status_info = CommonCodeSimpleSerializer(source='status_code', read_only=True)
     reviewer_name = serializers.CharField(source='reviewer.username', read_only=True)
-
+     # # 2026-09-10: 변경 goals
     class Meta:
         model = SpecDocument
         fields = [
@@ -44,7 +44,7 @@ class SpecDocumentSerializer(serializers.ModelSerializer):
             'problem_definition',
             'target_users',
             'key_features',
-            'user_scenarios',
+            'goals',
             'tech_stack',
             'final_decisions',
             'evidence_data',

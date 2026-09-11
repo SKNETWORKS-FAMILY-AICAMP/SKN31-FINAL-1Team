@@ -78,11 +78,12 @@ class SpecDocument(models.Model):
     # 2026-08-31: 기획서 화면을 "1.프로젝트개요~7.최종결정사항" 7개 섹션으로 재설계하면서 추가.
     # 팀 결정: 7개 섹션 전부 자유 텍스트(한 덩어리)로 관리 — 4/5/7번(주요기능/시나리오/결정사항)도
     # 카드·리스트로 행 단위 저장하지 않고 줄바꿈으로 구분된 하나의 텍스트로 둔다.
+    # 2026-09-10: 기획서 섹션 구성을 변경했습니다.
     overview = models.TextField(null=True, blank=True, verbose_name="1. 프로젝트 개요")
-    problem_definition = models.TextField(null=True, blank=True, verbose_name="2. 문제 정의")
-    target_users = models.TextField(null=True, blank=True, verbose_name="3. 대상 사용자")
-    key_features = models.TextField(null=True, blank=True, verbose_name="4. 주요 기능")
-    user_scenarios = models.TextField(null=True, blank=True, verbose_name="5. 사용자 시나리오")
+    problem_definition = models.TextField(null=True, blank=True, verbose_name="2. 문제 정의") # 섹션 번호 수정
+    target_users = models.TextField(null=True, blank=True, verbose_name="4. 대상 사용자")     #  섹션 번호 수정
+    key_features = models.TextField(null=True, blank=True, verbose_name="5. 주요 기능")
+    goals = models.TextField(null=True, blank=True, verbose_name="3. 프로젝트 목표") # 섹션 번호 수정
     tech_stack = models.TextField(null=True, blank=True, verbose_name="6. 기술 스택 및 제약사항")
     final_decisions = models.TextField(null=True, blank=True, verbose_name="7. 최종 결정사항")
 
