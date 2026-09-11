@@ -986,31 +986,32 @@ export default function DocumentsPage() {
             그 결과 body 전체 높이가 목록 길이만큼 부풀어서 실제 기획서 뒤에 빈 페이지가
             수십 장 따라붙는 버그가 있었다(실제 보고됨) — print-area의 조상이 아니라
             형제 요소라 display:none(print:hidden)으로 완전히 레이아웃에서 빼도 안전하다. */}
-        <div className="glass rounded-2xl border border-border p-4 space-y-3 print:hidden">
-          <div className="flex items-center justify-between gap-2">
-            {!listCollapsed && <span className="text-sm font-bold text-muted-foreground pl-1">문서 목록</span>}
-            <button
-              onClick={() => setListCollapsed(v => !v)}
-              title={listCollapsed ? "문서 목록 펼치기" : "문서 목록 접기"}
-              aria-label={listCollapsed ? "문서 목록 펼치기" : "문서 목록 접기"}
-              className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-black/5 dark:hover:bg-white/5 transition-colors shrink-0 mx-auto"
-            >
-              {listCollapsed ? <PanelLeft className="w-4 h-4" /> : <PanelLeftClose className="w-4 h-4" />}
-            </button>
-          </div>
-
+        <div className={cn(
+          "glass rounded-2xl border border-border print:hidden transition-all",
+          listCollapsed ? "p-2 flex flex-col items-center" : "p-4 space-y-3"
+        )}>
           {listCollapsed ? (
-            !isPM && (
-              <button
-                onClick={() => setNewDocModalOpen(true)}
-                title="새 회의록 / 문서"
-                className="w-full flex items-center justify-center py-2.5 rounded-xl bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
-              >
-                <Plus className="w-4 h-4" />
-              </button>
-            )
+            <button
+              onClick={() => setListCollapsed(false)}
+              title="문서 목록 펼치기"
+              aria-label="문서 목록 펼치기"
+              className="p-2.5 rounded-xl text-muted-foreground hover:text-foreground hover:bg-black/5 dark:hover:bg-white/5 transition-colors"
+            >
+              <PanelLeft className="w-4 h-4" />
+            </button>
           ) : (
             <>
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-sm font-bold text-muted-foreground pl-1">문서 목록</span>
+            <button
+              onClick={() => setListCollapsed(true)}
+              title="문서 목록 접기"
+              aria-label="문서 목록 접기"
+              className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-black/5 dark:hover:bg-white/5 transition-colors shrink-0"
+            >
+              <PanelLeftClose className="w-4 h-4" />
+            </button>
+          </div>
           {!isPM && (
             <button
               onClick={() => setNewDocModalOpen(true)}
