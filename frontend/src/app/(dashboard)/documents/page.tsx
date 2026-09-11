@@ -151,7 +151,31 @@ type TaskSuggestionDto = {
   hold_explanation: string | null;
   suggested_start_date: string | null;
   suggested_end_date: string | null;
+  feature_area: string | null; // 2026-09-11 (Phase 2): 같은 기능 묶음(WorkPackage) 라벨
+  schedule_reason: string | null; // 2026-09-11 (Phase 4): 이 날짜에 놓인 이유(결정적)
 };
+
+// 2026-09-10 (Phase 0): 남는 프로젝트 기간을 업무 사이 갭으로 숨기지 않고 PM에게
+// 그대로 보여주기 위해 generate-tasks 응답에 추가된 요약.
+type ScheduleSummaryDto = {
+  projected_finish_date: string | null; // 마지막 업무 종료일
+  project_buffer_days: number;          // 종료일까지 남는 평일 수 (음수면 초과 일수)
+  exceeds_project_period: boolean;      // 일정이 프로젝트 기간을 넘겼는지
+  project_start_date: string;
+  project_end_date: string;
+};
+
+// 2026-09-11 (Phase 3): AI가 "이 기능 묶음은 한 사람이 아니라 여러 명이 나눠 맡는 게
+// 낫다"고 판단한 항목. reason은 PM에게 그대로 노출.
+type PackageSplitDto = { package_id: string; reason: string };
+
+// 2026-09-11 (Phase 4): PM이 확정 전 손봐야 할 항목(결정적 집계) + LLM 브리핑.
+type PlanReviewDto = {
+  held_units: { unit_id: string; title: string; reason: string }[];
+  over_period_units: { unit_id: string; title: string; assignee_name: string | null }[];
+  needs_attention: boolean;
+};
+type PlanBriefingDto = { risks: string[]; checkpoints: string[] };
 
 // PM이 화면에서 편집 중인 행 하나 — 제안값에서 시작하되 담당자/일정을 직접 바꿀 수 있다.
 type TaskDraft = {
@@ -169,6 +193,8 @@ type TaskDraft = {
   workload_fit: string | null;
   experience_fit: string | null;
   hold_explanation: string | null;
+  feature_area: string | null; // 2026-09-11 (Phase 2)
+  schedule_reason: string | null; // 2026-09-11 (Phase 4)
   start_date: string; // yyyy-mm-dd, <input type="date"> 용 — 없으면 빈 문자열
   end_date: string;
 };
@@ -203,6 +229,8 @@ const suggestionToDraft = (s: TaskSuggestionDto): TaskDraft => ({
   workload_fit: s.workload_fit,
   experience_fit: s.experience_fit,
   hold_explanation: s.hold_explanation,
+  feature_area: s.feature_area,
+  schedule_reason: s.schedule_reason,
   start_date: toDateInput(s.suggested_start_date),
   end_date: toDateInput(s.suggested_end_date),
 });
@@ -331,6 +359,11 @@ export default function DocumentsPage() {
   // null/빈 배열이면 "리뷰 중이 아님"(진짜 배정 목록 taskAssignments를 보여줌).
   const [taskDrafts, setTaskDrafts] = useState<TaskDraft[] | null>(null);
   const [taskDraftsReqDefId, setTaskDraftsReqDefId] = useState<number | null>(null);
+  // 2026-09-10 (Phase 0): generate-tasks가 돌려준 일정 요약(예상 완료일 / 프로젝트 버퍼).
+  const [scheduleSummary, setScheduleSummary] = useState<ScheduleSummaryDto | null>(null);
+  const [packageSplits, setPackageSplits] = useState<PackageSplitDto[]>([]); // 2026-09-11 (Phase 3)
+  const [planReview, setPlanReview] = useState<PlanReviewDto | null>(null); // 2026-09-11 (Phase 4)
+  const [planBriefing, setPlanBriefing] = useState<PlanBriefingDto | null>(null); // 2026-09-11 (Phase 4)
   const [generatingTasks, setGeneratingTasks] = useState(false);
   const [confirmingTasks, setConfirmingTasks] = useState(false);
   const [reassigningTaskId, setReassigningTaskId] = useState<number | null>(null);
@@ -731,7 +764,7 @@ export default function DocumentsPage() {
     setGeneratingTasks(true);
     setBusy(`reqdef-${reqDefId}-tasks`);
     try {
-      const result = await apiFetch<{ status: string; message?: string; suggestions?: TaskSuggestionDto[]; req_def_id?: number }>(
+      const result = await apiFetch<{ status: string; message?: string; suggestions?: TaskSuggestionDto[]; req_def_id?: number; schedule_summary?: ScheduleSummaryDto; package_splits?: PackageSplitDto[]; plan_review?: PlanReviewDto; plan_briefing?: PlanBriefingDto }>(
         `/api/requirements/${spec.id}/generate-tasks/`,
         { method: "POST" }
       );
@@ -741,6 +774,10 @@ export default function DocumentsPage() {
       }
       setTaskDrafts((result.suggestions ?? []).map(suggestionToDraft));
       setTaskDraftsReqDefId(result.req_def_id ?? reqDefId);
+      setScheduleSummary(result.schedule_summary ?? null); // 2026-09-10 (Phase 0)
+      setPackageSplits(result.package_splits ?? []); // 2026-09-11 (Phase 3)
+      setPlanReview(result.plan_review ?? null); // 2026-09-11 (Phase 4)
+      setPlanBriefing(result.plan_briefing ?? null); // 2026-09-11 (Phase 4)
       setActiveTab("taskAssignment");
       setToastMessage("업무 배분 제안이 생성되었습니다. 검토 후 확정해주세요.");
     } catch (err: any) {
@@ -785,6 +822,7 @@ export default function DocumentsPage() {
                 tech_fit: d.tech_fit,
                 workload_fit: d.workload_fit,
                 experience_fit: d.experience_fit,
+                schedule_reason: d.schedule_reason, // 2026-09-11 (Phase 4)
                 start_date: d.start_date || null,
                 end_date: d.end_date || null,
               })),
@@ -798,6 +836,9 @@ export default function DocumentsPage() {
       setToastMessage(`업무 배분이 확정되었습니다 — ${result.created_count ?? 0}건`);
       setTaskDrafts(null);
       setTaskDraftsReqDefId(null);
+      setScheduleSummary(null); // 2026-09-10 (Phase 0)
+      setPackageSplits([]); // 2026-09-11 (Phase 3)
+      setPlanReview(null); setPlanBriefing(null); // 2026-09-11 (Phase 4)
       if (note.project) await fetchTaskAssignments(note.project);
     } catch (err: any) {
       setErrorToast(err.message || "업무 배분 확정에 실패했습니다.");
@@ -1059,10 +1100,14 @@ export default function DocumentsPage() {
               taskAssignments={taskAssignments}
               taskDrafts={taskDrafts}
               setTaskDrafts={setTaskDrafts}
+              scheduleSummary={scheduleSummary}
+              packageSplits={packageSplits}
+              planReview={planReview}
+              planBriefing={planBriefing}
               generatingTasks={generatingTasks}
               confirmingTasks={confirmingTasks}
               onConfirmTasks={(spec) => handleConfirmTasks(selectedNote, spec)}
-              onCancelTaskDrafts={() => { setTaskDrafts(null); setTaskDraftsReqDefId(null); }}
+              onCancelTaskDrafts={() => { setTaskDrafts(null); setTaskDraftsReqDefId(null); setScheduleSummary(null); setPackageSplits([]); setPlanReview(null); setPlanBriefing(null); }}
               members={members}
               reassigningTaskId={reassigningTaskId}
               onReassignTask={(taskId, assigneeId) => handleReassignTask(selectedNote, taskId, assigneeId)}
@@ -1151,7 +1196,7 @@ function NoteDetail({
   onGenerateSpec, onSaveNoteContent, onSaveSpec, onSavePeriod, onSubmitReview, onApprove, onReject,
   onCreateReqDef, onExtractItems, onAddItem, onUpdateItem, onDeleteItem, onReqDefStatusChange,
   onGenerateTasks, taskAssignments, onRejectReqDef,
-  taskDrafts, setTaskDrafts, generatingTasks, confirmingTasks, onConfirmTasks, onCancelTaskDrafts,
+  taskDrafts, setTaskDrafts, scheduleSummary, packageSplits, planReview, planBriefing, generatingTasks, confirmingTasks, onConfirmTasks, onCancelTaskDrafts,
   members, reassigningTaskId, onReassignTask,
 }: {
   note: NoteDto; spec: SpecDto | null; reqDef: ReqDefDto | null; activeTab: PipelineTab; isPM: boolean; currentUserId: string | undefined; busy: string | null;
@@ -1173,6 +1218,10 @@ function NoteDetail({
   taskAssignments: TaskAssignmentDto[];
   taskDrafts: TaskDraft[] | null;
   setTaskDrafts: Dispatch<SetStateAction<TaskDraft[] | null>>;
+  scheduleSummary: ScheduleSummaryDto | null; // 2026-09-10 (Phase 0)
+  packageSplits: PackageSplitDto[]; // 2026-09-11 (Phase 3)
+  planReview: PlanReviewDto | null; // 2026-09-11 (Phase 4)
+  planBriefing: PlanBriefingDto | null; // 2026-09-11 (Phase 4)
   generatingTasks: boolean;
   confirmingTasks: boolean;
   onConfirmTasks: (spec: SpecDto) => void;
@@ -1547,6 +1596,10 @@ function NoteDetail({
           <TaskDraftReview
             drafts={taskDrafts}
             setDrafts={setTaskDrafts}
+            scheduleSummary={scheduleSummary}
+            packageSplits={packageSplits}
+            planReview={planReview}
+            planBriefing={planBriefing}
             members={members}
             confirming={confirmingTasks}
             onCancel={onCancelTaskDrafts}
@@ -1594,9 +1647,10 @@ function NoteDetail({
 // 업무명/난이도/시간 배지 + 펼침형 배정근거를 함께 보여주는 공통 헤더 셀 — draft 리뷰
 // 표와 확정 목록 표가 똑같은 모양을 쓰므로 하나로 뺐다(heyzzabi2 TaskAssignmentPanel 참고).
 function TaskTitleCell({
-  title, estimatedHours, techFit, expanded, onToggleExpand,
+  title, estimatedHours, techFit, featureArea, expanded, onToggleExpand,
 }: {
   title: string; estimatedHours: number | null; techFit: string | null;
+  featureArea?: string | null; // 2026-09-11 (Phase 2): 기능 묶음 라벨
   expanded: boolean; onToggleExpand: () => void;
 }) {
   return (
@@ -1612,6 +1666,11 @@ function TaskTitleCell({
           <span className="shrink-0 text-[10px] px-1.5 py-0.5 rounded-full bg-black/5 dark:bg-white/5 text-muted-foreground font-semibold">
             {estimatedHours ?? "-"}h
           </span>
+          {featureArea && (
+            <span className="shrink-0 text-[10px] px-1.5 py-0.5 rounded-full bg-primary/10 text-primary font-semibold">
+              {featureArea}
+            </span>
+          )}
           {techFit ? (
             <span className="text-xs font-normal text-muted-foreground line-clamp-1">{techFit}</span>
           ) : (
@@ -1623,7 +1682,7 @@ function TaskTitleCell({
   );
 }
 
-function ReasonRow({ techFit, workloadFit, experienceFit }: { techFit: string | null; workloadFit: string | null; experienceFit: string | null }) {
+function ReasonRow({ techFit, workloadFit, experienceFit, scheduleReason }: { techFit: string | null; workloadFit: string | null; experienceFit: string | null; scheduleReason?: string | null }) {
   return (
     <tr className="bg-black/[0.02] dark:bg-white/[0.02]">
       <td colSpan={4} className="px-4 pb-3 pt-0">
@@ -1631,6 +1690,7 @@ function ReasonRow({ techFit, workloadFit, experienceFit }: { techFit: string | 
           <li>🛠 기술 적합도: {techFit ?? "-"}</li>
           <li>📊 업무 여유도: {workloadFit ?? "-"}</li>
           <li>📁 유사 경험: {experienceFit ?? "-"}</li>
+          {scheduleReason && <li>📅 일정 근거: {scheduleReason}</li>}
         </ul>
       </td>
     </tr>
@@ -1640,10 +1700,14 @@ function ReasonRow({ techFit, workloadFit, experienceFit }: { techFit: string | 
 // AI 제안을 PM이 검토·수정하는 화면 — 아직 DB에 저장되지 않은 draft 상태만 다룬다.
 // 확정("배분 확정")을 눌러야 비로소 handleConfirmTasks가 실제로 저장한다.
 function TaskDraftReview({
-  drafts, setDrafts, members, confirming, onCancel, onConfirm,
+  drafts, setDrafts, scheduleSummary, packageSplits, planReview, planBriefing, members, confirming, onCancel, onConfirm,
 }: {
   drafts: TaskDraft[];
   setDrafts: Dispatch<SetStateAction<TaskDraft[] | null>>;
+  scheduleSummary: ScheduleSummaryDto | null; // 2026-09-10 (Phase 0)
+  packageSplits: PackageSplitDto[]; // 2026-09-11 (Phase 3)
+  planReview: PlanReviewDto | null; // 2026-09-11 (Phase 4)
+  planBriefing: PlanBriefingDto | null; // 2026-09-11 (Phase 4)
   members: Member[];
   confirming: boolean;
   onCancel: () => void;
@@ -1677,6 +1741,64 @@ function TaskDraftReview({
       <p className="text-sm text-muted-foreground">
         AI가 추천한 담당자와 일정입니다. 필요하면 담당자·일정을 직접 바꾼 뒤 확정하세요. 확정 전까지는 저장되지 않습니다.
       </p>
+      {/* 2026-09-10 (Phase 0): 남는 기간을 업무 사이 갭으로 숨기지 않고 "프로젝트 버퍼"로 드러낸다.
+          버퍼가 음수(초과)면 일정이 프로젝트 종료일을 넘어선다는 뜻이라 경고색으로 표시. */}
+      {scheduleSummary?.projected_finish_date && (
+        <div className={cn(
+          "rounded-xl border px-4 py-3 text-sm",
+          scheduleSummary.exceeds_project_period
+            ? "border-red-500/40 bg-red-500/10 text-red-600 dark:text-red-400"
+            : "border-border bg-black/5 dark:bg-white/5 text-muted-foreground",
+        )}>
+          예상 완료일 <strong className="text-foreground">{scheduleSummary.projected_finish_date}</strong>
+          {" · "}프로젝트 종료일 {scheduleSummary.project_end_date}
+          {scheduleSummary.exceeds_project_period
+            ? <> · <strong>{-scheduleSummary.project_buffer_days}일 초과</strong> — 인력 또는 기간 조정이 필요합니다</>
+            : <> · 여유 <strong className="text-foreground">{scheduleSummary.project_buffer_days}일</strong> (버퍼)</>}
+        </div>
+      )}
+      {/* 2026-09-11 (Phase 3): AI가 여러 명이 나눠 맡는 게 낫다고 판단한 기능 묶음. */}
+      {packageSplits.length > 0 && (
+        <div className="rounded-xl border border-border bg-black/5 dark:bg-white/5 px-4 py-3 text-sm text-muted-foreground">
+          <span className="font-semibold text-foreground">여러 담당자로 나눈 기능</span>
+          <ul className="mt-1 space-y-0.5">
+            {packageSplits.map(s => (
+              <li key={s.package_id}>· {s.reason || s.package_id}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {/* 2026-09-11 (Phase 4): 확정 전 PM이 직접 손봐야 할 항목(결정적 집계). */}
+      {planReview?.needs_attention && (
+        <div className="rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-700 dark:text-amber-400">
+          <span className="font-semibold">확정 전 확인 필요</span>
+          <ul className="mt-1 space-y-0.5">
+            {planReview.held_units.map(h => (
+              <li key={h.unit_id}>· 담당자 미정: <strong>{h.title}</strong>{h.reason ? ` — ${h.reason}` : ""}</li>
+            ))}
+            {planReview.over_period_units.map(o => (
+              <li key={o.unit_id}>· 기간 초과: <strong>{o.title}</strong>{o.assignee_name ? ` (${o.assignee_name})` : ""}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {/* 2026-09-11 (Phase 4): LLM이 읽고 정리한 계획 리스크·체크포인트. */}
+      {planBriefing && (planBriefing.risks.length > 0 || planBriefing.checkpoints.length > 0) && (
+        <div className="rounded-xl border border-border bg-black/5 dark:bg-white/5 px-4 py-3 text-sm text-muted-foreground space-y-2">
+          {planBriefing.risks.length > 0 && (
+            <div>
+              <span className="font-semibold text-foreground">⚠ 리스크</span>
+              <ul className="mt-1 space-y-0.5">{planBriefing.risks.map((r, i) => <li key={i}>· {r}</li>)}</ul>
+            </div>
+          )}
+          {planBriefing.checkpoints.length > 0 && (
+            <div>
+              <span className="font-semibold text-foreground">✅ 체크포인트</span>
+              <ul className="mt-1 space-y-0.5">{planBriefing.checkpoints.map((c, i) => <li key={i}>· {c}</li>)}</ul>
+            </div>
+          )}
+        </div>
+      )}
       <CollapsibleSection title="예상 필요 인원">
         <HeadcountSummary assigneeIds={drafts.map(d => d.assignee_id)} members={members} />
       </CollapsibleSection>
@@ -1702,6 +1824,7 @@ function TaskDraftReview({
                       title={d.title}
                       estimatedHours={d.estimated_hours}
                       techFit={d.tech_fit}
+                      featureArea={d.feature_area}
                       expanded={expandedUnitId === d.unit_id}
                       onToggleExpand={() => setExpandedUnitId(v => v === d.unit_id ? null : d.unit_id)}
                     />
@@ -1737,7 +1860,7 @@ function TaskDraftReview({
                   </td>
                 </tr>
                 {expandedUnitId === d.unit_id && (
-                  <ReasonRow techFit={d.tech_fit} workloadFit={d.workload_fit} experienceFit={d.experience_fit} />
+                  <ReasonRow techFit={d.tech_fit} workloadFit={d.workload_fit} experienceFit={d.experience_fit} scheduleReason={d.schedule_reason} />
                 )}
               </Fragment>
             ))}
@@ -2037,8 +2160,18 @@ function GanttChart({ items }: { items: GanttItem[] }) {
     byAssignee.get(i.assigneeName)!.push(i);
   });
 
+  // 2026-09-11: 담당자별로 묶고, 그룹 안에서는 시작일 오름차순으로 정렬한다
+  // (입력 순서 = 배정 순서라 그대로 두면 날짜순이 아니었다). 그룹 자체도 그
+  // 담당자의 첫 시작일 기준으로 정렬해 위에서 아래로 시간 순으로 읽히게 한다.
+  const groups = Array.from(byAssignee.entries())
+    .map(([name, personItems]) => {
+      const sorted = [...personItems].sort((a, b) => toLocalMidnight(a.start) - toLocalMidnight(b.start));
+      return { name, items: sorted, firstStart: toLocalMidnight(sorted[0].start) };
+    })
+    .sort((a, b) => a.firstStart - b.firstStart);
+
   const rows: { label: string | null; item: GanttItem }[] = [];
-  byAssignee.forEach((personItems, name) => {
+  groups.forEach(({ name, items: personItems }) => {
     personItems.forEach((item, idx) => rows.push({ label: idx === 0 ? name : null, item }));
   });
 

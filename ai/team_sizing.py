@@ -46,14 +46,15 @@ DATA_ENGINEER/DEVOPS/PROJECT_MANAGER/QA_ENGINEER/UIUX_DESIGNER). 그래야 이
 """
 
 import math
+from collections import Counter
 from datetime import date
-from typing import Any, Dict, List, Union
+from typing import Any, Dict, List, Optional, Union
 
 from assignee_recommend.rule_filter import calculate_max_hours_per_assignee, flatten_assignable_units
 
-# 스킬 문자열 -> 회사 실제 JOB_ROLE 코드. 필요한 스킬이 늘어날 때마다 팀이 채워나가는
-# 표이지, 여기 없는 스킬을 없는 셈 치겠다는 뜻이 아니다 — 매핑 안 되면 UNMAPPED_ROLE로
-# 눈에 보이게 남긴다(조용히 버리지 않음).
+# 2026-09-11: skill -> role 는 이제 회사 인력에서 도출한다(build_skill_role_map).
+# 아래 표는 인력 데이터가 없을 때(cold start)만 쓰는 씨앗이지, 유일한 소스가 아니다.
+# work_package / assignment_ranking 의 분할 로직도 이 표를 참조하므로 유지한다.
 SKILL_ROLE_MAP: Dict[str, str] = {
     "React": "FRONTEND",
     "Vue": "FRONTEND",
@@ -76,45 +77,109 @@ SKILL_ROLE_MAP: Dict[str, str] = {
 }
 UNMAPPED_ROLE = "미분류"
 
+# skill -> role 도출에서 제외하는 직무. PROJECT_MANAGER는 요구사항 스킬로 안 잡히고,
+# FULLSTACK은 "업무 종류"가 아니라 "사람 속성"이라 이 계산(업무->역할)의 대상이 아니다
+# (모듈 상단 주석 참고). QA_ENGINEER는 포함한다 — 도출 방식에서는 그 사람들이
+# 가진 테스트 스킬이 자연히 QA로 잡히기 때문(하드코딩으로는 못 하던 것).
+_NON_COUNTED_ROLES = {"PROJECT_MANAGER", "FULLSTACK"}
 
-def _roles_for_unit(unit: Dict[str, Any]) -> List[str]:
-    """유닛의 required_skills 각각을 역할로 변환한다. 매핑표에 없는 스킬,
-    또는 required_skills 자체가 비어있으면 UNMAPPED_ROLE 하나로 묶는다."""
+# 도출된 skill->role 분포에서 이 비중 미만인 역할은 버린다. 안 그러면 한 스킬이
+# 3~4개 역할에 걸쳐, 역할마다 headcount가 올림(ceil)돼 필요 인원이 크게 과대추정된다.
+_MIN_ROLE_WEIGHT = 0.15
+
+# cold start 씨앗: 인력 데이터가 없을 때만 쓴다. {skill: {role: 1.0}} 형태로 변환.
+_SEED_SKILL_ROLE_MAP: Dict[str, Dict[str, float]] = {
+    skill: {role: 1.0} for skill, role in SKILL_ROLE_MAP.items()
+}
+
+
+def build_skill_role_map(employee_profiles: List[Dict[str, Any]]) -> Dict[str, Dict[str, float]]:
+    """
+    재직 사원의 (job_role, skills)에서 skill -> {role: weight} 를 도출한다.
+    weight = 그 스킬 보유자 중 해당 역할이 차지하는 비율(합 1.0).
+
+    2026-09-11 신설 — 하드코딩 SKILL_ROLE_MAP 대체. 새 스킬이 생기고 그 스킬을
+    가진 사람이 입사하면 매핑이 저절로 채워진다. 아무도 안 가진 스킬은 여기 없고,
+    그건 "우리 팀에 그 역량이 없다"는 신호로 estimate_team_size에서 UNMAPPED_ROLE로
+    집계된다.
+
+    Args:
+        employee_profiles: planning_context.build_employee_profiles() 출력 형태
+            ({"is_active", "job_role", "skills", ...} dict 목록).
+    """
+    role_counts: Dict[str, Counter] = {}
+    for p in employee_profiles:
+        if not p.get("is_active"):
+            continue
+        role = p.get("job_role")
+        if not role or role in _NON_COUNTED_ROLES:
+            continue
+        for skill in p.get("skills") or []:
+            role_counts.setdefault(skill, Counter())[role] += 1
+
+    result: Dict[str, Dict[str, float]] = {}
+    for skill, counts in role_counts.items():
+        total = sum(counts.values())
+        dist = {r: c / total for r, c in counts.items() if c / total >= _MIN_ROLE_WEIGHT}
+        if not dist:  # 여러 역할에 고르게 흩어져 전부 threshold 미만이면 최다 역할만
+            dist = {counts.most_common(1)[0][0]: 1.0}
+        norm = sum(dist.values())
+        result[skill] = {r: round(w / norm, 4) for r, w in dist.items()}
+    return result
+
+
+def _distribute_unit_hours(
+    unit: Dict[str, Any], skill_role_map: Dict[str, Dict[str, float]]
+) -> Dict[str, float]:
+    """unit의 estimated_hours를 역할별로 나눈다. required_skills에 균등 분배한 뒤
+    각 스킬을 skill_role_map의 {role: weight}로 배분한다. 매핑에 없는 스킬 또는
+    required_skills 자체가 비면 UNMAPPED_ROLE로."""
+    hours = unit["estimated_hours"]
     skills = unit.get("required_skills") or []
+    out: Dict[str, float] = {}
     if not skills:
-        return [UNMAPPED_ROLE]
-    return [SKILL_ROLE_MAP.get(s, UNMAPPED_ROLE) for s in skills]
+        out[UNMAPPED_ROLE] = hours
+        return out
+    per_skill = hours / len(skills)
+    for s in skills:
+        dist = skill_role_map.get(s)
+        if not dist:
+            out[UNMAPPED_ROLE] = out.get(UNMAPPED_ROLE, 0.0) + per_skill
+            continue
+        for role, weight in dist.items():
+            out[role] = out.get(role, 0.0) + per_skill * weight
+    return out
 
 
 def estimate_team_size(
     tasks: List[Dict[str, Any]],
     project_start_date: Union[str, date],
     project_end_date: Union[str, date],
+    skill_role_map: Optional[Dict[str, Dict[str, float]]] = None,
 ) -> Dict[str, Any]:
     """
-    업무 목록과 프로젝트 기간만으로 역할별/전체 필요인원을 추정한다.
+    업무 목록과 프로젝트 기간으로 역할별/전체 필요인원을 추정한다.
 
     Args:
-        tasks: task_generation_node 출력의 state["tasks"] 그대로
-            (Task/Subtask 배열). flatten_assignable_units()로 내부에서
-            배정 가능한 최소 단위만 뽑아 쓴다.
-        project_start_date / project_end_date: "YYYY-MM-DD" 문자열 또는
-            date 객체. calculate_max_hours_per_assignee()에 그대로 넘긴다.
+        tasks: task_generation_node 출력의 state["tasks"] 그대로.
+        project_start_date / project_end_date: "YYYY-MM-DD" 문자열 또는 date.
+        skill_role_map: build_skill_role_map() 출력. 없으면 _SEED_SKILL_ROLE_MAP
+            (cold start 씨앗)을 쓴다 — 호출부(services)는 항상 도출된 맵을 넘긴다.
 
     Returns:
         {"team_size_estimate": {"total_headcount", "by_role", "assumptions"}}
-        by_role은 [{"role", "estimated_hours", "headcount"}, ...],
-        estimated_hours 내림차순 정렬.
+        by_role은 [{"role", "estimated_hours", "headcount"}, ...], estimated_hours 내림차순.
+        role == UNMAPPED_ROLE 인 항목이 있으면 "그 스킬을 가진 인력이 우리 팀에 없다"는 뜻.
     """
     max_hours = calculate_max_hours_per_assignee(project_start_date, project_end_date)
     units = flatten_assignable_units(tasks)
+    if skill_role_map is None:
+        skill_role_map = _SEED_SKILL_ROLE_MAP
 
     hours_by_role: Dict[str, float] = {}
     for unit in units:
-        roles = _roles_for_unit(unit)
-        share = unit["estimated_hours"] / len(roles)
-        for role in roles:
-            hours_by_role[role] = hours_by_role.get(role, 0.0) + share
+        for role, h in _distribute_unit_hours(unit, skill_role_map).items():
+            hours_by_role[role] = hours_by_role.get(role, 0.0) + h
 
     by_role = [
         {

@@ -9,6 +9,11 @@ a2_2_task_generation/agent.py
 요구사항 내용만 보고 정한다 — "몇 명이 필요한지"는 이 단계가 아니라
 `team_sizing.py`가 이 출력(estimated_hours)을 가지고 별도로 추정한다.
 
+2026-09-11(팀 결정): estimated_hours 산정에 project_period(시작/종료일,
+평일 수)를 참고 신호로 준다 — 난이도만이 아니라 "이 프로젝트가 이 기간으로
+계획됐다"는 맥락도 함께 반영해 여유(패딩)를 판단하게 한다. project_period가
+없으면(manual_run, graph.py 경로) 기존처럼 기간을 모른 채 난이도만 본다.
+
 요구사항 커버리지는 다음 순서로 처리한다(2026-09-03):
   1. 요구사항 ID를 키로 하는 느슨한 Dict 스키마(TaskByRequirement)로 전체
      요구사항을 한 번에 요청한다. 문서를 미리 여러 조각으로 쪼개 나눠
@@ -71,22 +76,37 @@ def _renumber(groups: List[List[TaskItem]]) -> List[TaskItem]:
     서로의 존재를 모른 채 독립적으로 생성했기 때문에, 우연히 겹친 ID를
     같은 Epic으로 오인하면 안 된다. 재시도가 없어 호출이 1번뿐이면
     사실상 순번만 다시 매기는 것과 같다.
+
+    2026-09-11 (Phase 2): dependency_task_ids도 새 task_id로 다시 매긴다.
+    LLM은 자기 응답의 원본 task_id로 의존성을 표현하므로, 재번호 후에는 그
+    참조가 깨진다. 같은 그룹(=같은 호출) 안의 참조만 유효하고, 그룹 밖이나
+    존재하지 않는 참조는 버린다(스케줄러가 dangling 참조를 무시하므로 안전).
     """
     renumbered: List[TaskItem] = []
     task_counter = 0
     epic_counter = 0
     for group in groups:
         epic_id_map: Dict[str, str] = {}  # 이 호출 안에서만 유효
+        task_id_map: Dict[str, str] = {}  # 이 호출 안에서 old task_id -> new task_id
         for task in group:
             if task.epic_id not in epic_id_map:
                 epic_counter += 1
                 epic_id_map[task.epic_id] = f"EPIC-{epic_counter:03d}"
             task_counter += 1
-            task.task_id = f"TASK-{task_counter:03d}"
+            new_task_id = f"TASK-{task_counter:03d}"
+            task_id_map[task.task_id] = new_task_id
+            task.task_id = new_task_id
             task.epic_id = epic_id_map[task.epic_id]
             for sub_idx, sub in enumerate(task.subtasks, start=1):
                 sub.subtask_id = f"SUBTASK-{task_counter:03d}-{sub_idx}"
             renumbered.append(task)
+        # ID를 모두 재발급한 뒤에야 의존성을 remap할 수 있다(전방 참조 대비).
+        for task in group:
+            task.dependency_task_ids = [
+                task_id_map[dep]
+                for dep in task.dependency_task_ids
+                if dep in task_id_map and task_id_map[dep] != task.task_id
+            ]
     return renumbered
 
 
@@ -164,8 +184,19 @@ def _remap_skill_vocabulary(tasks: List[TaskItem], available_skills: List[str]) 
     return tasks
 
 
-def generate_tasks(requirement_doc: dict, available_skills: Optional[List[str]] = None) -> List[TaskItem]:
-    system_prompt = build_system_prompt(requirement_doc, available_skills=available_skills)
+def generate_tasks(
+    requirement_doc: dict,
+    available_skills: Optional[List[str]] = None,
+    project_period: Optional[Dict[str, Any]] = None,
+) -> List[TaskItem]:
+    """
+    project_period: {"start_date", "end_date", "workdays"} — 2026-09-11(팀 결정):
+    estimated_hours 산정 시 프로젝트 기간을 참고 신호로 준다. 없으면(manual_run,
+    graph.py 경로 등) 기존처럼 난이도만 보고 산정한다.
+    """
+    system_prompt = build_system_prompt(
+        requirement_doc, available_skills=available_skills, project_period=project_period
+    )
     req_ids = [r["id"] for r in requirement_doc.get("requirements", [])]
     user_message = "위 요구사항정의서를 바탕으로 업무를 생성하라."
 
@@ -234,7 +265,11 @@ def generate_tasks(requirement_doc: dict, available_skills: Optional[List[str]] 
 
 def task_generation_node(state: Dict[str, Any]) -> Dict[str, Any]:
     try:
-        result = generate_tasks(state["requirement_doc"], available_skills=state.get("available_skills"))
+        result = generate_tasks(
+            state["requirement_doc"],
+            available_skills=state.get("available_skills"),
+            project_period=state.get("project_period"),
+        )
     except ValidationError as e:
         logger.error("A2-2 스키마 검증 실패: %s", e)
         return {"error": f"SCHEMA_VALIDATION_FAILED: {e}"}

@@ -6,7 +6,56 @@ LLM 호출이 없는 순수 계산 모듈이라 전부 즉시 실행 가능하�
 
 import pytest
 
-from team_sizing import estimate_team_size
+from team_sizing import build_skill_role_map, estimate_team_size
+
+
+def _emp(role, skills, active=True):
+    return {"is_active": active, "job_role": role, "skills": skills}
+
+
+# ---------------------------------------------------------------------------
+# build_skill_role_map — 인력에서 skill -> {role: weight} 도출
+# ---------------------------------------------------------------------------
+def test_skill_maps_to_the_only_role_that_has_it():
+    profs = [_emp("BACKEND", ["Django"]), _emp("BACKEND", ["Django"])]
+    assert build_skill_role_map(profs) == {"Django": {"BACKEND": 1.0}}
+
+
+def test_skill_held_by_two_roles_is_weighted():
+    profs = [_emp("BACKEND", ["Python"])] * 3 + [_emp("DATA_ENGINEER", ["Python"])] * 1
+    m = build_skill_role_map(profs)
+    assert m["Python"] == {"BACKEND": 0.75, "DATA_ENGINEER": 0.25}
+
+
+def test_minor_role_below_threshold_is_dropped():
+    # DEVOPS가 1/10 = 0.1 < 0.15 -> 버려지고 나머지가 재정규화된다
+    profs = [_emp("BACKEND", ["Redis"])] * 6 + [_emp("DATA_ENGINEER", ["Redis"])] * 3 + [_emp("DEVOPS", ["Redis"])] * 1
+    m = build_skill_role_map(profs)
+    assert set(m["Redis"]) == {"BACKEND", "DATA_ENGINEER"}
+    assert abs(sum(m["Redis"].values()) - 1.0) < 1e-6
+
+
+def test_pm_and_fullstack_excluded():
+    profs = [_emp("PROJECT_MANAGER", ["Jira"]), _emp("FULLSTACK", ["Vue"])]
+    assert build_skill_role_map(profs) == {}
+
+
+def test_inactive_excluded():
+    assert build_skill_role_map([_emp("BACKEND", ["Django"], active=False)]) == {}
+
+
+def test_estimate_uses_derived_map():
+    tasks = [_task("TASK-001", ["Python"], 80)]
+    derived = {"Python": {"BACKEND": 0.75, "DATA_ENGINEER": 0.25}}
+    est = estimate_team_size(tasks, "2026-09-07", "2026-09-11", skill_role_map=derived)["team_size_estimate"]
+    by_role = {r["role"]: r["estimated_hours"] for r in est["by_role"]}
+    assert by_role == {"BACKEND": 60.0, "DATA_ENGINEER": 20.0}
+
+
+def test_skill_nobody_has_becomes_unmapped():
+    tasks = [_task("TASK-001", ["Rust"], 40)]
+    est = estimate_team_size(tasks, "2026-09-07", "2026-09-11", skill_role_map={})["team_size_estimate"]
+    assert est["by_role"][0]["role"] == "미분류"
 
 
 def _task(task_id, skills, hours, req_id="FR-01-001"):

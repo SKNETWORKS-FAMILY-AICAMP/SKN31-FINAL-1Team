@@ -9,7 +9,7 @@ task_generation/schemas.py
   - 출력: 업무 리스트 JSON (Epic 정보 포함, Subtask 중첩)
 """
 
-from typing import Dict, List, Type
+from typing import Dict, List, Optional, Type
 
 from pydantic import BaseModel, Field, create_model
 
@@ -32,6 +32,27 @@ class TaskItem(BaseModel):
         description="이 업무 수행에 필요한 기술 스택 (A2-3 담당자 배정 시 매칭 기준으로 사용됨)",
     )
     estimated_hours: float
+    # 2026-09-11 (Phase 2): 일정 배치 품질을 위한 3개 필드 추가.
+    # 값을 못 정하면 비워도 된다(코드가 기본값으로 처리) — 억지로 지어내지 않는다.
+    dependency_task_ids: List[str] = Field(
+        default_factory=list,
+        description=(
+            "이 업무보다 먼저 끝나야 하는 선행 업무의 task_id 목록(같은 응답 안의 값). "
+            "예: 개발 업무는 설계 업무에 의존. 선행이 없으면 빈 리스트. "
+            "일정 스케줄러가 이 순서대로 시작일을 미룬다."
+        ),
+    )
+    risk_buffer_factor: Optional[float] = Field(
+        default=None,
+        description=(
+            "estimated_hours에 곱할 여유 배율. 1.0=버퍼 없음. 불확실성이 클수록 크게: "
+            "잘 정의된 CRUD ~1.2, 안 써본 기술/외부 연동 ~2.0. 못 정하면 null(코드가 기본값)."
+        ),
+    )
+    feature_area: Optional[str] = Field(
+        default=None,
+        description="같은 기능 영역 묶음 라벨(예: '주문', '결제'). 같은 담당자에게 몰아주는 근거로 쓰인다. 못 정하면 null.",
+    )
     difficulty: str = Field(..., description="상/중/하")
     difficulty_reason: str = Field(..., description="난이도 판단 근거 — 화면에 그대로 노출")
     source_req_id: str = Field(

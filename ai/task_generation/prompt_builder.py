@@ -33,7 +33,9 @@ def _render_few_shots(examples: list) -> str:
 
 
 def build_system_prompt(
-    requirement_doc: Dict[str, Any], available_skills: Optional[List[str]] = None
+    requirement_doc: Dict[str, Any],
+    available_skills: Optional[List[str]] = None,
+    project_period: Optional[Dict[str, Any]] = None,
 ) -> str:
     t = load_template()
     tt = load_decomposition_rules()
@@ -56,9 +58,30 @@ required_skills는 반드시 아래 허용된 스킬 명단 안에서만 골라 
 [허용된 스킬 명단]
 {json.dumps(available_skills, ensure_ascii=False)}"""
 
+    # 2026-09-11: 프로젝트 기간을 estimated_hours 산정의 참고 신호로 준다(팀 결정).
+    # project_period가 없으면(예: manual_run, graph.py 경로) 기존처럼 기간을 전혀
+    # 모르는 채로 난이도만 보고 산정한다.
+    period_context = ""
+    if project_period:
+        period_context = f"""
+
+[프로젝트 기간 — 참고용]
+시작일 {project_period.get('start_date')} ~ 종료일 {project_period.get('end_date')}
+(평일 {project_period.get('workdays')}일)
+
+이 프로젝트가 이 기간으로 계획됐다는 건, 전체 업무가 이 안에서 여유 있게 끝날
+수 있는 규모라는 뜻이다. estimated_hours를 정할 때 난이도와 함께 이 기간을
+참고하라:
+  - 기간이 넉넉하면(요구사항 수 대비 평일 수가 많으면) 중/상 난이도 업무에
+    검토·재작업 여유를 더 넉넉히 반영하라.
+  - 기간이 빠듯하면 여유를 최소화하되, 실제 작업 범위 자체를 줄이지는 마라.
+  - 같은 난이도라도 업무 성격에 따라 필요한 시간은 다르다 — 기간에 맞추려고
+    업무들을 억지로 균등하게 나누지 말고, difficulty_reason에 쓴 근거에
+    비례해서 배분하라."""
+
     return f"""{t['role']}
 
-{t['constraints']}{skill_constraint}
+{t['constraints']}{skill_constraint}{period_context}
 
 [업무 분해 원칙]
 {tt['decomposition_principles']}
