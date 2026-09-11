@@ -2192,12 +2192,12 @@ function HeadcountSummary({ assigneeIds, members }: { assigneeIds: (number | nul
 // 그대로 이식, 필드명만 이 파일의 GanttItem에 맞춤). 하루=한 칸인 날짜 그리드라 기간이
 // 짧아도(며칠) 눈금이 중복되지 않는다.
 function GanttChart({ items }: { items: GanttItem[] }) {
-  // 2026-09-11: 처음엔 "접으면 폭을 줄이고 펼치면 넓힌다"는 토글이었는데, 접힌(압축)
-  // 상태에서는 막대들이 컨테이너 폭에 맞춰 비율로 눌려서 짧은 업무는 점처럼 뭉개져
-  // 안 보이는 문제가 있었다(팀원 리포트) — "표 형태인데 스크롤이 없으면 오른쪽으로
-  // 어떻게 이동하냐"는 지적대로, 이제 토글 없이 항상 실제 날짜 간격 그대로(하루=52px)
-  // 넓게 그리고 하단 가로 스크롤로 이동한다. 날짜 헤더는 여전히 "시작일 ··· 종료일"만
-  // 보여준다(하루하루 라벨을 전부 늘어놓으면 복잡해 보인다는 별도 피드백은 유지).
+  // 2026-09-11: 기본은 접힌 상태 — 시작일/종료일만 보이고 막대는 카드 폭에 맞춰
+  // 한 화면에 다 들어오게(스크롤 없이) 압축해서 보여준다(팀원 확정: "처음엔 스크롤
+  // 필요 없이 한눈에"). 명시적인 "펼치기" 버튼을 누르면 실제 날짜 간격 그대로
+  // (하루=52px) 넓게 다시 그리고, 그때부터 하단 가로 스크롤로 자세히 훑어볼 수
+  // 있다 — 펼친 상태에선 상단에 "접기" 버튼이 따로 있어 되돌아갈 수 있다.
+  const [expanded, setExpanded] = useState(false);
   if (items.length === 0) return null;
 
   const toLocalMidnight = (iso: string) => {
@@ -2253,12 +2253,13 @@ function GanttChart({ items }: { items: GanttItem[] }) {
   // overflow-x-auto가 실제로 스크롤로 동작한다.
   return (
     <div className="border border-border rounded-xl p-4 overflow-x-auto max-w-full min-w-0">
-      <div style={{ minWidth: `${96 + dayCount * 52}px` }}>
+      {/* 접힌 상태: 카드 폭에 맞춰 압축해서 한눈에(스크롤 없이) 보여준다 — "펼치기"를
+          누르면 실제 날짜 간격 그대로(하루=52px) 넓게 다시 그리고, 그때부터 하단 가로
+          스크롤로 자세히 볼 수 있다. 날짜는 항상 "시작일 ··· 종료일"만 보여준다
+          (하루하루 라벨을 전부 늘어놓으면 복잡해 보인다는 피드백). */}
+      <div style={{ minWidth: expanded ? `${96 + dayCount * 52}px` : undefined }}>
         <div className="grid gap-y-2" style={{ gridTemplateColumns: `96px 1fr` }}>
           <div />
-          {/* 날짜 헤더는 하루하루 라벨을 전부 늘어놓지 않고 "시작일 ··· 종료일"만
-              보여준다(팀원 피드백 — 라벨이 많으면 복잡해 보임). 실제 날짜 칸은 아래
-              막대 뒤 점선 격자로만 표시된다. */}
           <div className="flex items-center gap-2 pb-1.5 w-full">
             <span className="text-[11px] font-semibold text-muted-foreground shrink-0">{fmtDate(days[0])}</span>
             <span className="flex-1 border-t border-dashed border-border relative h-0">
@@ -2267,6 +2268,13 @@ function GanttChart({ items }: { items: GanttItem[] }) {
               </span>
             </span>
             <span className="text-[11px] font-semibold text-muted-foreground shrink-0">{fmtDate(days[dayCount - 1])}</span>
+            <button
+              type="button"
+              onClick={() => setExpanded(v => !v)}
+              className="shrink-0 flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-bold text-primary bg-primary/10 hover:bg-primary/20 transition-colors ml-2"
+            >
+              {expanded ? "접기" : "펼치기"}
+            </button>
           </div>
 
           {rows.map(({ label, item }) => {
@@ -2281,9 +2289,11 @@ function GanttChart({ items }: { items: GanttItem[] }) {
                   {label && (<><UserIcon className="w-3 h-3 shrink-0" /><span className="truncate">{label}</span></>)}
                 </p>
                 <div className="relative h-6">
-                  <div className="absolute inset-0 grid" style={dayGridStyle}>
-                    {days.map((_, i) => <div key={i} className={dayColClass(i)} />)}
-                  </div>
+                  {expanded && (
+                    <div className="absolute inset-0 grid" style={dayGridStyle}>
+                      {days.map((_, i) => <div key={i} className={dayColClass(i)} />)}
+                    </div>
+                  )}
                   <div
                     title={`${item.title} · ${fmtDate(days[s])} ~ ${fmtDate(days[e])}`}
                     className="absolute top-0 h-full rounded-md flex items-center px-2 bg-primary/80 hover:bg-primary transition-colors overflow-hidden"
