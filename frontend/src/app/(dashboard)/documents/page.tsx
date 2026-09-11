@@ -7,7 +7,7 @@ import {
   FileText, Plus, Bot, Loader2, Send, CheckCircle2, XCircle,
   AlertCircle, Clock, RotateCcw, MessageSquare, X, FolderKanban,
   Download, Printer, Trash2, Save, Pencil, Lock, ChevronDown, Briefcase,
-  UserIcon, CalendarIcon, FileSpreadsheet,
+  UserIcon, CalendarIcon, FileSpreadsheet, PanelLeftClose, PanelLeft,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { NewDocumentModal } from "@/components/projects/NewDocumentModal";
@@ -372,6 +372,11 @@ export default function DocumentsPage() {
   const [selectedNoteId, setSelectedNoteId] = useState<number | null>(null);
   const [activeTab, setActiveTab] = useState<PipelineTab>("proposal");
   const [newDocModalOpen, setNewDocModalOpen] = useState(false);
+  // 좌측 전체 사이드바와 별개로, 이 화면 안의 문서 목록 패널도 접을 수 있게 해달라는
+  // 요청 — 문서 하나를 골라 기획서/요구사항정의서를 오래 들여다볼 때는 목록이 필요
+  // 없어서 공간을 넓게 쓰고 싶은 경우가 많다. 세션 중에만 유지하면 되는 UI 상태라
+  // localStorage 등에 영속시키지 않는다.
+  const [listCollapsed, setListCollapsed] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [rejectTarget, setRejectTarget] = useState<
     { kind: "spec"; specId: number } | { kind: "reqdef"; specId: number; reqDefId: number } | null
@@ -447,12 +452,17 @@ export default function DocumentsPage() {
     setTaskDraftsReqDefId(null);
   }, [selectedNoteId]);
   // 업무배분 탭을 열었을 때 이미 배분된 업무가 있으면 보여준다(재배분 직후뿐 아니라
-  // 문서를 다시 열었을 때도).
+  // 문서를 다시 열었을 때도). 2026-09-11: 예전엔 selectedNote.project로 매번 "선택된
+  // 노트의 프로젝트"만 좁혀서 가져왔는데, 문서 목록 카드마다 표시하는 미니 파이프라인도
+  // 이 값을 그대로 쓰다 보니 "지금 보고 있는 노트의 프로젝트 데이터"로 다른 프로젝트
+  // 카드들의 진행 단계까지 잘못 계산되는 버그가 있었다(실제 재현: 노트를 바꿀 때마다
+  // 다른 카드의 파이프라인 점이 같이 바뀜). req_item ID는 프로젝트를 넘나들어도 겹치지
+  // 않으므로, 선택된 노트와 무관하게 전체를 한 번에 가져오면 각자 자기 reqDef.items로
+  // 걸러지는 기존 필터링 로직(hasConfirmedTasksFor/tasksForReqDef)이 그대로 정확해진다.
   useEffect(() => {
-    if (selectedNote?.project) fetchTaskAssignments(selectedNote.project);
-    else setTaskAssignments([]);
+    fetchTaskAssignments();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedNote?.project]);
+  }, [project?.id]);
   // reqDef/taskAssignments를 아는 채로 stageOf/stepDone을 호출하기 위한 헬퍼 —
   // 요구사항정의서 승인·업무배분 확정까지 반영해 "지금 이 문서가 실제로 어디까지
   // 왔는지" 정확히 판단한다(documentPipeline.ts 참고).
@@ -747,11 +757,21 @@ export default function DocumentsPage() {
     }
   };
 
-  const fetchTaskAssignments = async (projectId: number) => {
+  // project 쿼리 파라미터 없이 호출하면 백엔드가 전체 프로젝트의 배정 업무를 돌려준다
+  // (tasks/views.py TaskAssignmentViewSet.get_queryset 참고) — 문서 목록의 카드마다
+  // 자기 reqDef.items의 req_item ID로 걸러 쓰므로(hasConfirmedTasksFor/tasksForReqDef),
+  // 어느 노트가 선택돼 있든 항상 전체를 들고 있으면 각 카드가 정확히 자기 프로젝트
+  // 기준으로 계산된다. 여러 곳(초기 로드/배분 확정 후/재배정 후)에서 겹쳐 호출될 수
+  // 있어 마지막으로 시작한 요청의 결과만 반영하도록 순번을 매겨 낡은 응답은 버린다.
+  const taskFetchSeqRef = useRef(0);
+  const fetchTaskAssignments = async () => {
+    const seq = ++taskFetchSeqRef.current;
     try {
-      const list = await apiFetch<TaskAssignmentDto[]>(`/api/tasks/assignments/?project=${projectId}`);
+      const list = await apiFetch<TaskAssignmentDto[]>(`/api/tasks/assignments/`);
+      if (taskFetchSeqRef.current !== seq) return; // 낡은 응답 — 그사이 더 최근 요청이 나감
       setTaskAssignments(list);
     } catch (err: any) {
+      if (taskFetchSeqRef.current !== seq) return;
       setErrorToast(err.message || "업무 목록을 불러오지 못했습니다.");
     }
   };
@@ -839,7 +859,7 @@ export default function DocumentsPage() {
       setScheduleSummary(null); // 2026-09-10 (Phase 0)
       setPackageSplits([]); // 2026-09-11 (Phase 3)
       setPlanReview(null); setPlanBriefing(null); // 2026-09-11 (Phase 4)
-      if (note.project) await fetchTaskAssignments(note.project);
+      await fetchTaskAssignments();
     } catch (err: any) {
       setErrorToast(err.message || "업무 배분 확정에 실패했습니다.");
     } finally {
@@ -857,7 +877,7 @@ export default function DocumentsPage() {
         body: JSON.stringify({ assigned_user: assigneeId }),
       });
       setToastMessage("담당자가 변경되었습니다");
-      if (note.project) await fetchTaskAssignments(note.project);
+      await fetchTaskAssignments();
     } catch (err: any) {
       setErrorToast(err.message || "담당자 변경에 실패했습니다.");
     } finally {
@@ -971,14 +991,42 @@ export default function DocumentsPage() {
         })()}
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-[360px_minmax(0,1fr)] gap-6 items-start">
+      <div className={cn(
+        "grid grid-cols-1 gap-6 items-start transition-[grid-template-columns] duration-200",
+        listCollapsed ? "lg:grid-cols-[56px_minmax(0,1fr)]" : "lg:grid-cols-[360px_minmax(0,1fr)]"
+      )}>
         {/* Document list — PDF 다운로드(window.print())는 #print-area 외 나머지를
             visibility:hidden으로만 숨기는데, 이 목록은 스크롤 없이 카드 전부(100개+)를
             그대로 렌더링해서 visibility:hidden이어도 레이아웃 높이는 그대로 차지한다.
             그 결과 body 전체 높이가 목록 길이만큼 부풀어서 실제 기획서 뒤에 빈 페이지가
             수십 장 따라붙는 버그가 있었다(실제 보고됨) — print-area의 조상이 아니라
             형제 요소라 display:none(print:hidden)으로 완전히 레이아웃에서 빼도 안전하다. */}
-        <div className="glass rounded-2xl border border-border p-4 space-y-3 print:hidden">
+        <div className={cn(
+          "glass rounded-2xl border border-border print:hidden transition-all",
+          listCollapsed ? "p-2 flex flex-col items-center" : "p-4 space-y-3"
+        )}>
+          {listCollapsed ? (
+            <button
+              onClick={() => setListCollapsed(false)}
+              title="문서 목록 펼치기"
+              aria-label="문서 목록 펼치기"
+              className="p-2.5 rounded-xl text-muted-foreground hover:text-foreground hover:bg-black/5 dark:hover:bg-white/5 transition-colors"
+            >
+              <PanelLeft className="w-4 h-4" />
+            </button>
+          ) : (
+            <>
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-sm font-bold text-muted-foreground pl-1">문서 목록</span>
+            <button
+              onClick={() => setListCollapsed(true)}
+              title="문서 목록 접기"
+              aria-label="문서 목록 접기"
+              className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-black/5 dark:hover:bg-white/5 transition-colors shrink-0"
+            >
+              <PanelLeftClose className="w-4 h-4" />
+            </button>
+          </div>
           {!isPM && (
             <button
               onClick={() => setNewDocModalOpen(true)}
@@ -1065,10 +1113,17 @@ export default function DocumentsPage() {
               })
             )}
           </div>
+            </>
+          )}
         </div>
 
-        {/* Detail panel */}
-        <div className="glass rounded-2xl border border-border p-6 min-h-[500px]">
+        {/* Detail panel. min-w-0: 이 div는 2단 그리드(360px_minmax(0,1fr))의 직접
+            그리드 아이템이다. 트랙 자체를 minmax(0,1fr)로 잡아도 그리드 "아이템"의
+            기본 min-width는 auto(=콘텐츠의 최소 폭)라서, 안쪽 깊숙이 있는 넓은 콘텐츠
+            (Gantt 등)가 있으면 이 아이템이, 결국 트랙 전체가 같이 넓어져 버린다(팀원
+            리포트: WBS 펼쳐도 하단 스크롤이 안 생기고 카드 자체가 넓어짐) — min-w-0으로
+            그 기본값을 꺼야 안쪽의 overflow-x-auto가 실제로 스크롤로 동작한다. */}
+        <div className="glass rounded-2xl border border-border p-6 min-h-[500px] min-w-0">
           {!selectedNote ? (
             <div className="h-full flex items-center justify-center text-muted-foreground text-sm py-20">
               왼쪽에서 문서를 선택하거나 새로 등록해주세요.
@@ -1682,10 +1737,10 @@ function TaskTitleCell({
   );
 }
 
-function ReasonRow({ techFit, workloadFit, experienceFit, scheduleReason }: { techFit: string | null; workloadFit: string | null; experienceFit: string | null; scheduleReason?: string | null }) {
+function ReasonRow({ techFit, workloadFit, experienceFit, scheduleReason, colSpan = 4 }: { techFit: string | null; workloadFit: string | null; experienceFit: string | null; scheduleReason?: string | null; colSpan?: number }) {
   return (
     <tr className="bg-black/[0.02] dark:bg-white/[0.02]">
-      <td colSpan={4} className="px-4 pb-3 pt-0">
+      <td colSpan={colSpan} className="px-4 pb-3 pt-0">
         <ul className="text-xs text-muted-foreground space-y-1 pl-5">
           <li>🛠 기술 적합도: {techFit ?? "-"}</li>
           <li>📊 업무 여유도: {workloadFit ?? "-"}</li>
@@ -1922,16 +1977,18 @@ function TaskAssignmentList({
         <table className="w-full text-sm text-left">
           <thead className="text-xs text-muted-foreground uppercase bg-black/5 dark:bg-white/5">
             <tr>
-              <th className="px-4 py-3 font-bold">업무명 / 배정 근거</th>
+              <th className="px-4 py-3 font-bold w-12">번호</th>
+              <th className="px-4 py-3 font-bold">업무명 / 배정 근거 <span className="normal-case font-semibold text-muted-foreground/70">(총 {tasks.length}건)</span></th>
               <th className="px-4 py-3 font-bold w-44">담당자</th>
               <th className="px-4 py-3 font-bold w-40">일정</th>
               <th className="px-4 py-3 font-bold w-28">상태</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
-            {tasks.map(t => (
+            {tasks.map((t, idx) => (
               <Fragment key={t.id}>
                 <tr className="align-top">
+                  <td className="px-4 py-3 text-xs font-semibold text-muted-foreground">{idx + 1}</td>
                   <td className="px-4 py-3">
                     <TaskTitleCell
                       title={t.title}
@@ -2038,6 +2095,7 @@ function TaskAssignmentList({
                     techFit={t.assignment_reason.split(" / ")[0] ?? null}
                     workloadFit={t.assignment_reason.split(" / ")[1] ?? null}
                     experienceFit={t.assignment_reason.split(" / ")[2] ?? null}
+                    colSpan={5}
                   />
                 )}
               </Fragment>
@@ -2134,6 +2192,11 @@ function HeadcountSummary({ assigneeIds, members }: { assigneeIds: (number | nul
 // 그대로 이식, 필드명만 이 파일의 GanttItem에 맞춤). 하루=한 칸인 날짜 그리드라 기간이
 // 짧아도(며칠) 눈금이 중복되지 않는다.
 function GanttChart({ items }: { items: GanttItem[] }) {
+  // 프로젝트 기간이 길면 하루씩 다 펼쳐 그리는 게 옆으로 한참 길어져서(팀원 요청) 기본은
+  // 시작일 ~ 종료일만 보여주고 가운데를 "···"로 접어둔다. 막대(bar)는 어차피 퍼센트
+  // 좌표(left/width)로 그려서 날짜 칸을 몇 개 그리든 위치가 정확하니, 접힌 상태에서도
+  // 막대 자체는 그대로 보여주고 배경의 날짜별 점선 격자만 생략한다.
+  const [expanded, setExpanded] = useState(false);
   if (items.length === 0) return null;
 
   const toLocalMidnight = (iso: string) => {
@@ -2151,7 +2214,6 @@ function GanttChart({ items }: { items: GanttItem[] }) {
   const days = Array.from({ length: dayCount }, (_, i) => new Date(rangeStartMs + i * DAY_MS));
   const dayIndexOf = (iso: string) => Math.min(dayCount - 1, Math.max(0, Math.round((toLocalMidnight(iso) - rangeStartMs) / DAY_MS)));
   const fmtDate = (d: Date) => d.toLocaleDateString("ko-KR", { month: "short", day: "numeric" });
-  const fmtWeekday = (d: Date) => d.toLocaleDateString("ko-KR", { weekday: "short" });
   const todayIndex = Math.round((toLocalMidnight(new Date().toISOString()) - rangeStartMs) / DAY_MS);
 
   const byAssignee = new Map<string, GanttItem[]>();
@@ -2183,19 +2245,35 @@ function GanttChart({ items }: { items: GanttItem[] }) {
       i === dayCount - 1 && "border-r border-border"
     );
 
+  // max-w-full + min-w-0: 부모가 flex/grid일 때 자식은 콘텐츠 실제 너비만큼 부모를
+  // 밀어 늘리려는 기본 성질이 있어서(min-width: auto), overflow-x-auto를 줘도 스크롤이
+  // 아니라 그냥 옆으로 계속 넓어지기만 하는 문제가 있었다(팀원 리포트: 펼쳤을 때 하단
+  // 스크롤이 안 생김). 이 두 클래스로 "부모 너비를 절대 넘지 않는다"를 강제해야
+  // overflow-x-auto가 실제로 스크롤로 동작한다.
   return (
-    <div className="border border-border rounded-xl p-4 overflow-x-auto">
-      <div style={{ minWidth: `${96 + dayCount * 52}px` }}>
+    <div className="border border-border rounded-xl p-4 overflow-x-auto max-w-full min-w-0">
+      <div style={{ minWidth: expanded ? `${96 + dayCount * 52}px` : undefined }}>
         <div className="grid gap-y-2" style={{ gridTemplateColumns: `96px 1fr` }}>
           <div />
-          <div className="grid" style={dayGridStyle}>
-            {days.map((d, i) => (
-              <div key={i} className={cn("text-center pb-1.5", dayColClass(i))}>
-                <p className={cn("text-[10px] font-semibold", i === todayIndex ? "text-primary" : "text-muted-foreground")}>{fmtDate(d)}</p>
-                <p className="text-[9px] text-muted-foreground/60">{fmtWeekday(d)}</p>
-              </div>
-            ))}
-          </div>
+          {/* 2026-09-11: 하루하루 날짜+요일을 전부 라벨로 늘어놓으면(예전 expanded 모드)
+              글자가 너무 많아 복잡해 보인다는 피드백 — 펼쳐도 날짜 라벨 줄은 안 늘어놓고
+              항상 "시작일 ··· 종료일"만 보여준다. "···"를 누르면(펼치기) 막대들이 실제
+              날짜 간격만큼 넓게 퍼지면서(가로 스크롤) 겹쳐 보이던 막대들이 분리되고,
+              다시 누르면(접기) 원래 폭으로 돌아온다 — 라벨 없이 폭만 바뀐다. */}
+          <button
+            type="button"
+            onClick={() => setExpanded(v => !v)}
+            title={expanded ? "일정 막대 접기" : "일정 막대 넓게 펼치기"}
+            className="group flex items-center gap-2 pb-1.5 w-full text-left"
+          >
+            <span className="text-[11px] font-semibold text-muted-foreground shrink-0">{fmtDate(days[0])}</span>
+            <span className="flex-1 border-t border-dashed border-border relative h-0">
+              <span className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 bg-background px-2 text-[11px] font-bold text-muted-foreground group-hover:text-primary transition-colors">
+                ···
+              </span>
+            </span>
+            <span className="text-[11px] font-semibold text-muted-foreground shrink-0">{fmtDate(days[dayCount - 1])}</span>
+          </button>
 
           {rows.map(({ label, item }) => {
             const s = dayIndexOf(item.start);
@@ -2209,9 +2287,11 @@ function GanttChart({ items }: { items: GanttItem[] }) {
                   {label && (<><UserIcon className="w-3 h-3 shrink-0" /><span className="truncate">{label}</span></>)}
                 </p>
                 <div className="relative h-6">
-                  <div className="absolute inset-0 grid" style={dayGridStyle}>
-                    {days.map((_, i) => <div key={i} className={dayColClass(i)} />)}
-                  </div>
+                  {expanded && (
+                    <div className="absolute inset-0 grid" style={dayGridStyle}>
+                      {days.map((_, i) => <div key={i} className={dayColClass(i)} />)}
+                    </div>
+                  )}
                   <div
                     title={`${item.title} · ${fmtDate(days[s])} ~ ${fmtDate(days[e])}`}
                     className="absolute top-0 h-full rounded-md flex items-center px-2 bg-primary/80 hover:bg-primary transition-colors overflow-hidden"

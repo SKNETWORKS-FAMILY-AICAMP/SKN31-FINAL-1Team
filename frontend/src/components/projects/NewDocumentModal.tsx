@@ -31,7 +31,7 @@ type AudioStage = "transcribing" | "cleaning" | null;
 // 서서히 상한선까지 슬금슬금 채운다 — 0%에서 안 움직이는 스피너보다 진행 중이라는
 // 인상을 주는 게 목적이라 정확한 퍼센트일 필요는 없다.
 const STAGE_RANGE: Record<Exclude<AudioStage, null>, { from: number; to: number; label: string }> = {
-  transcribing: { from: 5, to: 55, label: "음성 인식 중" },
+  transcribing: { from: 5, to: 55, label: "음성 처리 중 (대용량은 자동 분할되며 시간이 걸릴 수 있습니다)" },
   cleaning: { from: 55, to: 95, label: "내용 정리 중" },
 };
 const SAMPLE_NOTES = [
@@ -192,6 +192,10 @@ export function NewDocumentModal({
     if (!file) return;
 
     const audio = isAudioFile(file.name);
+    if (audio && (file.size === 0 || file.size > 200 * 1024 * 1024)) {
+      setError("음성 파일은 0바이트 초과, 200MB 이하여야 합니다.");
+      return;
+    }
     setError("");
 
     if (!hasRequiredPrefix(file.name)) {
@@ -381,7 +385,7 @@ export function NewDocumentModal({
                     onClick={() => fileInputRef.current?.click()}
                     disabled={uploadingFile}
                     className="flex items-center gap-1 text-xs font-semibold text-primary hover:text-primary/80 bg-primary/10 px-3 py-1 rounded-full transition-colors disabled:opacity-50"
-                    title="지원 형식: .docx, .pdf, .txt, .hwp, .md / 음성: .mp3, .mp4, .wav, .m4a, .webm (최대 25MB)"
+                    title="지원 형식: .docx, .pdf, .txt, .hwp, .md / 음성: .mp3, .mp4, .wav, .m4a, .webm (최대 200MB, 대용량 자동 분할)"
                   >
                     {uploadingFile ? <Loader2 className="w-3 h-3 animate-spin" /> : <Paperclip className="w-3 h-3" />}
                     {uploadingFile ? (audioStage ? `${STAGE_RANGE[audioStage].label}...` : "추출 중...") : "파일/음성에서 불러오기"}

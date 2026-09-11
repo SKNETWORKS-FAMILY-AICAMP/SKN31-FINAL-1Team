@@ -231,6 +231,13 @@ def generate_task_suggestions(spec_id: int) -> dict:
         return {"status": "error", "message": f"업무 생성 실패: {e}"}
     tasks = [t.model_dump(mode="json") for t in task_items]
 
+    # 2026-09-11: 병렬 호출을 시도했다가 되돌렸다 — 이 계정의 OpenAI 분당 토큰
+    # 한도(TPM)가 이미 호출 하나로 거의 다 차는 수준이라(단일 호출이 2만 토큰
+    # 넘게 요청하는 경우 실측됨), 두 LLM 호출을 동시에 보내면 같은 예산을
+    # 두고 서로 부딪혀 429(rate_limit_exceeded)가 오히려 더 빨리·더 자주
+    # 났다(실측: 순차 대비 병렬 적용 후 이전보다 이른 단계에서 429 재현).
+    # 병목이 "순차 대기시간"이 아니라 "분당 토큰 예산" 자체라 병렬화가
+    # 역효과였다 — 순차 호출로 되돌린다.
     project_context = _build_project_context(req_def)
     try:
         complexity = assess_project_complexity(project_context)
@@ -257,6 +264,7 @@ def generate_task_suggestions(spec_id: int) -> dict:
         max_hours_per_assignee = calculate_max_hours_per_assignee(str(start_date), str(end_date))
     except ValueError:
         max_hours_per_assignee = 0.0
+
     try:
         split_decisions = decide_package_splits(wp["packages"], unit_lookup, max_hours_per_assignee)
     except Exception:
@@ -266,6 +274,9 @@ def generate_task_suggestions(spec_id: int) -> dict:
     assert_full_coverage(package_by_unit, flat_units)
     work_packages_view = assemble_packages(flat_units, package_by_unit)
 
+    # 2026-09-11: 패키지 분할 판단과 담당자 매핑을 동시에 돌려봤다가 되돌렸다 —
+    # 위 주석(업무 생성/복잡도 판단 근처) 참고, 이 계정 TPM 한도에서는 병렬
+    # 호출이 429를 더 빨리·자주 유발해 순차 호출로 되돌렸다.
     try:
         mapping_result = assignee_mapping_node({
             "raw_employee_profiles": raw_profiles,

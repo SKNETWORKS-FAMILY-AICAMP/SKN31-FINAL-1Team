@@ -590,7 +590,7 @@ class _AudioTranscriptionMixin:
     (사용자 요청 — 진행 단계/게이지 표시). 두 단계를 별도 API로 쪼개면 프론트가 각 단계의
     완료 시점을 정확히 알 수 있어 실제 진행률을 보여줄 수 있다."""
 
-    AUDIO_MAX_SIZE = 25 * 1024 * 1024  # 25MB — OpenAI Whisper API 자체 제한과 동일하게 맞춤
+    from .audio_upload import UPLOAD_MAX_BYTES as AUDIO_MAX_SIZE
     AUDIO_EXTENSIONS = ('.mp3', '.mp4', '.mpeg', '.mpga', '.m4a', '.wav', '.webm')
 
     @staticmethod
@@ -643,20 +643,9 @@ class _AudioTranscriptionMixin:
         안 되는 이 프로젝트의 환각 방지 원칙과 일치).
         실제로 keywords/prompt 없이 "헤이짜비"/"Whisper"/"Django"/"Next.js" 같은
         용어가 틀리게 인식되던 걸 추가 후 라이브로 재현/확인함."""
-        client = cls._get_openai_client()
-        uploaded_file.seek(0)
-        # openai SDK가 Django의 UploadedFile(io.IOBase가 아님)을 그대로는 못 받아들여서
-        # (실제로 재현: "Expected entry at `file` to be bytes, an io.IOBase instance,
-        # PathLike or a tuple") (파일명, 바이트, content_type) 튜플로 감싸 넘긴다 —
-        # 파일명 확장자를 SDK가 보고 포맷을 판단하므로 원본 파일명을 그대로 써야 한다.
-        result = client.audio.transcriptions.create(
-            model="gpt-transcribe",
-            file=(uploaded_file.name, uploaded_file.read(), uploaded_file.content_type or "application/octet-stream"),
-            keywords=cls.TECH_KEYWORDS,
-            prompt=cls.TRANSCRIBE_CONTEXT_PROMPT,
-            temperature=0,
-        )
-        return result.text
+        from .audio_upload import transcribe_upload
+        return transcribe_upload(uploaded_file, cls._get_openai_client(),
+                                 keywords=cls.TECH_KEYWORDS, prompt=cls.TRANSCRIBE_CONTEXT_PROMPT)
 
     @classmethod
     def _cleanup_transcript(cls, raw_text: str) -> str:
@@ -727,7 +716,7 @@ class MeetingNoteTranscribeAudioView(_AudioTranscriptionMixin, APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
         if f.size > self.AUDIO_MAX_SIZE:
-            return Response({"error": "음성 파일 크기는 25MB를 넘을 수 없습니다."}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"error": "음성 파일 크기는 200MB를 넘을 수 없습니다."}, status=status.HTTP_400_BAD_REQUEST)
 
         try:
             transcript = self._transcribe_audio(f)
