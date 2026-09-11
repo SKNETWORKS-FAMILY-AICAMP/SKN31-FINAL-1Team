@@ -34,7 +34,7 @@ type SpecDto = {
   problem_definition: string | null;
   target_users: string | null;
   key_features: string | null;
-  user_scenarios: string | null;
+  goals: string | null;
   tech_stack: string | null;
   final_decisions: string | null;
   evidence_data: string | null;
@@ -260,9 +260,9 @@ function specToProposalDoc(spec: SpecDto): ProposalDoc {
   return {
     projectOverview: spec.overview ?? "",
     problemDefinition: spec.problem_definition ?? "",
+    projectGoals: spec.goals ?? "",
     target: spec.target_users ?? "",
     features: spec.key_features ?? "",
-    userScenario: spec.user_scenarios ?? "",
     techStackConstraints: spec.tech_stack ?? "",
     finalDecisions: spec.final_decisions ?? "",
     projectPeriod: { start: spec.period_start ?? "", end: spec.period_end ?? "" },
@@ -273,9 +273,9 @@ function proposalDocToPatch(doc: ProposalDoc) {
   return {
     overview: doc.projectOverview,
     problem_definition: doc.problemDefinition,
+    goals: doc.projectGoals,
     target_users: doc.target,
     key_features: doc.features,
-    user_scenarios: doc.userScenario,
     tech_stack: doc.techStackConstraints,
     final_decisions: doc.finalDecisions,
     period_start: doc.projectPeriod?.start || null,
@@ -1946,9 +1946,9 @@ function CollapsibleSection({
 const EVIDENCE_KEY_ALIASES: Record<string, keyof ProposalEvidence> = {
   overview: "projectOverview", projectOverview: "projectOverview",
   problem_definition: "problemDefinition", problemDefinition: "problemDefinition",
+  goals: "projectGoals", projectGoals: "projectGoals",
   target_users: "target", target: "target",
   key_features: "features", features: "features",
-  user_scenarios: "userScenario", userScenario: "userScenario",
   tech_stack: "techStackConstraints", techStackConstraints: "techStackConstraints",
   final_decisions: "finalDecisions", finalDecisions: "finalDecisions",
 };

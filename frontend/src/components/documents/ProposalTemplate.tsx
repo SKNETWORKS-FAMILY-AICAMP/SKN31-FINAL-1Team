@@ -7,7 +7,7 @@ import type { ProposalDoc } from "@/lib/documentTemplates";
 // 하나로 모아두던 이전 방식은 폐기). ProposalDoc의 7개 섹션 필드명을 그대로 근거 데이터의
 // 표준 키로 쓴다 — 백엔드가 evidence_data를 채울 때 이 이름으로 저장하면 된다.
 export type ProposalEvidence = Partial<Record<
-  "projectOverview" | "problemDefinition" | "target" | "features" | "userScenario" | "techStackConstraints" | "finalDecisions",
+  "projectOverview" | "problemDefinition" | "projectGoals" | "target" | "features" | "techStackConstraints" | "finalDecisions",
   string
 >>;
 
@@ -109,7 +109,20 @@ export function ProposalTemplate({
         )}
       </Section>
 
-      <Section num="3" title="대상 사용자" evidence={evidence} evidenceKey="target">
+      <Section num="3" title="프로젝트 목표" evidence={evidence} evidenceKey="projectGoals">
+        {editable ? (
+          <textarea
+            value={doc.projectGoals}
+            onChange={e => set("projectGoals", e.target.value)}
+            placeholder="프로젝트 목표를 입력하세요."
+            className={`${inputCls} h-24 resize-none whitespace-pre-wrap`}
+          />
+        ) : (
+          <RichText html={doc.projectGoals} />
+        )}
+      </Section>
+
+      <Section num="4" title="대상 사용자" evidence={evidence} evidenceKey="target">
         {editable ? (
           <textarea
             value={doc.target}
@@ -121,7 +134,7 @@ export function ProposalTemplate({
         )}
       </Section>
 
-      <Section num="4" title="주요 기능" evidence={evidence} evidenceKey="features">
+      <Section num="5" title="주요 기능" evidence={evidence} evidenceKey="features">
         {editable ? (
           <textarea
             value={doc.features}
@@ -131,19 +144,6 @@ export function ProposalTemplate({
           />
         ) : (
           <RichText html={doc.features} />
-        )}
-      </Section>
-
-      <Section num="5" title="사용자 시나리오" evidence={evidence} evidenceKey="userScenario">
-        {editable ? (
-          <textarea
-            value={doc.userScenario}
-            onChange={e => set("userScenario", e.target.value)}
-            placeholder="시나리오 단계를 자유롭게 작성하세요 (줄바꿈으로 구분)"
-            className={`${inputCls} h-24 resize-none whitespace-pre-wrap`}
-          />
-        ) : (
-          <RichText html={doc.userScenario} />
         )}
       </Section>
 

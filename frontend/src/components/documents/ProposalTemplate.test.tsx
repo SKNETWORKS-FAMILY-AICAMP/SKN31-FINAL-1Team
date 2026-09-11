@@ -6,9 +6,9 @@ import type { ProposalDoc } from "@/lib/documentTemplates";
 const baseDoc: ProposalDoc = {
   projectOverview: "",
   problemDefinition: "",
+  projectGoals: "",
   target: "",
   features: "",
-  userScenario: "",
   techStackConstraints: "",
   finalDecisions: "",
 };
