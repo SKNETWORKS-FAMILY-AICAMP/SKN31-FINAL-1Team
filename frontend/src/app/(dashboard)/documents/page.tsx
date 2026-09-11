@@ -452,12 +452,17 @@ export default function DocumentsPage() {
     setTaskDraftsReqDefId(null);
   }, [selectedNoteId]);
   // 업무배분 탭을 열었을 때 이미 배분된 업무가 있으면 보여준다(재배분 직후뿐 아니라
-  // 문서를 다시 열었을 때도).
+  // 문서를 다시 열었을 때도). 2026-09-11: 예전엔 selectedNote.project로 매번 "선택된
+  // 노트의 프로젝트"만 좁혀서 가져왔는데, 문서 목록 카드마다 표시하는 미니 파이프라인도
+  // 이 값을 그대로 쓰다 보니 "지금 보고 있는 노트의 프로젝트 데이터"로 다른 프로젝트
+  // 카드들의 진행 단계까지 잘못 계산되는 버그가 있었다(실제 재현: 노트를 바꿀 때마다
+  // 다른 카드의 파이프라인 점이 같이 바뀜). req_item ID는 프로젝트를 넘나들어도 겹치지
+  // 않으므로, 선택된 노트와 무관하게 전체를 한 번에 가져오면 각자 자기 reqDef.items로
+  // 걸러지는 기존 필터링 로직(hasConfirmedTasksFor/tasksForReqDef)이 그대로 정확해진다.
   useEffect(() => {
-    if (selectedNote?.project) fetchTaskAssignments(selectedNote.project);
-    else setTaskAssignments([]);
+    fetchTaskAssignments();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedNote?.project]);
+  }, [project?.id]);
   // reqDef/taskAssignments를 아는 채로 stageOf/stepDone을 호출하기 위한 헬퍼 —
   // 요구사항정의서 승인·업무배분 확정까지 반영해 "지금 이 문서가 실제로 어디까지
   // 왔는지" 정확히 판단한다(documentPipeline.ts 참고).
@@ -752,22 +757,21 @@ export default function DocumentsPage() {
     }
   };
 
-  // 문서를 빠르게 번갈아 클릭하면(예: A → B → A) 각 클릭마다 이 요청이 새로 나가는데,
-  // 네트워크 응답은 보낸 순서대로 도착한다는 보장이 없다 — B의 응답이 A로 돌아온 뒤에
-  // 도착하면 taskAssignments(전역 state)가 B(다른 프로젝트)의 데이터로 덮어써져서,
-  // 지금 보고 있는 A 문서의 파이프라인 단계가 잠깐 엉뚱하게(B의 진행 단계로) 표시됐다가
-  // A의 응답이 뒤늦게 도착해야 다시 돌아오는 버그가 있었다(실제로 재현해서 확인). 가장
-  // 최근에 요청한 projectId만 결과를 반영하도록 최신 요청을 기록해두고, 응답이 왔을 때
-  // 그사이 더 최근 요청이 나갔으면(=이 응답은 이미 낡음) 무시한다.
-  const latestTaskFetchRef = useRef<number | null>(null);
-  const fetchTaskAssignments = async (projectId: number) => {
-    latestTaskFetchRef.current = projectId;
+  // project 쿼리 파라미터 없이 호출하면 백엔드가 전체 프로젝트의 배정 업무를 돌려준다
+  // (tasks/views.py TaskAssignmentViewSet.get_queryset 참고) — 문서 목록의 카드마다
+  // 자기 reqDef.items의 req_item ID로 걸러 쓰므로(hasConfirmedTasksFor/tasksForReqDef),
+  // 어느 노트가 선택돼 있든 항상 전체를 들고 있으면 각 카드가 정확히 자기 프로젝트
+  // 기준으로 계산된다. 여러 곳(초기 로드/배분 확정 후/재배정 후)에서 겹쳐 호출될 수
+  // 있어 마지막으로 시작한 요청의 결과만 반영하도록 순번을 매겨 낡은 응답은 버린다.
+  const taskFetchSeqRef = useRef(0);
+  const fetchTaskAssignments = async () => {
+    const seq = ++taskFetchSeqRef.current;
     try {
-      const list = await apiFetch<TaskAssignmentDto[]>(`/api/tasks/assignments/?project=${projectId}`);
-      if (latestTaskFetchRef.current !== projectId) return; // 낡은 응답 — 그사이 다른 문서로 넘어감
+      const list = await apiFetch<TaskAssignmentDto[]>(`/api/tasks/assignments/`);
+      if (taskFetchSeqRef.current !== seq) return; // 낡은 응답 — 그사이 더 최근 요청이 나감
       setTaskAssignments(list);
     } catch (err: any) {
-      if (latestTaskFetchRef.current !== projectId) return;
+      if (taskFetchSeqRef.current !== seq) return;
       setErrorToast(err.message || "업무 목록을 불러오지 못했습니다.");
     }
   };
@@ -855,7 +859,7 @@ export default function DocumentsPage() {
       setScheduleSummary(null); // 2026-09-10 (Phase 0)
       setPackageSplits([]); // 2026-09-11 (Phase 3)
       setPlanReview(null); setPlanBriefing(null); // 2026-09-11 (Phase 4)
-      if (note.project) await fetchTaskAssignments(note.project);
+      await fetchTaskAssignments();
     } catch (err: any) {
       setErrorToast(err.message || "업무 배분 확정에 실패했습니다.");
     } finally {
@@ -873,7 +877,7 @@ export default function DocumentsPage() {
         body: JSON.stringify({ assigned_user: assigneeId }),
       });
       setToastMessage("담당자가 변경되었습니다");
-      if (note.project) await fetchTaskAssignments(note.project);
+      await fetchTaskAssignments();
     } catch (err: any) {
       setErrorToast(err.message || "담당자 변경에 실패했습니다.");
     } finally {
@@ -2205,7 +2209,6 @@ function GanttChart({ items }: { items: GanttItem[] }) {
   const days = Array.from({ length: dayCount }, (_, i) => new Date(rangeStartMs + i * DAY_MS));
   const dayIndexOf = (iso: string) => Math.min(dayCount - 1, Math.max(0, Math.round((toLocalMidnight(iso) - rangeStartMs) / DAY_MS)));
   const fmtDate = (d: Date) => d.toLocaleDateString("ko-KR", { month: "short", day: "numeric" });
-  const fmtWeekday = (d: Date) => d.toLocaleDateString("ko-KR", { weekday: "short" });
   const todayIndex = Math.round((toLocalMidnight(new Date().toISOString()) - rangeStartMs) / DAY_MS);
 
   const byAssignee = new Map<string, GanttItem[]>();
@@ -2237,36 +2240,35 @@ function GanttChart({ items }: { items: GanttItem[] }) {
       i === dayCount - 1 && "border-r border-border"
     );
 
+  // max-w-full + min-w-0: 부모가 flex/grid일 때 자식은 콘텐츠 실제 너비만큼 부모를
+  // 밀어 늘리려는 기본 성질이 있어서(min-width: auto), overflow-x-auto를 줘도 스크롤이
+  // 아니라 그냥 옆으로 계속 넓어지기만 하는 문제가 있었다(팀원 리포트: 펼쳤을 때 하단
+  // 스크롤이 안 생김). 이 두 클래스로 "부모 너비를 절대 넘지 않는다"를 강제해야
+  // overflow-x-auto가 실제로 스크롤로 동작한다.
   return (
-    <div className="border border-border rounded-xl p-4 overflow-x-auto">
+    <div className="border border-border rounded-xl p-4 overflow-x-auto max-w-full min-w-0">
       <div style={{ minWidth: expanded ? `${96 + dayCount * 52}px` : undefined }}>
         <div className="grid gap-y-2" style={{ gridTemplateColumns: `96px 1fr` }}>
           <div />
-          {expanded ? (
-            <div className="grid" style={dayGridStyle}>
-              {days.map((d, i) => (
-                <div key={i} className={cn("text-center pb-1.5", dayColClass(i))}>
-                  <p className={cn("text-[10px] font-semibold", i === todayIndex ? "text-primary" : "text-muted-foreground")}>{fmtDate(d)}</p>
-                  <p className="text-[9px] text-muted-foreground/60">{fmtWeekday(d)}</p>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <button
-              type="button"
-              onClick={() => setExpanded(true)}
-              title="전체 일정 펼치기"
-              className="group flex items-center gap-2 pb-1.5 w-full text-left"
-            >
-              <span className="text-[11px] font-semibold text-muted-foreground shrink-0">{fmtDate(days[0])}</span>
-              <span className="flex-1 border-t border-dashed border-border relative h-0">
-                <span className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 bg-background px-2 text-[11px] font-bold text-muted-foreground group-hover:text-primary transition-colors">
-                  ···
-                </span>
+          {/* 2026-09-11: 하루하루 날짜+요일을 전부 라벨로 늘어놓으면(예전 expanded 모드)
+              글자가 너무 많아 복잡해 보인다는 피드백 — 펼쳐도 날짜 라벨 줄은 안 늘어놓고
+              항상 "시작일 ··· 종료일"만 보여준다. "···"를 누르면(펼치기) 막대들이 실제
+              날짜 간격만큼 넓게 퍼지면서(가로 스크롤) 겹쳐 보이던 막대들이 분리되고,
+              다시 누르면(접기) 원래 폭으로 돌아온다 — 라벨 없이 폭만 바뀐다. */}
+          <button
+            type="button"
+            onClick={() => setExpanded(v => !v)}
+            title={expanded ? "일정 막대 접기" : "일정 막대 넓게 펼치기"}
+            className="group flex items-center gap-2 pb-1.5 w-full text-left"
+          >
+            <span className="text-[11px] font-semibold text-muted-foreground shrink-0">{fmtDate(days[0])}</span>
+            <span className="flex-1 border-t border-dashed border-border relative h-0">
+              <span className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 bg-background px-2 text-[11px] font-bold text-muted-foreground group-hover:text-primary transition-colors">
+                ···
               </span>
-              <span className="text-[11px] font-semibold text-muted-foreground shrink-0">{fmtDate(days[dayCount - 1])}</span>
-            </button>
-          )}
+            </span>
+            <span className="text-[11px] font-semibold text-muted-foreground shrink-0">{fmtDate(days[dayCount - 1])}</span>
+          </button>
 
           {rows.map(({ label, item }) => {
             const s = dayIndexOf(item.start);
@@ -2306,15 +2308,6 @@ function GanttChart({ items }: { items: GanttItem[] }) {
           })}
         </div>
       </div>
-      {expanded && (
-        <button
-          type="button"
-          onClick={() => setExpanded(false)}
-          className="mt-3 text-[11px] font-semibold text-muted-foreground hover:text-primary transition-colors"
-        >
-          접기
-        </button>
-      )}
     </div>
   );
 }
