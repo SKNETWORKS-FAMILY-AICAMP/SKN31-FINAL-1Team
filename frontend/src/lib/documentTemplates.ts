@@ -10,19 +10,22 @@ export type ProjectPeriod = {
   end: string; // YYYY-MM-DD, 없으면 ""
 };
 
-// 기획서 템플릿: 프로젝트 개요 / 문제 정의 / 대상 사용자 / 주요 기능 / 사용자 시나리오 /
+// 기획서 템플릿: 프로젝트 개요 / 문제 정의 / 프로젝트 목표 / 대상 사용자 / 주요 기능 /
 // 기술 스택 및 제약사항 / 최종 결정사항 — 7개 섹션.
+// 2026-09-10: 회의록에는 구체적인 사용자 시나리오가 명시되지 않는 경우가 많아 "5. 사용자
+// 시나리오" 섹션을 제거하고, 회의록에서 추출/보완한 "프로젝트 목표"를 3번 섹션으로 넣도록
+// AI/백엔드 구조가 바뀌었다(백엔드 SpecDocument.user_scenarios → goals).
 // 2026-08-31: Django SpecDocument 모델과 1:1로 맞추면서(overview/problem_definition/target_users/
-// key_features/user_scenarios/tech_stack/final_decisions 전부 TextField) 팀 결정에 따라 7개
-// 섹션 전부 자유 텍스트(한 덩어리)로 통일했다 — features/userScenario/finalDecisions가 예전엔
+// key_features/goals/tech_stack/final_decisions 전부 TextField) 팀 결정에 따라 7개
+// 섹션 전부 자유 텍스트(한 덩어리)로 통일했다 — features/finalDecisions가 예전엔
 // 배열(카드·리스트, 항목별 추가/삭제 UI)이었지만, 백엔드가 자유 텍스트 컬럼 하나로 저장하기로
 // 정해져서 프론트도 그에 맞춰 문자열로 단순화한다(줄바꿈으로 항목을 구분).
 export type ProposalDoc = {
   projectOverview: string; // 1. 프로젝트 개요
   problemDefinition: string; // 2. 문제 정의
-  target: string; // 3. 대상 사용자
-  features: string; // 4. 주요 기능 — 자유 텍스트(줄바꿈 구분)
-  userScenario: string; // 5. 사용자 시나리오 — 자유 텍스트(줄바꿈 구분)
+  projectGoals: string; // 3. 프로젝트 목표
+  target: string; // 4. 대상 사용자
+  features: string; // 5. 주요 기능 — 자유 텍스트(줄바꿈 구분)
   techStackConstraints: string; // 6. 기술 스택 및 제약사항
   finalDecisions: string; // 7. 최종 결정사항 — 자유 텍스트(줄바꿈 구분)
   projectPeriod?: ProjectPeriod; // 원본에 명시된 경우에만 헤더에 표시
@@ -65,7 +68,7 @@ export type ReqSpecDoc = {
 // 화면/엑스포트에서 쓸 수 있는 타입 객체로 안전하게 되돌린다. raw가 없거나 JSON이 깨져 있어도
 // (예: AI 응답 파싱 실패, 마이그레이션 이전 데이터) 예외를 던지지 않고 null/빈 배열을 반환해
 // 호출부가 별도 try/catch 없이 "문서 없음"으로 처리할 수 있게 한다.
-// userScenario 배열은 AI가 가끔(프롬프트로 금지해도) 각 항목 앞에 "1. ", "2)" 같은 번호를
+// (예전 배열형 섹션 시절) AI가 가끔(프롬프트로 금지해도) 각 항목 앞에 "1. ", "2)" 같은 번호를
 // 직접 써서 반환한다 — 화면에서는 <ol>이 번호를 따로 매기므로 그대로 두면 "1. 1. 사용자가..."처럼
 // 번호가 두 번 찍힌다(실제 보고된 버그). 생성 시점(route.ts)과 화면 렌더 시점(ProposalTemplate)
 // 양쪽에서 같은 함수로 벗겨내 — 새로 생성되는 문서뿐 아니라 이미 번호가 박혀 저장된 기존

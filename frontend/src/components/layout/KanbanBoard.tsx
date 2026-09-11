@@ -222,10 +222,10 @@ export function KanbanBoard({ initialTasks, members = [], onTaskChange }: { proj
         method: "PATCH",
         body: JSON.stringify({ assigned_user: userId }),
       });
-    } catch (e) {
-      console.error("담당자 재배정 실패", e);
+    } catch (e: any) {
       setTasks(prev);
       onTaskChange?.(taskId, prev.find((t) => t.id === taskId) ?? {});
+      setErrorToast(e.message || "담당자 재배정에 실패했습니다.");
     }
   };
 
@@ -238,10 +238,10 @@ export function KanbanBoard({ initialTasks, members = [], onTaskChange }: { proj
         method: "PATCH",
         body: JSON.stringify({ status_code: newStatus }),
       });
-    } catch (e) {
-      console.error("상태 변경 실패", e);
+    } catch (e: any) {
       setTasks(prev);
       onTaskChange?.(taskId, { status_code: prev.find((t) => t.id === taskId)?.status_code });
+      setErrorToast(e.message || "상태 변경에 실패했습니다.");
     }
   };
 
