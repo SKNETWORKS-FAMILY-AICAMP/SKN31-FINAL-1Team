@@ -95,6 +95,32 @@ def run(
             temperature=TEMPERATURE,
         )
 
+                # 임시 진단: 관련성 판별 과정에서 핵심 정보가 사라졌는지 확인합니다.
+        check_terms = [
+            "리테일링크",
+            "사전 사용자 인터뷰",
+            "11명",
+            "품절",
+            "과재고",
+            "사장이 매장을 비운",
+        ]
+
+        print(
+            "\n[입력 진단] 전체 회의록 길이:",
+            len(meeting_text),
+            "| 선별된 회의록 길이:",
+            len(relevant_text),
+            flush=True,
+        )
+
+        for term in check_terms:
+            print(
+                f"[입력 진단] {term!r}",
+                f"| 전체 입력: {term in meeting_text}",
+                f"| 선별 입력: {term in relevant_text}",
+                flush=True,
+            )
+
         messages = build_messages(relevant_text)
 
         extraction = client.chat.completions.create(

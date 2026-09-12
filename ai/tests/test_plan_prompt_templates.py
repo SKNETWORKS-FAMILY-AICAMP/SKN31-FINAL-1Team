@@ -79,7 +79,7 @@ def test_extraction_template_has_expected_version():
     """회의록 구조화 규칙 YAML의 버전을 확인합니다."""
     template = load_extraction_template()
 
-    assert template["metadata"]["version"] == "2.1"
+    assert template["metadata"]["version"] == "2.2"
 
 
 def test_extraction_template_contains_problem_items_rules():

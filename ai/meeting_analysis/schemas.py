@@ -88,27 +88,51 @@ class UserGroup(BaseModel):
 
 class RequirementItem(BaseModel):
     """
-    2026-09-07: priority 필드를 제거했습니다. 이 노드의 판단 기준이 프롬프트에
-    없어 근거 없는 값이었고, 실제로 쓰는 하류는 노드③(requirement_draft)인데
-    그쪽은 이미 자체 판단 기준(requirements_template.yaml)으로 priority를
-    독립적으로 매기고 있어 이 필드를 참조하지 않습니다. 죽은 필드라 삭제합니다.
+    일반 요구사항 항목입니다.
+
+    priority는 노드 3에서 별도로 판단하므로 이곳에서 관리하지 않습니다.
     """
+
     content: str
     evidence: Evidence
 
 
+class FunctionalRequirementItem(RequirementItem):
+    """
+    기능 요구사항 항목입니다.
+
+    feature_name은 이 요구사항이 속하는 상위 기능명입니다.
+    기능 사이의 관계를 문장으로 추측하지 않고 구조화된 값으로 전달합니다.
+    """
+
+    feature_name: Optional[str] = Field(
+        default=None,
+        description=(
+            "이 요구사항이 속하는 상위 기능명. "
+            "상위 기능 자체이면 자신의 기능명을 작성합니다. "
+            "세부 동작이나 구현 조건이면 원문에서 확인되는 상위 기능명을 작성합니다. "
+            "별도 외부 연동이면 해당 연동 기능명을 작성합니다. "
+            "관계를 확인할 수 없으면 null로 둡니다."
+        ),
+    )
+
+
 class Requirements(BaseModel):
-    functional: list[RequirementItem] = Field(
-        default_factory=list, description="기능 요구사항"
+    functional: list[FunctionalRequirementItem] = Field(
+        default_factory=list,
+        description="기능 요구사항",
     )
     non_functional: list[RequirementItem] = Field(
-        default_factory=list, description="성능·보안·사용성 요구사항"
+        default_factory=list,
+        description="성능·보안·사용성 요구사항",
     )
     data: list[RequirementItem] = Field(
-        default_factory=list, description="저장·연동 데이터 요구사항"
+        default_factory=list,
+        description="저장·연동 데이터 요구사항",
     )
     technical: list[RequirementItem] = Field(
-        default_factory=list, description="기술 스택·환경 요구사항"
+        default_factory=list,
+        description="기술 스택·환경 요구사항",
     )
 
 
@@ -123,7 +147,13 @@ class Scenario(BaseModel):
 class Decision(BaseModel):
     category: DecisionCategory
     content: str
-    rationale: Optional[str] = None
+    rationale: Optional[str] = Field(
+        default=None,
+        description=(
+            "이 결정을 내린 이유. 회의록에 이유가 언급된 경우에만 작성하고, "
+            "없으면 비워 둡니다."
+        ),
+    )
     evidence: Evidence
 
 

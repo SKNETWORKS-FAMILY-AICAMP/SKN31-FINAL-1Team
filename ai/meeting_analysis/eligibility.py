@@ -97,8 +97,17 @@ def validate_relevant_passages(
     result: MeetingEligibility,
     meeting_text: str,
 ) -> str:
-    """판정 결과를 확인하고 구조화에 사용할 실제 원문을 반환합니다."""
+    """
+    판정 근거를 검증하고 구조화 단계에 전달할 원문을 반환합니다.
 
+    relevant:
+        회의 전체가 개발 기획과 관련된 경우입니다.
+        발췌문은 판정 근거 확인에만 사용하고 전체 원문을 전달합니다.
+
+    mixed:
+        개발 논의와 무관한 논의가 섞인 경우입니다.
+        검증된 개발 관련 발췌문만 전달합니다.
+    """
     if result.status == "irrelevant":
         raise MeetingEligibilityError(
             (
@@ -117,9 +126,20 @@ def validate_relevant_passages(
             cause_code="MEETING_NEEDS_CLARIFICATION",
         )
 
+    if (
+        not meeting_text.strip()
+        or not result.relevant_passages
+    ):
+        raise MeetingEligibilityError(
+            "개발 관련성을 확인할 회의 원문과 판정 근거가 필요합니다.",
+            cause_code="MEETING_ELIGIBILITY_INVALID",
+        )
+
     selected_passages = []
     cursor = 0
 
+    # relevant 판정도 근거 검증을 생략하지 않습니다.
+    # 실제로 존재하는 원문인지, 발췌 순서가 올바른지 확인합니다.
     for passage in result.relevant_passages:
         match = find_original_passage(
             passage=passage,
@@ -139,14 +159,19 @@ def validate_relevant_passages(
         start = cursor + match.start()
         end = cursor + match.end()
 
-        # 모델이 정리한 문장이 아니라 실제 회의록의 문자열을 사용합니다.
-        original_passage = meeting_text[start:end]
-
-        selected_passages.append(original_passage)
+        selected_passages.append(
+            meeting_text[start:end]
+        )
         cursor = end
 
-    return "\n\n".join(selected_passages)
+    if result.status == "relevant":
+        # 전체가 관련 회의라면 발췌 과정에서 배경과 문제를 잃지 않도록
+        # 원본 문자열을 그대로 전달합니다.
+        return meeting_text
 
+    # mixed 판정에서는 전체 원문을 전달하지 않습니다.
+    # 회식 등 무관한 내용이 제외된 원문 구간만 전달합니다.
+    return "\n\n".join(selected_passages)
 
 def assess_meeting(
     client,

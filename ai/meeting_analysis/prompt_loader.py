@@ -184,6 +184,24 @@ def _validate_extraction_template(
             f"extraction.project_rules.{key}",
         )
 
+    user_rules = _require_mapping(
+        template,
+        "user_rules",
+        "extraction",
+    )
+
+    _require_text(
+        user_rules,
+        "field",
+        "extraction.user_rules",
+    )
+
+    _require_text(
+        user_rules,
+        "text",
+        "extraction.user_rules",
+    )
+
     requirement_rules = _require_mapping(
         template,
         "requirement_rules",
@@ -347,197 +365,182 @@ def _append_rules(
 
 
 def build_extraction_system_prompt() -> str:
-    """extraction.yaml을 모델에 전달할 문자열로 변환합니다."""
+    """
+    extraction.yaml의 규칙을 실제 시스템 프롬프트로 변환합니다.
 
+    YAML에 작성한 세부 rules가 모델 입력에서 누락되지 않도록
+    프로젝트, 사용자, 요구사항, 결정사항, 제약사항을 같은 방식으로
+    처리합니다.
+
+    이 함수는 문서 내용을 생성하거나 근거를 검증하지 않습니다.
+    YAML의 내용을 빠짐없이 전달하는 역할만 합니다.
+    """
     template = load_extraction_template()
     parts: list[str] = []
 
-    parts.append(
-        _require_text(
-            template,
-            "role",
-            "extraction",
+    def append_text(value: Any) -> None:
+        """비어 있지 않은 문자열만 추가합니다."""
+        if isinstance(value, str) and value.strip():
+            parts.append(value.strip())
+
+    def append_rule_list(value: Any) -> None:
+        """
+        문자열 규칙과 {id, text} 형식의 규칙을 모두 처리합니다.
+
+        규칙에 없는 내용은 추가하지 않습니다.
+        """
+        if not isinstance(value, list):
+            return
+
+        for item in value:
+            if isinstance(item, str):
+                append_text(item)
+            elif isinstance(item, dict):
+                append_text(item.get("text"))
+
+    def append_examples(label: str, value: Any) -> None:
+        """문자열 또는 객체로 작성된 예시를 표시합니다."""
+        if not isinstance(value, list) or not value:
+            return
+
+        parts.append(label)
+
+        for item in value:
+            if isinstance(item, str):
+                append_text(item)
+
+            elif isinstance(item, dict):
+                # 제약사항 예시는 type과 content를 가진 객체일 수 있습니다.
+                append_text(
+                    yaml.safe_dump(
+                        item,
+                        allow_unicode=True,
+                        sort_keys=False,
+                    )
+                )
+
+    def append_rule_block(
+        title: str,
+        rule: dict[str, Any],
+    ) -> None:
+        """
+        하나의 규칙 블록을 공통 방식으로 처리합니다.
+
+        기존 코드에서 빠졌던 결정사항 rules와 제약사항 rules도
+        이 함수를 통해 실제 프롬프트에 포함됩니다.
+        """
+        parts.append(title)
+
+        append_text(rule.get("field"))
+        append_text(rule.get("description"))
+        append_text(rule.get("text"))
+
+        item_fields = rule.get("item_fields")
+
+        if isinstance(item_fields, list):
+            names = [
+                name.strip()
+                for name in item_fields
+                if isinstance(name, str) and name.strip()
+            ]
+
+            if names:
+                parts.append(
+                    "항목 필드: " + ", ".join(names)
+                )
+
+        append_rule_list(rule.get("rules"))
+
+        append_examples(
+            "예시",
+            rule.get("examples"),
         )
-    )
+
+        append_examples(
+            "표현 예시",
+            rule.get("expressions"),
+        )
+
+    append_text(template["role"])
 
     parts.append("절대 규칙")
-
-    _append_rules(
-        parts,
-        template["absolute_rules"],
-    )
+    append_rule_list(template["absolute_rules"])
 
     parts.append("프로젝트 정보 추출 규칙")
 
-    for rule in template["project_rules"].values():
-        field = str(rule["field"]).strip()
-        text = str(rule["text"]).strip()
+    for key, rule in template["project_rules"].items():
+        append_rule_block(
+            f"프로젝트 규칙: {key}",
+            rule,
+        )
 
-        parts.append(field)
-        parts.append(text)
+    append_rule_block(
+        "대상 사용자 추출 규칙",
+        template["user_rules"],
+    )
 
     parts.append("요구사항 분류 규칙")
 
     for key, rule in template["requirement_rules"].items():
-        description = str(
-            rule["description"]
-        ).strip()
-
-        parts.append(f"{key}: {description}")
-
-        rules = rule.get("rules", [])
-
-        if isinstance(rules, list):
-            for item in rules:
-                if isinstance(item, str) and item.strip():
-                    parts.append(item.strip())
-
-        examples = rule.get("examples", [])
-
-        if isinstance(examples, list) and examples:
-            example_text = ", ".join(
-                str(item).strip()
-                for item in examples
-                if str(item).strip()
-            )
-
-            if example_text:
-                parts.append(
-                    f"{key} 예시: {example_text}"
-                )
+        append_rule_block(
+            f"requirements.{key}:",
+            rule,
+        )
 
     parts.append("결정사항 분류 규칙")
 
     for key, rule in template["decision_rules"].items():
-        description = str(
-            rule["description"]
-        ).strip()
-
-        parts.append(f"{key}: {description}")
-
-        expressions = rule.get("expressions", [])
-
-        if isinstance(expressions, list) and expressions:
-            expression_text = ", ".join(
-                str(item).strip()
-                for item in expressions
-                if str(item).strip()
-            )
-
-            if expression_text:
-                parts.append(
-                    f"{key}에 해당하는 표현: {expression_text}"
-                )
+        append_rule_block(
+            f"decisions.category={key}",
+            rule,
+        )
 
     constraint_rules = template["constraint_rules"]
 
-    parts.append("제약사항 추출 규칙")
-
-    categories = constraint_rules.get(
-        "categories",
-        [],
+    append_rule_block(
+        "제약사항 추출 규칙",
+        constraint_rules,
     )
 
-    if isinstance(categories, list) and categories:
-        parts.append(
-            "제약사항 유형: "
-            + ", ".join(
-                str(item).strip()
-                for item in categories
-                if str(item).strip()
-            )
-        )
+    categories = constraint_rules.get("categories")
 
-    constraint_text = str(
-        constraint_rules.get("text", "")
-    ).strip()
+    if isinstance(categories, list):
+        category_names = [
+            category.strip()
+            for category in categories
+            if isinstance(category, str) and category.strip()
+        ]
 
-    if constraint_text:
-        parts.append(constraint_text)
-
-    mixed_example = template.get(
-        "mixed_decision_example",
-        {},
-    )
-
-    if isinstance(mixed_example, dict):
-        source = str(
-            mixed_example.get("source", "")
-        ).strip()
-
-        expected = mixed_example.get(
-            "expected",
-            {},
-        )
-
-        if source and isinstance(expected, dict):
-            parts.append("결정 내용과 미정 내용이 섞인 예시")
-            parts.append(f"원문:\n{source}")
-
-            decision = str(
-                expected.get("decision", "")
-            ).strip()
-
-            unresolved = str(
-                expected.get("unresolved", "")
-            ).strip()
-
-            if decision:
-                parts.append(
-                    f"decisions에 작성할 내용:\n{decision}"
-                )
-
-            if unresolved:
-                parts.append(
-                    f"unresolved에 작성할 내용:\n{unresolved}"
-                )
-
-    invalid_example = template.get(
-        "invalid_output_example",
-        {},
-    )
-
-    if isinstance(invalid_example, dict):
-        output = str(
-            invalid_example.get("output", "")
-        ).strip()
-
-        evidence = str(
-            invalid_example.get("evidence", "")
-        ).strip()
-
-        problems = invalid_example.get(
-            "problems",
-            [],
-        )
-
-        correct_handling = str(
-            invalid_example.get(
-                "correct_handling",
-                "",
-            )
-        ).strip()
-
-        if output:
-            parts.append("잘못된 출력 예시")
-            parts.append(f"잘못된 내용:\n{output}")
-
-        if evidence:
-            parts.append(f"잘못된 근거:\n{evidence}")
-
-        if isinstance(problems, list):
-            for problem in problems:
-                text = str(problem).strip()
-
-                if text:
-                    parts.append(text)
-
-        if correct_handling:
+        if category_names:
             parts.append(
-                f"올바른 처리:\n{correct_handling}"
+                "제약사항 유형: " + ", ".join(category_names)
             )
 
-    return "\n\n".join(parts).strip()
+    # 기존 예시의 내용은 변경하지 않고 그대로 전달합니다.
+    for key, title in [
+        (
+            "mixed_decision_example",
+            "확정 내용과 미정 내용 분리 예시",
+        ),
+        (
+            "invalid_output_example",
+            "잘못된 출력과 올바른 처리 예시",
+        ),
+    ]:
+        example = template.get(key)
+
+        if isinstance(example, dict) and example:
+            parts.append(title)
+
+            append_text(
+                yaml.safe_dump(
+                    example,
+                    allow_unicode=True,
+                    sort_keys=False,
+                )
+            )
+
+    return "\n\n".join(parts)
 
 
 def build_extraction_fewshot_messages() -> list[dict[str, str]]:

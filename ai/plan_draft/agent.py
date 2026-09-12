@@ -142,13 +142,87 @@ def _source_is_empty(structured: dict, source_fields: list[str]) -> bool:
     return True
 
 
-def run(structured: dict, proposal_id: str, glossary_text: str = "") -> PlanDocument:
-    # ── [1] 서술형 3개, 세부 목표, 주요 기능 생성 ──────────────────────────────────
+def run(
+    structured: dict,
+    proposal_id: str,
+    glossary_text: str = "",
+) -> PlanDocument:
+    # [1] 서술형 섹션, 세부 목표, 주요 기능을 생성합니다.
     result: PlanSections = _call(
-        build_system_prompt(glossary_text), build_messages(structured, glossary_text),
+        build_system_prompt(glossary_text),
+        build_messages(structured, glossary_text),
         PlanSections,
         context=f"run proposal_id={proposal_id}",
     )
+
+    # 임시 진단용입니다. 확인이 끝나면 제거할 수 있습니다.
+    import json
+
+    # [진단 1] 노드 1에서 추출한 프로젝트 정보를 확인합니다.
+    project = structured.get("project") or {}
+
+    print(
+        "\n[목표 진단] 노드 1 프로젝트 정보",
+        flush=True,
+    )
+    print(
+        json.dumps(
+            project,
+            ensure_ascii=False,
+            indent=2,
+            default=str,
+        ),
+        flush=True,
+    )
+
+    # [진단 2] 노드 2에서 생성한 세부 목표를 확인합니다.
+    print(
+        f"\n[목표 진단] 노드 2 생성 개수: {len(result.goals)}",
+        flush=True,
+    )
+
+    for index, generated_goal in enumerate(result.goals, start=1):
+        print(
+            f"\n[목표 진단] 노드 2 생성 항목 {index}",
+            flush=True,
+        )
+        print(
+            json.dumps(
+                generated_goal.model_dump(),
+                ensure_ascii=False,
+                indent=2,
+                default=str,
+            ),
+            flush=True,
+        )
+
+    # [진단 3] 기능 누락이 어느 단계에서 발생했는지 확인합니다.
+    # node1_requirements: 노드 1에서 추출한 요구사항
+    # node1_decisions: 노드 1에서 추출한 결정사항
+    # node2_features: 노드 2에서 생성한 주요 기능
+    diagnostic_data = {
+        "node1_requirements": structured.get("requirements") or {},
+        "node1_decisions": structured.get("decisions") or [],
+        "node2_features": [
+            feature.model_dump()
+            for feature in result.features
+        ],
+    }
+
+    print(
+        "\n[기능 진단] 노드 1 요구사항과 노드 2 주요 기능",
+        flush=True,
+    )
+    print(
+        json.dumps(
+            diagnostic_data,
+            ensure_ascii=False,
+            indent=2,
+            default=str,
+        ),
+        flush=True,
+    )
+
     by_key = {s.key: s for s in result.sections}
 
     # ── [2] 목록형 3개 조립 ──────────────────────────────────

@@ -50,8 +50,34 @@ def _base_meeting_text(additional_text: str = "") -> str:
 
 def test_extraction_template_has_expected_version():
     template = load_extraction_template()
-    assert template["metadata"]["version"] == "2.1"
+    assert template["metadata"]["version"] == "2.2"
 
+def test_extraction_template_has_user_rules():
+    """대상 사용자 추출 규칙이 시스템 프롬프트에 실제로 포함되는지 확인합니다."""
+    template = load_extraction_template()
+    user_rules = template["user_rules"]
+
+    assert isinstance(user_rules, dict)
+    assert user_rules["field"] == "users"
+
+    prompt = build_extraction_system_prompt()
+    assert "대상 사용자 추출 규칙" in prompt
+    assert "description" in prompt
+    assert "needs" in prompt
+
+
+def test_extraction_template_has_decision_rationale_rule():
+    """결정 이유(rationale)를 채우라는 규칙이 시스템 프롬프트에 포함되는지 확인합니다."""
+    prompt = build_extraction_system_prompt()
+    assert "rationale" in prompt
+
+
+def test_extraction_template_allows_technical_dual_recording():
+    """확정된 기술을 decisions뿐 아니라 requirements.technical에도 적을 수 있다는
+    규칙이 시스템 프롬프트에 포함되는지 확인합니다."""
+    prompt = build_extraction_system_prompt()
+    assert "기술 스택" in prompt
+    assert "technical" in prompt
 
 def test_extraction_template_contains_problem_items_rules():
     template = load_extraction_template()

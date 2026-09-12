@@ -461,6 +461,26 @@ def build_goals(
             decision,
         )
 
+        # 임시 진단: 실제 조립 검증에 사용되는 허용 근거를 확인합니다.
+    print(
+        "\n[목표 진단] 허용된 문제 근거 수:",
+        len(allowed_problem_evidence),
+        flush=True,
+    )
+
+    for quote in allowed_problem_evidence.values():
+        print("[문제 허용 근거]", repr(quote), flush=True)
+
+    print(
+        "\n[목표 진단] 허용된 목표 근거 수:",
+        len(allowed_goal_evidence),
+        flush=True,
+    )
+
+    for quote in allowed_goal_evidence.values():
+        print("[목표 허용 근거]", repr(quote), flush=True)
+
+
     def match_evidence(
         evidence_items: list,
         allowed_evidence: dict[str, str],
@@ -542,7 +562,24 @@ def build_goals(
         # 제목, 문제, 목표 중 하나라도 비어 있으면
         # 완전한 세부 목표 항목이 아니므로 제외합니다.
         if not title or not problem or not goal:
-            continue
+            missing_fields = [
+                name
+                for name, value in [
+                    ("title", title),
+                    ("problem", problem),
+                    ("goal", goal),
+                ]
+                if not value
+            ]
+
+            print(
+                "[목표 진단] 항목 제외:",
+                title or "(제목 없음)",
+                "| 빈 필드:",
+                ", ".join(missing_fields),
+                flush=True,
+            )
+            continue        
 
         normalized_pair = (
             _norm(problem),
@@ -577,7 +614,28 @@ def build_goals(
             not problem_evidence
             or not goal_evidence
         ):
+            reasons = []
+
+            if not problem_evidence:
+                reasons.append("문제 근거가 허용 목록과 일치하지 않음")
+
+            if not goal_evidence:
+                reasons.append("목표 근거가 허용 목록과 일치하지 않음")
+
+            print(
+                "[목표 진단] 항목 제외:",
+                title,
+                "| 이유:",
+                " / ".join(reasons),
+                flush=True,
+            )
             continue
+
+        print(
+            "[목표 진단] 근거 검사 통과:",
+            title,
+            flush=True,
+        )
 
         seen_goal_pairs.add(normalized_pair)
 
