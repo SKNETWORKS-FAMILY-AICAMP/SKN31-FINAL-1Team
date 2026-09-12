@@ -170,7 +170,7 @@ else:
     REASONING_EFFORT = None
 
 # 스키마 파싱 실패 시 재시도 횟수 (EX-LLM-004 대응)
-MAX_RETRIES = 2
+MAX_RETRIES = 3
 
 # 단일 LLM 호출 타임아웃(초) — 초과 시 EX-LLM-001로 처리
 REQUEST_TIMEOUT_SECONDS = 30
