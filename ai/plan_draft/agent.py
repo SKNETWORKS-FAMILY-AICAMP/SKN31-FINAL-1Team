@@ -185,13 +185,15 @@ def run(structured: dict, proposal_id: str, glossary_text: str = "") -> PlanDocu
                 features=feats,
                 items=[f.title for f in feats],
                 source_fields=spec["source_fields"],
-                # 2026-09-07: 예전엔 evidence=[]로 고정돼 있어서 가장 중요한
-                # 섹션(주요 기능)에 근거가 하나도 안 붙었습니다. requirements.
-                # functional / decisions[feature]에 이미 검증된 근거가 있으므로
-                # 그걸 재수집합니다.
-                evidence=list_builder.collect_source_evidence(  # ⬅ 수정: 원래 evidence=[] 였음
-                    structured, spec["source_fields"]
-                ),
+                # 기능 요구사항과 기능 결정사항에는 같은 기능이 표현만 다르게
+                # 중복될 수 있습니다.
+                #
+                # 주요 기능 섹션에서는 requirements.functional의 근거를 우선
+                # 사용하고, 기능 요구사항이 없을 때만 decisions[feature]를
+                # 예비 근거로 사용합니다.
+                #
+                # 결정사항의 근거는 7번 최종 결정사항에서 별도로 표시됩니다.
+                evidence=list_builder.collect_feature_evidence(structured),
                 is_incomplete=not feats,
             ))
             continue
@@ -212,8 +214,15 @@ def run(structured: dict, proposal_id: str, glossary_text: str = "") -> PlanDocu
             # 대신 노드①이 이미 검증해둔 원본 근거를 source_fields로 재수집합니다.
             # "근거 보기" 화면에서 verified/unverified를 신뢰성 있게 보여주려면
             # LLM의 자기 인용이 아니라 코드가 대조한 값이어야 합니다.
-            evidence=list_builder.collect_source_evidence(  # ⬅ 수정: 원래 evidence=gen.evidence if gen else [] 였음
-                structured, spec["source_fields"]
+            evidence=(
+                list_builder.collect_core_goal_evidence(
+                    structured,
+                )
+                if spec["key"] == "problem"
+                else list_builder.collect_source_evidence(
+                    structured,
+                    spec["source_fields"],
+                )
             ),
             # 원본이 비었거나 LLM이 아무것도 못 쓴 경우
             is_incomplete=_source_is_empty(structured, spec["source_fields"])

@@ -50,7 +50,7 @@ def _base_meeting_text(additional_text: str = "") -> str:
 
 def test_extraction_template_has_expected_version():
     template = load_extraction_template()
-    assert template["metadata"]["version"] == "2.0"
+    assert template["metadata"]["version"] == "2.1"
 
 
 def test_extraction_template_contains_problem_items_rules():

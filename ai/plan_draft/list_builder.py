@@ -35,6 +35,33 @@ def _norm(text: str) -> str:
     """중복 판정용 정규화. 공백만 제거해 표현 차이를 흡수합니다."""
     return "".join(text.split())
 
+def _dedupe_evidence(
+    evidence_items: list[VerifiedEvidence],
+) -> list[VerifiedEvidence]:
+    """
+    같은 원문 근거가 한 섹션에 여러 번 표시되지 않도록 제거합니다.
+
+    공백이나 줄바꿈만 다른 문장도 같은 근거로 판단합니다.
+    처음 나온 근거의 순서는 유지합니다.
+    """
+    result: list[VerifiedEvidence] = []
+    seen_quotes: set[str] = set()
+
+    for evidence in evidence_items:
+        quote = str(evidence.quote).strip()
+        normalized_quote = _norm(quote)
+
+        if not normalized_quote:
+            continue
+
+        if normalized_quote in seen_quotes:
+            continue
+
+        seen_quotes.add(normalized_quote)
+        result.append(evidence)
+
+    return result
+
 
 def _ev(items: list[dict]) -> list[VerifiedEvidence]:
     """
@@ -56,84 +83,237 @@ def _ev(items: list[dict]) -> list[VerifiedEvidence]:
     return out
 
 
-def collect_source_evidence(structured: dict, source_fields: list[str]) -> list[VerifiedEvidence]:
+def collect_source_evidence(
+    structured: dict,
+    source_fields: list[str],
+) -> list[VerifiedEvidence]:
     """
-    서술형 섹션(1~5번, 주요기능 포함)의 근거를 노드①이 이미 검증해둔
-    원본 데이터에서 그대로 재수집합니다.
+    SECTION_SPEC의 source_fields 경로를 따라가며
+    노드 1에서 검증한 원문 근거를 수집합니다.
 
-    왜 필요한가: NarrativeSection.evidence는 노드②의 LLM이 문장을 쓰면서
-    스스로 인용한 것이라, 원문과 실제로 대조된 적이 없습니다(unverified가
-    아니라 아예 검증 자체가 없음). 반면 requirements.functional, users,
-    decisions, project 같은 원본 항목들은 verify_and_mark()가
-    이미 evidence_status를 붙여둔 상태입니다. LLM에게 근거를 다시 찾게
-    시키는 대신(모델이 더 그럴듯한 인용을 지어냄 — evidence.py 주석 참조),
-    agent.py가 SECTION_SPEC의 source_fields 경로를 그대로 따라가서 이
-    검증된 근거를 가져다 씁니다.
-
-    source_fields 예시와 처리 방식:
-      "project.name" / "project.background"
-          → background_evidence를 가져옵니다.
-      "project.problem"
-          → problem_evidence를 가져옵니다.
-            (project는 background_evidence/problem_evidence로 근거가 나뉘어
-            있습니다 — meeting_analysis/schemas.py Project 참고)
-      "users" / "requirements.functional"
-          → 배열입니다. 각 항목의 evidence를 전부 모읍니다.
-      "decisions[feature]"
-          → decisions 중 category가 "feature"인 것만 모읍니다
-            (_source_is_empty()와 같은 대괄호 표기 규칙).
+    동일한 근거는 한 섹션에서 한 번만 반환합니다.
     """
     out: list[VerifiedEvidence] = []
     seen_quotes: set[str] = set()
 
-    def add(item: dict, evidence_key: str = "evidence", status_key: str = "evidence_status") -> None:
+    def add(
+        item: dict,
+        evidence_key: str = "evidence",
+        status_key: str = "evidence_status",
+    ) -> None:
+        """구조화 항목 하나에서 근거를 가져옵니다."""
         if not isinstance(item, dict):
             return
-        e = item.get(evidence_key)
-        quote = e.get("quote", "") if isinstance(e, dict) else getattr(e, "quote", "") if e else ""
-        if not quote or quote in seen_quotes:
+
+        evidence = item.get(evidence_key)
+
+        if hasattr(evidence, "model_dump"):
+            evidence = evidence.model_dump()
+
+        if isinstance(evidence, dict):
+            quote = evidence.get("quote", "")
+        else:
+            quote = (
+                getattr(evidence, "quote", "")
+                if evidence
+                else ""
+            )
+
+        quote = str(quote).strip()
+        quote_key = _norm(quote)
+
+        if not quote_key:
             return
-        seen_quotes.add(quote)
-        status = item.get(status_key, "unverified")
-        out.append(VerifiedEvidence(quote=quote, status=status))
+
+        if quote_key in seen_quotes:
+            return
+
+        seen_quotes.add(quote_key)
+
+        if isinstance(evidence, dict):
+            evidence_status = evidence.get("status")
+        else:
+            evidence_status = None
+
+        status = str(
+            item.get(status_key)
+            or evidence_status
+            or "unverified"
+        ).strip()
+
+        out.append(
+            VerifiedEvidence(
+                quote=quote,
+                status=status,
+            )
+        )
 
     for field in source_fields:
-        if "[" in field:                       # decisions[feature] 형태
-            base, cat = field.split("[")
-            cat = cat.rstrip("]")
-            for d in structured.get(base, []):
-                if isinstance(d, dict) and d.get("category") == cat:
-                    add(d)
+        # decisions[feature] 같은 필터 경로
+        if "[" in field:
+            base, category = field.split("[", 1)
+            category = category.rstrip("]")
+
+            for item in structured.get(base, []):
+                if not isinstance(item, dict):
+                    continue
+
+                if item.get("category") == category:
+                    add(item)
+
             continue
 
         if field.startswith("project."):
-            # 2026-09-07: project.evidence가 background_evidence/problem_evidence로
-            # 나뉘었습니다(schemas.py Project 참고). project.problem을 가리키면
-            # problem_evidence를, 그 외(project.name, project.background)는
-            # background_evidence를 가져옵니다 — name은 따로 근거가 없고
-            # background와 함께 1번 개요 섹션에 쓰이기 때문입니다.
-            sub = field.split(".", 1)[1]
-            proj = structured.get("project") or {}
-            if sub == "problem":
-                add(proj, "problem_evidence", "problem_evidence_status")
-            else:
-                add(proj, "background_evidence", "background_evidence_status")
-            continue
+            sub_field = field.split(".", 1)[1]
+            project = structured.get("project") or {}
 
-        # "requirements.functional" 같은 점 경로를 따라갑니다.
-        cur = structured
+            # 전체 문제 근거
+            if sub_field == "problem":
+                add(
+                    project,
+                    evidence_key="problem_evidence",
+                    status_key="problem_evidence_status",
+                )
+                continue
+
+            # 개별 문제 근거
+            if sub_field == "problem_items":
+                for problem_item in (
+                    project.get("problem_items")
+                    or []
+                ):
+                    add(problem_item)
+
+                continue
+
+            # 프로젝트 목표 근거
+            if sub_field == "goals":
+                for goal in (
+                    project.get("goals")
+                    or []
+                ):
+                    add(goal)
+
+                continue
+
+            # 프로젝트명과 배경은 배경 근거 사용
+            if sub_field in {
+                "name",
+                "background",
+            }:
+                add(
+                    project,
+                    evidence_key="background_evidence",
+                    status_key="background_evidence_status",
+                )
+                continue
+
+        # requirements.functional 같은 일반 점 경로
+        current = structured
+
         for part in field.split("."):
-            cur = cur.get(part) if isinstance(cur, dict) else None
-            if cur is None:
+            if not isinstance(current, dict):
+                current = None
                 break
 
-        if isinstance(cur, list):
-            for item in cur:
-                add(item)
-        elif isinstance(cur, dict):
-            add(cur)
+            current = current.get(part)
 
-    return out
+            if current is None:
+                break
+
+        if isinstance(current, list):
+            for item in current:
+                add(item)
+
+        elif isinstance(current, dict):
+            add(current)
+
+    return _dedupe_evidence(out)
+
+def collect_feature_evidence(
+    structured: dict,
+) -> list[VerifiedEvidence]:
+    """
+    5번 주요 기능에 표시할 근거를 수집합니다.
+
+    기능 요구사항과 기능 결정사항에는 같은 기능이 표현만 다르게
+    중복 저장되는 경우가 많습니다.
+
+    예:
+    - 기능 요구사항: 알림을 제공하도록 개발합니다.
+    - 기능 결정사항: 알림을 제공하기로 했습니다.
+
+    두 근거를 모두 표시하면 같은 의미의 문장이 반복되므로
+    requirements.functional의 근거를 우선 사용합니다.
+
+    기능 요구사항이 하나도 없을 때만 decisions[feature]의 근거를
+    예비 근거로 사용합니다.
+
+    7번 최종 결정사항에서는 기존대로 decisions의 근거를 사용하므로
+    결정 이력이 사라지는 것은 아닙니다.
+    """
+    functional_evidence = collect_source_evidence(
+        structured,
+        ["requirements.functional"],
+    )
+
+    if functional_evidence:
+        return _dedupe_evidence(functional_evidence)
+
+    decision_evidence = collect_source_evidence(
+        structured,
+        ["decisions[feature]"],
+    )
+
+    return _dedupe_evidence(decision_evidence)
+
+
+def collect_core_goal_evidence(
+    structured: dict,
+) -> list[VerifiedEvidence]:
+    """
+    2번 핵심 목표에 표시할 근거를 선별합니다.
+
+    노드 1에서 프로젝트 목표를 추출했다면 해당 목표의 근거만
+    사용합니다. 배경과 개별 문제를 모두 표시하면 핵심 목표의
+    근거가 지나치게 길어지기 때문입니다.
+
+    프로젝트 목표가 없어서 노드 2가 핵심 목표를 보완한 경우에는
+    개별 문제와 기능 요구사항의 근거를 사용합니다.
+
+    화면에서 읽기 어려울 정도로 근거가 많아지는 것을 방지하기
+    위해 최대 4개까지만 반환합니다.
+    """
+    goal_evidence = collect_source_evidence(
+        structured,
+        ["project.goals"],
+    )
+
+    if goal_evidence:
+        return _dedupe_evidence(goal_evidence)[:4]
+
+    fallback_evidence = collect_source_evidence(
+        structured,
+        [
+            "project.problem_items",
+            "requirements.functional",
+        ],
+    )
+
+    if fallback_evidence:
+        return _dedupe_evidence(fallback_evidence)[:4]
+
+    summary_evidence = collect_source_evidence(
+        structured,
+        [
+            "project.problem",
+            "project.background",
+        ],
+    )
+
+    return _dedupe_evidence(summary_evidence)[:4]
+
+
 
 def build_goals(
     structured: dict,
@@ -165,11 +345,11 @@ def build_goals(
     decisions = structured.get("decisions") or []
 
     source_fields = [
-        "project.problem",
-        "project.problem_items",
-        "project.goals",
-        "requirements.functional",
-        "decisions",
+    "project.problem",
+    "project.problem_items",
+    "project.goals",
+    "requirements.functional",
+    "decisions[feature]",
     ]
 
     # 문제에 사용할 수 있는 검증된 근거입니다.
@@ -481,7 +661,7 @@ def build_goals(
         content_html=content_html,
         items=items,
         source_fields=source_fields,
-        evidence=section_evidence,
+        evidence=_dedupe_evidence(section_evidence),
         is_incomplete=not accepted_goals,
     )
 
@@ -568,7 +748,7 @@ def build_tech_scope(structured: dict) -> PlanSection:
             "requirements.data", "decisions[tech]",
             "constraints", "decisions[scope]",
         ],
-        evidence=evidence,
+        evidence=_dedupe_evidence(evidence),
         is_incomplete=not parts,
     )
 
@@ -609,7 +789,7 @@ def build_decisions(structured: dict) -> PlanSection:
         content_html=_ul(lines),
         items=lines,
         source_fields=["decisions"],
-        evidence=_ev(decisions),
+        evidence=_dedupe_evidence(_ev(decisions)),
     )
 
 
