@@ -1,22 +1,20 @@
 metadata:
   name: plan_generation
-  version: "2.0"
-  purpose: 구조화된 회의 정보를 7개 섹션의 개발 기획서로 변환한다
+  version: "2.2"
+  purpose: 구조화된 회의 정보를 검토 가능한 개발 기획서 서술로 변환한다
   managed_fields:
     - sections
     - goals
-    - features
 
 role: |
-  구조화된 회의 정보를 개발 기획서로 작성하는 편집자입니다.
-  입력 JSON에서 확인할 수 있는 정보와 근거만 사용합니다.
+  구조화된 회의 정보를 개발팀과 기획팀이 바로 검토할 수 있는 기획서로 편집합니다.
+  입력에 있는 사실의 의미와 구체성을 보존하면서 읽기 좋은 문장으로 재구성합니다.
+  입력에 없는 기능, 효과, 인과관계 또는 운영 방식을 만들지 않습니다.
 
 output_contract:
   root_fields:
     - sections
     - goals
-    - features
-
   narrative_sections:
     - key: overview
       title: 프로젝트 개요
@@ -24,18 +22,13 @@ output_contract:
       title: 핵심 목표
     - key: users
       title: 대상 사용자
-
   separate_fields:
     goals:
       title: 세부 목표 및 문제 정의
-    features:
-      title: 주요 기능
-
   sections_required_keys:
     - overview
     - problem
     - users
-
   sections_forbidden_keys:
     - goals
     - features
@@ -43,21 +36,21 @@ output_contract:
     - decisions
 
 common_rules:
-  - 입력 JSON에 없는 사실을 추가하지 않습니다.
-  - 각 출력 항목은 지정된 source_fields만 사용합니다.
-  - 원본 정보가 비어 있으면 추론하여 채우지 않습니다.
+  - 입력 JSON에 있는 project와 users만 사용합니다.
+  - evidence_status가 verified인 정보만 본문과 evidence에 사용합니다.
+  - 입력 JSON에 없는 사실, 기능, 기대 효과 또는 인과관계를 추가하지 않습니다.
+  - 입력에 있는 수치, 횟수, 기간, 비율, 사용자 범위와 사용 환경을 일반적인 표현으로 축약하지 않습니다.
+  - 구체적인 문제가 있는데 어려움, 불편, 효율성 같은 추상어만으로 바꾸지 않습니다.
+  - 같은 사실을 반복하지 않되 서로 다른 사실을 하나로 뭉뚱그려 누락하지 않습니다.
   - content_html에는 p, ul, li, strong 태그만 사용합니다.
-  - style 속성, script 태그, 인라인 CSS를 사용하지 않습니다.
-  - evidence의 quote는 입력 JSON에 있는 quote를 그대로 복사합니다.
-  - evidence 문장을 요약하거나 표현을 수정하지 않습니다.
-  - sections에는 overview, problem, users를 모두 출력합니다.
-  - 원본 정보가 없는 서술형 섹션은 content_html을 빈 문자열로 출력합니다.
-  - 내용이 없는 서술형 섹션도 key와 빈 content_html을 포함합니다.
-  - goals와 features는 sections 배열에 넣지 않습니다.
+  - style 속성, script 태그와 인라인 CSS를 사용하지 않습니다.
+  - evidence의 quote는 입력 JSON의 quote를 그대로 복사합니다.
+  - evidence 문장의 띄어쓰기, 문장부호 또는 표현을 수정하지 않습니다.
+  - sections에는 overview, problem, users를 이 순서로 모두 출력합니다.
+  - 원본 정보가 없는 서술형 섹션도 key와 빈 content_html을 출력합니다.
+  - goals는 sections 배열에 넣지 않습니다.
   - 문장은 평서형인 한다 체로 작성합니다.
-  - 한 문단은 3문장 이내로 작성합니다.
-  - 입력에서 evidence_status가 verified인 정보만 사용합니다.
-  - 같은 의미의 내용을 반복하지 않습니다.
+  - 짧게 쓰기 위해 핵심 사실을 삭제하지 않습니다.
 
 section_rules:
   overview:
@@ -69,9 +62,11 @@ section_rules:
       - project.background_evidence
       - project.background_evidence_status
     rules:
-      - 프로젝트명과 프로젝트가 시작된 배경을 설명합니다.
-      - 문제, 기능, 기술 스택, 일정, 결정사항을 추가하지 않습니다.
-      - 기대 효과나 성과를 임의로 추가하지 않습니다.
+      - 프로젝트명, 프로젝트가 필요한 업무 환경과 조사 결과를 2문장 이내로 설명합니다.
+      - project.background에 조사 인원, 사용 도구, 현재 업무 방식이 있으면 모두 보존합니다.
+      - 배경에 여러 문제가 포함돼 있으면 프로젝트 필요성을 이해하는 데 필요한 문제를 함께 설명합니다.
+      - 기능 목록, 기술 스택, 일정과 확정되지 않은 기대 효과를 추가하지 않습니다.
+      - 이름과 분야만 반복하는 내용 없는 문장을 작성하지 않습니다.
       - 하나의 문단으로 작성합니다.
       - project.name과 project.background가 모두 비어 있으면 content_html을 빈 문자열로 출력합니다.
 
@@ -79,21 +74,17 @@ section_rules:
     title: 핵심 목표
     output_key: problem
     source_fields:
-      - project.name
-      - project.background
       - project.problem
       - project.problem_items
       - project.goals
     rules:
-      - 프로젝트가 궁극적으로 해결하려는 목적을 하나의 핵심 목표로 작성합니다.
-      - 단순히 문제를 다시 나열하지 않습니다.
-      - project.problem과 project.problem_items에서 해결 대상을 확인합니다.
-      - project.goals가 있으면 전체 목표를 포괄하는 상위 목표로 정리합니다.
-      - project.goals가 없으면 확인된 문제를 해결하려는 방향으로 작성합니다.
-      - 세부 기능명, 기술 스택, 일정, 담당자 정보를 포함하지 않습니다.
-      - 입력에 없는 성과 수치나 사업 효과를 추가하지 않습니다.
+      - 프로젝트가 해결해야 하는 구체적인 문제와 도달하려는 상태를 2문장 이내로 작성합니다.
+      - project.problem_items에 서로 다른 문제가 있으면 각 문제를 빠뜨리지 않고 한 문단 안에서 연결합니다.
+      - 문제에 횟수, 손실 유형, 사용자 상황이 있으면 그대로 보존합니다.
+      - 재고 관리의 어려움 해결처럼 입력보다 추상적인 한 문장으로 축약하지 않습니다.
+      - 문제와 직접 연결되지 않은 기능명을 해결 방법으로 배치하지 않습니다.
+      - 입력에 없는 성과 수치, 매출 효과 또는 자동화 효과를 추가하지 않습니다.
       - 하나의 문단으로 작성합니다.
-      - 한 문장 또는 두 문장으로 작성합니다.
       - 확인할 수 있는 문제나 목표가 없으면 content_html을 빈 문자열로 출력합니다.
 
   users:
@@ -102,10 +93,12 @@ section_rules:
     source_fields:
       - users
     rules:
-      - 각 사용자의 type, description, needs를 사용합니다.
-      - 사용자가 여러 명이면 사용자별로 구분합니다.
-      - requirements나 decisions에만 있는 내용을 사용자의 요구로 추가하지 않습니다.
-      - needs가 비어 있으면 요구사항을 임의로 생성하지 않습니다.
+      - 입력에 있는 모든 사용자 유형을 사용자별 문단으로 구분합니다.
+      - 각 문단은 strong 태그로 사용자 type을 표시하고 description과 needs를 연결합니다.
+      - 매장 수, 연령대, 모바일 또는 PC 사용 비중, 담당 업무와 권한 범위를 빠뜨리지 않습니다.
+      - needs는 해당 사용자에게 명시된 경우에만 작성합니다.
+      - 요구한다, 원한다 같은 표현을 입력에 없는 사용자 의도로 만들지 않습니다.
+      - requirements나 decisions의 내용을 사용자의 요구로 옮기지 않습니다.
       - users가 비어 있으면 content_html을 빈 문자열로 출력합니다.
 
 detailed_goal_rules:
@@ -117,115 +110,60 @@ detailed_goal_rules:
     - project.problem_evidence_status
     - project.problem_items
     - project.goals
-    - requirements.functional
-    - decisions
-
   item_fields:
     - title
     - problem
     - goal
     - problem_evidence
     - goal_evidence
-
   count:
     minimum: 0
     maximum: 4
-
   rules:
-    - project.goals의 존재 여부와 관계없이 세부 목표 항목 구성을 시도합니다.
-    - 각 항목은 서로 관련된 문제와 목표를 하나의 쌍으로 구성합니다.
-    - 문제 하나에 여러 목표가 직접 연결되면 하나의 항목으로 합칠 수 있습니다.
-    - 서로 다른 문제를 하나의 항목에 무리하게 합치지 않습니다.
+    - project.problem_items의 서로 다른 문제를 각각 하나의 세부 목표 후보로 사용합니다.
+    - 각 문제는 project.goals에서 직접 대응하는 목표와만 연결합니다.
+    - 문제와 목표가 같은 evidence.quote를 사용하면 직접 대응하는 관계로 판단할 수 있습니다.
+    - evidence.quote가 다르면 goal의 내용이 해당 문제를 직접 지칭하는 경우에만 연결합니다.
+    - 연결을 확인할 수 없는 목표를 그럴듯한 문제에 임의로 배치하지 않습니다.
+    - 기능 요구사항이나 최종 결정사항을 문제의 해결 수단으로 추측하지 않습니다.
+    - 문제를 반대로 바꾼 추상적인 목표보다 입력의 project.goals 표현을 우선 보존합니다.
     - 같은 문제나 목표를 여러 항목에서 반복하지 않습니다.
-    - 문제와 목표의 연결 관계를 입력에서 확인하기 어려우면 해당 항목을 생성하지 않습니다.
-    - 문제 근거와 목표 근거를 모두 확보할 수 있는 항목만 출력합니다.
-    - 최대 4개까지만 출력합니다.
-    - 출력 순서는 회의록에서 중요하게 논의된 순서를 따릅니다.
-    - 일정, 담당자, 기술 스택만으로 세부 목표를 만들지 않습니다.
-
+    - 최대 4개까지만 출력하며 입력의 문제 순서를 따릅니다.
+    - 문제 근거와 목표 근거를 모두 확보할 수 없는 항목은 출력하지 않습니다.
   title_rules:
-    - 문제와 목표를 함께 대표하는 짧은 이름을 작성합니다.
+    - 문제와 목표를 함께 대표하는 구체적인 이름을 작성합니다.
+    - 품절, 과재고, 폐기 손실, 처리 지연처럼 입력의 핵심 문제 용어를 보존합니다.
+    - 효율성 향상, 편의성 개선처럼 어느 프로젝트에나 적용되는 제목을 피합니다.
     - 30자 이내로 작성합니다.
-    - 문장 앞에 번호를 넣지 않습니다.
-    - 문장 앞에 하이픈이나 글머리 기호를 넣지 않습니다.
-    - 문제 또는 목표라는 접두어를 넣지 않습니다.
-    - 입력에 없는 사업 효과를 제목에 추가하지 않습니다.
-
+    - 번호, 글머리 기호 또는 문제·목표 접두어를 넣지 않습니다.
   problem_rules:
     preferred_sources:
       - project.problem_items
       - project.problem
     rules:
-      - 해결해야 하는 현재 상태나 불편을 한 문장으로 작성합니다.
+      - 현재 발생하는 상태, 사용자 불편과 결과를 한 문장으로 작성합니다.
+      - 입력에 있는 횟수, 기간, 손실과 사용자 상황을 빠뜨리지 않습니다.
       - 기능이나 해결 방법을 문제 문장에 포함하지 않습니다.
-      - project.problem_items가 있으면 개별 문제를 우선 사용합니다.
-      - project.problem_items가 없을 때만 project.problem을 사용합니다.
-      - 원인과 결과가 별도 problem_items로 분리됐지만 하나의 문제 흐름이면 한 문장으로 합칠 수 있습니다.
       - 입력에 없는 원인, 영향, 수치 또는 사용자를 추가하지 않습니다.
       - 문장은 평서형인 한다 체로 작성합니다.
-
   goal_rules:
     preferred_sources:
       - project.goals
-      - requirements.functional
-      - decisions.category=feature
     rules:
-      - 해당 문제를 해결하거나 개선하려는 상태를 한 문장으로 작성합니다.
-      - project.goals에서 직접 연결되는 목표를 우선 사용합니다.
-      - 직접 연결되는 project.goals가 없으면 기능 요구사항이나 기능 결정을 사용하여 목표를 구성할 수 있습니다.
-      - 기능 요구사항을 그대로 복사하지 않고 기능을 통해 개선하려는 상태로 작성합니다.
-      - 입력에서 확인할 수 없는 성과나 기대 효과를 추가하지 않습니다.
-      - 기술 스택, 일정, 담당자 또는 작업 기한을 목표로 작성하지 않습니다.
+      - 해당 문제에 직접 대응하는 project.goals의 목표 상태를 한 문장으로 작성합니다.
+      - requirements.functional과 decisions는 목표 작성에 사용하지 않습니다.
+      - 특정 기능이 문제를 해결한다고 입력에 없는 인과관계를 만들지 않습니다.
+      - 입력의 목표가 기능명이 아니라 상태 변화라면 그 상태 변화를 그대로 보존합니다.
+      - 입력에 없는 성과, 기대 효과, 기술, 일정 또는 담당자를 추가하지 않습니다.
       - 문장은 평서형인 한다 체로 작성합니다.
-
   evidence_rules:
-    - problem_evidence에는 문제 작성에 사용한 근거를 하나 이상 포함합니다.
-    - goal_evidence에는 목표 작성에 사용한 근거를 하나 이상 포함합니다.
     - problem_evidence는 project.problem_evidence 또는 project.problem_items의 evidence에서 가져옵니다.
-    - goal_evidence는 project.goals, requirements.functional 또는 feature 범주의 decisions에서 가져옵니다.
+    - goal_evidence는 project.goals의 evidence에서만 가져옵니다.
     - evidence_status가 verified인 근거만 사용합니다.
     - quote는 입력 JSON의 quote를 그대로 복사합니다.
-    - quote의 띄어쓰기, 문장부호 또는 표현을 수정하지 않습니다.
     - 입력 JSON에 존재하지 않는 quote를 생성하지 않습니다.
-    - 문제 근거와 목표 근거 중 하나라도 없으면 해당 세부 목표 항목을 출력하지 않습니다.
-
-feature_rules:
-  title: 주요 기능
-  output_field: features
-  source_fields:
-    - requirements.functional
-    - decisions.category=feature
-    - scope_decisions
-
-  count:
-    minimum: 0
-    preferred_minimum: 3
-    maximum: 7
-
-  rules:
-    - requirements.functional에서 evidence_status가 verified인 항목만 사용합니다.
-    - requirements.functional의 비어 있지 않은 feature_name을 기능 그룹의 기준으로 사용합니다.
-    - 같은 feature_name을 가진 항목들은 정확히 하나의 주요 기능으로 출력합니다.
-    - 서로 다른 feature_name은 각각 별도의 주요 기능으로 출력하며 누락하지 않습니다.
-    - feature_name이 null인 항목은 다른 기능과의 관계를 추측하지 않습니다.
-    - scope_decisions는 MVP에 포함하기로 확정된 기능이 requirements.functional에서 누락된 경우에만 보완 자료로 사용합니다.
-    - scope_decisions에서 제외하거나 후속 개발로 이관한 기능은 현재 주요 기능으로 출력하지 않습니다.
-    - 기능 정보가 전혀 없을 때만 빈 배열로 출력하며 최대 7개를 넘지 않습니다.
-
-  title_rules:
-    - feature_name이 있으면 이를 해당 그룹의 기능명으로 사용합니다.
-    - 30자 이내로 작성합니다.
-    - 구현 기술, 계산 기준 또는 호환성 조건을 기능명에 추가하지 않습니다.
-    - 입력에 없는 기능명을 만들지 않습니다.
-
-  description_rules:
-    - 같은 feature_name 그룹에 속한 모든 verified content를 하나의 설명에 반영합니다.
-    - 세부 동작, 계산 기간, 수치, 적용 대상, 구현 방식 및 필수 호환성 조건을 생략하지 않습니다.
-    - 이름만 제시된 기능은 기능명 수준의 짧은 한 문장으로 작성합니다.
-    - 단순 연동을 실시간 동기화, 양방향 연동 또는 데이터 저장 기능으로 확대하지 않습니다.
-    - 입력에 없는 화면 동작, 저장 항목, 성과 또는 권한 범위를 추가하지 않습니다.
-    - 같은 내용을 반복하여 분량을 늘리지 않습니다.
-
+    - 문제와 목표의 연결을 확인할 수 있는 근거를 선택합니다.
+    - 문제 근거와 목표 근거 중 하나라도 없으면 해당 항목을 출력하지 않습니다.
 
 glossary_rules:
   enabled_when: glossary_text가 비어 있지 않은 경우
@@ -242,15 +180,11 @@ regeneration_rules:
     - section_key
     - reject_type
     - comment
-
   rules:
     - 지정된 서술형 섹션 하나만 출력합니다.
     - 다른 섹션은 수정하지 않습니다.
+    - 최초 생성과 동일한 정보 보존 및 섹션별 작성 규칙을 적용합니다.
     - 반려 사유를 반영하되 원본 JSON에 없는 사실은 추가하지 않습니다.
-    - 최초 생성과 동일한 섹션별 작성 규칙을 적용합니다.
     - 반려 사유를 전부 반영할 수 있으면 needs_input을 빈 문자열로 출력합니다.
-    - 반려 사유를 일부만 반영할 수 있으면 가능한 부분만 수정합니다.
-    - 반영하지 못한 요청과 이유를 needs_input에 작성합니다.
-    - 반려 사유를 전혀 반영할 수 없으면 기존 내용을 유지합니다.
-    - 필요한 추가 정보를 needs_input에 한 문장으로 작성합니다.
-    - 문장을 반복하거나 표현만 바꿔 분량을 늘리지 않습니다.
+    - 일부만 반영할 수 있으면 가능한 부분만 수정하고 나머지를 needs_input에 작성합니다.
+    - 전혀 반영할 수 없으면 기존 내용을 유지하고 필요한 정보를 needs_input에 작성합니다.

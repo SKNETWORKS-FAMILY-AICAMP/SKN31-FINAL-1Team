@@ -9,7 +9,7 @@
 | 2    | problem    | 핵심 목표                    | LLM       |
 | 3    | goals      | 세부 목표 및 문제 정의       | LLM + 코드 검증 |
 | 4    | users      | 대상 사용자                  | LLM       |
-| 5    | features   | 주요 기능                    | LLM       |
+| 5    | features   | 주요 기능                    | 코드      |
 | 6    | tech_scope | 기술 스택 및 제약사항        | 코드      |
 | 7    | decisions  | 최종 결정사항                | 코드      |
 
@@ -22,11 +22,13 @@
 
     구조화 배열:
         goals
-        features
+
+주요 기능은 노드 1의 검증된 functional 요구사항을
+feature_name 기준으로 코드가 조립합니다.
 
 ## 스키마가 두 개인 이유
 
-PlanSections : LLM이 생성하는 서술형 3개, 조건부 목표와 주요 기능
+PlanSections : LLM이 생성하는 서술형 3개와 조건부 목표
 PlanDocument : 위 결과와 목록형 섹션 및 시스템 필드를 합친 최종 문서
 
 is_incomplete 같은 시스템 필드를 LLM 스키마에 넣으면
@@ -80,12 +82,10 @@ SECTION_SPEC = [
         "key": "goals",
         "title": "세부 목표 및 문제 정의",
         "type": SectionType.LIST,
-            "source_fields": [
+        "source_fields": [
             "project.problem",
             "project.problem_items",
             "project.goals",
-            "requirements.functional",
-            "decisions[feature]",
         ],
     },
     {
@@ -112,6 +112,8 @@ SECTION_SPEC = [
         "type": SectionType.LIST,
         "source_fields": [
             "requirements.technical",
+            "requirements.non_functional",
+            "requirements.data",
             "decisions[tech]",
             "constraints",
         ],
@@ -149,13 +151,9 @@ class Feature(BaseModel):
     description: str = Field(
         ...,
         description=(
-            "검증된 입력으로 뒷받침되는 기능 설명을 1~3문장으로 작성합니다. "
-            "기능명만 있으면 짧은 한 문장으로 충분합니다. "
-            "문장 수를 채우기 위해 동작이나 효과를 추가하지 않습니다. "
-            "입력에 명시된 세부 동작, 계산 기준, 적용 대상과 필수 조건은 보존합니다. "
-            "다른 기능과의 관계는 입력에서 확인되는 경우에만 연결합니다. "
-            "입력에 없는 실시간 처리, 자동 동기화, 저장 항목, "
-            "화면 표시 지표 또는 권한 범위를 만들지 않습니다."
+            "검증된 기능 요구사항과 동일 원문에 연결된 결정사항으로 조립한 설명. "
+            "세부 동작, 계산 기준, 적용 대상, 제외 범위와 필수 조건을 보존하며 "
+            "입력에 없는 효과나 기능 관계는 포함하지 않습니다."
         ),
     )
 
@@ -229,13 +227,6 @@ class PlanSections(BaseModel):
         "세부 목표 및 문제 정의 항목. "
         "각 항목은 제목, 문제, 목표와 각각의 원문 근거를 포함합니다. "
         "근거가 부족하면 빈 배열로 출력합니다."),
-    )
-
-    features: list[Feature] = Field(
-        default_factory=list,
-        min_length=0,
-        max_length=7,
-        description="주요 기능 3~7개. 원본에 기능 정보가 없으면 빈 배열.",
     )
 
 

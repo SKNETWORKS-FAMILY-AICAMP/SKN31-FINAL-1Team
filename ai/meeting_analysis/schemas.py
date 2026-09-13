@@ -25,6 +25,8 @@ from enum import Enum
 
 class DecisionCategory(str, Enum):
     FEATURE = "feature"
+    NON_FUNCTIONAL = "non_functional"
+    DATA = "data"
     TECH = "tech"
     SCOPE = "scope"
 
@@ -107,6 +109,7 @@ class FunctionalRequirementItem(RequirementItem):
 
     feature_name: Optional[str] = Field(
         default=None,
+        max_length=40,
         description=(
             "이 요구사항이 속하는 상위 기능명. "
             "상위 기능 자체이면 자신의 기능명을 작성합니다. "

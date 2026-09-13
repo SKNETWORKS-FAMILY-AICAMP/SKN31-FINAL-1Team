@@ -101,7 +101,7 @@ def test_tech_scope_does_not_use_feature_decision_evidence():
     assert "조회 화면은 3초 이내에 표시되어야 합니다." in quotes
     assert "최근 4주 판매량을 사용합니다." in quotes
     assert "개발 기간은 10월까지입니다." in quotes
-    assert "B사 POS는 2차 개발로 이관하기로 했습니다." in quotes
+    assert "B사 POS는 2차 개발로 이관하기로 했습니다." not in quotes
 
     # 기능 결정 근거가 6번 섹션에 섞이면 안 됩니다.
     assert "재고 알림을 제공하기로 했습니다." not in quotes

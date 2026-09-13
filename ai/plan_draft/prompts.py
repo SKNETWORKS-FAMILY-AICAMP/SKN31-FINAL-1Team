@@ -53,56 +53,26 @@ def _build_generation_payload(
     structured: dict,
 ) -> dict:
     """
-    노드 1의 전체 구조화 결과 중 노드 2 LLM이 사용하는 필드만 고릅니다.
+    노드 1의 전체 구조화 결과 중 서술형 작성에 필요한 필드만 고릅니다.
 
     노드 2의 LLM 담당 범위:
         프로젝트 개요
         핵심 목표
         대상 사용자
         세부 목표 및 문제 정의
-        주요 기능
 
-    기술 및 제약사항과 최종 결정사항은 list_builder.py에서
-    코드로 조립하므로 여기에서 별도 가공하지 않습니다.
+    주요 기능, 기술 및 제약사항과 최종 결정사항은 list_builder.py에서
+    검증된 구조화 데이터를 사용해 코드로 조립합니다.
 
-    feature 범주의 decisions는 세부 목표와 주요 기능의 근거로 전달합니다.
-
-    scope 범주의 decisions는 확정된 MVP 기능 목록을 보완할 수 있도록
-    scope_decisions라는 별도 필드로 전달합니다. 이를 decisions와 분리하여
-    사용자 범위, 제외 범위 등의 내용이 세부 목표 생성에 섞이지 않게 합니다.
+    기능 요구사항과 결정사항을 서술형 LLM에 전달하지 않습니다.
+    문제와 기능 사이의 관계가 구조화되어 있지 않은 상태에서 두 목록을
+    함께 전달하면, 모델이 그럴듯한 인과관계를 임의로 만들 수 있기 때문입니다.
+    세부 목표는 project.problem_items와 project.goals만 사용합니다.
     """
     if not isinstance(structured, dict):
         raise TypeError(
             "structured는 딕셔너리여야 합니다."
         )
-
-    requirements = (
-        structured.get("requirements")
-        or {}
-    )
-
-    decisions = (
-        structured.get("decisions")
-        or []
-    )
-
-    feature_decisions = [
-        decision
-        for decision in decisions
-        if (
-            isinstance(decision, dict)
-            and decision.get("category") == "feature"
-        )
-    ]
-
-    scope_decisions = [
-        decision
-        for decision in decisions
-        if (
-            isinstance(decision, dict)
-            and decision.get("category") == "scope"
-        )
-    ]
 
     return {
         "project": (
@@ -113,14 +83,6 @@ def _build_generation_payload(
             structured.get("users")
             or []
         ),
-        "requirements": {
-            "functional": (
-                requirements.get("functional")
-                or []
-            ),
-        },
-        "decisions": feature_decisions,
-        "scope_decisions": scope_decisions,
     }
 
 
@@ -199,7 +161,9 @@ def build_regenerate_messages(
         )
 
     payload = {
-        "structured": structured,
+        "structured": _build_generation_payload(
+            structured
+        ),
         "section_key": section_key.strip(),
         "reject_type": reject_type.strip(),
         "comment": comment.strip(),

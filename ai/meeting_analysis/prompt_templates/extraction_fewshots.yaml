@@ -60,10 +60,12 @@ examples:
       requirements:
         functional:
           - content: "회의록을 텍스트로 입력받는다"
+            feature_name: "회의록 텍스트 입력"
             evidence:
               quote: "서기가 회의록을 직접 텍스트로 입력하는 방식으로 간다"
 
           - content: "입력 항목은 기본정보, 목적, 내용, 결정사항 4개로 한정한다"
+            feature_name: "회의록 텍스트 입력"
             evidence:
               quote: "기본정보, 목적, 내용, 결정사항 네 개"
 
@@ -145,6 +147,7 @@ examples:
       requirements:
         functional:
           - content: "결제는 카드와 계좌이체 방식만 지원한다"
+            feature_name: "결제 수단 지원"
             evidence:
               quote: "결제 수단은 카드와 계좌이체만 우선 지원한다."
 

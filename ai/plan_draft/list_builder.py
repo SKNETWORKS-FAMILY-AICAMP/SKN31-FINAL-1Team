@@ -41,6 +41,92 @@ def _norm(text: str) -> str:
     """중복 판정용 정규화. 공백만 제거해 표현 차이를 흡수합니다."""
     return "".join(text.split())
 
+
+def _item_status(item: dict) -> str:
+    """구조화 항목의 근거 검증 상태를 반환합니다."""
+    evidence = item.get("evidence")
+
+    if hasattr(evidence, "model_dump"):
+        evidence = evidence.model_dump()
+
+    evidence_status = (
+        evidence.get("status")
+        if isinstance(evidence, dict)
+        else None
+    )
+
+    return str(
+        item.get("evidence_status")
+        or evidence_status
+        or "unverified"
+    ).strip()
+
+
+def _verified_items(items: list) -> list[dict]:
+    """verified 근거를 가진 딕셔너리 항목만 순서대로 반환합니다."""
+    return [
+        item
+        for item in items
+        if (
+            isinstance(item, dict)
+            and _item_status(item) == "verified"
+        )
+    ]
+
+
+def _evidence_quote(item: dict) -> str:
+    """구조화 항목에서 원문 근거 문자열을 가져옵니다."""
+    evidence = item.get("evidence")
+
+    if hasattr(evidence, "model_dump"):
+        evidence = evidence.model_dump()
+
+    if isinstance(evidence, dict):
+        return str(
+            evidence.get("quote", "")
+        ).strip()
+
+    return str(
+        getattr(evidence, "quote", "")
+        if evidence
+        else ""
+    ).strip()
+
+
+def _as_sentence(text: str) -> str:
+    """문장부호를 보존하면서 일반 텍스트를 한 문장으로 만듭니다."""
+    text = str(text).strip()
+
+    if not text:
+        return ""
+
+    if text.endswith((".", "!", "?")):
+        return text
+
+    return f"{text}."
+
+
+def _is_feature_label_sentence(
+    feature_name: str,
+    content: str,
+) -> bool:
+    """
+    기능명만 반복하는 상위 목록 문장인지 확인합니다.
+
+    세부 조건이 존재할 때 이 문장을 함께 붙이면
+    '기능을 제공한다. 세부 기능을 제공한다.'처럼 보이므로 생략합니다.
+    기능명만 있는 경우에는 그대로 보존합니다.
+    """
+    normalized = _norm(content).rstrip(".!?")
+    feature = _norm(feature_name)
+
+    return normalized in {
+        f"{feature}기능을제공한다",
+        f"{feature}을제공한다",
+        f"{feature}를제공한다",
+        f"{feature}기능을포함한다",
+    }
+
 def _dedupe_evidence(
     evidence_items: list[VerifiedEvidence],
 ) -> list[VerifiedEvidence]:
@@ -84,7 +170,7 @@ def _ev(items: list[dict]) -> list[VerifiedEvidence]:
         quote = e.get("quote", "") if isinstance(e, dict) else getattr(e, "quote", "")
         if not quote:
             continue
-        status = i.get("evidence_status", "unverified")
+        status = _item_status(i)
         out.append(VerifiedEvidence(quote=quote, status=status))
     return out
 
@@ -258,36 +344,50 @@ def collect_feature_evidence(
     7번 최종 결정사항에서는 기존대로 decisions의 근거를 사용하므로
     결정 이력이 사라지는 것은 아닙니다.
     """
-    functional_evidence = collect_source_evidence(
-        structured,
-        ["requirements.functional"],
+    requirements = structured.get("requirements") or {}
+    functional = (
+        requirements.get("functional")
+        if isinstance(requirements, dict)
+        else []
+    ) or []
+    verified_functional = _verified_items(functional)
+
+    if verified_functional:
+        return _dedupe_evidence(
+            _ev(verified_functional)
+        )
+
+    verified_feature_decisions = _verified_items(
+        [
+            decision
+            for decision in (
+                structured.get("decisions")
+                or []
+            )
+            if (
+                isinstance(decision, dict)
+                and decision.get("category") == "feature"
+            )
+        ]
     )
 
-    if functional_evidence:
-        return _dedupe_evidence(functional_evidence)
-
-    decision_evidence = collect_source_evidence(
-        structured,
-        ["decisions[feature]"],
+    return _dedupe_evidence(
+        _ev(verified_feature_decisions)
     )
-
-    return _dedupe_evidence(decision_evidence)
 
 
 def build_features(
     structured: dict,
-    generated_features: list[Feature] | None = None,
 ) -> list[Feature]:
     """
-    검증된 functional 요구사항을 feature_name 기준으로 그룹화합니다.
+    검증된 기능 요구사항을 feature_name 기준으로 조립합니다.
 
-    같은 feature_name을 가진 모든 content는 하나의 Feature 설명에
-    입력 순서대로 포함합니다. LLM이 일부 기능이나 세부 조건을
-    삭제하거나 원문에 없는 설명을 추가하지 못하도록 최종 기능
-    목록은 코드에서 조립합니다.
+    같은 원문 quote가 정확히 하나의 기능 그룹과 결정사항을 연결하면,
+    더 완전한 결정 문장을 기능 설명에 사용합니다. 여러 기능이 나열된
+    공통 quote는 특정 기능에 임의로 붙이지 않습니다.
 
-    feature_name이 있는 검증된 항목이 하나도 없는 구형 데이터는
-    기존 LLM 생성 결과를 그대로 사용합니다.
+    이를 통해 기능명과 세부 조건을 보존하면서도 '기능을 제공한다'라는
+    상위 문장과 상세 문장이 반복되는 결과를 줄입니다.
     """
     if not isinstance(structured, dict):
         raise TypeError(
@@ -305,29 +405,23 @@ def build_features(
         else []
     ) or []
 
-    grouped_contents: dict[str, list[str]] = {}
+    grouped_items: dict[str, list[dict]] = {}
     seen_contents: dict[str, set[str]] = {}
+    quote_groups: dict[str, set[str]] = {}
+    ungrouped_items: list[dict] = []
+    seen_ungrouped: set[str] = set()
 
-    for item in functional:
-        if not isinstance(item, dict):
-            continue
-
-        if item.get("evidence_status") != "verified":
-            continue
+    for item in _verified_items(functional):
 
         feature_name = item.get("feature_name")
         content = item.get("content")
 
-        if not isinstance(feature_name, str):
-            continue
-
         if not isinstance(content, str):
             continue
 
-        feature_name = feature_name.strip()
         content = content.strip()
 
-        if not feature_name or not content:
+        if not content:
             continue
 
         normalized_content = _norm(content)
@@ -335,8 +429,21 @@ def build_features(
         if not normalized_content:
             continue
 
-        if feature_name not in grouped_contents:
-            grouped_contents[feature_name] = []
+        if not isinstance(feature_name, str):
+            feature_name = ""
+        else:
+            feature_name = feature_name.strip()
+
+        # 비어 있거나 Feature.title의 최대 길이를 넘는 이름은
+        # 임의로 줄이지 않고 미분류 묶음으로 보존합니다.
+        if not feature_name or len(feature_name) > 40:
+            if normalized_content not in seen_ungrouped:
+                seen_ungrouped.add(normalized_content)
+                ungrouped_items.append(item)
+            continue
+
+        if feature_name not in grouped_items:
+            grouped_items[feature_name] = []
             seen_contents[feature_name] = set()
 
         if normalized_content in seen_contents[feature_name]:
@@ -345,33 +452,195 @@ def build_features(
         seen_contents[feature_name].add(
             normalized_content
         )
-        grouped_contents[feature_name].append(
-            content
+        grouped_items[feature_name].append(item)
+
+        quote_key = _norm(
+            _evidence_quote(item)
         )
 
-    if not grouped_contents:
-        return list(generated_features or [])
+        if quote_key:
+            quote_groups.setdefault(
+                quote_key,
+                set(),
+            ).add(feature_name)
+
+    # 하나의 기능 그룹과만 연결되는 동일 quote의 결정사항을 수집합니다.
+    # MVP 기능 6개가 한 문장에 열거된 공통 근거처럼 여러 기능에 걸친
+    # quote는 제외하므로 잘못된 기능 관계를 만들지 않습니다.
+    decision_details: dict[str, list[dict]] = {}
+    seen_decisions: dict[str, set[str]] = {}
+
+    for decision in _verified_items(
+        structured.get("decisions") or []
+    ):
+        quote_key = _norm(
+            _evidence_quote(decision)
+        )
+        related_groups = quote_groups.get(
+            quote_key,
+            set(),
+        )
+
+        if len(related_groups) != 1:
+            continue
+
+        feature_name = next(iter(related_groups))
+        content = str(
+            decision.get("content", "")
+        ).strip()
+        content_key = _norm(content)
+
+        if not content_key:
+            continue
+
+        feature_seen = seen_decisions.setdefault(
+            feature_name,
+            set(),
+        )
+
+        if content_key in feature_seen:
+            continue
+
+        feature_seen.add(content_key)
+        decision_details.setdefault(
+            feature_name,
+            [],
+        ).append(decision)
 
     features: list[Feature] = []
 
-    for feature_name, contents in grouped_contents.items():
-        sentences = [
-            (
-                content
-                if content.endswith((".", "!", "?"))
-                else f"{content}."
+    for feature_name, items in grouped_items.items():
+        decisions = decision_details.get(
+            feature_name,
+            [],
+        )
+        decision_quote_keys = {
+            _norm(_evidence_quote(decision))
+            for decision in decisions
+        }
+
+        description_parts: list[str] = []
+        seen_parts: set[str] = set()
+
+        def add_part(text: str) -> None:
+            sentence = _as_sentence(text)
+            key = _norm(sentence)
+
+            if not key or key in seen_parts:
+                return
+
+            seen_parts.add(key)
+            description_parts.append(sentence)
+
+        # 확정 결정은 논의 결과를 가장 완전하게 정리한 문장이므로 우선합니다.
+        for decision in decisions:
+            add_part(decision.get("content", ""))
+
+        detailed_items = [
+            item
+            for item in items
+            if not _is_feature_label_sentence(
+                feature_name,
+                str(item.get("content", "")),
             )
-            for content in contents
         ]
+
+        for item in items:
+            quote_key = _norm(
+                _evidence_quote(item)
+            )
+
+            # 같은 quote의 더 완전한 결정 문장을 이미 사용했습니다.
+            if quote_key in decision_quote_keys:
+                continue
+
+            # 세부 설명이 있으면 기능명만 되풀이하는 문장은 생략합니다.
+            if (
+                detailed_items
+                and _is_feature_label_sentence(
+                    feature_name,
+                    str(item.get("content", "")),
+                )
+            ):
+                continue
+
+            add_part(item.get("content", ""))
+
+        if not description_parts:
+            for item in items:
+                add_part(item.get("content", ""))
 
         features.append(
             Feature(
                 title=feature_name,
-                description=" ".join(sentences),
+                description=" ".join(
+                    description_parts
+                ),
             )
         )
 
-    return features
+    if ungrouped_items:
+        features.append(
+            Feature(
+                title="기타 기능 요구사항",
+                description=" ".join(
+                    _as_sentence(
+                        item.get("content", "")
+                    )
+                    for item in ungrouped_items
+                ),
+            )
+        )
+
+    if features:
+        return features
+
+    feature_decisions = _verified_items(
+        [
+            decision
+            for decision in (
+                structured.get("decisions")
+                or []
+            )
+            if (
+                isinstance(decision, dict)
+                and decision.get("category") == "feature"
+            )
+        ]
+    )
+    decision_contents: list[str] = []
+    seen_decisions: set[str] = set()
+
+    for decision in feature_decisions:
+        content = decision.get("content")
+
+        if not isinstance(content, str):
+            continue
+
+        content = content.strip()
+        normalized_content = _norm(content)
+
+        if (
+            not normalized_content
+            or normalized_content in seen_decisions
+        ):
+            continue
+
+        seen_decisions.add(normalized_content)
+        decision_contents.append(content)
+
+    if decision_contents:
+        return [
+            Feature(
+                title="확정 기능",
+                description=" ".join(
+                    _as_sentence(content)
+                    for content in decision_contents
+                ),
+            )
+        ]
+
+    return []
 
 def collect_core_goal_evidence(
     structured: dict,
@@ -446,15 +715,10 @@ def build_goals(
     from html import escape
 
     project = structured.get("project") or {}
-    requirements = structured.get("requirements") or {}
-    decisions = structured.get("decisions") or []
-
     source_fields = [
-    "project.problem",
-    "project.problem_items",
-    "project.goals",
-    "requirements.functional",
-    "decisions[feature]",
+        "project.problem",
+        "project.problem_items",
+        "project.goals",
     ]
 
     # 문제에 사용할 수 있는 검증된 근거입니다.
@@ -465,8 +729,9 @@ def build_goals(
 
     # 목표에 사용할 수 있는 검증된 근거입니다.
     #
-    # project.goals, requirements.functional,
-    # feature 범주의 decisions 근거만 등록합니다.
+    # project.goals의 근거만 등록합니다.
+    # 기능 요구사항을 목표 근거로 허용하면 문제와 기능 사이의
+    # 인과관계를 LLM이 임의로 만들 수 있습니다.
     allowed_goal_evidence: dict[str, str] = {}
 
     def register_evidence(
@@ -542,49 +807,6 @@ def build_goals(
             allowed_goal_evidence,
             project_goal,
         )
-
-    # 기능 요구사항의 근거를 목표 근거로 등록합니다.
-    for requirement in (
-        requirements.get("functional")
-        or []
-    ):
-        register_evidence(
-            allowed_goal_evidence,
-            requirement,
-        )
-
-    # 기능 범주의 최종 결정만 목표 근거로 등록합니다.
-    for decision in decisions:
-        if not isinstance(decision, dict):
-            continue
-
-        if decision.get("category") != "feature":
-            continue
-
-        register_evidence(
-            allowed_goal_evidence,
-            decision,
-        )
-
-        # 임시 진단: 실제 조립 검증에 사용되는 허용 근거를 확인합니다.
-    print(
-        "\n[목표 진단] 허용된 문제 근거 수:",
-        len(allowed_problem_evidence),
-        flush=True,
-    )
-
-    for quote in allowed_problem_evidence.values():
-        print("[문제 허용 근거]", repr(quote), flush=True)
-
-    print(
-        "\n[목표 진단] 허용된 목표 근거 수:",
-        len(allowed_goal_evidence),
-        flush=True,
-    )
-
-    for quote in allowed_goal_evidence.values():
-        print("[목표 허용 근거]", repr(quote), flush=True)
-
 
     def match_evidence(
         evidence_items: list,
@@ -667,24 +889,7 @@ def build_goals(
         # 제목, 문제, 목표 중 하나라도 비어 있으면
         # 완전한 세부 목표 항목이 아니므로 제외합니다.
         if not title or not problem or not goal:
-            missing_fields = [
-                name
-                for name, value in [
-                    ("title", title),
-                    ("problem", problem),
-                    ("goal", goal),
-                ]
-                if not value
-            ]
-
-            print(
-                "[목표 진단] 항목 제외:",
-                title or "(제목 없음)",
-                "| 빈 필드:",
-                ", ".join(missing_fields),
-                flush=True,
-            )
-            continue        
+            continue
 
         normalized_pair = (
             _norm(problem),
@@ -719,28 +924,7 @@ def build_goals(
             not problem_evidence
             or not goal_evidence
         ):
-            reasons = []
-
-            if not problem_evidence:
-                reasons.append("문제 근거가 허용 목록과 일치하지 않음")
-
-            if not goal_evidence:
-                reasons.append("목표 근거가 허용 목록과 일치하지 않음")
-
-            print(
-                "[목표 진단] 항목 제외:",
-                title,
-                "| 이유:",
-                " / ".join(reasons),
-                flush=True,
-            )
             continue
-
-        print(
-            "[목표 진단] 근거 검사 통과:",
-            title,
-            flush=True,
-        )
 
         seen_goal_pairs.add(normalized_pair)
 
@@ -836,12 +1020,14 @@ def build_tech_scope(structured: dict) -> PlanSection:
     대부분의 회의록에서는 기술 스택과 제약사항 두 개만 보입니다.
 
         기술 스택       requirements.technical + decisions[tech]
-        성능·보안 요구  requirements.non_functional
+        비기능 요구사항 requirements.non_functional
         데이터 요구     requirements.data
-        제약사항        constraints + decisions[scope]
+        일정·인력 제약   constraints
+
+    decisions[scope]는 7번 최종 결정사항에서 표시합니다.
+    같은 범위 결정을 6번과 7번에 반복하지 않습니다.
     """
     reqs = structured.get("requirements", {})
-    decisions = structured.get("decisions", [])
 
     parts: list[str] = []
     items: list[str] = []
@@ -861,9 +1047,9 @@ def build_tech_scope(structured: dict) -> PlanSection:
     seen_lines: set[str] = set()
 
     def add(title: str, sources: list[dict], render) -> None:
-        """소제목 하나를 조립합니다. 이미 나온 문장은 제외합니다."""
+        """verified 항목을 조립하고 이미 나온 문장은 제외합니다."""
         lines, used = [], []
-        for s in sources:
+        for s in _verified_items(sources):
             text = render(s)
             key = _norm(text)
             if not key or key in seen_lines:
@@ -885,18 +1071,19 @@ def build_tech_scope(structured: dict) -> PlanSection:
     # 어차피 7번 최종 결정사항에 전부 들어갑니다.
     add("기술 스택", reqs.get("technical", []), lambda s: s["content"])
 
-    # ── 성능·보안 요구 ───────────────────────────────────────
-    add("성능·보안 요구", reqs.get("non_functional", []), lambda s: s["content"])
+    # ── 비기능 요구사항 ──────────────────────────────────────
+    add("비기능 요구사항", reqs.get("non_functional", []), lambda s: s["content"])
 
     # ── 데이터 요구 ──────────────────────────────────────────
     add("데이터 요구", reqs.get("data", []), lambda s: s["content"])
 
     # ── 제약사항 ─────────────────────────────────────────────
-    # constraints는 type이 있고(일정/인력 등), scope 결정은 없습니다.
-    scope: list[dict] = list(structured.get("constraints", []))
-    scope += [d for d in decisions if d.get("category") == "scope"]
+    # 범위 결정은 7번에만 두고, 여기에는 실제 일정·인력 등의 제약만 둡니다.
+    constraints: list[dict] = list(
+        structured.get("constraints", [])
+    )
     add(
-        "제약사항", scope,
+        "일정·인력 제약", constraints,
         lambda s: f"[{s['type']}] {s['content']}" if s.get("type") else s["content"],
     )
 
@@ -909,7 +1096,7 @@ def build_tech_scope(structured: dict) -> PlanSection:
         source_fields=[
             "requirements.technical", "requirements.non_functional",
             "requirements.data", "decisions[tech]",
-            "constraints", "decisions[scope]",
+            "constraints",
         ],
         evidence=_dedupe_evidence(evidence),
         is_incomplete=not parts,
@@ -927,7 +1114,10 @@ def build_decisions(structured: dict) -> PlanSection:
     ※ 노드 ③ 주의: decisions의 feature·tech 항목은 requirements와
       내용이 겹칩니다. 고유한 것은 scope뿐이므로 한쪽만 사용하세요.
     """
-    decisions = structured.get("decisions", [])
+    decisions = _verified_items(
+        structured.get("decisions", [])
+        or []
+    )
 
     if not decisions:
         return PlanSection(
@@ -938,7 +1128,13 @@ def build_decisions(structured: dict) -> PlanSection:
             is_incomplete=True,
         )
 
-    label = {"feature": "기능", "tech": "기술", "scope": "범위"}
+    label = {
+        "feature": "기능",
+        "non_functional": "비기능 요구사항",
+        "data": "데이터",
+        "tech": "기술",
+        "scope": "범위",
+    }
     lines = []
     for d in decisions:
         text = f"[{label.get(d['category'], d['category'])}] {d['content']}"

@@ -176,9 +176,9 @@ def _validate_plan_template(template: dict) -> None:
         "plan_generation.metadata",
     )
 
-    if version != "2.0":
+    if version != "2.2":
         raise PromptTemplateError(
-            "plan_generation.yaml 버전은 2.0이어야 합니다."
+            "plan_generation.yaml 버전은 2.2여야 합니다."
         )
 
     _require_text(
@@ -203,13 +203,12 @@ def _validate_plan_template(template: dict) -> None:
     expected_root_fields = [
         "sections",
         "goals",
-        "features",
     ]
 
     if root_fields != expected_root_fields:
         raise PromptTemplateError(
             "output_contract.root_fields는 "
-            "sections, goals, features 순서여야 합니다."
+            "sections, goals 순서여야 합니다."
         )
 
     # LLM이 sections 배열에 생성할 서술형 섹션을 검증합니다.
@@ -414,57 +413,6 @@ def _validate_plan_template(template: dict) -> None:
         detailed_goal_source,
     )
 
-    # 주요 기능 생성 규칙을 검증합니다.
-    feature_rules = _require_mapping(
-        template,
-        "feature_rules",
-        "plan_generation",
-    )
-
-    feature_source = "plan_generation.feature_rules"
-
-    _require_text(
-        feature_rules,
-        "title",
-        feature_source,
-    )
-
-    _require_text(
-        feature_rules,
-        "output_field",
-        feature_source,
-    )
-
-    _require_list(
-        feature_rules,
-        "source_fields",
-        feature_source,
-    )
-
-    _require_mapping(
-        feature_rules,
-        "count",
-        feature_source,
-    )
-
-    _require_list(
-        feature_rules,
-        "rules",
-        feature_source,
-    )
-
-    _require_list(
-        feature_rules,
-        "title_rules",
-        feature_source,
-    )
-
-    _require_list(
-        feature_rules,
-        "description_rules",
-        feature_source,
-    )
-
     # 용어집 규칙을 검증합니다.
     glossary_rules = _require_mapping(
         template,
@@ -573,10 +521,10 @@ def _validate_fewshots_template(template: dict) -> None:
         "plan_generation_fewshots.metadata",
     )
 
-    if version != "2.0":
+    if version != "2.2":
         raise PromptTemplateError(
             "plan_generation_fewshots.yaml 버전은 "
-            "2.0이어야 합니다."
+            "2.2여야 합니다."
         )
 
     examples = _require_list(
@@ -725,10 +673,6 @@ def build_plan_system_prompt(
         _render_section(
             "세부 목표 및 문제 정의 작성 규칙",
             template["detailed_goal_rules"],
-        ),
-        _render_section(
-            "주요 기능 작성 규칙",
-            template["feature_rules"],
         ),
     ]
 

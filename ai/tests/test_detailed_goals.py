@@ -218,8 +218,8 @@ def test_rejects_unverified_goal_evidence():
     assert section.is_incomplete is True
 
 
-def test_accepts_functional_requirement_as_goal_evidence():
-    """노드 1 목표가 없어도 기능 요구사항 근거를 사용할 수 있습니다."""
+def test_rejects_functional_requirement_as_goal_evidence():
+    """기능 요구사항을 임의로 문제의 목표와 연결하지 않습니다."""
     goal_quote = (
         "오전 반차와 오후 반차 선택 항목을 추가합니다."
     )
@@ -293,13 +293,13 @@ def test_accepts_functional_requirement_as_goal_evidence():
         generated,
     )
 
-    assert len(section.items) == 1
-    assert "반차 신청 정보 누락 방지" in section.content_html
-    assert section.is_incomplete is False
+    assert section.items == []
+    assert section.content_html == ""
+    assert section.is_incomplete is True
 
 
-def test_accepts_feature_decision_as_goal_evidence():
-    """feature 결정의 근거도 목표 근거로 사용할 수 있습니다."""
+def test_rejects_feature_decision_as_goal_evidence():
+    """기능 결정을 임의로 문제의 목표와 연결하지 않습니다."""
     goal_quote = (
         "알림 기능은 이번 개발 범위에 포함합니다."
     )
@@ -330,8 +330,9 @@ def test_accepts_feature_decision_as_goal_evidence():
         generated,
     )
 
-    assert len(section.items) == 1
-    assert section.is_incomplete is False
+    assert section.items == []
+    assert section.content_html == ""
+    assert section.is_incomplete is True
 
 
 def test_does_not_accept_tech_decision_as_goal_evidence():

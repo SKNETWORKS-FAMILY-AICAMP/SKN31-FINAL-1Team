@@ -50,7 +50,7 @@ def _base_meeting_text(additional_text: str = "") -> str:
 
 def test_extraction_template_has_expected_version():
     template = load_extraction_template()
-    assert template["metadata"]["version"] == "2.2"
+    assert template["metadata"]["version"] == "2.3"
 
 def test_extraction_template_has_user_rules():
     """대상 사용자 추출 규칙이 시스템 프롬프트에 실제로 포함되는지 확인합니다."""
@@ -122,6 +122,9 @@ def test_extraction_fewshots_match_meeting_schema():
             assert problem_item.content.strip()
             assert problem_item.evidence.quote.strip()
 
+        for functional_item in result.requirements.functional:
+            assert functional_item.feature_name
+
 
 def test_extraction_fewshot_message_roles():
     messages = build_extraction_fewshot_messages()
@@ -150,6 +153,16 @@ def test_extraction_system_prompt_contains_required_fields():
     assert "non_functional:" in prompt
     assert "data:" in prompt
     assert "technical:" in prompt
+
+    for category in [
+        "feature",
+        "non_functional",
+        "data",
+        "tech",
+        "scope",
+    ]:
+        assert f"decisions.category={category}" in prompt
+
     assert "evidence.quote" in prompt
 
 

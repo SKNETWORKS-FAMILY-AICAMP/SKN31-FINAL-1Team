@@ -17,6 +17,12 @@ from .evidence import normalize
 
 REQ_CATEGORIES = ["functional", "non_functional", "data", "technical"]
 
+DECISION_CATEGORY_BY_REQUIREMENT = {
+    "non_functional": "non_functional",
+    "data": "data",
+    "technical": "tech",
+}
+
 # 항목 수가 이보다 많으면 프롬프트 폭주를 의심합니다.
 # 임계값. 임의로 잡은 값이므로 실측 후 조정하세요.
 MAX_ITEMS_PER_CATEGORY = 20
@@ -45,7 +51,7 @@ def _get_items(data: dict, path: str) -> list:
  
 def check_unresolved_consistency(data: dict) -> list[str]:
     """
-    unresolved 모순 검사 — 이 모듈에서 유일하게 데이터를 수정합니다.
+    unresolved 모순 검사 — 모순된 안내 문구를 제거합니다.
  
     ## 왜 필요한가
  
@@ -87,6 +93,92 @@ def check_unresolved_consistency(data: dict) -> list[str]:
  
     data["unresolved"] = kept
     return notes
+
+
+def repair_feature_decision_categories(data: dict) -> list[str]:
+    """
+    feature로 잘못 분류된 품질·데이터·기술 결정을 보정합니다.
+
+    의미를 추측해 분류하지 않습니다. evidence 검증이 끝난 뒤,
+    verified 결정과 verified 요구사항이 정확히 같은 원문 quote를 사용하고
+    그 quote가 functional에는 없으며 다른 요구사항 분류 하나에만 있을 때만
+    해당 요구사항 분류로 옮깁니다.
+
+    같은 quote가 여러 요구사항 분류에 걸치면 안전하게 기존 값을 유지합니다.
+    scope 결정은 기능 요구사항과 같은 quote를 쓸 수 있으므로 수정하지 않습니다.
+    """
+    requirements = data.get("requirements") or {}
+    quote_categories: dict[str, set[str]] = {}
+
+    for category in REQ_CATEGORIES:
+        for item in requirements.get(category, []) or []:
+            if not isinstance(item, dict):
+                continue
+
+            if item.get("evidence_status") != "verified":
+                continue
+
+            evidence = item.get("evidence") or {}
+            quote = (
+                evidence.get("quote", "")
+                if isinstance(evidence, dict)
+                else ""
+            )
+            quote_key = normalize(str(quote))
+
+            if quote_key:
+                quote_categories.setdefault(
+                    quote_key,
+                    set(),
+                ).add(category)
+
+    notes: list[str] = []
+
+    for decision in data.get("decisions", []) or []:
+        if not isinstance(decision, dict):
+            continue
+
+        if decision.get("category") != "feature":
+            continue
+
+        if decision.get("evidence_status") != "verified":
+            continue
+
+        evidence = decision.get("evidence") or {}
+        quote = (
+            evidence.get("quote", "")
+            if isinstance(evidence, dict)
+            else ""
+        )
+        quote_key = normalize(str(quote))
+        matched_categories = quote_categories.get(
+            quote_key,
+            set(),
+        )
+
+        # functional에도 같은 quote가 있으면 실제 기능 결정일 수 있으므로
+        # 자동 보정하지 않습니다.
+        if "functional" in matched_categories:
+            continue
+
+        candidates = {
+            DECISION_CATEGORY_BY_REQUIREMENT[category]
+            for category in matched_categories
+            if category in DECISION_CATEGORY_BY_REQUIREMENT
+        }
+
+        if len(candidates) != 1:
+            continue
+
+        corrected_category = next(iter(candidates))
+        decision["category"] = corrected_category
+        notes.append(
+            "결정사항 분류를 근거가 같은 요구사항 분류에 맞춰 "
+            f"feature에서 {corrected_category}(으)로 보정했습니다: "
+            f"{str(decision.get('content', ''))[:35]}"
+        )
+
+    return notes
  
  
 def check(data: dict) -> list[str]:
@@ -102,6 +194,9 @@ def check(data: dict) -> list[str]:
  
     # ── unresolved 모순 검사 (데이터 수정 있음) ──────────────
     notes += check_unresolved_consistency(data)
+
+    # ── 결정사항 분류 보정 (검증된 동일 quote일 때만 수정) ────
+    notes += repair_feature_decision_categories(data)
  
     # 규칙 1: 기술 결정이 있는데 기술 요구사항이 비어 있는가
     tech_decisions = [

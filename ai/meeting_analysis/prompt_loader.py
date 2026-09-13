@@ -234,6 +234,8 @@ def _validate_extraction_template(
 
     for key in [
         "feature",
+        "non_functional",
+        "data",
         "tech",
         "scope",
     ]:

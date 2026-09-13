@@ -56,6 +56,21 @@ def _structured(**overrides) -> dict:
         "unresolved": [],
     }
     data.update(overrides)
+
+    requirements = data.get("requirements") or {}
+    for category in [
+        "functional",
+        "non_functional",
+        "data",
+        "technical",
+    ]:
+        for item in requirements.get(category, []) or []:
+            item.setdefault("evidence_status", "verified")
+
+    for category in ["decisions", "constraints"]:
+        for item in data.get(category, []) or []:
+            item.setdefault("evidence_status", "verified")
+
     return data
 
 
@@ -65,7 +80,7 @@ def _structured(**overrides) -> dict:
 
 def test_소제목_4개가_모두_나온다():
     s = build_tech_scope(_structured())
-    for title in ["기술 스택", "성능·보안 요구", "데이터 요구", "제약사항"]:
+    for title in ["기술 스택", "비기능 요구사항", "데이터 요구", "일정·인력 제약"]:
         assert title in s.content_html, f"{title} 누락"
 
 
@@ -84,7 +99,7 @@ def test_원본이_없는_소제목은_표시되지_않는다():
         },
         decisions=[],
     ))
-    assert "성능·보안 요구" in s.content_html
+    assert "비기능 요구사항" in s.content_html
     assert "기술 스택" not in s.content_html
     assert "데이터 요구" not in s.content_html
 
@@ -109,10 +124,10 @@ def test_제약사항에_type_라벨이_붙는다():
     assert "[일정] 개발 기간 3개월" in s.content_html
 
 
-def test_scope_결정은_라벨_없이_제약사항에_들어간다():
-    """constraints는 type이 있고 scope 결정은 없습니다."""
+def test_scope_결정은_6번에_중복되지_않는다():
+    """scope 결정은 7번 최종 결정사항에서만 표시합니다."""
     s = build_tech_scope(_structured())
-    assert "매출 예측은 MVP에서 제외" in s.content_html
+    assert "매출 예측은 MVP에서 제외" not in s.content_html
 
 
 # ─────────────────────────────────────────────────────────────
@@ -122,7 +137,7 @@ def test_scope_결정은_라벨_없이_제약사항에_들어간다():
 def test_groups에_원본이_있는_소제목만_들어간다():
     s = build_tech_scope(_structured())
     subtitles = [g.subtitle for g in s.groups]
-    assert subtitles == ["기술 스택", "성능·보안 요구", "데이터 요구", "제약사항"]
+    assert subtitles == ["기술 스택", "비기능 요구사항", "데이터 요구", "일정·인력 제약"]
 
 
 def test_groups의_items가_content_html의_해당_소제목_항목과_같다():
@@ -130,9 +145,9 @@ def test_groups의_items가_content_html의_해당_소제목_항목과_같다():
     tech_group = next(g for g in s.groups if g.subtitle == "기술 스택")
     assert tech_group.items == ["백엔드는 Spring Boot"]
 
-    scope_group = next(g for g in s.groups if g.subtitle == "제약사항")
+    scope_group = next(g for g in s.groups if g.subtitle == "일정·인력 제약")
     assert "[일정] 개발 기간 3개월" in scope_group.items
-    assert "매출 예측은 MVP에서 제외" in scope_group.items
+    assert "매출 예측은 MVP에서 제외" not in scope_group.items
 
 
 def test_원본이_없는_소제목은_groups에도_없다():
@@ -147,7 +162,7 @@ def test_원본이_없는_소제목은_groups에도_없다():
         decisions=[], constraints=[],
     ))
     subtitles = [g.subtitle for g in s.groups]
-    assert subtitles == ["성능·보안 요구"]
+    assert subtitles == ["비기능 요구사항"]
 
 
 def test_groups의_items_총합이_flat_items와_같다():
@@ -208,8 +223,8 @@ def test_공백만_다른_문장도_중복으로_본다():
 def test_중복_제거가_멀쩡한_항목을_지우지_않는다():
     """회의록 1·2번처럼 중복이 없던 경우 결과가 그대로여야 합니다."""
     s = build_tech_scope(_structured())
-    # technical 1 + non_functional 1 + data 1 + constraints 1 + scope 결정 1
-    assert len(s.items) == 5
+    # technical 1 + non_functional 1 + data 1 + constraints 1
+    assert len(s.items) == 4
     assert len(s.items) == len(set(s.items))
     assert "백엔드는 Spring Boot" in s.items
     assert "주요 화면 응답 3초 이내" in s.items
@@ -241,6 +256,28 @@ def test_결정사항에_분류_라벨이_붙는다():
     assert "[기능]" in s.content_html
 
 
+def test_새_결정사항_분류에_라벨이_붙는다():
+    s = build_decisions(
+        _structured(
+            decisions=[
+                {
+                    "category": "non_functional",
+                    "content": "응답 시간은 3초 이내로 한다",
+                    "evidence": {"quote": "응답 시간은 3초 이내로 한다"},
+                },
+                {
+                    "category": "data",
+                    "content": "재고 변경 이력을 저장한다",
+                    "evidence": {"quote": "재고 변경 이력을 저장한다"},
+                },
+            ]
+        )
+    )
+
+    assert "[비기능 요구사항]" in s.content_html
+    assert "[데이터]" in s.content_html
+
+
 def test_rationale이_있으면_붙는다():
     s = build_decisions(_structured())
     assert "SEO 요구 없음" in s.content_html
@@ -256,6 +293,46 @@ def test_결정사항이_없으면_비어있음():
     s = build_decisions(_structured(decisions=[]))
     assert s.is_incomplete is True
     assert s.items == []
+
+
+def test_unverified_항목은_코드_조립_섹션에서_제외된다():
+    s = build_tech_scope(
+        _structured(
+            requirements={
+                "functional": [],
+                "non_functional": [
+                    {
+                        "content": "근거 없는 응답 시간 기준",
+                        "evidence": {"quote": "원문에 없는 근거"},
+                        "evidence_status": "unverified",
+                    }
+                ],
+                "data": [],
+                "technical": [],
+            },
+            decisions=[],
+            constraints=[],
+        )
+    )
+
+    assert s.items == []
+    assert s.is_incomplete is True
+
+    decisions = build_decisions(
+        _structured(
+            decisions=[
+                {
+                    "category": "feature",
+                    "content": "근거 없는 기능을 제공한다",
+                    "evidence": {"quote": "원문에 없는 근거"},
+                    "evidence_status": "unverified",
+                }
+            ]
+        )
+    )
+
+    assert decisions.items == []
+    assert decisions.is_incomplete is True
 
 
 # ─────────────────────────────────────────────────────────────

@@ -1,8 +1,9 @@
 """
 노드 ② 기획서 생성 — 실행.
 
-[1] 서술형 3개, 주요 기능, 조건부 목표 생성   LLM
+[1] 서술형 3개와 조건부 목표 생성             LLM
 [2] 목록형 3개 섹션 조립                    코드
+[2-1] 주요 기능 조립                         코드
 [3] 섹션 정렬과 병합                       코드
 [4] is_incomplete 판정                     코드
 [5] unresolved 전달                        코드
@@ -147,80 +148,12 @@ def run(
     proposal_id: str,
     glossary_text: str = "",
 ) -> PlanDocument:
-    # [1] 서술형 섹션, 세부 목표, 주요 기능을 생성합니다.
+    # [1] 서술형 섹션과 세부 목표를 생성합니다.
     result: PlanSections = _call(
         build_system_prompt(glossary_text),
         build_messages(structured, glossary_text),
         PlanSections,
         context=f"run proposal_id={proposal_id}",
-    )
-
-    # 임시 진단용입니다. 확인이 끝나면 제거할 수 있습니다.
-    import json
-
-    # [진단 1] 노드 1에서 추출한 프로젝트 정보를 확인합니다.
-    project = structured.get("project") or {}
-
-    print(
-        "\n[목표 진단] 노드 1 프로젝트 정보",
-        flush=True,
-    )
-    print(
-        json.dumps(
-            project,
-            ensure_ascii=False,
-            indent=2,
-            default=str,
-        ),
-        flush=True,
-    )
-
-    # [진단 2] 노드 2에서 생성한 세부 목표를 확인합니다.
-    print(
-        f"\n[목표 진단] 노드 2 생성 개수: {len(result.goals)}",
-        flush=True,
-    )
-
-    for index, generated_goal in enumerate(result.goals, start=1):
-        print(
-            f"\n[목표 진단] 노드 2 생성 항목 {index}",
-            flush=True,
-        )
-        print(
-            json.dumps(
-                generated_goal.model_dump(),
-                ensure_ascii=False,
-                indent=2,
-                default=str,
-            ),
-            flush=True,
-        )
-
-    # [진단 3] 기능 누락이 어느 단계에서 발생했는지 확인합니다.
-    # node1_requirements: 노드 1에서 추출한 요구사항
-    # node1_decisions: 노드 1에서 추출한 결정사항
-    # node2_features: 노드 2에서 생성한 주요 기능
-    diagnostic_data = {
-        "node1_requirements": structured.get("requirements") or {},
-        "node1_decisions": structured.get("decisions") or [],
-        "node2_features": [
-            feature.model_dump()
-            for feature in result.features
-        ],
-    }
-
-    print(
-        "\n[기능 진단] 노드 1 요구사항과 노드 2 주요 기능",
-        flush=True,
-    )
-    print(
-        json.dumps(
-            diagnostic_data,
-            ensure_ascii=False,
-            indent=2,
-            default=str,
-        ),
-        flush=True,
     )
 
     by_key = {s.key: s for s in result.sections}
@@ -245,8 +178,7 @@ def run(
         # 항목 하나만 고칠 수 없습니다.
         if spec["key"] == "features":
             feats = list_builder.build_features(
-                structured,
-                generated_features=result.features,
+                structured
             )
             # 읽기 모드용 HTML도 함께 만듭니다.
             # 편집은 features를, 표시는 content_html을 씁니다.
@@ -329,16 +261,42 @@ def regenerate_section(
     같은 결과가 나옵니다. 게이트 A에서 반려 버튼을 주지 않으므로
     여기 들어올 일이 없습니다.
     """
-    spec = next(s for s in SECTION_SPEC if s["key"] == section_key)
-    if spec["type"] == SectionType.LIST:
+    spec = next(
+        (
+            item
+            for item in SECTION_SPEC
+            if item["key"] == section_key
+        ),
+        None,
+    )
+
+    if spec is None:
+        raise ValueError(
+            f"알 수 없는 섹션입니다: {section_key}"
+        )
+
+    if section_key not in {
+        "overview",
+        "problem",
+        "users",
+    }:
         raise ValueError(
             f"{section_key}는 코드 조립 섹션이라 재생성 대상이 아닙니다. "
             "PM이 직접 수정하도록 하세요."
         )
 
     result: PlanSections = _call(
-        SYSTEM_PROMPT + "\n\n" + REGENERATE_PROMPT,
-        build_regenerate_messages(structured, section_key, reject_type, comment),
+        (
+            build_system_prompt()
+            + "\n\n"
+            + REGENERATE_PROMPT
+        ),
+        build_regenerate_messages(
+            structured,
+            section_key,
+            reject_type,
+            comment,
+        ),
         PlanSections,
         context=f"regenerate_section={section_key}",
     )

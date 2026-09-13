@@ -79,7 +79,7 @@ def test_extraction_template_has_expected_version():
     """회의록 구조화 규칙 YAML의 버전을 확인합니다."""
     template = load_extraction_template()
 
-    assert template["metadata"]["version"] == "2.2"
+    assert template["metadata"]["version"] == "2.3"
 
 
 def test_extraction_template_contains_problem_items_rules():
@@ -143,6 +143,9 @@ def test_extraction_fewshots_match_meeting_schema():
             assert problem_item.content.strip()
             assert problem_item.evidence.quote.strip()
 
+        for functional_item in result.requirements.functional:
+            assert functional_item.feature_name
+
 
 def test_extraction_fewshot_message_roles():
     """퓨샷 두 개는 user와 assistant 메시지 네 개가 되어야 합니다."""
@@ -186,6 +189,15 @@ def test_extraction_system_prompt_contains_required_fields():
     assert "non_functional:" in prompt
     assert "data:" in prompt
     assert "technical:" in prompt
+
+    for category in [
+        "feature",
+        "non_functional",
+        "data",
+        "tech",
+        "scope",
+    ]:
+        assert f"decisions.category={category}" in prompt
 
     assert "evidence.quote" in prompt
 
