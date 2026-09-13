@@ -244,7 +244,10 @@ def run(
         # 프론트가 항목 단위로 편집·삭제하므로 HTML 덩어리로 두면
         # 항목 하나만 고칠 수 없습니다.
         if spec["key"] == "features":
-            feats = result.features
+            feats = list_builder.build_features(
+                structured,
+                generated_features=result.features,
+            )
             # 읽기 모드용 HTML도 함께 만듭니다.
             # 편집은 features를, 표시는 content_html을 씁니다.
             content = "".join(

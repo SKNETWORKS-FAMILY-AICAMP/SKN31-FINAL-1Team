@@ -24,7 +24,13 @@ PM이 "아까 있던 항목이 왜 없지?"를 겪게 됩니다.
 
 from html import escape
 
-from .schemas import PlanSection, SectionType, TechScopeGroup, VerifiedEvidence
+from .schemas import (
+    Feature,
+    PlanSection,
+    SectionType,
+    TechScopeGroup,
+    VerifiedEvidence,
+)
 
 
 def _ul(lines: list[str]) -> str:
@@ -267,6 +273,105 @@ def collect_feature_evidence(
 
     return _dedupe_evidence(decision_evidence)
 
+
+def build_features(
+    structured: dict,
+    generated_features: list[Feature] | None = None,
+) -> list[Feature]:
+    """
+    검증된 functional 요구사항을 feature_name 기준으로 그룹화합니다.
+
+    같은 feature_name을 가진 모든 content는 하나의 Feature 설명에
+    입력 순서대로 포함합니다. LLM이 일부 기능이나 세부 조건을
+    삭제하거나 원문에 없는 설명을 추가하지 못하도록 최종 기능
+    목록은 코드에서 조립합니다.
+
+    feature_name이 있는 검증된 항목이 하나도 없는 구형 데이터는
+    기존 LLM 생성 결과를 그대로 사용합니다.
+    """
+    if not isinstance(structured, dict):
+        raise TypeError(
+            "structured는 딕셔너리여야 합니다."
+        )
+
+    requirements = (
+        structured.get("requirements")
+        or {}
+    )
+
+    functional = (
+        requirements.get("functional")
+        if isinstance(requirements, dict)
+        else []
+    ) or []
+
+    grouped_contents: dict[str, list[str]] = {}
+    seen_contents: dict[str, set[str]] = {}
+
+    for item in functional:
+        if not isinstance(item, dict):
+            continue
+
+        if item.get("evidence_status") != "verified":
+            continue
+
+        feature_name = item.get("feature_name")
+        content = item.get("content")
+
+        if not isinstance(feature_name, str):
+            continue
+
+        if not isinstance(content, str):
+            continue
+
+        feature_name = feature_name.strip()
+        content = content.strip()
+
+        if not feature_name or not content:
+            continue
+
+        normalized_content = _norm(content)
+
+        if not normalized_content:
+            continue
+
+        if feature_name not in grouped_contents:
+            grouped_contents[feature_name] = []
+            seen_contents[feature_name] = set()
+
+        if normalized_content in seen_contents[feature_name]:
+            continue
+
+        seen_contents[feature_name].add(
+            normalized_content
+        )
+        grouped_contents[feature_name].append(
+            content
+        )
+
+    if not grouped_contents:
+        return list(generated_features or [])
+
+    features: list[Feature] = []
+
+    for feature_name, contents in grouped_contents.items():
+        sentences = [
+            (
+                content
+                if content.endswith((".", "!", "?"))
+                else f"{content}."
+            )
+            for content in contents
+        ]
+
+        features.append(
+            Feature(
+                title=feature_name,
+                description=" ".join(sentences),
+            )
+        )
+
+    return features
 
 def collect_core_goal_evidence(
     structured: dict,

@@ -65,8 +65,11 @@ def _build_generation_payload(
     기술 및 제약사항과 최종 결정사항은 list_builder.py에서
     코드로 조립하므로 여기에서 별도 가공하지 않습니다.
 
-    다만 feature 범주의 decisions는 주요 기능과 세부 목표의
-    근거가 될 수 있으므로 포함합니다.
+    feature 범주의 decisions는 세부 목표와 주요 기능의 근거로 전달합니다.
+
+    scope 범주의 decisions는 확정된 MVP 기능 목록을 보완할 수 있도록
+    scope_decisions라는 별도 필드로 전달합니다. 이를 decisions와 분리하여
+    사용자 범위, 제외 범위 등의 내용이 세부 목표 생성에 섞이지 않게 합니다.
     """
     if not isinstance(structured, dict):
         raise TypeError(
@@ -83,16 +86,21 @@ def _build_generation_payload(
         or []
     )
 
-    # 기능 결정만 LLM 입력에 포함합니다.
-    #
-    # tech 결정과 scope 결정은 기술 및 제약사항이나
-    # 최종 결정사항에서 코드로 처리합니다.
     feature_decisions = [
         decision
         for decision in decisions
         if (
             isinstance(decision, dict)
             and decision.get("category") == "feature"
+        )
+    ]
+
+    scope_decisions = [
+        decision
+        for decision in decisions
+        if (
+            isinstance(decision, dict)
+            and decision.get("category") == "scope"
         )
     ]
 
@@ -112,6 +120,7 @@ def _build_generation_payload(
             ),
         },
         "decisions": feature_decisions,
+        "scope_decisions": scope_decisions,
     }
 
 

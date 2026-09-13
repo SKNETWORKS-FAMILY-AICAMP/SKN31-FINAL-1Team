@@ -25,7 +25,7 @@ from dotenv import load_dotenv
 # .env 는 프로젝트 루트(ai/의 상위)에 있다.
 load_dotenv(dotenv_path=Path(__file__).resolve().parent.parent / ".env")
 
-from meeting_analysis.node import run as analyze_meeting
+from meeting_analysis_x.node import run as analyze_meeting
 from plan_draft.agent import run as generate_plan
 from shared.retry_config import describe
 
