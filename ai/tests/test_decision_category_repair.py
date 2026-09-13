@@ -28,6 +28,8 @@ def test_decision_schema_accepts_all_supported_categories(
         {
             "category": category,
             "content": "확정된 내용",
+            # rationale은 필수 필드입니다. 이유가 없으면 빈 문자열입니다.
+            "rationale": "",
             "evidence": {
                 "quote": "확정된 내용",
             },
@@ -148,3 +150,70 @@ def test_does_not_repair_ambiguous_or_unverified_decision():
         for decision in data["decisions"]
     ] == ["feature", "feature"]
     assert notes == []
+
+
+# ─────────────────────────────────────────────────────────────
+# 2026-09-13 추가 — rationale을 필수 필드로 바꾼 뒤의 계약
+# ─────────────────────────────────────────────────────────────
+
+
+def test_rationale은_생략할_수_없다():
+    """
+    선택 필드였을 때 실행 결과 9건 전부 비어 있었습니다.
+
+    필수로 두면 모델이 항목마다 "이유가 있었나"를 판단하게 됩니다.
+    """
+    import pytest as _pytest
+    from pydantic import ValidationError
+
+    with _pytest.raises(ValidationError):
+        Decision.model_validate(
+            {
+                "category": "tech",
+                "content": "확정된 내용",
+                "evidence": {"quote": "확정된 내용"},
+            }
+        )
+
+
+def test_이유가_없으면_빈_문자열을_허용한다():
+    """지어내기를 막는 탈출구입니다."""
+    decision = Decision.model_validate(
+        {
+            "category": "tech",
+            "content": "확정된 내용",
+            "rationale": "",
+            "evidence": {"quote": "확정된 내용"},
+        }
+    )
+
+    assert decision.rationale == ""
+
+
+def test_빈_rationale은_7번에_붙지_않는다():
+    """빈 문자열은 falsy이므로 기존 렌더링이 그대로 생략합니다."""
+    from plan_draft.list_builder import build_decisions
+
+    section = build_decisions({
+        "decisions": [
+            {
+                "category": "tech",
+                "content": "React를 사용한다",
+                "rationale": "",
+                "evidence": {"quote": "React를 사용한다"},
+                "evidence_status": "verified",
+            },
+            {
+                "category": "tech",
+                "content": "Next.js는 채택하지 않는다",
+                "rationale": "SEO 요구가 없다",
+                "evidence": {"quote": "Next.js는 채택하지 않는다"},
+                "evidence_status": "verified",
+            },
+        ],
+    })
+
+    assert section.items[0] == "[기술] React를 사용한다"
+    assert section.items[1] == (
+        "[기술] Next.js는 채택하지 않는다 — SEO 요구가 없다"
+    )

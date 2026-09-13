@@ -159,9 +159,10 @@ def test_rejects_goal_when_problem_evidence_is_not_in_source():
         generated,
     )
 
-    assert section.items == []
-    assert section.content_html == ""
-    assert section.evidence == []
+    # 채택이 0건이면 문제 정의만 싣는 폴백이 동작합니다.
+    # 중요한 건 "항목이 0개"가 아니라 "지어낸 목표가 없다"입니다.
+    assert all(item.startswith("문제:") for item in section.items)
+    assert "목표:" not in section.content_html
     assert section.is_incomplete is True
 
 
@@ -182,9 +183,10 @@ def test_rejects_goal_when_goal_evidence_is_not_in_source():
         generated,
     )
 
-    assert section.items == []
-    assert section.content_html == ""
-    assert section.evidence == []
+    # 채택이 0건이면 문제 정의만 싣는 폴백이 동작합니다.
+    # 중요한 건 "항목이 0개"가 아니라 "지어낸 목표가 없다"입니다.
+    assert all(item.startswith("문제:") for item in section.items)
+    assert "목표:" not in section.content_html
     assert section.is_incomplete is True
 
 
@@ -214,7 +216,10 @@ def test_rejects_unverified_goal_evidence():
         [_detailed_goal()],
     )
 
-    assert section.items == []
+    # 채택이 0건이면 문제 정의만 싣는 폴백이 동작합니다.
+    # 중요한 건 "항목이 0개"가 아니라 "지어낸 목표가 없다"입니다.
+    assert all(item.startswith("문제:") for item in section.items)
+    assert "목표:" not in section.content_html
     assert section.is_incomplete is True
 
 
@@ -293,8 +298,11 @@ def test_rejects_functional_requirement_as_goal_evidence():
         generated,
     )
 
-    assert section.items == []
-    assert section.content_html == ""
+    # 목표가 없는 회의록이므로 문제 정의만 남습니다(폴백).
+    # 중요한 건 "항목이 0개"가 아니라 "지어낸 목표가 없다"입니다.
+    assert all(item.startswith("문제:") for item in section.items)
+    assert "목표:" not in section.content_html
+    assert goal_quote not in section.content_html
     assert section.is_incomplete is True
 
 
@@ -330,8 +338,11 @@ def test_rejects_feature_decision_as_goal_evidence():
         generated,
     )
 
-    assert section.items == []
-    assert section.content_html == ""
+    # 목표가 없는 회의록이므로 문제 정의만 남습니다(폴백).
+    # 중요한 건 "항목이 0개"가 아니라 "지어낸 목표가 없다"입니다.
+    assert all(item.startswith("문제:") for item in section.items)
+    assert "목표:" not in section.content_html
+    assert goal_quote not in section.content_html
     assert section.is_incomplete is True
 
 
@@ -363,7 +374,11 @@ def test_does_not_accept_tech_decision_as_goal_evidence():
         generated,
     )
 
-    assert section.items == []
+    # tech 결정은 목표로 승격되지 않습니다.
+    # 목표가 없는 회의록이므로 문제 정의만 남습니다(폴백).
+    assert all(item.startswith("문제:") for item in section.items)
+    assert "목표:" not in section.content_html
+    assert goal_quote not in section.content_html
     assert section.is_incomplete is True
 
 
@@ -555,7 +570,143 @@ def test_empty_generated_goals_returns_incomplete_section():
         [],
     )
 
-    assert section.items == []
-    assert section.content_html == ""
-    assert section.evidence == []
+    # 채택이 0건이면 문제 정의만 싣는 폴백이 동작합니다.
+    # 중요한 건 "항목이 0개"가 아니라 "지어낸 목표가 없다"입니다.
+    assert all(item.startswith("문제:") for item in section.items)
+    assert "목표:" not in section.content_html
     assert section.is_incomplete is True
+
+
+# ─────────────────────────────────────────────────────────────
+# 2026-09-13 추가
+#
+# 목표가 논의되지 않은 회의록의 폴백과, 노드 1/2의 근거 정규화
+# 기준 불일치를 막는 테스트입니다.
+# ─────────────────────────────────────────────────────────────
+
+
+def _structured_without_goals() -> dict:
+    """목표는 없고 문제만 있는 구조화 JSON — 범위 확정 회의의 전형입니다."""
+    structured = _structured()
+    structured["project"]["goals"] = []
+    return structured
+
+
+def test_falls_back_to_problems_when_no_goal_was_discussed():
+    """노드 1에 목표가 없으면 섹션을 비우지 않고 문제 정의만 싣습니다."""
+    section = build_goals(_structured_without_goals(), [])
+
+    assert section.items == [
+        "문제: 수기 관리로 발주 시점을 놓쳐 품절이 발생한다",
+    ]
+    assert "문제:" in section.content_html
+    assert "목표:" not in section.content_html
+
+
+def test_fallback_marks_section_incomplete_and_explains_why():
+    """폴백은 미완성 상태를 유지하고 작성자에게 이유를 알려줍니다."""
+    section = build_goals(_structured_without_goals(), [])
+
+    assert section.is_incomplete is True
+    assert "목표가 논의되지 않아" in section.needs_input
+    assert "목표가 논의되지 않아" in section.content_html
+
+
+def test_fallback_keeps_only_verified_problem_evidence():
+    """폴백이 실어 나르는 근거도 노드 1이 검증한 것뿐입니다."""
+    section = build_goals(_structured_without_goals(), [])
+
+    assert section.evidence
+    assert all(e.status == "verified" for e in section.evidence)
+
+
+def test_fallback_note_distinguishes_why_goals_are_missing():
+    """
+    폴백 문구로 원인을 구분합니다.
+
+    목표가 아예 없었던 경우와, 목표는 뽑혔는데 문제와 연결되지 않은
+    경우는 작성자가 취할 조치가 다릅니다. 같은 회의록이라도 실행에 따라
+    양쪽이 다 나오므로 문구로 구분해 둡니다.
+    """
+    from plan_draft.list_builder import (
+        GOALS_NOT_DISCUSSED_NOTE,
+        GOALS_UNMATCHED_NOTE,
+    )
+
+    no_goals = build_goals(_structured_without_goals(), [])
+    assert no_goals.needs_input == GOALS_NOT_DISCUSSED_NOTE
+
+    unmatched = build_goals(
+        _structured(goal_status="unverified"),
+        [_detailed_goal()],
+    )
+    assert unmatched.needs_input == GOALS_UNMATCHED_NOTE
+    assert all(item.startswith("문제:") for item in unmatched.items)
+
+def test_fallback_limits_problems_to_four_items():
+    """폴백도 3번의 항목 상한 4개를 지킵니다."""
+    structured = _structured_without_goals()
+    structured["project"]["problem_items"] = [
+        {
+            "content": f"문제 {index}",
+            "evidence": {"quote": f"문제 {index}가 있습니다."},
+            "evidence_status": "verified",
+        }
+        for index in range(6)
+    ]
+
+    section = build_goals(structured, [])
+
+    assert len(section.items) == 4
+
+
+def test_fallback_uses_problem_summary_when_no_problem_items():
+    """개별 문제가 없으면 전체 문제 요약이라도 싣습니다."""
+    structured = _structured_without_goals()
+    structured["project"]["problem_items"] = []
+
+    section = build_goals(structured, [])
+
+    assert section.items == [
+        "문제: 발주 시점 누락으로 품절이 발생한다",
+    ]
+
+
+def test_fallback_skips_unverified_problem_summary():
+    """요약의 근거가 unverified면 폴백도 아무것도 싣지 않습니다."""
+    structured = _structured(problem_status="unverified")
+    structured["project"]["goals"] = []
+    structured["project"]["problem_items"] = []
+
+    section = build_goals(structured, [])
+
+    assert section.items == []
+    assert section.is_incomplete is True
+
+
+def test_evidence_matching_ignores_punctuation_like_node1():
+    """
+    노드 2의 근거 대조는 노드 1의 검증기와 같은 기준을 씁니다.
+
+    노드 1은 문장부호를 제거하고 대조하므로, 노드 2가 인용을 옮기며
+    마침표 하나를 빠뜨렸다고 항목이 통째로 사라지면 안 됩니다.
+    """
+    structured = _structured()
+
+    generated = [
+        _detailed_goal(
+            problem_quote=(
+                "수기 관리로 발주 시점을 놓쳐 품절이 발생하고 있습니다"
+            ),
+            goal_quote="재고 임계치 알림을 제공하기로 했습니다",
+        )
+    ]
+
+    section = build_goals(structured, generated)
+
+    assert len(section.items) == 1
+    # 최종 기획서에는 노드 1의 원래 인용이 들어갑니다.
+    assert any(
+        e.quote.endswith("품절이 발생하고 있습니다.")
+        for e in section.evidence
+    )

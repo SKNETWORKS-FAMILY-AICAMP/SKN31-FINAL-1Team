@@ -24,6 +24,10 @@ PM이 "아까 있던 항목이 왜 없지?"를 겪게 됩니다.
 
 from html import escape
 
+# 근거 대조는 노드 1의 검증기와 같은 정규화를 써야 합니다.
+# 기준이 갈리면 verified 근거가 노드 2에서 탈락합니다(_evidence_key 참고).
+from meeting_analysis.validators.evidence import normalize as _verifier_normalize
+
 from .schemas import (
     Feature,
     PlanSection,
@@ -40,6 +44,26 @@ def _ul(lines: list[str]) -> str:
 def _norm(text: str) -> str:
     """중복 판정용 정규화. 공백만 제거해 표현 차이를 흡수합니다."""
     return "".join(text.split())
+
+
+def _evidence_key(text: str) -> str:
+    """
+    근거 대조용 정규화. 노드 1의 검증기와 같은 기준을 씁니다.
+
+    ## 왜 _norm을 쓰면 안 되는가
+
+    노드 1은 evidence.quote를 회의록과 대조할 때 공백과 문장부호를
+    모두 제거합니다(validators/evidence.normalize). 반면 _norm은
+    공백만 제거합니다.
+
+    기준이 다르면 노드 1이 verified로 통과시킨 근거를 노드 2가
+    탈락시킵니다. 노드 2가 인용을 옮겨 적으며 마침표 하나만 바꿔도
+    항목 전체가 기획서에서 사라지는데, 작성자는 이유를 알 수 없습니다.
+
+    근거 대조는 반드시 검증기와 같은 함수를 써야 하므로 여기서
+    직접 가져옵니다. 중복 판정(_norm)과는 목적이 다른 별개 함수입니다.
+    """
+    return _verifier_normalize(str(text))
 
 
 def _item_status(item: dict) -> str:
@@ -570,6 +594,13 @@ def build_features(
             for item in items:
                 add_part(item.get("content", ""))
 
+        # 2026-09-13: 설명이 기능명 반복뿐일 때 "세부 내용은 논의되지
+        # 않았습니다"로 바꿔봤다가 되돌렸습니다. 실행해 보니 MVP 기능
+        # 6개가 전부 그 문장이 되어, 같은 줄이 6번 반복됐습니다.
+        # 담긴 정보는 이전과 같은데 기획서는 텅 빈 것처럼 보였습니다.
+        #
+        # 기능명만 논의된 경우를 표시하려면 기능마다 문장을 붙일 게
+        # 아니라 그런 기능들을 한 번에 묶어 보여줘야 합니다.
         features.append(
             Feature(
                 title=feature_name,
@@ -689,6 +720,157 @@ def collect_core_goal_evidence(
 
 
 
+GOALS_NOT_DISCUSSED_NOTE = (
+    "회의에서 프로젝트 목표가 논의되지 않아 문제 정의만 정리했습니다. "
+    "목표는 작성자가 직접 추가해야 합니다."
+)
+
+GOALS_UNMATCHED_NOTE = (
+    "회의에서 추출한 목표를 개별 문제와 연결하지 못해 문제 정의만 "
+    "정리했습니다. 목표는 작성자가 직접 추가해야 합니다."
+)
+
+
+def _build_goals_problem_only(
+    structured: dict,
+    source_fields: list[str],
+    goals_were_extracted: bool = False,
+) -> PlanSection:
+    """
+    3번 폴백 — 노드 1에 project.goals가 없을 때 문제 정의만 조립합니다.
+
+    ## 왜 필요한가
+
+    build_goals는 문제 근거와 목표 근거가 모두 있어야 항목을 채택합니다.
+    그런데 기능 범위를 확정하는 회의에서는 "무엇이 문제인가"와
+    "무엇을 만들기로 했는가"만 오가고 "어떤 상태에 도달하려는가"는
+    말로 나오지 않는 일이 흔합니다. 그러면 project.goals가 빈 배열이 되고
+    3번 섹션이 통째로 사라집니다.
+
+    회의록에 분명히 있는 문제 정의까지 함께 사라지는 건 과합니다.
+    목표 칸을 비워둔 채 검증된 문제만 옮깁니다.
+
+    ## 무엇을 하지 않는가
+
+    목표를 만들어내지 않습니다. 기능 요구사항이나 결정사항을
+    "이 문제의 해결책"으로 배치하지도 않습니다. 그렇게 하면
+    회의에 없던 인과관계가 기획서에 사실처럼 남습니다.
+
+    LLM을 부르지 않고 노드 1의 verified 항목을 그대로 옮기므로
+    이 경로에서는 창작이 생길 수 없습니다.
+
+    is_incomplete는 True로 둡니다. 목표가 비어 있는 건 사실이고,
+    작성자에게 보완이 필요하다는 신호가 가야 합니다.
+    """
+    project = structured.get("project") or {}
+
+    problems: list[str] = []
+    evidence: list[VerifiedEvidence] = []
+    seen_problems: set[str] = set()
+    seen_quotes: set[str] = set()
+
+    def add_problem(content: str, quote: str) -> None:
+        content = str(content).strip()
+        key = _norm(content)
+
+        if not key or key in seen_problems:
+            return
+
+        seen_problems.add(key)
+        problems.append(content)
+
+        quote = str(quote).strip()
+
+        if quote and quote not in seen_quotes:
+            seen_quotes.add(quote)
+            evidence.append(
+                VerifiedEvidence(
+                    quote=quote,
+                    status="verified",
+                )
+            )
+
+    # 개별 문제를 우선합니다. 전체 요약보다 구체적입니다.
+    for problem_item in _verified_items(
+        project.get("problem_items") or []
+    ):
+        add_problem(
+            problem_item.get("content", ""),
+            _evidence_quote(problem_item),
+        )
+
+        # 3번의 항목 수 상한은 4개입니다.
+        if len(problems) >= 4:
+            break
+
+    # 개별 문제가 하나도 없으면 전체 문제 요약이라도 싣습니다.
+    if not problems:
+        summary = str(
+            project.get("problem", "")
+        ).strip()
+
+        summary_status = str(
+            project.get("problem_evidence_status")
+            or "unverified"
+        ).strip()
+
+        if summary and summary_status == "verified":
+            summary_evidence = project.get("problem_evidence")
+
+            if hasattr(summary_evidence, "model_dump"):
+                summary_evidence = summary_evidence.model_dump()
+
+            add_problem(
+                summary,
+                (summary_evidence or {}).get("quote", "")
+                if isinstance(summary_evidence, dict)
+                else "",
+            )
+
+    note = (
+        GOALS_UNMATCHED_NOTE
+        if goals_were_extracted
+        else GOALS_NOT_DISCUSSED_NOTE
+    )
+
+    if not problems:
+        return PlanSection(
+            no=3,
+            key="goals",
+            title="세부 목표 및 문제 정의",
+            section_type=SectionType.LIST,
+            content_html="",
+            items=[],
+            source_fields=source_fields,
+            is_incomplete=True,
+        )
+
+    from html import escape
+
+    content_html = (
+        "<ul>"
+        + "".join(
+            f"<li><p><strong>문제:</strong> {escape(problem)}</p></li>"
+            for problem in problems
+        )
+        + "</ul>"
+        + f"<p>{escape(note)}</p>"
+    )
+
+    return PlanSection(
+        no=3,
+        key="goals",
+        title="세부 목표 및 문제 정의",
+        section_type=SectionType.LIST,
+        content_html=content_html,
+        items=[f"문제: {problem}" for problem in problems],
+        source_fields=source_fields,
+        evidence=_dedupe_evidence(evidence),
+        needs_input=note,
+        is_incomplete=True,
+    )
+
+
 def build_goals(
     structured: dict,
     generated_goals: list | None = None,
@@ -770,7 +952,7 @@ def build_goals(
             or "unverified"
         ).strip()
 
-        normalized_quote = _norm(quote)
+        normalized_quote = _evidence_key(quote)
 
         if (
             not normalized_quote
@@ -832,7 +1014,7 @@ def build_goals(
                 evidence.get("quote", "")
             ).strip()
 
-            normalized_quote = _norm(
+            normalized_quote = _evidence_key(
                 submitted_quote
             )
 
@@ -992,6 +1174,26 @@ def build_goals(
             )
         )
 
+    # 채택된 항목이 하나도 없으면 섹션을 비우는 대신 문제 정의만 싣습니다.
+    #
+    # 2026-09-13 수정: 처음에는 project.goals가 비었을 때만 폴백했습니다.
+    # 목표를 추출했는데 채택이 0건이면 원인을 드러내야 한다고 봤기 때문입니다.
+    #
+    # 실행해 보니 그 구분이 쓸모없었습니다. 같은 회의록인데도 노드 1이
+    # 어떤 실행에서는 문제 문장을 목표 근거로 쓰고(→ 3건 전부 채택),
+    # 어떤 실행에서는 회의 목적 문장을 목표 근거로 씁니다(→ 0건 채택,
+    # project.goals는 비어 있지 않으므로 폴백도 안 됨).
+    #
+    # 작성자 입장에서 빈 섹션은 어느 경우에도 도움이 되지 않습니다.
+    # 채택이 0건이면 이유를 가리지 않고 문제 정의라도 싣고,
+    # 원인 구분은 needs_input 문구로 남깁니다.
+    if not accepted_goals:
+        return _build_goals_problem_only(
+            structured,
+            source_fields,
+            goals_were_extracted=bool(project.get("goals") or []),
+        )
+
     content_html = (
         "<ul>"
         + "".join(html_items)
@@ -1066,10 +1268,55 @@ def build_tech_scope(structured: dict) -> PlanSection:
         evidence.extend(_ev(used))
 
     # ── 기술 스택 ────────────────────────────────────────────
-    # requirements.technical만 사용합니다.
-    # decisions[tech]는 넣지 않습니다 — 같은 내용이 표현만 달라 중복되고,
-    # 어차피 7번 최종 결정사항에 전부 들어갑니다.
-    add("기술 스택", reqs.get("technical", []), lambda s: s["content"])
+    # requirements.technical + decisions[tech]
+    #
+    # ## 두 번에 걸친 변경 이력
+    #
+    # 원래는 requirements.technical만 썼습니다. 그러면 바코드 구현 방식처럼
+    # 결정으로만 잡히는 기술이 6번에서 통째로 빠집니다.
+    #
+    # 1차 시도(실패): decisions[tech]를 그냥 넣었습니다. 당시 노드 1은
+    # 바코드 구현 방식을 tech가 아니라 feature로 분류하고 있어서,
+    # tech 결정은 기술 스택 선언 1건뿐이었습니다. requirements.technical과
+    # 같은 내용이라 중복 한 줄만 늘고 얻는 건 없어 되돌렸습니다.
+    #
+    # 2차(현재): 노드 1의 분류 규칙을 고쳐 "이미 제공하기로 한 기능을
+    # 무엇으로 구현할지"는 tech로 가게 했습니다. 이제 바코드 구현 방식이
+    # tech 결정으로 잡히므로 다시 넣습니다.
+    #
+    # ## 중복을 두 단계로 막습니다
+    #
+    # seen_lines는 문장이 같을 때만 걸러냅니다. 그런데 같은 사실이
+    # 요구사항과 결정에 표현만 다르게 들어가는 일이 흔합니다
+    # ("... AWS를 사용한다" / "기술 스택은 ... 로 확정하고"). 그래서
+    # 이미 쓴 항목과 같은 원문을 근거로 삼은 결정은 건너뜁니다.
+    # 노드 1이 같은 quote를 쓴다면 같은 논의를 가리키는 것이기 때문입니다.
+    #
+    # 7번과 겹치는 건 의도된 동작입니다. 6번은 rationale 없이
+    # "무엇을 쓰는가"만, 7번은 이유까지 붙여 "왜 정했는가"를 보여줍니다.
+    technical_items = list(reqs.get("technical", []) or [])
+
+    used_quotes = {
+        _evidence_key(_evidence_quote(item))
+        for item in _verified_items(technical_items)
+    }
+    used_quotes.discard("")
+
+    tech_decisions = [
+        decision
+        for decision in (structured.get("decisions") or [])
+        if (
+            isinstance(decision, dict)
+            and decision.get("category") == "tech"
+            and _evidence_key(_evidence_quote(decision)) not in used_quotes
+        )
+    ]
+
+    add(
+        "기술 스택",
+        technical_items + tech_decisions,
+        lambda s: s["content"],
+    )
 
     # ── 비기능 요구사항 ──────────────────────────────────────
     add("비기능 요구사항", reqs.get("non_functional", []), lambda s: s["content"])

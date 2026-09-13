@@ -289,3 +289,137 @@ def test_problem_items_are_in_evidence_validation_paths():
     assert len(report.unverified) == 1
     assert report.pass_rate == 0.75
     assert report.unverified[0].path == "project.problem_items[1]"
+
+
+def test_extraction_template_tells_when_rationale_must_be_filled():
+    """
+    "이유가 있으면 쓰라"만으로는 전부 비워서 나왔습니다.
+
+    어떤 경우가 "이유가 언급된 것"인지 판단 기준을 주어야 합니다.
+    """
+    prompt = build_extraction_system_prompt()
+
+    assert "모든 항목에 rationale을 판단해서 작성합니다" in prompt
+    assert "결정 직전 발언이 그 결정을 뒷받침하는 설명이다" in prompt
+    # 지어내기를 막는 문장은 유지되어야 합니다.
+    assert "회의록에 없는 이유를 추론해서 채우지 않습니다" in prompt
+
+
+def test_extraction_template_excludes_meeting_purpose_from_goals():
+    """
+    회의 목적을 프로젝트 목표로 뽑으면 3번 세부 목표가 통째로 빕니다.
+
+    목표의 근거가 회의 목적 문장이 되면 problem_items의 근거와 짝이
+    맞지 않아 노드 2가 문제-목표 쌍을 하나도 만들지 못합니다.
+    """
+    prompt = build_extraction_system_prompt()
+
+    assert "회의 목적을 프로젝트 목표로 작성하지 않습니다" in prompt
+    assert "문제와 목표가 같은 원문을 근거로 삼으면" in prompt
+
+
+def test_extraction_template_captures_implementation_technology():
+    """
+    구현 수단이 technical에 안 잡히면 6번 기술 스택이 스택 선언만 남습니다.
+
+    바코드 구현 방식과 POS 벤더 API가 빠져서, 개발자가 6번만 보고는
+    무엇으로 만드는지 알 수 없었습니다.
+    """
+    prompt = build_extraction_system_prompt()
+
+    assert "기능을 무엇으로 구현하기로 했는지가 원문에 있으면" in prompt
+    assert "논의를 거쳐 확정된 기술은 확정된 기술입니다" in prompt
+    assert "BarcodeDetector" in prompt
+
+
+def test_extraction_template_separates_feature_from_implementation():
+    """
+    문장에 기능명이 있다고 feature로 분류하면 6번에서 누락됩니다.
+
+    "바코드 스캔을 BarcodeDetector로 구현한다"는 구현 방식이므로 tech입니다.
+    """
+    prompt = build_extraction_system_prompt()
+
+    assert "기능명이 문장에 들어 있다는 이유로 feature로 분류하지 않습니다" in prompt
+    assert "무엇으로 구현할지를 정했으면 tech" in prompt
+
+
+def test_extraction_template_binds_sub_actions_to_confirmed_features():
+    """
+    세부 동작이 별도 상위 기능으로 튀면 5번 기능 개수가 실행마다 달라집니다.
+
+    7번은 "6개로 확정"인데 5번에 9개가 나오면 문서 안에서 숫자가 안 맞습니다.
+    """
+    prompt = build_extraction_system_prompt()
+
+    assert "확정된 기능 목록이 원문에 있으면 그 목록의 이름만" in prompt
+    assert "상위 기능을 수행하는 방식이나 절차에" in prompt
+
+
+def test_extraction_template_reads_needs_from_problem_statements():
+    """
+    회의록은 사용자의 요구를 문제 형태로 말하는 일이 많습니다.
+
+    "직원이 재고 상태를 파악할 수 없어 발주 판단이 불가능하다"는
+    직원에게 재고 파악 요구가 있다는 뜻인데, 요구라는 단어가 없어
+    needs가 통째로 비어 나왔습니다.
+    """
+    prompt = build_extraction_system_prompt()
+
+    assert "요구가 문제 형태로 서술된 경우도 요구로 봅니다" in prompt
+    assert "해결 수단이나 기능명이 아니라 가능해져야 하는 상태를" in prompt
+    # 프로젝트 전체 문제를 모든 사용자에게 나눠 적는 것은 막아야 합니다.
+    assert "모든 사용자의 요구로 나누어 적지 않습니다" in prompt
+
+
+def test_extraction_template_preserves_numbers_in_background():
+    """
+    background에 규칙이 없어 모델이 요약하며 수치를 버렸습니다.
+
+    "12명 중 11명"이 "소상공인들이"로 뭉개지면 노드 2는 원본에 없는
+    수치를 되살릴 수 없습니다. 1번 개요의 구체성이 여기서 결정됩니다.
+    """
+    prompt = build_extraction_system_prompt()
+
+    assert "원문에 있는 수치는 그대로 보존합니다" in prompt
+    assert "분모와 분자가 함께 제시된 수치는 양쪽을 모두 씁니다" in prompt
+    assert "대부분, 다수, 상당수, 자주처럼 수치를 대신하는 표현으로" in prompt
+
+
+def test_extraction_template_does_not_widen_survey_findings():
+    """
+    조사에서 확인된 사실과 그로 인한 문제는 범위가 다릅니다.
+
+    11명이 수기로 관리한다는 것과 11명이 품절을 겪는다는 것은
+    다른 내용이므로 섞이면 없는 사실이 생깁니다.
+    """
+    prompt = build_extraction_system_prompt()
+
+    assert "조사에서 확인된 사실과 그로 인해 발생하는 문제를 섞어 쓰지 않습니다" in prompt
+
+
+def test_extraction_template_constraint_categories_match_schema():
+    """
+    프롬프트의 제약 분류가 스키마와 어긋나 있었습니다.
+
+    Constraint.type은 "일정 / 기술 / 범위 / 인력 / 기타"인데 프롬프트
+    categories에는 기술이 없어, 기술 성격의 제약이 나올 자리가 없었습니다.
+    """
+    from meeting_analysis.prompt_loader import load_extraction_template
+
+    categories = load_extraction_template()["constraint_rules"]["categories"]
+
+    assert "기술" in categories
+
+
+def test_extraction_template_captures_effort_estimates():
+    """
+    "ZXing 폴백 작업량 2~3일"이 제약에 안 잡혔습니다.
+
+    3개월 일정에서 개별 작업 공수는 일정 판단에 직접 쓰이는 정보입니다.
+    """
+    prompt = build_extraction_system_prompt()
+
+    assert "작업량이나 소요 기간을 추출합니다" in prompt
+    assert "그 기능을 만드는 데 드는 비용이므로 제약사항으로" in prompt
+    assert "2~3일 수준이다" in prompt

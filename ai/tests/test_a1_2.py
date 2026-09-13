@@ -104,13 +104,70 @@ def test_원본이_없는_소제목은_표시되지_않는다():
     assert "데이터 요구" not in s.content_html
 
 
-def test_기술스택에_tech_결정을_넣지_않는다():
+def test_기술스택에_tech_결정을_함께_넣는다():
     """
-    decisions[tech]는 6번에 넣지 않습니다.
-    같은 내용이 표현만 달라 중복되고, 7번에 어차피 들어갑니다.
+    decisions[tech]도 6번 기술 스택에 넣습니다.
+
+    바코드 구현 방식처럼 결정으로만 잡히는 기술이 빠지면
+    개발자가 6번만 보고는 무엇으로 만드는지 알 수 없습니다.
     """
     s = build_tech_scope(_structured())
-    assert "Next.js는 채택하지 않는다" not in s.content_html
+    assert "Next.js는 채택하지 않는다" in s.content_html
+
+
+def test_요구사항과_같은_근거를_쓴_tech_결정은_중복으로_뺀다():
+    """
+    같은 사실이 요구사항과 결정에 표현만 다르게 들어가는 일이 흔합니다.
+
+    문장이 다르면 seen_lines가 못 거르므로 원문 근거로 한 번 더 거릅니다.
+    """
+    같은_근거 = "백엔드 Spring Boot"
+
+    s = build_tech_scope(_structured(
+        requirements={
+            "technical": [{
+                "content": "백엔드는 Spring Boot를 사용한다",
+                "evidence": {"quote": 같은_근거},
+                "evidence_status": "verified",
+            }],
+        },
+        decisions=[{
+            "category": "tech",
+            "content": "백엔드 기술은 Spring Boot로 확정한다",
+            "rationale": "",
+            "evidence": {"quote": 같은_근거},
+            "evidence_status": "verified",
+        }],
+        constraints=[],
+    ))
+
+    assert "백엔드는 Spring Boot를 사용한다" in s.content_html
+    assert "백엔드 기술은 Spring Boot로 확정한다" not in s.content_html
+
+
+def test_근거가_다른_tech_결정은_남긴다():
+    """근거가 다르면 다른 논의이므로 별도 항목으로 봅니다."""
+    s = build_tech_scope(_structured(
+        requirements={
+            "technical": [{
+                "content": "백엔드는 Spring Boot를 사용한다",
+                "evidence": {"quote": "백엔드 Spring Boot"},
+                "evidence_status": "verified",
+            }],
+        },
+        decisions=[{
+            "category": "tech",
+            "content": "바코드 스캔은 BarcodeDetector로 구현한다",
+            "rationale": "스캐너 구매 비용 때문",
+            "evidence": {"quote": "브라우저의 BarcodeDetector API를 쓰면"},
+            "evidence_status": "verified",
+        }],
+        constraints=[],
+    ))
+
+    assert "바코드 스캔은 BarcodeDetector로 구현한다" in s.content_html
+    # 6번에는 이유를 붙이지 않습니다. 이유는 7번의 몫입니다.
+    assert "스캐너 구매 비용 때문" not in s.content_html
 
 
 def test_feature_결정은_6번에_들어가지_않는다():
@@ -143,7 +200,10 @@ def test_groups에_원본이_있는_소제목만_들어간다():
 def test_groups의_items가_content_html의_해당_소제목_항목과_같다():
     s = build_tech_scope(_structured())
     tech_group = next(g for g in s.groups if g.subtitle == "기술 스택")
-    assert tech_group.items == ["백엔드는 Spring Boot"]
+    assert tech_group.items == [
+        "백엔드는 Spring Boot",
+        "Next.js는 채택하지 않는다",
+    ]
 
     scope_group = next(g for g in s.groups if g.subtitle == "일정·인력 제약")
     assert "[일정] 개발 기간 3개월" in scope_group.items
@@ -223,8 +283,8 @@ def test_공백만_다른_문장도_중복으로_본다():
 def test_중복_제거가_멀쩡한_항목을_지우지_않는다():
     """회의록 1·2번처럼 중복이 없던 경우 결과가 그대로여야 합니다."""
     s = build_tech_scope(_structured())
-    # technical 1 + non_functional 1 + data 1 + constraints 1
-    assert len(s.items) == 4
+    # technical 1 + decisions[tech] 1 + non_functional 1 + data 1 + constraints 1
+    assert len(s.items) == 5
     assert len(s.items) == len(set(s.items))
     assert "백엔드는 Spring Boot" in s.items
     assert "주요 화면 응답 3초 이내" in s.items
