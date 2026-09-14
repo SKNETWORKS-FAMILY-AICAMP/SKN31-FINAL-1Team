@@ -32,4 +32,5 @@ recovery_extra_20260913/
 eval_a1.py
 diag_eligibility.py
 diag_quotes.py
+compare_eval.py
 eval_baseline/
