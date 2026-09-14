@@ -319,9 +319,12 @@ export default function OverviewView() {
         </div>
 
         {/* Workload (1 column) — team-wide, PM only */}
+        {/* self-start: 옆의 "진행 중인 프로젝트" 목록이 프로젝트 수만큼 길어져도
+            그리드 기본 stretch 정렬 때문에 이 카드까지 같이 늘어나던 문제
+            (2026-09-14) — Status Chart 카드(위)와 같은 방식으로 늘어남을 막는다. */}
         {isPM && (
-          <div className="lg:col-span-1">
-            <div className="glass p-6 rounded-xl h-full">
+          <div className="lg:col-span-1 self-start">
+            <div className="glass p-6 rounded-xl">
               <h3 className="text-sm font-bold flex items-center gap-2 mb-4">
                 <Users className="w-4 h-4 text-blue-500" /> 팀원별 업무량
               </h3>
