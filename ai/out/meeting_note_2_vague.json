@@ -2,39 +2,107 @@
   "project": {
     "name": "리테일링크",
     "background": "기능 관련 논의 및 정리",
-    "problem": "기능 관련 논의 및 정리",
-    "goals": [
-      "기능 관련 논의 및 정리"
+    "problem": "기능 설계와 구현에 대한 여러 논의가 필요하다",
+    "problem_items": [
+      {
+        "content": "알림 기능의 재고 감소 기준을 정하지 못했다",
+        "evidence": {
+          "quote": "재고가 얼마나 줄었을 때 알려줄지를 정해야 하는데, 품목마다 다르다는 의견이랑 그냥 일괄로 하자는 의견이 갈렸음. 결론은 못 냄. 일단 다음에 다시 보기로."
+        },
+        "evidence_status": "verified"
+      },
+      {
+        "content": "직원이 매입가를 볼 수 있는지에 대한 권한 설정이 확정되지 않았다",
+        "evidence": {
+          "quote": "직원 권한 관련해서, 직원이 어디까지 볼 수 있게 할지 얘기했는데 매입가는 안 보이게 해야 한다는 의견이 있었음. 다들 그럴듯하다고 했는데 확정한 건지는 애매함."
+        },
+        "evidence_status": "verified"
+      },
+      {
+        "content": "개발 인원이 부족하여 일정이 빠듯하다",
+        "evidence": {
+          "quote": "개발 쪽에서 일정이 빠듯하다는 얘기를 계속 함. 지금 인원으로는 어렵다는 뉘앙스였음."
+        },
+        "evidence_status": "verified"
+      },
+      {
+        "content": "서버 관련 논의가 명확하지 않다",
+        "evidence": {
+          "quote": "서버 관련해서도 얘기가 있었는데 잘 못 알아들었음. 이준호님이 나중에 문서로 정리해서 공유해준다고 함."
+        },
+        "evidence_status": "verified"
+      }
     ],
-    "evidence": {
+    "goals": [
+      {
+        "content": "재고 감소 시 알림 기준을 확정한다",
+        "evidence": {
+          "quote": "재고가 얼마나 줄었을 때 알려줄지를 정해야 하는데, 품목마다 다르다는 의견이랑 그냥 일괄로 하자는 의견이 갈렸음. 결론은 못 냄. 일단 다음에 다시 보기로."
+        },
+        "evidence_status": "verified"
+      },
+      {
+        "content": "직원의 매입가 접근 권한을 명확히 한다",
+        "evidence": {
+          "quote": "직원 권한 관련해서, 직원이 어디까지 볼 수 있게 할지 얘기했는데 매입가는 안 보이게 해야 한다는 의견이 있었음. 다들 그럴듯하다고 했는데 확정한 건지는 애매함."
+        },
+        "evidence_status": "verified"
+      },
+      {
+        "content": "개발 인원을 확충하여 일정 문제를 해결한다",
+        "evidence": {
+          "quote": "개발 쪽에서 일정이 빠듯하다는 얘기를 계속 함. 지금 인원으로는 어렵다는 뉘앙스였음."
+        },
+        "evidence_status": "verified"
+      },
+      {
+        "content": "서버 관련 내용을 명확히 정리하여 공유한다",
+        "evidence": {
+          "quote": "서버 관련해서도 얘기가 있었는데 잘 못 알아들었음. 이준호님이 나중에 문서로 정리해서 공유해준다고 함."
+        },
+        "evidence_status": "verified"
+      }
+    ],
+    "background_evidence": {
       "quote": "기능 관련 논의 및 정리"
     },
-    "evidence_status": "verified"
+    "problem_evidence": {
+      "quote": "알림 기능 관련해서 얘기가 좀 길어졌음. 재고가 얼마나 줄었을 때 알려줄지를 정해야 하는데, 품목마다 다르다는 의견이랑 그냥 일괄로 하자는 의견이 갈렸음. 결론은 못 냄. 일단 다음에 다시 보기로."
+    },
+    "background_evidence_status": "verified",
+    "problem_evidence_status": "verified"
   },
   "users": [],
   "requirements": {
     "functional": [
       {
-        "content": "발주서 기본 양식 1개로 시작",
-        "priority": "medium",
+        "content": "발주서 기본 양식을 제공한다",
         "evidence": {
           "quote": "발주서 양식은 거래처마다 다를 수 있다고 함. 일단 기본 양식 하나 만들고 나중에 늘리는 쪽으로 얘기됨."
         },
+        "feature_name": "발주서 양식",
         "evidence_status": "verified"
       },
       {
-        "content": "대시보드에 재고 현황, 알림 목록 포함",
-        "priority": "medium",
+        "content": "대시보드에 재고 현황을 포함한다",
         "evidence": {
           "quote": "대시보드에 뭘 넣을지 얘기했는데 이것저것 나왔음. 재고 현황이랑 알림 목록은 확실히 넣기로 함."
         },
+        "feature_name": "대시보드",
+        "evidence_status": "verified"
+      },
+      {
+        "content": "대시보드에 알림 목록을 포함한다",
+        "evidence": {
+          "quote": "대시보드에 뭘 넣을지 얘기했는데 이것저것 나왔음. 재고 현황이랑 알림 목록은 확실히 넣기로 함."
+        },
+        "feature_name": "대시보드",
         "evidence_status": "verified"
       }
     ],
     "non_functional": [
       {
-        "content": "속도는 너무 느리지 않게 해달라고 요청함.",
-        "priority": "medium",
+        "content": "속도가 너무 느리지 않게 한다",
         "evidence": {
           "quote": "속도는 너무 느리지 않게 해달라고 요청함."
         },
@@ -48,8 +116,8 @@
   "decisions": [
     {
       "category": "feature",
-      "content": "발주서 기본 양식 1개로 시작",
-      "rationale": null,
+      "content": "발주서 기본 양식 1개로 시작한다",
+      "rationale": "거래처마다 양식이 다를 수 있어 기본 양식부터 시작하기로 함",
       "evidence": {
         "quote": "발주서 기본 양식 1개로 시작"
       },
@@ -57,27 +125,18 @@
     },
     {
       "category": "feature",
-      "content": "대시보드에 재고 현황, 알림 목록 포함",
-      "rationale": null,
+      "content": "대시보드에 재고 현황과 알림 목록을 포함한다",
+      "rationale": "재고 현황과 알림 목록은 필수 정보로 판단됨",
       "evidence": {
         "quote": "대시보드에 재고 현황, 알림 목록 포함"
-      },
-      "evidence_status": "verified"
-    },
-    {
-      "category": "scope",
-      "content": "알림 기준은 보류",
-      "rationale": null,
-      "evidence": {
-        "quote": "알림 기준은 보류"
       },
       "evidence_status": "verified"
     }
   ],
   "constraints": [
     {
-      "type": "일정",
-      "content": "개발 쪽에서 일정이 빠듯함",
+      "type": "인력",
+      "content": "현재 인원으로는 개발 일정이 빠듯하다",
       "evidence": {
         "quote": "개발 쪽에서 일정이 빠듯하다는 얘기를 계속 함. 지금 인원으로는 어렵다는 뉘앙스였음."
       },
@@ -85,14 +144,11 @@
     }
   ],
   "unresolved": [
-    "사용자 유형 및 요구사항이 논의되지 않았습니다.",
-    "데이터 저장 및 연동 요구사항이 논의되지 않았습니다.",
-    "기술 스택 및 환경이 논의되지 않았습니다.",
-    "서버 관련 내용이 명확하지 않습니다."
+    "알림 기능의 재고 감소 기준이 정해지지 않았습니다.",
+    "직원의 매입가 접근 권한이 확정되지 않았습니다.",
+    "서버 관련 논의가 명확하지 않습니다.",
+    "다음 회의 일정이 정해지지 않았습니다."
   ],
   "meeting_id": "meeting_note_2_vague",
-  "validation_notes": [
-    "결정사항이 요구사항과 동일합니다: 발주서 기본 양식 1개로 시작 (하류에서 한쪽만 사용하세요)",
-    "결정사항이 요구사항과 동일합니다: 대시보드에 재고 현황, 알림 목록 포함 (하류에서 한쪽만 사용하세요)"
-  ]
+  "validation_notes": []
 }

@@ -50,7 +50,7 @@ def _base_meeting_text(additional_text: str = "") -> str:
 
 def test_extraction_template_has_expected_version():
     template = load_extraction_template()
-    assert template["metadata"]["version"] == "2.3"
+    assert template["metadata"]["version"] == "2.4"
 
 def test_extraction_template_has_user_rules():
     """대상 사용자 추출 규칙이 시스템 프롬프트에 실제로 포함되는지 확인합니다."""

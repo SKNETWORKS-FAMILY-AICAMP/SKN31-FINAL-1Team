@@ -27,3 +27,9 @@ data/raw/
 coverage/
 .geminiignore
 backend/logs/
+ai_backup_0913/
+recovery_extra_20260913/
+eval_a1.py
+diag_eligibility.py
+diag_quotes.py
+eval_baseline/
