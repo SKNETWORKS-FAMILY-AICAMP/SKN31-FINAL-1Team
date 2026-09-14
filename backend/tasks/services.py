@@ -14,7 +14,7 @@ from task_generation.agent import generate_tasks
 from team_sizing import apply_complexity_buffer, build_skill_role_map, estimate_team_size
 from work_package import apply_split_decisions, assemble_packages, assert_full_coverage, build_work_packages
 
-from tasks.planning_context import build_employee_profiles
+from tasks.planning_context import build_employee_profiles, load_known_experience_tags, persist_experience_tags
 from project_scale.agent import assess_project_complexity
 from assignee_mapping.agent import assignee_mapping_node
 from assignee_recommend.agent import assignee_recommend_node
@@ -291,10 +291,16 @@ def generate_task_suggestions(spec_id: int, on_stage=None) -> dict:
     # 위 주석(업무 생성/복잡도 판단 근처) 참고, 이 계정 TPM 한도에서는 병렬
     # 호출이 429를 더 빨리·자주 유발해 순차 호출로 되돌렸다.
     _stage("담당자 정보 분석 중…")
+    # 2026-09-14: 경력기술서(career_history_text)는 자주 안 바뀌는데 예전엔
+    # 이 값을 캐시 시드로 넘긴 적이 없어(assignee_mapping_node 쪽 훅은 있었지만
+    # 호출부가 채운 적 없음) 실행할 때마다 매번 LLM으로 다시 태그를 뽑고
+    # 있었다 — DB 캐시(EmployeeExperienceTagCache)에서 미리 읽어 시드한다.
+    known_experience_tags = load_known_experience_tags(raw_profiles)
     try:
         mapping_result = assignee_mapping_node({
             "raw_employee_profiles": raw_profiles,
             "tasks": tasks,
+            "known_experience_tags": known_experience_tags,
         })
     except Exception as e:
         logger.exception("담당자 매핑 실패 (spec_id=%s)", spec_id)
@@ -304,6 +310,8 @@ def generate_task_suggestions(spec_id: int, on_stage=None) -> dict:
     member_profiles = mapping_result["member_profiles"]
     if not member_profiles:
         return {"status": "error", "message": "업무에 필요한 스킬을 가진 재직 사원이 없습니다."}
+    # 새로 뽑았든 캐시에서 왔든 다시 저장해둔다 — 다음 실행부터 확실히 히트하게.
+    persist_experience_tags(raw_profiles, member_profiles)
 
     # 프로젝트 전체 누적 부하 — 취소된 업무는 실제 부하가 아니므로 제외.
     workload_qs = (
