@@ -10,7 +10,6 @@ from django.test import SimpleTestCase
 from assignee_recommend.rule_filter import list_project_workdays
 from tasks.scheduler import (
     DEFAULT_RISK_BUFFER,
-    MAX_RISK_BUFFER,
     ScheduleError,
     _sane_buffer,
     plan_days,
@@ -53,8 +52,9 @@ class SaneBufferTests(SimpleTestCase):
         self.assertEqual(_sane_buffer(None, DEFAULT_RISK_BUFFER), DEFAULT_RISK_BUFFER)
         self.assertEqual(_sane_buffer(0.5, DEFAULT_RISK_BUFFER), DEFAULT_RISK_BUFFER)
 
-    def test_huge_value_is_capped(self):
-        self.assertEqual(_sane_buffer(10.0, DEFAULT_RISK_BUFFER), MAX_RISK_BUFFER)
+    def test_huge_value_passes_through_uncapped(self):
+        # 2026-09-14: 최대 3배 상한 제거 — LLM이 준 값을 그대로 신뢰한다.
+        self.assertEqual(_sane_buffer(10.0, DEFAULT_RISK_BUFFER), 10.0)
 
     def test_reasonable_value_passes_through(self):
         self.assertEqual(_sane_buffer(1.5, DEFAULT_RISK_BUFFER), 1.5)

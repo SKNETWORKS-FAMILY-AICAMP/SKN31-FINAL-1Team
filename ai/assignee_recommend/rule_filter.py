@@ -163,15 +163,15 @@ def list_project_workdays(
 # ---------------------------------------------------------------------------
 FOCUS_HOURS_PER_DAY = 6.0   # 담당자가 하루에 실제 업무에 쓰는 시간(회의·리뷰 제외)
 DEFAULT_RISK_BUFFER = 1.2   # 업무별 risk_buffer_factor가 없을 때 기본 버퍼(20%)
-MAX_RISK_BUFFER = 3.0       # LLM이 준 값의 상한 — 환각으로 10배 같은 값이 와도 일정이 안 터지게
 
 
 def _sane_buffer(factor: Optional[float], default: float = DEFAULT_RISK_BUFFER) -> float:
     """LLM이 준 risk_buffer_factor를 검산한다. None이거나 1.0 미만(버퍼는 공수를
-    줄이는 게 아님)이면 기본값, 너무 크면 상한."""
+    줄이는 게 아님)이면 기본값. 2026-09-14: 상한(최대 3배) 클램프는 제거했다 —
+    LLM이 준 값을 그대로 신뢰한다."""
     if factor is None or factor < 1.0:
         return default
-    return min(factor, MAX_RISK_BUFFER)
+    return factor
 
 
 def plan_days(
