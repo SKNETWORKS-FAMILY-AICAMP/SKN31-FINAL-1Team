@@ -5,7 +5,11 @@ from pydantic import BaseModel, Field, model_validator
 
 from shared.llm_client import build_chat_kwargs
 
-from .eligibility_prompt import build_messages
+from .eligibility_prompt import (
+    build_messages,
+    build_paragraph_messages,
+    number_paragraphs,
+)
 
 
 class MeetingEligibilityError(Exception):
@@ -14,6 +18,69 @@ class MeetingEligibilityError(Exception):
     def __init__(self, message: str, cause_code: str):
         super().__init__(message)
         self.cause_code = cause_code
+
+
+class MeetingRelevance(BaseModel):
+    """
+    1단계 판정 결과. 원문 발췌를 받지 않습니다.
+
+    2026-09-14: 관련성 판정을 두 단계로 나눴습니다.
+
+    예전에는 한 번에 status와 relevant_passages를 같이 받았습니다.
+    그런데 relevant 판정에서는 발췌를 쓰지 않고 원문을 그대로
+    전달합니다(validate_relevant_passages 참고). 쓰지도 않는 발췌를
+    모델이 복창하느라 출력이 회의록 길이에 비례해 커졌고,
+    긴 회의록에서 출력 상한(gpt-4o는 16384)을 넘겨 500이 났습니다.
+
+        IncompleteOutputException: The output is incomplete
+        due to a max_tokens length limit.
+
+    토큰 상한을 올리는 것으로는 못 고칩니다. 16384가 모델의 최대이고,
+    회의록이 길어지면 언제든 다시 넘습니다. 출력 크기가 입력 크기에
+    비례하지 않게 만들어야 합니다.
+
+    이 스키마에는 발췌 필드가 없으므로 출력이 회의록 길이와 무관하게
+    짧습니다. 발췌가 실제로 필요한 mixed 판정에서만 2단계로
+    MeetingEligibility를 다시 받습니다.
+    """
+
+    status: Literal[
+        "relevant",
+        "mixed",
+        "irrelevant",
+        "needs_clarification",
+    ]
+
+    reason: str = Field(
+        min_length=1,
+        description="회의 원문을 근거로 작성한 판정 이유",
+    )
+
+    @model_validator(mode="after")
+    def strip_reason(self):
+        self.reason = self.reason.strip()
+
+        if not self.reason:
+            raise ValueError("판정 이유가 비어 있습니다.")
+
+        return self
+
+
+class RelevantParagraphs(BaseModel):
+    """
+    mixed 2단계 응답. 개발 관련 문단의 번호만 받습니다.
+
+    2026-09-14: 발췌 전문 대신 번호를 받도록 바꿨습니다.
+    이유는 eligibility_prompt.PARAGRAPH_SYSTEM_PROMPT 위 주석을 보십시오.
+
+    번호만 오므로 출력이 회의록 길이와 무관하고, 원문은 코드가 잘라내므로
+    모델이 글자를 바꿀 수 없습니다.
+    """
+
+    paragraph_numbers: list[int] = Field(
+        default_factory=list,
+        description="개발 기획과 관련된 문단의 번호",
+    )
 
 
 class MeetingEligibility(BaseModel):
@@ -57,9 +124,12 @@ class MeetingEligibility(BaseModel):
             "mixed",
         }
 
-        if allowed and not self.relevant_passages:
+        # 2026-09-14: 발췌를 필수로 요구하는 것은 mixed뿐입니다.
+        # mixed는 발췌가 곧 하류 입력이라 없으면 진행할 수 없지만,
+        # relevant는 원문을 그대로 전달하므로 발췌가 없어도 됩니다.
+        if self.status == "mixed" and not self.relevant_passages:
             raise ValueError(
-                "통과 판정에는 개발 관련 원문 발췌가 필요합니다."
+                "mixed 판정에는 개발 관련 원문 발췌가 필요합니다."
             )
 
         if not allowed and self.relevant_passages:
@@ -189,12 +259,18 @@ def validate_relevant_passages(
             cause_code="MEETING_NEEDS_CLARIFICATION",
         )
 
-    if (
-        not meeting_text.strip()
-        or not result.relevant_passages
-    ):
+    if not meeting_text.strip():
         raise MeetingEligibilityError(
-            "개발 관련성을 확인할 회의 원문과 판정 근거가 필요합니다.",
+            "개발 관련성을 확인할 회의 원문이 필요합니다.",
+            cause_code="MEETING_ELIGIBILITY_INVALID",
+        )
+
+    # 2026-09-14: relevant는 발췌를 요구하지 않게 바뀌었습니다.
+    # 1단계 판정만으로 원문을 그대로 전달합니다(MeetingRelevance 참고).
+    # 발췌가 있으면 판정 근거로 대조는 하되, 없다고 중단하지 않습니다.
+    if result.status == "mixed" and not result.relevant_passages:
+        raise MeetingEligibilityError(
+            "개발 관련 내용으로 선택된 문장이 없습니다. 다시 분석해 주세요.",
             cause_code="MEETING_ELIGIBILITY_INVALID",
         )
 
@@ -259,6 +335,50 @@ def validate_relevant_passages(
         for start, end in sorted(verified_spans)
     )
 
+# 고른 문단의 앞뒤로 함께 가져올 문단 수.
+#
+# 2026-09-14: 실제 회의 전사본에서 모델이 고른 문단만 넘겼더니
+# 기술 스택 논의가 통째로 빠졌습니다. 대화에서는 근거와 결론이
+# 다른 발언에 나뉘어 있습니다 — "런팟으로 GPU를 빌려서"와
+# "A100은 쓰라고 하더라고요"가 서로 다른 줄입니다.
+#
+# 모델의 선별을 코드가 넓혀 보정합니다. 잡담이 조금 섞여 들어와도
+# 개발 논의가 빠지는 것보다 낫습니다 — 잡담은 하류에서 근거가
+# 없어 버려지지만, 빠진 내용은 되살릴 방법이 없습니다.
+CONTEXT_PARAGRAPHS = 1
+
+
+def select_paragraphs(
+    numbered: list[tuple[int, str]],
+    numbers: list[int],
+    context: int = CONTEXT_PARAGRAPHS,
+) -> list[str]:
+    """모델이 고른 번호로 원문 문단을 잘라낸다.
+
+    모델이 범위 밖 번호나 중복을 낼 수 있으므로 코드가 거릅니다.
+    고른 문단의 앞뒤 context개를 함께 가져와 맥락을 보존합니다.
+    원문 순서를 유지합니다 — 회의 흐름이 뒤섞이면 하류가 배경과
+    결정의 선후를 잘못 읽습니다.
+    """
+    by_number = dict(numbered)
+    picked: set[int] = set()
+
+    for number in numbers:
+        if not isinstance(number, int):
+            continue
+
+        if number not in by_number:
+            continue
+
+        for offset in range(-context, context + 1):
+            neighbour = number + offset
+
+            if neighbour in by_number:
+                picked.add(neighbour)
+
+    return [by_number[number] for number in sorted(picked)]
+
+
 def assess_meeting(
     client,
     meeting_text: str,
@@ -286,19 +406,82 @@ def assess_meeting(
     #   · 상한을 MAX_TOKENS로 명시하고
     #   · 모델 계열에 맞는 인자 이름(max_tokens / max_completion_tokens)을 고르며
     #   · temperature를 안 받는 추론 모델에서는 자동으로 생략합니다.
-    result = client.chat.completions.create(
-        **build_chat_kwargs(
-            model=model,
-            messages=build_messages(
-                meeting_text=meeting_text,
-                glossary_text=glossary_text,
-            ),
-            response_model=MeetingEligibility,
-            max_tokens=max_tokens,
-            max_retries=max_retries,
-            temperature=temperature,
-        )
+    messages = build_messages(
+        meeting_text=meeting_text,
+        glossary_text=glossary_text,
     )
+
+    def call(response_model):
+        return client.chat.completions.create(
+            **build_chat_kwargs(
+                model=model,
+                messages=messages,
+                response_model=response_model,
+                max_tokens=max_tokens,
+                max_retries=max_retries,
+                temperature=temperature,
+            )
+        )
+
+    # ── 1단계: 판정만 받습니다 ────────────────────────────
+    # 출력이 status와 reason뿐이라 회의록이 아무리 길어도 짧습니다.
+    relevance = call(MeetingRelevance)
+
+    if relevance.status in {"irrelevant", "needs_clarification"}:
+        # 중단 판정은 발췌가 필요 없습니다. 그대로 검증기로 넘겨
+        # 기존 예외와 메시지를 그대로 씁니다.
+        result = MeetingEligibility(
+            status=relevance.status,
+            reason=relevance.reason,
+        )
+
+    elif relevance.status == "relevant":
+        # 회의 전체가 관련 내용이면 원문을 그대로 전달합니다.
+        # 발췌를 쓰지 않으므로 2단계 호출을 하지 않습니다.
+        result = MeetingEligibility(
+            status="relevant",
+            reason=relevance.reason,
+        )
+
+    else:
+        # ── 2단계: mixed일 때만 개발 관련 구간을 고릅니다 ──
+        # 발췌 전문이 아니라 문단 번호를 받습니다. 출력이 회의록
+        # 길이에 비례하지 않게 하려는 것입니다.
+        numbered = number_paragraphs(meeting_text)
+
+        chosen = client.chat.completions.create(
+            **build_chat_kwargs(
+                model=model,
+                messages=build_paragraph_messages(numbered),
+                response_model=RelevantParagraphs,
+                max_tokens=max_tokens,
+                max_retries=max_retries,
+                temperature=temperature,
+            )
+        )
+
+        selected = select_paragraphs(
+            numbered=numbered,
+            numbers=chosen.paragraph_numbers,
+        )
+
+        if not selected:
+            raise MeetingEligibilityError(
+                (
+                    "개발 관련 내용으로 선택된 문단이 없습니다. "
+                    "다시 분석해 주세요."
+                ),
+                cause_code="MEETING_ELIGIBILITY_INVALID",
+            )
+
+        return (
+            MeetingEligibility(
+                status="mixed",
+                reason=relevance.reason,
+                relevant_passages=selected,
+            ),
+            "\n\n".join(selected),
+        )
 
     relevant_text = validate_relevant_passages(
         result=result,
