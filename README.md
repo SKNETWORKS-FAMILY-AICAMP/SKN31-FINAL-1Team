@@ -47,33 +47,43 @@
 
 <br>
 
-기술스택
---------
+## 기술스택
 
-### Frontend
+#### Frontend
+![React](https://img.shields.io/badge/React_19-61DAFB?style=for-the-badge&logo=React&logoColor=black)
+![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?style=for-the-badge&logo=TypeScript&logoColor=white)
+![Vite](https://img.shields.io/badge/Vite_7-646CFF?style=for-the-badge&logo=Vite&logoColor=white)
+![React Router](https://img.shields.io/badge/React_Router_7-CA4245?style=for-the-badge&logo=ReactRouter&logoColor=white)
+![Canvas 2D](https://img.shields.io/badge/Canvas_2D-E34F26?style=for-the-badge&logo=HTML5&logoColor=white)
+![Vitest](https://img.shields.io/badge/Vitest-6E9F18?style=for-the-badge&logo=Vitest&logoColor=white)
+ 
+#### Backend
+![Python](https://img.shields.io/badge/Python_3.12-3776AB?style=for-the-badge&logo=Python&logoColor=white)
+![Django](https://img.shields.io/badge/Django_5.2-092E20?style=for-the-badge&logo=Django&logoColor=white)
+![Django REST Framework](https://img.shields.io/badge/Django_REST_Framework-A30000?style=for-the-badge&logo=django&logoColor=white)
+![JWT](https://img.shields.io/badge/Simple_JWT-000000?style=for-the-badge&logo=JSON%20web%20tokens&logoColor=white)
+![Swagger](https://img.shields.io/badge/drf--spectacular-85EA2D?style=for-the-badge&logo=Swagger&logoColor=black)
+![Gunicorn](https://img.shields.io/badge/Gunicorn-499848?style=for-the-badge&logo=Gunicorn&logoColor=white)
+![Pytest](https://img.shields.io/badge/pytest-0A9EDC?style=for-the-badge&logo=pytest&logoColor=white)
+ 
+#### AI 
+![OpenAI](https://img.shields.io/badge/OpenAI_GPT--4o-412991?style=for-the-badge&logo=OpenAI&logoColor=white)
 
-![React 19](https://img.shields.io/badge/React_19-61DAFB?style=for-the-badge&logo=react&logoColor=20232A)
-![TypeScript 6](https://img.shields.io/badge/TypeScript_6-3178C6?style=for-the-badge&logo=typescript&logoColor=white)
-![Vite 8](https://img.shields.io/badge/Vite_8-646CFF?style=for-the-badge&logo=vite&logoColor=white)
+#### Database
+![PostgreSQL](https://img.shields.io/badge/PostgreSQL_17-4169E1?style=for-the-badge&logo=PostgreSQL&logoColor=white)
+![pgvector](https://img.shields.io/badge/pgvector_HNSW-4169E1?style=for-the-badge&logo=PostgreSQL&logoColor=white)
+![Neo4j](https://img.shields.io/badge/Neo4j_Aura-4581C3?style=for-the-badge&logo=Neo4j&logoColor=white)
+![SQLite](https://img.shields.io/badge/SQLite-003B57?style=for-the-badge&logo=SQLite&logoColor=white)
+ 
+#### Infrastructure & DevOps
+![Amazon EC2](https://img.shields.io/badge/EC2_g4dn.xlarge-FF9900?style=for-the-badge&logo=AmazonEC2&logoColor=white)
+![Amazon RDS](https://img.shields.io/badge/Amazon_RDS-527FFF?style=for-the-badge&logo=AmazonRDS&logoColor=white)
+![NVIDIA](https://img.shields.io/badge/NVIDIA_T4-76B900?style=for-the-badge&logo=NVIDIA&logoColor=white)
+![Docker](https://img.shields.io/badge/Docker_Compose-2496ED?style=for-the-badge&logo=Docker&logoColor=white)
+![Nginx](https://img.shields.io/badge/Nginx-009639?style=for-the-badge&logo=Nginx&logoColor=white)
+![GitHub](https://img.shields.io/badge/GitHub-181717?style=for-the-badge&logo=GitHub&logoColor=white)
 
-### Backend · Core API
-
-![Kotlin](https://img.shields.io/badge/Kotlin-7F52FF?style=for-the-badge&logo=kotlin&logoColor=white)
-![Spring Boot](https://img.shields.io/badge/Spring_Boot-6DB33F?style=for-the-badge&logo=springboot&logoColor=white)
-
-### AI Service
-
-![Python 3.11](https://img.shields.io/badge/Python_3.11-3776AB?style=for-the-badge&logo=python&logoColor=white)
-![FastAPI](https://img.shields.io/badge/FastAPI-009688?style=for-the-badge&logo=fastapi&logoColor=white)
-![OpenAI](https://img.shields.io/badge/OpenAI-412991?style=for-the-badge&logo=openai&logoColor=white)
-
-### Data · Infrastructure
-
-![MySQL 8.4](https://img.shields.io/badge/MySQL_8.4-4479A1?style=for-the-badge&logo=mysql&logoColor=white)
-![Elasticsearch](https://img.shields.io/badge/Elasticsearch-005571?style=for-the-badge&logo=elasticsearch&logoColor=white)
-![Redis](https://img.shields.io/badge/Redis-DC382D?style=for-the-badge&logo=redis&logoColor=white)
-![RabbitMQ](https://img.shields.io/badge/RabbitMQ-FF6600?style=for-the-badge&logo=rabbitmq&logoColor=white)
-![Qdrant](https://img.shields.io/badge/Qdrant-DC244C?style=for-the-badge)
+---
 <br>
 
 ## 디렉토리 구조
