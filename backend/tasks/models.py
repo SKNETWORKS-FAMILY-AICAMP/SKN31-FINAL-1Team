@@ -167,5 +167,34 @@ class TaskGenerationJob(models.Model):
         verbose_name_plural = "업무 배분 실행 작업 목록"
         ordering = ['-created_at']
 
+
+class EmployeeExperienceTagCache(models.Model):
+    """
+    User.past_projects(경력기술서 원문)에서 LLM으로 추출한 경험 태그 캐시
+    (2026-09-14 도입 — "경력기술서는 자주 안 바뀌는데 돌릴 때마다 매번 다시
+    추출하는 것 아니냐"는 지적 확인 결과: ai/assignee_mapping/agent.py에
+    프로세스 메모리 캐시(_experience_tags_cache)와 "호출부가 이전 실행에서
+    영속시켜 둔 태그를 known_experience_tags로 넘기면 시드한다"는 훅까지
+    이미 있었지만, 정작 백엔드(tasks/services.py)가 그 값을 채워 넘긴 적이
+    없어 사실상 서버 재시작마다(그리고 gunicorn 워커가 여러 개면 워커마다)
+    매번 새로 LLM을 호출하고 있었다. 이 테이블이 그 "영속" 역할을 한다.
+
+    text_hash를 원문(career_history_text)의 SHA-256으로 잡아서, 원문이 한
+    글자라도 바뀌면 해시가 달라져 자동으로 새 캐시로 취급된다 — 별도 무효화
+    로직이 필요 없다.
+    """
+    text_hash = models.CharField(max_length=64, primary_key=True, verbose_name="경력기술서 원문 SHA-256")
+    tags = models.JSONField(default=list, verbose_name="추출된 경험 태그")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "employee_experience_tag_cache"
+        verbose_name = "경력기술서 태그 캐시"
+        verbose_name_plural = "경력기술서 태그 캐시 목록"
+
+    def __str__(self):
+        return f"{self.text_hash[:12]}… ({len(self.tags)}개 태그)"
+
     def __str__(self):
         return f"[{self.status}] spec={self.spec_id} ({self.stage})"

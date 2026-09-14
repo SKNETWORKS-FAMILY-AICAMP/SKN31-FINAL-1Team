@@ -9,14 +9,55 @@
 (숙련도 1~5)을 함께 싣는다 — A2-3 _fit_score가 스킬 매칭 점수를 숙련도로 가중한다.
 """
 
+import hashlib
 from datetime import date
-from typing import List, Optional, Union
+from typing import Dict, List, Optional, Union
 
 from django.contrib.auth import get_user_model
 
 from assignee_recommend.rule_filter import list_project_workdays
+from tasks.models import EmployeeExperienceTagCache
 
 User = get_user_model()
+
+
+def _text_hash(text: str) -> str:
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def load_known_experience_tags(raw_profiles: List[dict]) -> Dict[str, List[str]]:
+    """
+    이번 파이프라인에 등장하는 사원들의 career_history_text 중 이미 캐시된
+    태그가 있으면 {원문: 태그목록}으로 돌려준다. assignee_mapping_node의
+    known_experience_tags로 그대로 넘기면, 원문이 안 바뀐 사람은 LLM을
+    다시 부르지 않는다(2026-09-14 도입 — "매번 다시 추출하냐"는 지적 확인
+    결과, 캐시 시드 훅은 있었는데 백엔드가 채워 넘긴 적이 없었다).
+    """
+    texts = {p["career_history_text"].strip() for p in raw_profiles if p.get("career_history_text", "").strip()}
+    if not texts:
+        return {}
+    hash_to_text = {_text_hash(t): t for t in texts}
+    rows = EmployeeExperienceTagCache.objects.filter(text_hash__in=hash_to_text.keys())
+    return {hash_to_text[row.text_hash]: row.tags for row in rows}
+
+
+def persist_experience_tags(raw_profiles: List[dict], member_profiles: List[dict]) -> None:
+    """
+    assignee_mapping_node가 이번에 새로 뽑았든 캐시에서 가져왔든, member_profiles에
+    실려 나온 태그를 전부 다시 저장해둔다(이미 캐시된 것도 갱신 시각만 새로 찍히고
+    내용은 그대로라 손해가 없다) — 다음 실행부터 load_known_experience_tags가
+    바로 히트하게 하기 위함.
+    """
+    raw_by_id = {p["employee_id"]: p for p in raw_profiles}
+    for mp in member_profiles:
+        raw = raw_by_id.get(mp.get("employee_id"))
+        text = (raw or {}).get("career_history_text", "").strip()
+        if not text:
+            continue
+        EmployeeExperienceTagCache.objects.update_or_create(
+            text_hash=_text_hash(text),
+            defaults={"tags": mp.get("past_similar_tasks") or []},
+        )
 
 
 def build_employee_profiles() -> List[dict]:
