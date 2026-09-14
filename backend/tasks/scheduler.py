@@ -25,6 +25,7 @@ from typing import Any, Dict, List, Optional, Sequence
 from assignee_recommend.rule_filter import (
     DEFAULT_RISK_BUFFER,
     FOCUS_HOURS_PER_DAY,
+    MAX_RISK_BUFFER,
     _sane_buffer,
     plan_days,
 )
