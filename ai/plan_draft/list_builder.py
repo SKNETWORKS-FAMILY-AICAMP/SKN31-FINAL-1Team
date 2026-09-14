@@ -31,6 +31,16 @@ def _ul(lines: list[str]) -> str:
     return "<ul>" + "".join(f"<li>{escape(t)}</li>" for t in lines) + "</ul>"
 
 
+def build_goals_fallback(structured: dict) -> str:
+    """LLM이 목표를 누락하면 원본 문자열만 안전하게 목록으로 표시합니다."""
+    project = structured.get("project") or {}
+    goals = project.get("goals") if isinstance(project, dict) else None
+    if not isinstance(goals, list):
+        return ""
+    lines = [goal.strip() for goal in goals if isinstance(goal, str) and goal.strip()]
+    return _ul(lines) if lines else ""
+
+
 def _norm(text: str) -> str:
     """중복 판정용 정규화. 공백만 제거해 표현 차이를 흡수합니다."""
     return "".join(text.split())
@@ -109,14 +119,15 @@ def collect_source_evidence(structured: dict, source_fields: list[str]) -> list[
         if field.startswith("project."):
             # 2026-09-07: project.evidence가 background_evidence/problem_evidence로
             # 나뉘었습니다(schemas.py Project 참고). project.problem을 가리키면
-            # problem_evidence를, 그 외(project.name, project.background)는
+            # problem_evidence를, project.name과 project.background는
             # background_evidence를 가져옵니다 — name은 따로 근거가 없고
             # background와 함께 1번 개요 섹션에 쓰이기 때문입니다.
+            # project.goals는 별도 근거 필드가 없으므로 근거를 수집하지 않습니다.
             sub = field.split(".", 1)[1]
             proj = structured.get("project") or {}
             if sub == "problem":
                 add(proj, "problem_evidence", "problem_evidence_status")
-            else:
+            elif sub in ("name", "background"):
                 add(proj, "background_evidence", "background_evidence_status")
             continue
 

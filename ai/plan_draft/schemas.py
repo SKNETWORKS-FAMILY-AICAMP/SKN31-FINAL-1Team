@@ -6,16 +6,16 @@
 | # | key         | 섹션            | 유형      | 생성 |
 |---|-------------|-----------------|-----------|------|
 | 1 | overview    | 프로젝트 개요   | narrative | LLM  |
-| 2 | problem     | 문제 정의       | narrative | LLM  |
-| 3 | users       | 대상 사용자     | narrative | LLM  |
-| 4 | features    | 주요 기능       | narrative | LLM  |
-| 5 | scenarios   | 사용자 시나리오 | narrative | LLM  |
+| 2 | problem     | 핵심 목표       | narrative | LLM  |
+| 3 | goals        | 세부 목표 및 문제 정의 | narrative | LLM  |
+| 4 | users       | 대상 사용자     | narrative | LLM  |
+| 5 | features    | 주요 기능       | narrative | LLM  |
 | 6 | tech_scope  | 기술 스택 및 제약사항 | list | 코드 |
 | 7 | decisions   | 최종 결정사항   | list      | 코드 |
 
 ## 12개에서 7개로 줄인 내역
 
-- 프로젝트 목표 → 삭제 (개요·문제 정의와 내용이 겹침)
+- 2번 핵심 목표 / 3번 세부 목표 및 문제 정의로 분리
 - 기능/비기능/데이터 요구사항 → 삭제 (실무 기획서에 상세 명세를 담지 않음)
 - 기술 요구사항 + 서비스 범위·제약 → 6번으로 통합
 
@@ -30,7 +30,7 @@ is_incomplete 같은 시스템 필드를 LLM 스키마에 넣으면
 """
 
 from enum import Enum
-from typing import Optional
+from typing import Optional, Literal
 
 from pydantic import BaseModel, Field
 
@@ -51,21 +51,25 @@ SECTION_SPEC = [
      "type": SectionType.NARRATIVE,
      "source_fields": ["project.name", "project.background"]},
 
-    {"no": 2, "key": "problem",    "title": "문제 정의",
+    {"no": 2, "key": "problem",    "title": "핵심 목표",
      "type": SectionType.NARRATIVE,
-     "source_fields": ["project.problem"]},
+     "source_fields": ["project.goals", "project.problem", "users",
+                       "requirements.functional", "requirements.non_functional",
+                       "requirements.technical", "decisions"]},
 
-    {"no": 3, "key": "users",      "title": "대상 사용자",
+    {"no": 3, "key": "goals",      "title": "세부 목표 및 문제 정의",
+     "type": SectionType.NARRATIVE,
+     "source_fields": ["project.goals", "project.problem", "users",
+                       "requirements.functional", "requirements.non_functional",
+                       "requirements.technical", "decisions"]},
+
+    {"no": 4, "key": "users",      "title": "대상 사용자",
      "type": SectionType.NARRATIVE,
      "source_fields": ["users"]},
 
-    {"no": 4, "key": "features",   "title": "주요 기능",
+    {"no": 5, "key": "features",   "title": "주요 기능",
      "type": SectionType.NARRATIVE,
      "source_fields": ["requirements.functional", "decisions[feature]"]},
-
-    {"no": 5, "key": "scenarios",  "title": "사용자 시나리오",
-     "type": SectionType.NARRATIVE,
-     "source_fields": ["scenarios"]},
 
     {"no": 6, "key": "tech_scope", "title": "기술 스택 및 제약사항",
      "type": SectionType.LIST,
@@ -87,6 +91,9 @@ class Feature(BaseModel):
     프론트 수정 화면이 항목 단위로 편집하는 구조라
     HTML 덩어리가 아니라 배열로 담습니다.
     """
+    group: Literal["mvp", "integration"] = Field(
+        default="mvp", description="확정 기능은 mvp, 목록과 별개로 확정된 연동은 integration"
+    )
     title: str = Field(..., max_length=40, description="기능명. 30자 내외.")
     description: str = Field(
         ...,

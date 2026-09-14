@@ -46,7 +46,35 @@ from .schemas import (
 
 logger = logging.getLogger(__name__)
 
+from .feature_renderer import render_features
+
 ALLOWED_TAGS = {"p", "ul", "li", "strong"}
+
+
+def _goal_content(structured: dict, content: str) -> str:
+    source_content = list_builder.build_goals_fallback(structured)
+    goal_sources = [f for f in next(s["source_fields"] for s in SECTION_SPEC if s["key"] == "goals") if f != "project.goals"]
+    if not source_content and _source_is_empty(structured, goal_sources):
+        logger.warning("기획서 목표 원본 없음: project.goals가 비어 있습니다.")
+        return ""
+    # 태그만 출력한 경우도 누락으로 취급합니다.
+    from html.parser import HTMLParser
+
+    class TextCollector(HTMLParser):
+        def __init__(self):
+            super().__init__()
+            self.parts = []
+
+        def handle_data(self, data):
+            self.parts.append(data)
+
+    parser = TextCollector()
+    parser.feed(content)
+    visible_text = "".join(parser.parts).strip()
+    if visible_text and visible_text not in {"-", "회의에서 논의되지 않았습니다."}:
+        return content
+    logger.warning("기획서 목표 응답 누락: project.goals 원문으로 복구했습니다.")
+    return source_content
 
 
 def _call(system: str, messages: list[dict], response_model, context: str = ""):
@@ -167,11 +195,7 @@ def run(structured: dict, proposal_id: str) -> PlanDocument:
             feats = result.features
             # 읽기 모드용 HTML도 함께 만듭니다.
             # 편집은 features를, 표시는 content_html을 씁니다.
-            content = "".join(
-                f"<p><strong>{escape(f.title)}</strong></p>"
-                f"<p>{escape(f.description)}</p>"
-                for f in feats
-            )
+            content = render_features(feats)
             sections.append(PlanSection(
                 no=spec["no"], key=spec["key"], title=spec["title"],
                 section_type=spec["type"],
@@ -192,6 +216,8 @@ def run(structured: dict, proposal_id: str) -> PlanDocument:
 
         gen = by_key.get(spec["key"])
         content = gen.content_html if gen else ""
+        if spec["key"] in {"problem", "goals"}:
+            content = _goal_content(structured, content)
 
         sections.append(PlanSection(
             no=spec["no"],
@@ -250,8 +276,21 @@ def regenerate_section(
         PlanSections,
         context=f"regenerate_section={section_key}",
     )
+    if section_key == "features":
+        gen = next((s for s in result.sections if s.key == section_key), None)
+        return PlanSection(
+            no=spec["no"], key=spec["key"], title=spec["title"],
+            section_type=spec["type"], content_html=render_features(result.features),
+            features=result.features, items=[f.title for f in result.features],
+            source_fields=spec["source_fields"],
+            evidence=list_builder.collect_source_evidence(structured, spec["source_fields"]),
+            needs_input=gen.needs_input if gen else "", is_incomplete=not result.features,
+        )
+
     gen = next((s for s in result.sections if s.key == section_key), None)
     content = gen.content_html if gen else ""
+    if section_key in {"problem", "goals"}:
+        content = _goal_content(structured, content)
 
     return PlanSection(
         no=spec["no"], key=spec["key"], title=spec["title"],

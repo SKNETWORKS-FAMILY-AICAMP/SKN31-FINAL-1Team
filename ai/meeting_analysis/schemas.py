@@ -47,7 +47,9 @@ class Project(BaseModel):
     name: str = Field(..., description="프로젝트명")
     background: str = Field(..., description="프로젝트 배경")
     problem: str = Field(..., description="해결하려는 문제")
-    goals: list[str] = Field(..., min_length=1, description="프로젝트 목표")
+    goals: list[str] = Field(
+        ..., description="회의록에 명시된 프로젝트 목표. 언급이 없으면 빈 배열. 빈 문자열 금지."
+    )
     background_evidence: Evidence = Field(..., description="background 문장의 근거")
     problem_evidence: Evidence = Field(..., description="problem 문장의 근거")
 
