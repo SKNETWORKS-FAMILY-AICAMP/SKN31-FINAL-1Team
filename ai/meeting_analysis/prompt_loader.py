@@ -489,6 +489,16 @@ def build_extraction_system_prompt() -> str:
             rule,
         )
 
+    # 2026-09-14 추가 — 선택 섹션입니다.
+    # 템플릿에 없으면 조용히 건너뜁니다.
+    scenario_rules = template.get("scenario_rules")
+
+    if isinstance(scenario_rules, dict) and scenario_rules:
+        append_rule_block(
+            "시나리오 추출 규칙",
+            scenario_rules,
+        )
+
     parts.append("결정사항 분류 규칙")
 
     for key, rule in template["decision_rules"].items():
@@ -518,6 +528,15 @@ def build_extraction_system_prompt() -> str:
                 "제약사항 유형: " + ", ".join(category_names)
             )
 
+    # 2026-09-14 추가 — 선택 섹션입니다.
+    date_rules = template.get("date_rules")
+
+    if isinstance(date_rules, dict) and date_rules:
+        append_rule_block(
+            "날짜와 기간 처리 규칙",
+            date_rules,
+        )
+
     # 기존 예시의 내용은 변경하지 않고 그대로 전달합니다.
     for key, title in [
         (
@@ -541,6 +560,15 @@ def build_extraction_system_prompt() -> str:
                     sort_keys=False,
                 )
             )
+
+    # 2026-09-14 추가 — 자체 점검 목록은 항상 마지막에 둡니다.
+    final_checklist = template.get("final_checklist")
+
+    if isinstance(final_checklist, dict) and final_checklist:
+        append_rule_block(
+            "출력 직전 자체 점검",
+            final_checklist,
+        )
 
     return "\n\n".join(parts)
 

@@ -400,6 +400,47 @@ def collect_feature_evidence(
     )
 
 
+def decide_feature_groups(
+    quote_groups: dict[str, set[str]],
+) -> dict[str, str]:
+    """
+    기능마다 group을 판정합니다. LLM을 쓰지 않습니다.
+
+    회의에서 "제공 기능은 A, B, C로 확정한다"처럼 여러 기능을 한 문장에
+    열거하면, 그 문장 하나가 여러 feature_name의 공통 근거가 됩니다.
+    quote_groups에 이미 그 관계가 들어 있습니다.
+
+      공통 근거(두 개 이상의 기능이 같은 quote를 씀)에 포함된 기능
+        -> 확정 기능 목록이므로 mvp
+
+      자기 근거만 가진 기능
+        -> 목록과 별개로 확정된 것이므로 integration
+
+    ※ 열거 문장이 아예 없으면(공통 근거 0건) 판정 근거가 없습니다.
+      이때 전부 integration으로 두면 확정 기능이 전멸하므로
+      기본값인 mvp를 그대로 씁니다.
+    """
+    all_names = {
+        name
+        for names in quote_groups.values()
+        for name in names
+    }
+
+    shared_names: set[str] = set()
+
+    for names in quote_groups.values():
+        if len(names) >= 2:
+            shared_names |= names
+
+    if not shared_names:
+        return {name: "mvp" for name in all_names}
+
+    return {
+        name: ("mvp" if name in shared_names else "integration")
+        for name in all_names
+    }
+
+
 def build_features(
     structured: dict,
 ) -> list[Feature]:
@@ -533,6 +574,8 @@ def build_features(
 
     features: list[Feature] = []
 
+    feature_groups = decide_feature_groups(quote_groups)
+
     for feature_name, items in grouped_items.items():
         decisions = decision_details.get(
             feature_name,
@@ -606,6 +649,10 @@ def build_features(
                 title=feature_name,
                 description=" ".join(
                     description_parts
+                ),
+                group=feature_groups.get(
+                    feature_name,
+                    "mvp",
                 ),
             )
         )

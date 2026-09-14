@@ -37,7 +37,7 @@ is_incomplete 같은 시스템 필드를 LLM 스키마에 넣으면
 """
 
 from enum import Enum
-from typing import Optional
+from typing import Literal, Optional
 
 from pydantic import BaseModel, Field
 
@@ -135,9 +135,24 @@ class Feature(BaseModel):
     """
     기획서 5번 주요 기능의 항목 하나.
 
-    필드는 기존과 동일하게 title, description만 사용합니다.
     상세 정보가 없는 기능은 짧게 설명합니다.
+
+    2026-09-14: group을 추가했습니다. 확정 기능 목록과 목록과 별개로
+    확정된 연동을 화면에서 나눠 보여주기 위해서입니다.
+    값은 LLM이 정하지 않고 build_features가 근거로 판정합니다 —
+    회의에서 "제공 기능은 A, B, C로 확정한다"처럼 여러 기능을 한 문장에
+    열거하면 그 문장이 여러 기능의 공통 근거가 됩니다. 공통 근거에
+    들어간 기능이 mvp이고, 자기 근거만 가진 기능이 integration입니다.
+    열거 문장이 없으면 판정 근거가 없으므로 전부 mvp로 둡니다.
     """
+
+    group: Literal["mvp", "integration"] = Field(
+        default="mvp",
+        description=(
+            "확정 기능 목록에 포함되면 mvp, "
+            "목록과 별개로 확정된 연동이면 integration."
+        ),
+    )
 
     title: str = Field(
         ...,

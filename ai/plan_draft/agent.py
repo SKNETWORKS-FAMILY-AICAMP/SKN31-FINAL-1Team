@@ -31,6 +31,7 @@ from shared.llm_client import build_chat_kwargs, get_client
 from shared.retry_config import MAX_RETRIES, MAX_TOKENS, MODEL, TEMPERATURE
 
 from . import list_builder
+from .feature_renderer import render_features
 from .prompts import (
     REGENERATE_PROMPT,
     build_messages,
@@ -182,11 +183,10 @@ def run(
             )
             # 읽기 모드용 HTML도 함께 만듭니다.
             # 편집은 features를, 표시는 content_html을 씁니다.
-            content = "".join(
-                f"<p><strong>{escape(f.title)}</strong></p>"
-                f"<p>{escape(f.description)}</p>"
-                for f in feats
-            )
+            #
+            # 2026-09-14: 확정 기능과 별도 연동이 함께 있으면
+            # 소제목으로 나눠 보여줍니다(feature_renderer 참고).
+            content = render_features(feats)
             sections.append(PlanSection(
                 no=spec["no"], key=spec["key"], title=spec["title"],
                 section_type=spec["type"],

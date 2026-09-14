@@ -176,9 +176,9 @@ def _validate_plan_template(template: dict) -> None:
         "plan_generation.metadata",
     )
 
-    if version != "2.2":
+    if version != "2.3":
         raise PromptTemplateError(
-            "plan_generation.yaml 버전은 2.2여야 합니다."
+            "plan_generation.yaml 버전은 2.3이어야 합니다."
         )
 
     _require_text(
