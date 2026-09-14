@@ -18,7 +18,7 @@ load_dotenv(dotenv_path=Path(__file__).resolve().parent.parent / ".env")
 
 from plan_draft.agent import _call
 from plan_draft.prompts import build_messages, build_system_prompt
-from plan_draft.schemas import PlanSections
+from ai.plan_draft.plan_schemas import PlanSections
 from plan_draft import list_builder
 
 structured = json.loads(

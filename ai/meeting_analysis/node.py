@@ -93,6 +93,7 @@ def run(
             model=MODEL,
             max_retries=MAX_RETRIES,
             temperature=TEMPERATURE,
+            max_tokens=MAX_TOKENS,
         )
 
         messages = build_messages(relevant_text)

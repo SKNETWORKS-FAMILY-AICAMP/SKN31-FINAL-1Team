@@ -3,6 +3,8 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, model_validator
 
+from shared.llm_client import build_chat_kwargs
+
 from .eligibility_prompt import build_messages
 
 
@@ -265,6 +267,7 @@ def assess_meeting(
     model: str,
     max_retries: int,
     temperature: float,
+    max_tokens: int,
 ) -> tuple[MeetingEligibility, str]:
     """회의록의 개발 관련성을 판단합니다."""
 
@@ -274,15 +277,27 @@ def assess_meeting(
             cause_code="MEETING_NEEDS_CLARIFICATION",
         )
 
+    # 2026-09-14: 이 호출만 create()에 인자를 직접 넘기고 있었습니다.
+    # 토큰 상한을 주지 않아 API 기본값이 적용됐고, 긴 회의록에서
+    # relevant_passages(원문 발췌)를 다 못 쓰고 잘려
+    # IncompleteOutputException으로 500이 났습니다.
+    #
+    # 추출 호출(node.py)처럼 build_chat_kwargs를 쓰면
+    #   · 상한을 MAX_TOKENS로 명시하고
+    #   · 모델 계열에 맞는 인자 이름(max_tokens / max_completion_tokens)을 고르며
+    #   · temperature를 안 받는 추론 모델에서는 자동으로 생략합니다.
     result = client.chat.completions.create(
-        model=model,
-        response_model=MeetingEligibility,
-        max_retries=max_retries,
-        temperature=temperature,
-        messages=build_messages(
-            meeting_text=meeting_text,
-            glossary_text=glossary_text,
-        ),
+        **build_chat_kwargs(
+            model=model,
+            messages=build_messages(
+                meeting_text=meeting_text,
+                glossary_text=glossary_text,
+            ),
+            response_model=MeetingEligibility,
+            max_tokens=max_tokens,
+            max_retries=max_retries,
+            temperature=temperature,
+        )
     )
 
     relevant_text = validate_relevant_passages(
