@@ -41,7 +41,9 @@ SECRET_KEY = env('SECRET_KEY')
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = env('DEBUG', default=True)
 
-ALLOWED_HOSTS = []
+# 2026-09-14: 하드코딩된 빈 리스트였음 — .env의 ALLOWED_HOSTS 값이 전혀 반영되지
+# 않아, DEBUG=False(배포) 환경에서 모든 요청이 400 DisallowedHost로 거부되던 버그.
+ALLOWED_HOSTS = env.list('ALLOWED_HOSTS', default=[])
 
 
 # Application definition
@@ -210,6 +212,9 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/6.0/howto/static-files/
 
 STATIC_URL = 'static/'
+# 2026-09-14: DEBUG=False(배포)에서는 STATIC_ROOT가 없으면 collectstatic이
+# ImproperlyConfigured로 죽는다 — admin/swagger 정적 파일을 모아둘 경로를 지정한다.
+STATIC_ROOT = BASE_DIR / 'staticfiles'
 
 AUTH_USER_MODEL = 'users.User'
 

@@ -75,13 +75,19 @@ class DashboardOverviewView(APIView):
         ]
 
         # 3. 업무량 (workload)
+        # 프로젝트 수가 늘어날수록(테스트/데모 프로젝트 포함) 업무를 한 번이라도
+        # 배정받은 적 있는 사람이 계속 늘어나서, 차트에 뜨는 막대 수가 끝없이
+        # 늘어나는 문제가 있었다(2026-09-14 확인) — 업무량 상위 TOP_N명만
+        # 보여주도록 슬라이스를 추가한다. PM이 "전체 기준"으로 보는 건 그대로
+        # 유지하고(회사 전체 집계), 화면에 그릴 막대 개수만 제한한다.
+        WORKLOAD_TOP_N = 10
         workload = []
         if is_pm:
             workload_data = (
                 TaskAssignment.objects.filter(assigned_user__isnull=False)
                 .values('assigned_user__id', 'assigned_user__username', 'assigned_user__first_name', 'assigned_user__last_name')
                 .annotate(taskCount=Count('id'))
-                .order_by('-taskCount')
+                .order_by('-taskCount')[:WORKLOAD_TOP_N]
             )
             for w in workload_data:
                 full_name = f"{w['assigned_user__last_name']}{w['assigned_user__first_name']}".strip() or w['assigned_user__username']

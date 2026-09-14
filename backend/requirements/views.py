@@ -1,7 +1,9 @@
 # requirements/views.py
 import logging
+import threading
 from django.db import transaction
 from django.shortcuts import get_object_or_404
+from django.utils import timezone
 from rest_framework import generics, status, permissions
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -501,42 +503,125 @@ class RequirementExtractView(APIView):
             return Response({"error": "AI_GENERATION_FAILED", "details": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
+def _run_generate_tasks_job(job_id, actor_user_id):
+    """
+    RequirementGenerateTasksView.post가 스레드로 띄우는 실제 작업. 순차 LLM
+    호출 여러 개라 1~수 분 걸리는 게 정상이라(2026-09-14 "너무 오래 걸림" 문의
+    확인), 요청-응답 안에서 동기로 기다리는 대신 여기서 백그라운드로 돌리고
+    TaskGenerationJob에 진행 단계를 기록한다 — 프론트는 job_id로 폴링한다.
+
+    스레드 안에서 도는 함수라 요청 컨텍스트(request.user)를 못 쓴다 — actor는
+    id로 넘겨받아 여기서 다시 조회한다. Django 커넥션은 스레드마다 별도라
+    시작/종료 시 close_old_connections()로 정리한다(그대로 두면 스레드가 오래
+    끊긴 커넥션을 계속 붙들 수 있음).
+    """
+    from django.db import close_old_connections
+    from django.contrib.auth import get_user_model
+    from tasks.models import TaskGenerationJob
+    from tasks.services import generate_task_suggestions
+
+    close_old_connections()
+    try:
+        TaskGenerationJob.objects.filter(pk=job_id).update(
+            status=TaskGenerationJob.STATUS_RUNNING, updated_at=timezone.now()
+        )
+
+        def on_stage(label):
+            TaskGenerationJob.objects.filter(pk=job_id).update(stage=label, updated_at=timezone.now())
+
+        job = TaskGenerationJob.objects.get(pk=job_id)
+        result = generate_task_suggestions(job.spec_id, on_stage=on_stage)
+    except Exception as e:
+        logger.exception("업무 배분 실행 작업 실패 (job_id=%s)", job_id)
+        TaskGenerationJob.objects.filter(pk=job_id).update(
+            status=TaskGenerationJob.STATUS_ERROR, error_message=str(e), updated_at=timezone.now()
+        )
+        close_old_connections()
+        return
+
+    # 파이프라인 이력 로그 생성 — "업무 배분 AI 추천" 버튼 시점. 이 단계는 아직
+    # TaskAssignment를 저장하지 않는 미리보기라(확정은 RequirementConfirmTasksView가
+    # TASK_ASSIGNED로 별도 로그) 여기서 남기지 않으면 에이전트 탭에서 이 실행 자체가 보이지 않는다.
+    if result.get("status") == "success" and result.get("req_def_id"):
+        req_def = RequirementDefinition.objects.filter(pk=result["req_def_id"]).select_related('spec').first()
+        if req_def and req_def.project_id:
+            actor = get_user_model().objects.filter(pk=actor_user_id).first()
+            PipelineHistory.objects.create(
+                project=req_def.project,
+                spec=req_def.spec,
+                requirement=req_def,
+                step_type='TASK_AI_SUGGESTED',
+                title=f"업무 배분 AI 추천: {req_def.title}",
+                description=f"실행자: {actor.username if actor else '알 수 없음'} 사원",
+                actor=actor,
+            )
+
+    if result.get("status") == "success":
+        TaskGenerationJob.objects.filter(pk=job_id).update(
+            status=TaskGenerationJob.STATUS_SUCCESS, result=result, stage="완료", updated_at=timezone.now()
+        )
+    else:
+        TaskGenerationJob.objects.filter(pk=job_id).update(
+            status=TaskGenerationJob.STATUS_ERROR,
+            error_message=result.get("message") or "알 수 없는 오류",
+            updated_at=timezone.now(),
+        )
+    close_old_connections()
+
+
 class RequirementGenerateTasksView(APIView):
     permission_classes = [permissions.IsAuthenticated, IsPMUser]
 
     @extend_schema(
         tags=['3단계 - 업무 배정'],
-        summary='요구사항정의서 기반 업무 배분 제안 생성(AI, 미리보기)',
+        summary='요구사항정의서 기반 업무 배분 제안 생성(AI, 미리보기) — 백그라운드 작업 시작',
+        description=(
+            '순차 LLM 호출 여러 개라 1~수 분 걸릴 수 있어 동기로 기다리지 않는다. '
+            '이 호출은 즉시 job_id만 반환하고, 실제 결과는 '
+            'GET /api/requirements/generate-tasks-jobs/{job_id}/ 를 폴링해서 받는다.'
+        ),
         parameters=[
             OpenApiParameter(name='spec_id', type=OpenApiTypes.INT, location=OpenApiParameter.PATH, description='업무 배분 제안을 생성할 기획서 ID')
         ],
         responses={
-            200: OpenApiResponse(description='업무 배분 제안 목록 (suggestions)'),
-            400: OpenApiResponse(description='업무 제안 생성 실패')
+            202: OpenApiResponse(description='작업 시작됨 (job_id)'),
+            404: OpenApiResponse(description='기획서를 찾을 수 없음'),
         }
     )
     def post(self, request, spec_id):
-        from tasks.services import generate_task_suggestions
-        result = generate_task_suggestions(spec_id)
-        http_status = status.HTTP_200_OK if result.get("status") == "success" else status.HTTP_400_BAD_REQUEST
+        from meetings.models import SpecDocument
+        from tasks.models import TaskGenerationJob
 
-        # 파이프라인 이력 로그 생성 — "업무 배분 AI 추천" 버튼 시점. 이 단계는 아직
-        # TaskAssignment를 저장하지 않는 미리보기라(확정은 RequirementConfirmTasksView가
-        # TASK_ASSIGNED로 별도 로그) 여기서 남기지 않으면 에이전트 탭에서 이 실행 자체가 보이지 않는다.
-        if result.get("status") == "success" and result.get("req_def_id"):
-            req_def = RequirementDefinition.objects.filter(pk=result["req_def_id"]).select_related('spec').first()
-            if req_def and req_def.project_id:
-                PipelineHistory.objects.create(
-                    project=req_def.project,
-                    spec=req_def.spec,
-                    requirement=req_def,
-                    step_type='TASK_AI_SUGGESTED',
-                    title=f"업무 배분 AI 추천: {req_def.title}",
-                    description=f"실행자: {request.user.username} 사원",
-                    actor=request.user,
-                )
+        if not SpecDocument.objects.filter(pk=spec_id).exists():
+            return Response({"error": "기획서를 찾을 수 없습니다."}, status=status.HTTP_404_NOT_FOUND)
 
-        return Response(result, status=http_status)
+        job = TaskGenerationJob.objects.create(spec_id=spec_id, created_by=request.user)
+        threading.Thread(
+            target=_run_generate_tasks_job, args=(job.id, request.user.id), daemon=True
+        ).start()
+        return Response({"status": "started", "job_id": str(job.id)}, status=status.HTTP_202_ACCEPTED)
+
+
+class RequirementGenerateTasksJobStatusView(APIView):
+    permission_classes = [permissions.IsAuthenticated, IsPMUser]
+
+    @extend_schema(
+        tags=['3단계 - 업무 배정'],
+        summary='업무 배분 실행 작업 진행 상태 조회(폴링)',
+        parameters=[
+            OpenApiParameter(name='job_id', type=OpenApiTypes.STR, location=OpenApiParameter.PATH, description='RequirementGenerateTasksView가 반환한 job_id')
+        ],
+        responses={200: OpenApiResponse(description='작업 상태(진행 중/완료/실패)')}
+    )
+    def get(self, request, job_id):
+        from tasks.models import TaskGenerationJob
+        job = get_object_or_404(TaskGenerationJob, pk=job_id)
+        payload = {"status": job.status, "stage": job.stage}
+        if job.status == TaskGenerationJob.STATUS_SUCCESS:
+            payload["result"] = job.result
+        elif job.status == TaskGenerationJob.STATUS_ERROR:
+            payload["message"] = job.error_message
+        return Response(payload)
 
 
 class RequirementConfirmTasksView(APIView):

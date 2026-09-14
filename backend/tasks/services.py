@@ -14,7 +14,7 @@ from task_generation.agent import generate_tasks
 from team_sizing import apply_complexity_buffer, build_skill_role_map, estimate_team_size
 from work_package import apply_split_decisions, assemble_packages, assert_full_coverage, build_work_packages
 
-from tasks.planning_context import build_employee_profiles
+from tasks.planning_context import build_employee_profiles, load_known_experience_tags, persist_experience_tags
 from project_scale.agent import assess_project_complexity
 from assignee_mapping.agent import assignee_mapping_node
 from assignee_recommend.agent import assignee_recommend_node
@@ -180,14 +180,24 @@ def _build_briefing_context(
     }
 
 
-def generate_task_suggestions(spec_id: int) -> dict:
+def generate_task_suggestions(spec_id: int, on_stage=None) -> dict:
     """
     요구사항정의서 승인 후 PM이 누르는 "업무 배분 실행" — 실제 AI 파이프라인
     (task_generation -> assignee_mapping -> assignee_recommend)을 순서대로
     호출하지만, 여기서는 TaskAssignment를 DB에 저장하지 않고 PM이 검토/수정할
     수 있는 미리보기(suggestions) 목록만 반환한다. 실제 저장은 PM이 "확정" 버튼을
     눌러 confirm_task_assignments()를 호출할 때 이루어진다(2단계 확정 플로우).
+
+    on_stage: 있으면 각 단계 시작 시 사람이 읽을 라벨(str)로 호출한다(선택).
+    이 파이프라인이 순차 LLM 호출 여러 개(업무 생성→복잡도 판단→패키지 분할→
+    담당자 매핑→담당자 추천→브리핑)로 1~수 분 걸리는 게 정상이라("느리다"는
+    문의 확인 결과, 2026-09-14), 백그라운드 실행 + 진행 단계 폴링으로 체감을
+    개선하기 위해 추가했다 — 이 함수 자체의 로직/순서는 바꾸지 않는다.
     """
+    def _stage(label: str) -> None:
+        if on_stage:
+            on_stage(label)
+
     try:
         spec = SpecDocument.objects.get(spec_id=spec_id)
     except SpecDocument.DoesNotExist:
@@ -222,6 +232,7 @@ def generate_task_suggestions(spec_id: int) -> dict:
         "workdays": len(list_project_workdays(start_date, end_date)),
     }
 
+    _stage("업무 생성 중…")
     try:
         task_items = generate_tasks(
             requirement_doc, available_skills=available_skills, project_period=project_period
@@ -238,6 +249,7 @@ def generate_task_suggestions(spec_id: int) -> dict:
     # 났다(실측: 순차 대비 병렬 적용 후 이전보다 이른 단계에서 429 재현).
     # 병목이 "순차 대기시간"이 아니라 "분당 토큰 예산" 자체라 병렬화가
     # 역효과였다 — 순차 호출로 되돌린다.
+    _stage("프로젝트 규모 판단 중…")
     project_context = _build_project_context(req_def)
     try:
         complexity = assess_project_complexity(project_context)
@@ -265,6 +277,7 @@ def generate_task_suggestions(spec_id: int) -> dict:
     except ValueError:
         max_hours_per_assignee = 0.0
 
+    _stage("업무 패키지 분할 판단 중…")
     try:
         split_decisions = decide_package_splits(wp["packages"], unit_lookup, max_hours_per_assignee)
     except Exception:
@@ -277,10 +290,17 @@ def generate_task_suggestions(spec_id: int) -> dict:
     # 2026-09-11: 패키지 분할 판단과 담당자 매핑을 동시에 돌려봤다가 되돌렸다 —
     # 위 주석(업무 생성/복잡도 판단 근처) 참고, 이 계정 TPM 한도에서는 병렬
     # 호출이 429를 더 빨리·자주 유발해 순차 호출로 되돌렸다.
+    _stage("담당자 정보 분석 중…")
+    # 2026-09-14: 경력기술서(career_history_text)는 자주 안 바뀌는데 예전엔
+    # 이 값을 캐시 시드로 넘긴 적이 없어(assignee_mapping_node 쪽 훅은 있었지만
+    # 호출부가 채운 적 없음) 실행할 때마다 매번 LLM으로 다시 태그를 뽑고
+    # 있었다 — DB 캐시(EmployeeExperienceTagCache)에서 미리 읽어 시드한다.
+    known_experience_tags = load_known_experience_tags(raw_profiles)
     try:
         mapping_result = assignee_mapping_node({
             "raw_employee_profiles": raw_profiles,
             "tasks": tasks,
+            "known_experience_tags": known_experience_tags,
         })
     except Exception as e:
         logger.exception("담당자 매핑 실패 (spec_id=%s)", spec_id)
@@ -290,6 +310,8 @@ def generate_task_suggestions(spec_id: int) -> dict:
     member_profiles = mapping_result["member_profiles"]
     if not member_profiles:
         return {"status": "error", "message": "업무에 필요한 스킬을 가진 재직 사원이 없습니다."}
+    # 새로 뽑았든 캐시에서 왔든 다시 저장해둔다 — 다음 실행부터 확실히 히트하게.
+    persist_experience_tags(raw_profiles, member_profiles)
 
     # 프로젝트 전체 누적 부하 — 취소된 업무는 실제 부하가 아니므로 제외.
     workload_qs = (
@@ -300,6 +322,7 @@ def generate_task_suggestions(spec_id: int) -> dict:
     )
     current_workload = {str(row['assigned_user_id']): float(row['total'] or 0) for row in workload_qs}
 
+    _stage("담당자 배정 추천 중…")
     try:
         recommend_result = assignee_recommend_node({
             "member_profiles": member_profiles,
@@ -376,6 +399,7 @@ def generate_task_suggestions(spec_id: int) -> dict:
         "project_end_date": str(end_date),
     }
 
+    _stage("계획 요약 작성 중…")
     # 2026-09-11 (Phase 4): 검토 요약(결정적) + LLM 브리핑. 브리핑은 실패해도 계속.
     plan_review = _build_plan_review(suggestions)
     briefing = summarize_plan(

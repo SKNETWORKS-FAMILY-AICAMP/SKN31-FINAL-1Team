@@ -24,7 +24,13 @@ class ProjectListCreateView(generics.ListCreateAPIView):
     프로젝트 목록 조회 및 신규 생성 API
     GET/POST /api/projects/
     """
-    queryset = Project.objects.all()
+    # 정렬 없이 반환하면 DB가 보통 PK(=가장 먼저 만든 프로젝트) 순서로 돌려준다.
+    # 프론트 여러 화면(history/tasks/documents)이 "단일 프로젝트 운영" 전제로
+    # projects[0]을 "현재 프로젝트"로 그대로 쓰는데, 테스트 중 새 프로젝트가
+    # 계속 생겨나면서 projects[0]이 09-01에 만든 옛날 프로젝트에 고정돼버려
+    # 최근 작업(새 프로젝트) 이력이 화면에 전혀 안 보이는 문제가 있었다.
+    # 최신순으로 내려줘서 projects[0]이 "가장 최근에 만든 프로젝트"가 되게 한다.
+    queryset = Project.objects.all().order_by('-created_at')
     serializer_class = ProjectSerializer
     permission_classes = [permissions.IsAuthenticated]
 
