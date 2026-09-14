@@ -200,6 +200,46 @@ def estimate_team_size(
     }
 
 
+def scale_tasks_to_team_capacity(
+    tasks: List[Dict[str, Any]], team_size_estimate: Dict[str, Any]
+) -> List[Dict[str, Any]]:
+    """
+    2026-09-14: team_size_estimate(복잡도 버퍼까지 반영된 최종 팀 규모)가 확정되는
+    순간, "headcount × 1인당 최대 가용시간"이라는 명확한 목표(가용시간)가
+    생긴다. 그런데 각 업무의 estimated_hours는 애초에 이 목표와 무관하게
+    task_generation이 난이도만 보고 매긴 값이다 — team_sizing은 그 값을 보고
+    거꾸로 headcount를 "올림(ceil)"으로 넉넉히 잡을 뿐, 실제 업무 총량을 그
+    가용시간에 맞춰주지는 않았다. 그 결과 팀 규모는 넉넉히 잡히는데 업무 총량은
+    더 적어서, 일정이 프로젝트 기간을 다 못 채우고 일찍 끝나며 큰 "버퍼"가
+    남는 문제가 있었다(2026-09-14 사용자 리포트로 확인).
+
+    팀 규모가 확정된 직후 호출해, 전체 업무 시간 총합이 정확히 그 가용시간에
+    맞도록 모든 업무(및 하위 업무)의 estimated_hours에 동일한 배율을 곱한다.
+    업무 간 상대적 난이도 비율(무엇이 더 오래 걸리는지)은 그대로 유지되고
+    총합만 목표에 맞춰진다 — "코드가 결정, LLM은 서술만" 원칙과 동일하게,
+    이 스케일링도 결정적 계산이라 LLM을 다시 부르지 않는다.
+
+    입력 tasks를 그 자리에서 수정하고(mutate) 그대로 반환한다.
+    """
+    max_hours = team_size_estimate["assumptions"]["max_hours_per_assignee"]
+    target_total_hours = sum(r["headcount"] * max_hours for r in team_size_estimate["by_role"])
+
+    raw_total_hours = sum(u["estimated_hours"] for u in flatten_assignable_units(tasks))
+    if raw_total_hours <= 0 or target_total_hours <= 0:
+        return tasks
+
+    scale = target_total_hours / raw_total_hours
+    for task in tasks:
+        subtasks = task.get("subtasks") or []
+        if subtasks:
+            for sub in subtasks:
+                sub["estimated_hours"] = round(sub["estimated_hours"] * scale, 1)
+            task["estimated_hours"] = round(sum(s["estimated_hours"] for s in subtasks), 1)
+        else:
+            task["estimated_hours"] = round(task["estimated_hours"] * scale, 1)
+    return tasks
+
+
 # project_scale.agent.assess_project_complexity()가 판단한 복잡도 등급(하/중/상)에
 # 곱할 버퍼 비율. 등급 선택은 LLM이 하지만, 등급->숫자 변환은 이 고정 매핑표와
 # apply_complexity_buffer()(코드)가 한다 — "코드가 결정, LLM은 서술만" 원칙
