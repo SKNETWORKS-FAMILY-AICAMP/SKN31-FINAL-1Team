@@ -1659,6 +1659,7 @@ function NoteDetail({
             confirming={confirmingTasks}
             onCancel={onCancelTaskDrafts}
             onConfirm={() => spec && onConfirmTasks(spec)}
+            scheduleTitle={note.title}
           />
         ) : taskDrafts && taskDrafts.length > 0 && !isPM ? (
           <div className="border border-dashed border-border rounded-xl p-10 flex flex-col items-center gap-3 text-center">
@@ -1692,6 +1693,7 @@ function NoteDetail({
             isPM={isPM}
             reassigningTaskId={reassigningTaskId}
             onReassign={onReassignTask}
+            scheduleTitle={note.title}
           />
         )}
       </div>
@@ -1755,7 +1757,7 @@ function ReasonRow({ techFit, workloadFit, experienceFit, scheduleReason, colSpa
 // AI 제안을 PM이 검토·수정하는 화면 — 아직 DB에 저장되지 않은 draft 상태만 다룬다.
 // 확정("배분 확정")을 눌러야 비로소 handleConfirmTasks가 실제로 저장한다.
 function TaskDraftReview({
-  drafts, setDrafts, scheduleSummary, packageSplits, planReview, planBriefing, members, confirming, onCancel, onConfirm,
+  drafts, setDrafts, scheduleSummary, packageSplits, planReview, planBriefing, members, confirming, onCancel, onConfirm, scheduleTitle,
 }: {
   drafts: TaskDraft[];
   setDrafts: Dispatch<SetStateAction<TaskDraft[] | null>>;
@@ -1767,6 +1769,7 @@ function TaskDraftReview({
   confirming: boolean;
   onCancel: () => void;
   onConfirm: () => void;
+  scheduleTitle: string;
 }) {
   const [expandedUnitId, setExpandedUnitId] = useState<string | null>(null);
 
@@ -1858,7 +1861,7 @@ function TaskDraftReview({
         <HeadcountSummary assigneeIds={drafts.map(d => d.assignee_id)} members={members} />
       </CollapsibleSection>
       <div className="pt-2">
-        <GanttSection items={ganttItems} />
+        <GanttSection items={ganttItems} title={scheduleTitle} />
       </div>
       <div className="border border-border rounded-xl overflow-hidden overflow-x-auto">
         <table className="w-full text-sm text-left">
@@ -1949,11 +1952,12 @@ function TaskDraftReview({
 // 이미 확정(TaskAssignment로 저장)된 목록 — 일반 사용자는 읽기 전용, PM은 담당자 드롭다운으로
 // 재배정할 수 있다(기존 PATCH /api/tasks/assignments/{id}/ 재사용).
 function TaskAssignmentList({
-  tasks, members, isPM, reassigningTaskId, onReassign,
+  tasks, members, isPM, reassigningTaskId, onReassign, scheduleTitle,
 }: {
   tasks: TaskAssignmentDto[]; members: Member[]; isPM: boolean;
   reassigningTaskId: number | null;
   onReassign: (taskId: number, assigneeId: number) => void;
+  scheduleTitle: string;
 }) {
   const [expandedId, setExpandedId] = useState<number | null>(null);
   // 드롭박스를 바꾸는 즉시 저장되면 실수로 잘못 바꾸기 쉽다는 피드백 — 이 기능 전체가
@@ -1971,7 +1975,7 @@ function TaskAssignmentList({
         <HeadcountSummary assigneeIds={tasks.map(t => t.assigned_user)} members={members} />
       </CollapsibleSection>
       <div className="pt-2">
-        <GanttSection items={ganttItems} />
+        <GanttSection items={ganttItems} title={scheduleTitle} />
       </div>
       <div className="border border-border rounded-xl overflow-hidden overflow-x-auto">
         <table className="w-full text-sm text-left">
@@ -2336,9 +2340,21 @@ function GanttChart({ items }: { items: GanttItem[] }) {
 // 스크롤이 겹쳐서 조작이 불편하다는 피드백에 따라, 카드 안에는 트리거 버튼만 두고
 // 실제 간트는 화면 대부분을 차지하는 큰 모달 안에서 보여준다(NewDocumentModal과
 // 동일한 오버레이 스타일). 모달이 넓어진 만큼 날짜도 더 잘 읽힌다.
-function GanttSection({ items }: { items: GanttItem[] }) {
+function GanttSection({ items, title }: { items: GanttItem[]; title: string }) {
   const [open, setOpen] = useState(false);
+  const [exporting, setExporting] = useState(false);
   if (items.length === 0) return null;
+
+  const handleExportExcel = async () => {
+    setExporting(true);
+    try {
+      const { exportGanttExcel } = await import("@/lib/exportGanttExcel");
+      await exportGanttExcel(items, title);
+    } finally {
+      setExporting(false);
+    }
+  };
+
   return (
     <>
       <button
@@ -2359,12 +2375,22 @@ function GanttSection({ items }: { items: GanttItem[] }) {
                 <CalendarIcon className="w-5 h-5 text-primary" />
                 업무 일정
               </h2>
-              <button
-                onClick={() => setOpen(false)}
-                className="text-muted-foreground hover:bg-black/5 dark:hover:bg-white/5 p-2 rounded-lg transition-colors"
-              >
-                <X className="w-5 h-5" />
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={handleExportExcel}
+                  disabled={exporting}
+                  className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-border text-xs font-bold hover:bg-black/5 dark:hover:bg-white/5 transition-colors disabled:opacity-50"
+                >
+                  {exporting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FileSpreadsheet className="w-3.5 h-3.5" />}
+                  Excel 다운로드
+                </button>
+                <button
+                  onClick={() => setOpen(false)}
+                  className="text-muted-foreground hover:bg-black/5 dark:hover:bg-white/5 p-2 rounded-lg transition-colors"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
             </div>
             {/* min-h-0: flex 자식은 기본 min-height:auto라 overflow-y-auto를 줘도
                 내용이 넘치는 만큼 부모(max-h-90vh)를 그냥 뚫고 나가 버린다(가로
