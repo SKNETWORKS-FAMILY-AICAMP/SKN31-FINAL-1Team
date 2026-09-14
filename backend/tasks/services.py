@@ -11,7 +11,7 @@ from requirements.models import RequirementDefinition, RequirementItem
 from tasks.models import TaskAssignment
 
 from task_generation.agent import generate_tasks
-from team_sizing import apply_complexity_buffer, build_skill_role_map, estimate_team_size, scale_tasks_to_team_capacity
+from team_sizing import apply_complexity_buffer, build_skill_role_map, estimate_team_size
 from work_package import apply_split_decisions, assemble_packages, assert_full_coverage, build_work_packages
 
 from tasks.planning_context import build_employee_profiles, load_known_experience_tags, persist_experience_tags
@@ -264,13 +264,6 @@ def generate_task_suggestions(spec_id: int, on_stage=None) -> dict:
     team_size = estimate_team_size(tasks, start_date, end_date, skill_role_map=skill_role_map)
     if complexity is not None:
         team_size = apply_complexity_buffer(team_size, complexity.complexity.value)
-
-    # 2026-09-14: team_size_estimate가 확정된 이 시점에야 "가용시간"(headcount ×
-    # 1인당 최대 가용시간)이라는 명확한 목표가 생긴다 — 그 즉시 업무 총 시간을
-    # 그 목표에 정확히 맞춘다(팀 규모는 넉넉한데 업무량은 적어 프로젝트 기간을
-    # 다 못 채우고 일찍 끝나던 문제 수정). tasks는 그 자리에서 갱신되고, 이후
-    # 모든 단계(패키지 분할·담당자 배정·일정 계산)가 이 값을 그대로 이어받는다.
-    tasks = scale_tasks_to_team_capacity(tasks, team_size["team_size_estimate"])
 
     # 2026-09-11 (Phase 2 item 7 + Phase 3): 배정 단위를 WorkPackage(기능 묶음)로
     # 묶고, LLM(assignment_ranking)이 "한 사람에게 다 맡길지 / 나눌지"만 판단한 뒤
