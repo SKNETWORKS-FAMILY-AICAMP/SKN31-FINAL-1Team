@@ -1,4 +1,6 @@
 #tasks/models.py
+import uuid
+
 from django.db import models
 from django.conf import settings
 from common.models import CommonCode
@@ -115,3 +117,55 @@ class TaskAssignment(models.Model):
 
     def __str__(self):
         return f"[{self.task_no or self.id}] {self.title}"
+
+
+class TaskGenerationJob(models.Model):
+    """
+    "업무 배분 실행"이 순차 LLM 호출 여러 개(1~수 분)라 동기 요청으로 두면 PM이
+    화면을 몇 분씩 붙잡고 있어야 하는 문제(2026-09-14 확인)를 개선하기 위해
+    도입 — 버튼을 누르면 백그라운드 스레드로 파이프라인을 돌리고, 이 테이블에
+    진행 단계를 기록해 프론트가 폴링으로 진행 상태를 보여준다.
+
+    Celery/Redis 같은 별도 워커 인프라가 아직 이 프로젝트에 없어(2026-09-14
+    확인 — requirements.txt에만 있고 실제 설정은 없음) threading.Thread로
+    가볍게 구현했다. 개발 서버(단일 프로세스)에서는 문제없지만, 운영에서
+    gunicorn 워커가 여러 개거나 배포 중 워커가 재시작되면 실행 중이던 스레드가
+    통째로 유실될 수 있다 — 이 한계를 감수한 임시 구현이며, 나중에 워커 큐를
+    실제로 두게 되면 이 모델의 상태 필드만 그대로 재사용하고 실행 방식만
+    바꾸면 된다.
+    """
+    STATUS_PENDING = "PENDING"
+    STATUS_RUNNING = "RUNNING"
+    STATUS_SUCCESS = "SUCCESS"
+    STATUS_ERROR = "ERROR"
+    STATUS_CHOICES = [
+        (STATUS_PENDING, "대기"),
+        (STATUS_RUNNING, "진행 중"),
+        (STATUS_SUCCESS, "완료"),
+        (STATUS_ERROR, "실패"),
+    ]
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    spec = models.ForeignKey(
+        'meetings.SpecDocument', on_delete=models.CASCADE,
+        related_name='task_generation_jobs', verbose_name="대상 기획서",
+    )
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True,
+        related_name='task_generation_jobs', verbose_name="실행자",
+    )
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default=STATUS_PENDING, verbose_name="상태")
+    stage = models.CharField(max_length=100, default="", blank=True, verbose_name="현재 진행 단계(사람이 읽는 라벨)")
+    result = models.JSONField(null=True, blank=True, verbose_name="성공 시 결과(generate_task_suggestions 반환값)")
+    error_message = models.TextField(null=True, blank=True, verbose_name="실패 시 오류 메시지")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "task_generation_job"
+        verbose_name = "업무 배분 실행 작업"
+        verbose_name_plural = "업무 배분 실행 작업 목록"
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"[{self.status}] spec={self.spec_id} ({self.stage})"

@@ -7,7 +7,7 @@ import {
   FileText, Plus, Bot, Loader2, Send, CheckCircle2, XCircle,
   AlertCircle, Clock, RotateCcw, MessageSquare, X, FolderKanban,
   Download, Printer, Trash2, Save, Pencil, Lock, ChevronDown, Briefcase,
-  UserIcon, CalendarIcon, FileSpreadsheet, PanelLeftClose, PanelLeft,
+  UserIcon, CalendarIcon, FileSpreadsheet, PanelLeftClose, PanelLeft, Maximize2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { NewDocumentModal } from "@/components/projects/NewDocumentModal";
@@ -365,6 +365,10 @@ export default function DocumentsPage() {
   const [planReview, setPlanReview] = useState<PlanReviewDto | null>(null); // 2026-09-11 (Phase 4)
   const [planBriefing, setPlanBriefing] = useState<PlanBriefingDto | null>(null); // 2026-09-11 (Phase 4)
   const [generatingTasks, setGeneratingTasks] = useState(false);
+  // 2026-09-14: "업무 배분 실행"이 순차 LLM 호출 여러 개라 1~수 분 걸리는 게
+  // 정상이다("느리다" 문의 확인) — 폴링 중 현재 단계를 보여줘 체감을 낮춘다.
+  const genTasksSeqRef = useRef(0);
+  const [generatingStage, setGeneratingStage] = useState("");
   const [confirmingTasks, setConfirmingTasks] = useState(false);
   const [reassigningTaskId, setReassigningTaskId] = useState<number | null>(null);
   const [members, setMembers] = useState<Member[]>([]);
@@ -776,33 +780,93 @@ export default function DocumentsPage() {
     }
   };
 
+  type GenerateTasksResult = {
+    status: string; message?: string; suggestions?: TaskSuggestionDto[]; req_def_id?: number;
+    schedule_summary?: ScheduleSummaryDto; package_splits?: PackageSplitDto[];
+    plan_review?: PlanReviewDto; plan_briefing?: PlanBriefingDto;
+  };
+  type GenerateTasksJobStatus = {
+    status: "PENDING" | "RUNNING" | "SUCCESS" | "ERROR"; stage?: string;
+    result?: GenerateTasksResult; message?: string;
+  };
+
   // heyzzabi2의 "업무 배분 실행" — 요구사항정의서 승인 후 PM이 눌러서 실제 AI
   // 파이프라인(업무생성→담당자매핑→담당자추천)을 돌린다. 이 단계는 미리보기(제안)만
   // 만들고 DB에는 아무것도 저장하지 않는다 — PM이 담당자/일정을 검토·수정한 뒤
   // "배분 확정"을 눌러야 handleConfirmTasks가 실제로 저장한다(2단계 확정 플로우).
+  //
+  // 2026-09-14: 순차 LLM 호출 여러 개라 1~수 분 걸리는 게 정상이라("느리다" 문의
+  // 확인 결과), 백엔드가 즉시 job_id만 돌려주고 실제 파이프라인은 백그라운드로
+  // 돈다. 여기서는 job_id로 폴링하며 현재 단계를 보여주다가, 완료되면 기존과
+  // 동일하게 결과를 반영한다. genTasksSeqRef는 폴링 도중 사용자가 다시 실행
+  // 버튼을 누르거나 다른 문서로 넘어갔을 때 오래된 폴링 루프가 새 상태를
+  // 덮어쓰지 않도록 막는다(다른 곳의 taskFetchSeqRef와 같은 패턴).
   const handleGenerateTasks = async (spec: SpecDto, reqDefId: number) => {
+    const seq = ++genTasksSeqRef.current;
     setGeneratingTasks(true);
+    setGeneratingStage("작업을 준비하는 중…");
     setBusy(`reqdef-${reqDefId}-tasks`);
     try {
-      const result = await apiFetch<{ status: string; message?: string; suggestions?: TaskSuggestionDto[]; req_def_id?: number; schedule_summary?: ScheduleSummaryDto; package_splits?: PackageSplitDto[]; plan_review?: PlanReviewDto; plan_briefing?: PlanBriefingDto }>(
+      const started = await apiFetch<{ status: string; job_id?: string }>(
         `/api/requirements/${spec.id}/generate-tasks/`,
         { method: "POST" }
       );
-      if (result.status !== "success") {
-        setErrorToast(result.message || "업무 배분 제안 생성에 실패했습니다.");
+      if (started.status !== "started" || !started.job_id) {
+        setErrorToast("업무 배분 제안 생성에 실패했습니다.");
+        setGeneratingTasks(false);
+        setBusy(null);
         return;
       }
-      setTaskDrafts((result.suggestions ?? []).map(suggestionToDraft));
-      setTaskDraftsReqDefId(result.req_def_id ?? reqDefId);
-      setScheduleSummary(result.schedule_summary ?? null); // 2026-09-10 (Phase 0)
-      setPackageSplits(result.package_splits ?? []); // 2026-09-11 (Phase 3)
-      setPlanReview(result.plan_review ?? null); // 2026-09-11 (Phase 4)
-      setPlanBriefing(result.plan_briefing ?? null); // 2026-09-11 (Phase 4)
-      setActiveTab("taskAssignment");
-      setToastMessage("업무 배분 제안이 생성되었습니다. 검토 후 확정해주세요.");
+
+      const poll = async (): Promise<void> => {
+        if (genTasksSeqRef.current !== seq) return;
+        let job: GenerateTasksJobStatus;
+        try {
+          job = await apiFetch<GenerateTasksJobStatus>(`/api/requirements/generate-tasks-jobs/${started.job_id}/`);
+        } catch (err: any) {
+          if (genTasksSeqRef.current !== seq) return;
+          setErrorToast(err.message || "업무 배분 진행 상태를 확인하지 못했습니다.");
+          setGeneratingTasks(false);
+          setBusy(null);
+          return;
+        }
+        if (genTasksSeqRef.current !== seq) return;
+
+        if (job.status === "PENDING" || job.status === "RUNNING") {
+          if (job.stage) setGeneratingStage(job.stage);
+          setTimeout(poll, 1500);
+          return;
+        }
+        if (job.status === "ERROR") {
+          setErrorToast(job.message || "업무 배분 제안 생성에 실패했습니다.");
+          setGeneratingTasks(false);
+          setBusy(null);
+          return;
+        }
+
+        // SUCCESS
+        const result = job.result;
+        if (!result || result.status !== "success") {
+          setErrorToast(result?.message || "업무 배분 제안 생성에 실패했습니다.");
+          setGeneratingTasks(false);
+          setBusy(null);
+          return;
+        }
+        setTaskDrafts((result.suggestions ?? []).map(suggestionToDraft));
+        setTaskDraftsReqDefId(result.req_def_id ?? reqDefId);
+        setScheduleSummary(result.schedule_summary ?? null); // 2026-09-10 (Phase 0)
+        setPackageSplits(result.package_splits ?? []); // 2026-09-11 (Phase 3)
+        setPlanReview(result.plan_review ?? null); // 2026-09-11 (Phase 4)
+        setPlanBriefing(result.plan_briefing ?? null); // 2026-09-11 (Phase 4)
+        setActiveTab("taskAssignment");
+        setToastMessage("업무 배분 제안이 생성되었습니다. 검토 후 확정해주세요.");
+        setGeneratingTasks(false);
+        setBusy(null);
+      };
+      await poll();
     } catch (err: any) {
+      if (genTasksSeqRef.current !== seq) return;
       setErrorToast(err.message || "업무 배분 제안 생성에 실패했습니다.");
-    } finally {
       setGeneratingTasks(false);
       setBusy(null);
     }
@@ -1160,6 +1224,7 @@ export default function DocumentsPage() {
               planReview={planReview}
               planBriefing={planBriefing}
               generatingTasks={generatingTasks}
+              generatingStage={generatingStage}
               confirmingTasks={confirmingTasks}
               onConfirmTasks={(spec) => handleConfirmTasks(selectedNote, spec)}
               onCancelTaskDrafts={() => { setTaskDrafts(null); setTaskDraftsReqDefId(null); setScheduleSummary(null); setPackageSplits([]); setPlanReview(null); setPlanBriefing(null); }}
@@ -1251,7 +1316,7 @@ function NoteDetail({
   onGenerateSpec, onSaveNoteContent, onSaveSpec, onSavePeriod, onSubmitReview, onApprove, onReject,
   onCreateReqDef, onExtractItems, onAddItem, onUpdateItem, onDeleteItem, onReqDefStatusChange,
   onGenerateTasks, taskAssignments, onRejectReqDef,
-  taskDrafts, setTaskDrafts, scheduleSummary, packageSplits, planReview, planBriefing, generatingTasks, confirmingTasks, onConfirmTasks, onCancelTaskDrafts,
+  taskDrafts, setTaskDrafts, scheduleSummary, packageSplits, planReview, planBriefing, generatingTasks, generatingStage, confirmingTasks, onConfirmTasks, onCancelTaskDrafts,
   members, reassigningTaskId, onReassignTask,
 }: {
   note: NoteDto; spec: SpecDto | null; reqDef: ReqDefDto | null; activeTab: PipelineTab; isPM: boolean; currentUserId: string | undefined; busy: string | null;
@@ -1278,6 +1343,7 @@ function NoteDetail({
   planReview: PlanReviewDto | null; // 2026-09-11 (Phase 4)
   planBriefing: PlanBriefingDto | null; // 2026-09-11 (Phase 4)
   generatingTasks: boolean;
+  generatingStage: string;
   confirmingTasks: boolean;
   onConfirmTasks: (spec: SpecDto) => void;
   onCancelTaskDrafts: () => void;
@@ -1635,6 +1701,7 @@ function NoteDetail({
             onStatusChange={(statusCode) => onReqDefStatusChange(spec!, reqDef!.id, statusCode)}
             onGenerateTasks={() => onGenerateTasks(spec!, reqDef!.id)}
             generatingTasks={!!reqDef && busy === `reqdef-${reqDef.id}-tasks`}
+            generatingStage={!!reqDef && busy === `reqdef-${reqDef.id}-tasks` ? generatingStage : ""}
             onRejectClick={() => onRejectReqDef(spec!, reqDef!.id)}
             tasksAlreadyAssigned={tasksForReqDef.length > 0}
           />
@@ -1659,6 +1726,7 @@ function NoteDetail({
             confirming={confirmingTasks}
             onCancel={onCancelTaskDrafts}
             onConfirm={() => spec && onConfirmTasks(spec)}
+            scheduleTitle={note.title}
           />
         ) : taskDrafts && taskDrafts.length > 0 && !isPM ? (
           <div className="border border-dashed border-border rounded-xl p-10 flex flex-col items-center gap-3 text-center">
@@ -1670,7 +1738,14 @@ function NoteDetail({
             {generatingTasks ? (
               <div className="flex flex-col items-center gap-4 py-6">
                 <Loader2 className="w-9 h-9 animate-spin text-primary" />
-                <p className="text-sm font-semibold text-muted-foreground">에이전트가 업무를 배분하는 중입니다…</p>
+                <div className="text-center">
+                  <p className="text-sm font-semibold text-muted-foreground">에이전트가 업무를 배분하는 중입니다…</p>
+                  {/* 순차 LLM 호출이 여러 개라 1~수 분 걸릴 수 있어(2026-09-14
+                      "느리다" 문의 확인), 멈춘 것처럼 보이지 않도록 현재 단계를 보여준다. */}
+                  {generatingStage && (
+                    <p className="text-xs text-muted-foreground/70 mt-1">{generatingStage}</p>
+                  )}
+                </div>
               </div>
             ) : (
               <>
@@ -1692,6 +1767,7 @@ function NoteDetail({
             isPM={isPM}
             reassigningTaskId={reassigningTaskId}
             onReassign={onReassignTask}
+            scheduleTitle={note.title}
           />
         )}
       </div>
@@ -1755,7 +1831,7 @@ function ReasonRow({ techFit, workloadFit, experienceFit, scheduleReason, colSpa
 // AI 제안을 PM이 검토·수정하는 화면 — 아직 DB에 저장되지 않은 draft 상태만 다룬다.
 // 확정("배분 확정")을 눌러야 비로소 handleConfirmTasks가 실제로 저장한다.
 function TaskDraftReview({
-  drafts, setDrafts, scheduleSummary, packageSplits, planReview, planBriefing, members, confirming, onCancel, onConfirm,
+  drafts, setDrafts, scheduleSummary, packageSplits, planReview, planBriefing, members, confirming, onCancel, onConfirm, scheduleTitle,
 }: {
   drafts: TaskDraft[];
   setDrafts: Dispatch<SetStateAction<TaskDraft[] | null>>;
@@ -1767,6 +1843,7 @@ function TaskDraftReview({
   confirming: boolean;
   onCancel: () => void;
   onConfirm: () => void;
+  scheduleTitle: string;
 }) {
   const [expandedUnitId, setExpandedUnitId] = useState<string | null>(null);
 
@@ -1857,9 +1934,9 @@ function TaskDraftReview({
       <CollapsibleSection title="예상 필요 인원">
         <HeadcountSummary assigneeIds={drafts.map(d => d.assignee_id)} members={members} />
       </CollapsibleSection>
-      <CollapsibleSection title="업무 일정">
-        <GanttChart items={ganttItems} />
-      </CollapsibleSection>
+      <div className="pt-2">
+        <GanttSection items={ganttItems} title={scheduleTitle} />
+      </div>
       <div className="border border-border rounded-xl overflow-hidden overflow-x-auto">
         <table className="w-full text-sm text-left">
           <thead className="text-xs text-muted-foreground uppercase bg-black/5 dark:bg-white/5">
@@ -1949,11 +2026,12 @@ function TaskDraftReview({
 // 이미 확정(TaskAssignment로 저장)된 목록 — 일반 사용자는 읽기 전용, PM은 담당자 드롭다운으로
 // 재배정할 수 있다(기존 PATCH /api/tasks/assignments/{id}/ 재사용).
 function TaskAssignmentList({
-  tasks, members, isPM, reassigningTaskId, onReassign,
+  tasks, members, isPM, reassigningTaskId, onReassign, scheduleTitle,
 }: {
   tasks: TaskAssignmentDto[]; members: Member[]; isPM: boolean;
   reassigningTaskId: number | null;
   onReassign: (taskId: number, assigneeId: number) => void;
+  scheduleTitle: string;
 }) {
   const [expandedId, setExpandedId] = useState<number | null>(null);
   // 드롭박스를 바꾸는 즉시 저장되면 실수로 잘못 바꾸기 쉽다는 피드백 — 이 기능 전체가
@@ -1970,9 +2048,9 @@ function TaskAssignmentList({
       <CollapsibleSection title="예상 필요 인원">
         <HeadcountSummary assigneeIds={tasks.map(t => t.assigned_user)} members={members} />
       </CollapsibleSection>
-      <CollapsibleSection title="업무 일정">
-        <GanttChart items={ganttItems} />
-      </CollapsibleSection>
+      <div className="pt-2">
+        <GanttSection items={ganttItems} title={scheduleTitle} />
+      </div>
       <div className="border border-border rounded-xl overflow-hidden overflow-x-auto">
         <table className="w-full text-sm text-left">
           <thead className="text-xs text-muted-foreground uppercase bg-black/5 dark:bg-white/5">
@@ -2192,11 +2270,31 @@ function HeadcountSummary({ assigneeIds, members }: { assigneeIds: (number | nul
 // 그대로 이식, 필드명만 이 파일의 GanttItem에 맞춤). 하루=한 칸인 날짜 그리드라 기간이
 // 짧아도(며칠) 눈금이 중복되지 않는다.
 function GanttChart({ items }: { items: GanttItem[] }) {
-  // 프로젝트 기간이 길면 하루씩 다 펼쳐 그리는 게 옆으로 한참 길어져서(팀원 요청) 기본은
-  // 시작일 ~ 종료일만 보여주고 가운데를 "···"로 접어둔다. 막대(bar)는 어차피 퍼센트
-  // 좌표(left/width)로 그려서 날짜 칸을 몇 개 그리든 위치가 정확하니, 접힌 상태에서도
-  // 막대 자체는 그대로 보여주고 배경의 날짜별 점선 격자만 생략한다.
-  const [expanded, setExpanded] = useState(false);
+  // 2026-09-11: 접기/펼치기 토글은 버튼이 잘 안 보인다는 피드백으로 없앴다 — 항상
+  // 실제 날짜 간격 그대로(하루=52px) 그리고, 넘치는 부분은 가로 스크롤로 이동한다.
+  // 스크롤바 자체가 안 보인다는 지적도 있었는데, Windows/Chrome은 기본적으로 마우스를
+  // 올려야만 스크롤바가 나타나는 오버레이 방식이라 "스크롤이 안 된다"는 오해를 사기
+  // 쉽다(요구사항정의서 미리보기 박스에서 같은 이유로 .doc-scroll을 쓴 전례 참고,
+  // globals.css) — 여기도 .doc-scroll을 적용해 스크롤바를 항상 보이게 한다.
+  // 2026-09-11: 마우스 휠을 무조건 가로 스크롤로 바꿨더니, 담당자가 많아 세로로
+  // 길어진 경우 휠을 굴려도 계속 옆으로만 이동하고 아래쪽 행으로는 못 내려가는
+  // 문제가 생겼다(팀원 리포트: "휠로 우측으로 가려니까 하단으로는 못 가는게
+  // 가장 큰 문제"). 이제는 "업무 일정 보기" 모달 안에서 보여주므로 가로
+  // 스크롤바가 맨 아래 멀리 있는 문제 자체가 없다 — 휠 가로채기는 없애고
+  // 일반 휠(세로)/Shift+휠(가로, 브라우저 표준 관례)만 지원한다.
+  const scrollRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const onWheel = (e: WheelEvent) => {
+      if (!e.shiftKey) return; // Shift 없이는 페이지/모달의 세로 스크롤에 맡긴다
+      if (el.scrollWidth <= el.clientWidth) return;
+      e.preventDefault();
+      el.scrollLeft += e.deltaY;
+    };
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onWheel);
+  }, []);
   if (items.length === 0) return null;
 
   const toLocalMidnight = (iso: string) => {
@@ -2250,30 +2348,27 @@ function GanttChart({ items }: { items: GanttItem[] }) {
   // 아니라 그냥 옆으로 계속 넓어지기만 하는 문제가 있었다(팀원 리포트: 펼쳤을 때 하단
   // 스크롤이 안 생김). 이 두 클래스로 "부모 너비를 절대 넘지 않는다"를 강제해야
   // overflow-x-auto가 실제로 스크롤로 동작한다.
+  // 담당자 이름 칸(96px)은 sticky left-0으로 고정한다 — 오른쪽으로 한참 스크롤해도
+  // "이게 누구 일정인지"를 계속 볼 수 있게(팀원 요청). bg-background로 배경을 채워야
+  // 뒤에서 막대가 스크롤돼 지나갈 때 이름 위로 겹쳐 보이지 않는다.
+  // 2026-09-11: 이름 칸에 경계선이 없어 스크롤 중 "붕 뜬 느낌"이라는 피드백 —
+  // border-r로 타임라인과의 경계를 분명히 하고, h-full + items-center로 세로
+  // 중앙 정렬해 옆 막대 행과 눈높이가 맞도록 고정한다.
+  const stickyNameCls = "sticky left-0 z-10 bg-background border-r border-border pr-2 h-full flex items-center";
   return (
-    <div className="border border-border rounded-xl p-4 overflow-x-auto max-w-full min-w-0">
-      <div style={{ minWidth: expanded ? `${96 + dayCount * 52}px` : undefined }}>
+    <div ref={scrollRef} className="doc-scroll border border-border rounded-xl p-4 overflow-x-auto max-w-full min-w-0">
+      <div style={{ minWidth: `${96 + dayCount * 52}px` }}>
         <div className="grid gap-y-2" style={{ gridTemplateColumns: `96px 1fr` }}>
-          <div />
-          {/* 2026-09-11: 하루하루 날짜+요일을 전부 라벨로 늘어놓으면(예전 expanded 모드)
-              글자가 너무 많아 복잡해 보인다는 피드백 — 펼쳐도 날짜 라벨 줄은 안 늘어놓고
-              항상 "시작일 ··· 종료일"만 보여준다. "···"를 누르면(펼치기) 막대들이 실제
-              날짜 간격만큼 넓게 퍼지면서(가로 스크롤) 겹쳐 보이던 막대들이 분리되고,
-              다시 누르면(접기) 원래 폭으로 돌아온다 — 라벨 없이 폭만 바뀐다. */}
-          <button
-            type="button"
-            onClick={() => setExpanded(v => !v)}
-            title={expanded ? "일정 막대 접기" : "일정 막대 넓게 펼치기"}
-            className="group flex items-center gap-2 pb-1.5 w-full text-left"
-          >
+          <div className={stickyNameCls} />
+          <div className="flex items-center gap-2 pb-1.5 w-full">
             <span className="text-[11px] font-semibold text-muted-foreground shrink-0">{fmtDate(days[0])}</span>
             <span className="flex-1 border-t border-dashed border-border relative h-0">
-              <span className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 bg-background px-2 text-[11px] font-bold text-muted-foreground group-hover:text-primary transition-colors">
+              <span className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 bg-background px-2 text-[11px] font-bold text-muted-foreground">
                 ···
               </span>
             </span>
             <span className="text-[11px] font-semibold text-muted-foreground shrink-0">{fmtDate(days[dayCount - 1])}</span>
-          </button>
+          </div>
 
           {rows.map(({ label, item }) => {
             const s = dayIndexOf(item.start);
@@ -2283,15 +2378,13 @@ function GanttChart({ items }: { items: GanttItem[] }) {
             const narrow = width < 14;
             return (
               <Fragment key={item.id}>
-                <p className="text-xs font-bold text-muted-foreground flex items-center gap-1 truncate pt-1">
+                <p className={cn("text-xs font-bold text-muted-foreground gap-1 truncate", stickyNameCls)}>
                   {label && (<><UserIcon className="w-3 h-3 shrink-0" /><span className="truncate">{label}</span></>)}
                 </p>
                 <div className="relative h-6">
-                  {expanded && (
-                    <div className="absolute inset-0 grid" style={dayGridStyle}>
-                      {days.map((_, i) => <div key={i} className={dayColClass(i)} />)}
-                    </div>
-                  )}
+                  <div className="absolute inset-0 grid" style={dayGridStyle}>
+                    {days.map((_, i) => <div key={i} className={dayColClass(i)} />)}
+                  </div>
                   <div
                     title={`${item.title} · ${fmtDate(days[s])} ~ ${fmtDate(days[e])}`}
                     className="absolute top-0 h-full rounded-md flex items-center px-2 bg-primary/80 hover:bg-primary transition-colors overflow-hidden"
@@ -2317,9 +2410,79 @@ function GanttChart({ items }: { items: GanttItem[] }) {
   );
 }
 
+// "업무 일정 보기" 버튼 + 모달 — 인라인으로 두니 페이지 스크롤과 간트 자체의 가로
+// 스크롤이 겹쳐서 조작이 불편하다는 피드백에 따라, 카드 안에는 트리거 버튼만 두고
+// 실제 간트는 화면 대부분을 차지하는 큰 모달 안에서 보여준다(NewDocumentModal과
+// 동일한 오버레이 스타일). 모달이 넓어진 만큼 날짜도 더 잘 읽힌다.
+function GanttSection({ items, title }: { items: GanttItem[]; title: string }) {
+  const [open, setOpen] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  if (items.length === 0) return null;
+
+  const handleExportExcel = async () => {
+    setExporting(true);
+    try {
+      const { exportGanttExcel } = await import("@/lib/exportGanttExcel");
+      await exportGanttExcel(items, title);
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  return (
+    <>
+      <button
+        onClick={() => setOpen(true)}
+        className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-border hover:bg-black/5 dark:hover:bg-white/5 transition-colors text-sm font-semibold"
+      >
+        <Maximize2 className="w-4 h-4 text-primary" />
+        업무 일정 보기
+      </button>
+      {open && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm" onClick={() => setOpen(false)}>
+          <div
+            className="bg-background rounded-2xl shadow-2xl w-full max-w-6xl border border-border flex flex-col max-h-[90vh] overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex justify-between items-center p-5 border-b border-border shrink-0">
+              <h2 className="text-xl font-bold flex items-center gap-2">
+                <CalendarIcon className="w-5 h-5 text-primary" />
+                업무 일정
+              </h2>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={handleExportExcel}
+                  disabled={exporting}
+                  className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-border text-xs font-bold hover:bg-black/5 dark:hover:bg-white/5 transition-colors disabled:opacity-50"
+                >
+                  {exporting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FileSpreadsheet className="w-3.5 h-3.5" />}
+                  Excel 다운로드
+                </button>
+                <button
+                  onClick={() => setOpen(false)}
+                  className="text-muted-foreground hover:bg-black/5 dark:hover:bg-white/5 p-2 rounded-lg transition-colors"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+            {/* min-h-0: flex 자식은 기본 min-height:auto라 overflow-y-auto를 줘도
+                내용이 넘치는 만큼 부모(max-h-90vh)를 그냥 뚫고 나가 버린다(가로
+                스크롤에서 겪은 min-w-0와 같은 문제의 세로 버전) — 이거 없으면
+                담당자가 많을 때 아래쪽 행이 스크롤 없이 그냥 잘려서 안 보인다. */}
+            <div className="p-5 overflow-y-auto flex-1 min-h-0">
+              <GanttChart items={items} />
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
 function RequirementSection({
   spec, reqDef, isPM, canGenerate, busy, onCreate, onExtract, onAddItem, onUpdateItem, onDeleteItem, onStatusChange,
-  onGenerateTasks, generatingTasks, onRejectClick, tasksAlreadyAssigned,
+  onGenerateTasks, generatingTasks, generatingStage, onRejectClick, tasksAlreadyAssigned,
 }: {
   spec: SpecDto; reqDef: ReqDefDto | null; isPM: boolean;
   // 기획서 탭과 동일한 규칙 — 이 문서(회의록)를 시작한 작성자 본인만 요구사항정의서를
@@ -2337,6 +2500,9 @@ function RequirementSection({
   onStatusChange: (statusCode: "PENDING_REVIEW" | "APPROVED") => void;
   onGenerateTasks: () => void;
   generatingTasks: boolean;
+  // 2026-09-14: 순차 LLM 호출 여러 개라 1~수 분 걸릴 수 있어(폴링 진행 중에만
+  // 값이 있음), 버튼 옆에 현재 단계를 보여줘 멈춘 것처럼 보이지 않게 한다.
+  generatingStage: string;
   onRejectClick: () => void;
   // 이미 배분을 확정한 뒤에는 "업무 배분 실행" 버튼을 완전히 숨긴다 — PM이 요구사항정의서
   // 탭으로 돌아왔을 때 버튼이 그대로 남아있으면 실수로 다시 눌러 기존 배정을 통째로
@@ -2477,14 +2643,19 @@ function RequirementSection({
             </span>
           )}
           {reqStatus === "APPROVED" && isPM && !tasksAlreadyAssigned && (
-            <button
-              onClick={onGenerateTasks}
-              disabled={generatingTasks}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-primary text-primary-foreground text-xs font-bold hover:bg-primary/90 disabled:opacity-50"
-            >
-              {generatingTasks ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Bot className="w-3.5 h-3.5" />}
-              업무 배분 실행
-            </button>
+            <div className="flex items-center gap-2">
+              {generatingTasks && generatingStage && (
+                <span className="text-[11px] text-muted-foreground/70">{generatingStage}</span>
+              )}
+              <button
+                onClick={onGenerateTasks}
+                disabled={generatingTasks}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-primary text-primary-foreground text-xs font-bold hover:bg-primary/90 disabled:opacity-50"
+              >
+                {generatingTasks ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Bot className="w-3.5 h-3.5" />}
+                업무 배분 실행
+              </button>
+            </div>
           )}
           {reqStatus === "PENDING_REVIEW" && !isPM && (
             <span className="flex items-center gap-1 text-[11px] text-muted-foreground/70">
