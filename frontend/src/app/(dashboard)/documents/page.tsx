@@ -365,6 +365,10 @@ export default function DocumentsPage() {
   const [planReview, setPlanReview] = useState<PlanReviewDto | null>(null); // 2026-09-11 (Phase 4)
   const [planBriefing, setPlanBriefing] = useState<PlanBriefingDto | null>(null); // 2026-09-11 (Phase 4)
   const [generatingTasks, setGeneratingTasks] = useState(false);
+  // 2026-09-14: "업무 배분 실행"이 순차 LLM 호출 여러 개라 1~수 분 걸리는 게
+  // 정상이다("느리다" 문의 확인) — 폴링 중 현재 단계를 보여줘 체감을 낮춘다.
+  const genTasksSeqRef = useRef(0);
+  const [generatingStage, setGeneratingStage] = useState("");
   const [confirmingTasks, setConfirmingTasks] = useState(false);
   const [reassigningTaskId, setReassigningTaskId] = useState<number | null>(null);
   const [members, setMembers] = useState<Member[]>([]);
@@ -776,33 +780,93 @@ export default function DocumentsPage() {
     }
   };
 
+  type GenerateTasksResult = {
+    status: string; message?: string; suggestions?: TaskSuggestionDto[]; req_def_id?: number;
+    schedule_summary?: ScheduleSummaryDto; package_splits?: PackageSplitDto[];
+    plan_review?: PlanReviewDto; plan_briefing?: PlanBriefingDto;
+  };
+  type GenerateTasksJobStatus = {
+    status: "PENDING" | "RUNNING" | "SUCCESS" | "ERROR"; stage?: string;
+    result?: GenerateTasksResult; message?: string;
+  };
+
   // heyzzabi2의 "업무 배분 실행" — 요구사항정의서 승인 후 PM이 눌러서 실제 AI
   // 파이프라인(업무생성→담당자매핑→담당자추천)을 돌린다. 이 단계는 미리보기(제안)만
   // 만들고 DB에는 아무것도 저장하지 않는다 — PM이 담당자/일정을 검토·수정한 뒤
   // "배분 확정"을 눌러야 handleConfirmTasks가 실제로 저장한다(2단계 확정 플로우).
+  //
+  // 2026-09-14: 순차 LLM 호출 여러 개라 1~수 분 걸리는 게 정상이라("느리다" 문의
+  // 확인 결과), 백엔드가 즉시 job_id만 돌려주고 실제 파이프라인은 백그라운드로
+  // 돈다. 여기서는 job_id로 폴링하며 현재 단계를 보여주다가, 완료되면 기존과
+  // 동일하게 결과를 반영한다. genTasksSeqRef는 폴링 도중 사용자가 다시 실행
+  // 버튼을 누르거나 다른 문서로 넘어갔을 때 오래된 폴링 루프가 새 상태를
+  // 덮어쓰지 않도록 막는다(다른 곳의 taskFetchSeqRef와 같은 패턴).
   const handleGenerateTasks = async (spec: SpecDto, reqDefId: number) => {
+    const seq = ++genTasksSeqRef.current;
     setGeneratingTasks(true);
+    setGeneratingStage("작업을 준비하는 중…");
     setBusy(`reqdef-${reqDefId}-tasks`);
     try {
-      const result = await apiFetch<{ status: string; message?: string; suggestions?: TaskSuggestionDto[]; req_def_id?: number; schedule_summary?: ScheduleSummaryDto; package_splits?: PackageSplitDto[]; plan_review?: PlanReviewDto; plan_briefing?: PlanBriefingDto }>(
+      const started = await apiFetch<{ status: string; job_id?: string }>(
         `/api/requirements/${spec.id}/generate-tasks/`,
         { method: "POST" }
       );
-      if (result.status !== "success") {
-        setErrorToast(result.message || "업무 배분 제안 생성에 실패했습니다.");
+      if (started.status !== "started" || !started.job_id) {
+        setErrorToast("업무 배분 제안 생성에 실패했습니다.");
+        setGeneratingTasks(false);
+        setBusy(null);
         return;
       }
-      setTaskDrafts((result.suggestions ?? []).map(suggestionToDraft));
-      setTaskDraftsReqDefId(result.req_def_id ?? reqDefId);
-      setScheduleSummary(result.schedule_summary ?? null); // 2026-09-10 (Phase 0)
-      setPackageSplits(result.package_splits ?? []); // 2026-09-11 (Phase 3)
-      setPlanReview(result.plan_review ?? null); // 2026-09-11 (Phase 4)
-      setPlanBriefing(result.plan_briefing ?? null); // 2026-09-11 (Phase 4)
-      setActiveTab("taskAssignment");
-      setToastMessage("업무 배분 제안이 생성되었습니다. 검토 후 확정해주세요.");
+
+      const poll = async (): Promise<void> => {
+        if (genTasksSeqRef.current !== seq) return;
+        let job: GenerateTasksJobStatus;
+        try {
+          job = await apiFetch<GenerateTasksJobStatus>(`/api/requirements/generate-tasks-jobs/${started.job_id}/`);
+        } catch (err: any) {
+          if (genTasksSeqRef.current !== seq) return;
+          setErrorToast(err.message || "업무 배분 진행 상태를 확인하지 못했습니다.");
+          setGeneratingTasks(false);
+          setBusy(null);
+          return;
+        }
+        if (genTasksSeqRef.current !== seq) return;
+
+        if (job.status === "PENDING" || job.status === "RUNNING") {
+          if (job.stage) setGeneratingStage(job.stage);
+          setTimeout(poll, 1500);
+          return;
+        }
+        if (job.status === "ERROR") {
+          setErrorToast(job.message || "업무 배분 제안 생성에 실패했습니다.");
+          setGeneratingTasks(false);
+          setBusy(null);
+          return;
+        }
+
+        // SUCCESS
+        const result = job.result;
+        if (!result || result.status !== "success") {
+          setErrorToast(result?.message || "업무 배분 제안 생성에 실패했습니다.");
+          setGeneratingTasks(false);
+          setBusy(null);
+          return;
+        }
+        setTaskDrafts((result.suggestions ?? []).map(suggestionToDraft));
+        setTaskDraftsReqDefId(result.req_def_id ?? reqDefId);
+        setScheduleSummary(result.schedule_summary ?? null); // 2026-09-10 (Phase 0)
+        setPackageSplits(result.package_splits ?? []); // 2026-09-11 (Phase 3)
+        setPlanReview(result.plan_review ?? null); // 2026-09-11 (Phase 4)
+        setPlanBriefing(result.plan_briefing ?? null); // 2026-09-11 (Phase 4)
+        setActiveTab("taskAssignment");
+        setToastMessage("업무 배분 제안이 생성되었습니다. 검토 후 확정해주세요.");
+        setGeneratingTasks(false);
+        setBusy(null);
+      };
+      await poll();
     } catch (err: any) {
+      if (genTasksSeqRef.current !== seq) return;
       setErrorToast(err.message || "업무 배분 제안 생성에 실패했습니다.");
-    } finally {
       setGeneratingTasks(false);
       setBusy(null);
     }
@@ -1160,6 +1224,7 @@ export default function DocumentsPage() {
               planReview={planReview}
               planBriefing={planBriefing}
               generatingTasks={generatingTasks}
+              generatingStage={generatingStage}
               confirmingTasks={confirmingTasks}
               onConfirmTasks={(spec) => handleConfirmTasks(selectedNote, spec)}
               onCancelTaskDrafts={() => { setTaskDrafts(null); setTaskDraftsReqDefId(null); setScheduleSummary(null); setPackageSplits([]); setPlanReview(null); setPlanBriefing(null); }}
@@ -1251,7 +1316,7 @@ function NoteDetail({
   onGenerateSpec, onSaveNoteContent, onSaveSpec, onSavePeriod, onSubmitReview, onApprove, onReject,
   onCreateReqDef, onExtractItems, onAddItem, onUpdateItem, onDeleteItem, onReqDefStatusChange,
   onGenerateTasks, taskAssignments, onRejectReqDef,
-  taskDrafts, setTaskDrafts, scheduleSummary, packageSplits, planReview, planBriefing, generatingTasks, confirmingTasks, onConfirmTasks, onCancelTaskDrafts,
+  taskDrafts, setTaskDrafts, scheduleSummary, packageSplits, planReview, planBriefing, generatingTasks, generatingStage, confirmingTasks, onConfirmTasks, onCancelTaskDrafts,
   members, reassigningTaskId, onReassignTask,
 }: {
   note: NoteDto; spec: SpecDto | null; reqDef: ReqDefDto | null; activeTab: PipelineTab; isPM: boolean; currentUserId: string | undefined; busy: string | null;
@@ -1278,6 +1343,7 @@ function NoteDetail({
   planReview: PlanReviewDto | null; // 2026-09-11 (Phase 4)
   planBriefing: PlanBriefingDto | null; // 2026-09-11 (Phase 4)
   generatingTasks: boolean;
+  generatingStage: string;
   confirmingTasks: boolean;
   onConfirmTasks: (spec: SpecDto) => void;
   onCancelTaskDrafts: () => void;
@@ -1635,6 +1701,7 @@ function NoteDetail({
             onStatusChange={(statusCode) => onReqDefStatusChange(spec!, reqDef!.id, statusCode)}
             onGenerateTasks={() => onGenerateTasks(spec!, reqDef!.id)}
             generatingTasks={!!reqDef && busy === `reqdef-${reqDef.id}-tasks`}
+            generatingStage={!!reqDef && busy === `reqdef-${reqDef.id}-tasks` ? generatingStage : ""}
             onRejectClick={() => onRejectReqDef(spec!, reqDef!.id)}
             tasksAlreadyAssigned={tasksForReqDef.length > 0}
           />
@@ -1671,7 +1738,14 @@ function NoteDetail({
             {generatingTasks ? (
               <div className="flex flex-col items-center gap-4 py-6">
                 <Loader2 className="w-9 h-9 animate-spin text-primary" />
-                <p className="text-sm font-semibold text-muted-foreground">에이전트가 업무를 배분하는 중입니다…</p>
+                <div className="text-center">
+                  <p className="text-sm font-semibold text-muted-foreground">에이전트가 업무를 배분하는 중입니다…</p>
+                  {/* 순차 LLM 호출이 여러 개라 1~수 분 걸릴 수 있어(2026-09-14
+                      "느리다" 문의 확인), 멈춘 것처럼 보이지 않도록 현재 단계를 보여준다. */}
+                  {generatingStage && (
+                    <p className="text-xs text-muted-foreground/70 mt-1">{generatingStage}</p>
+                  )}
+                </div>
               </div>
             ) : (
               <>
@@ -2408,7 +2482,7 @@ function GanttSection({ items, title }: { items: GanttItem[]; title: string }) {
 
 function RequirementSection({
   spec, reqDef, isPM, canGenerate, busy, onCreate, onExtract, onAddItem, onUpdateItem, onDeleteItem, onStatusChange,
-  onGenerateTasks, generatingTasks, onRejectClick, tasksAlreadyAssigned,
+  onGenerateTasks, generatingTasks, generatingStage, onRejectClick, tasksAlreadyAssigned,
 }: {
   spec: SpecDto; reqDef: ReqDefDto | null; isPM: boolean;
   // 기획서 탭과 동일한 규칙 — 이 문서(회의록)를 시작한 작성자 본인만 요구사항정의서를
@@ -2426,6 +2500,9 @@ function RequirementSection({
   onStatusChange: (statusCode: "PENDING_REVIEW" | "APPROVED") => void;
   onGenerateTasks: () => void;
   generatingTasks: boolean;
+  // 2026-09-14: 순차 LLM 호출 여러 개라 1~수 분 걸릴 수 있어(폴링 진행 중에만
+  // 값이 있음), 버튼 옆에 현재 단계를 보여줘 멈춘 것처럼 보이지 않게 한다.
+  generatingStage: string;
   onRejectClick: () => void;
   // 이미 배분을 확정한 뒤에는 "업무 배분 실행" 버튼을 완전히 숨긴다 — PM이 요구사항정의서
   // 탭으로 돌아왔을 때 버튼이 그대로 남아있으면 실수로 다시 눌러 기존 배정을 통째로
@@ -2566,14 +2643,19 @@ function RequirementSection({
             </span>
           )}
           {reqStatus === "APPROVED" && isPM && !tasksAlreadyAssigned && (
-            <button
-              onClick={onGenerateTasks}
-              disabled={generatingTasks}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-primary text-primary-foreground text-xs font-bold hover:bg-primary/90 disabled:opacity-50"
-            >
-              {generatingTasks ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Bot className="w-3.5 h-3.5" />}
-              업무 배분 실행
-            </button>
+            <div className="flex items-center gap-2">
+              {generatingTasks && generatingStage && (
+                <span className="text-[11px] text-muted-foreground/70">{generatingStage}</span>
+              )}
+              <button
+                onClick={onGenerateTasks}
+                disabled={generatingTasks}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-primary text-primary-foreground text-xs font-bold hover:bg-primary/90 disabled:opacity-50"
+              >
+                {generatingTasks ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Bot className="w-3.5 h-3.5" />}
+                업무 배분 실행
+              </button>
+            </div>
           )}
           {reqStatus === "PENDING_REVIEW" && !isPM && (
             <span className="flex items-center gap-1 text-[11px] text-muted-foreground/70">
