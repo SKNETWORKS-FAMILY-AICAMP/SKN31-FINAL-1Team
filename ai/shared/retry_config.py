@@ -169,6 +169,18 @@ if PROFILE.supports_reasoning_effort:
 else:
     REASONING_EFFORT = None
 
+# 2026-09-15: 노드①(회의록 구조화)은 56분짜리 긴 회의록처럼 여러 화제가 섞인
+# 입력을 종합적으로 판단해 프로젝트 범위를 골라야 하는데, gpt-4o로는 이 판단이
+# 매번 좁은 화제 하나로 쏠리는 현상이 실측됨(같은 입력을 여러 번 돌려도 일관되게
+# 좁게 나옴 — 프롬프트/few-shot 보강으로도 해결 안 됨). 같은 입력을 추론 계열
+# 모델(gpt-5)로 돌리자 훨씬 넓고 완전한 결과가 나와, 이 노드 하나만 강한 모델로
+# 분리했다(meeting_analysis/node.py 참고). 속도가 훨씬 느려지는 트레이드오프가
+# 있지만(실측 약 100초/건), 회의록 분석은 반복 실행되는 단계가 아니라 회의록당
+# 1회만 도는 단계라 감내 가능하다고 판단.
+STRONG_MODEL = _env("OPENAI_STRONG_MODEL", "gpt-5")
+STRONG_MODEL_PROFILE = resolve_profile(STRONG_MODEL)
+STRONG_MODEL_MAX_TOKENS = int(_env("OPENAI_STRONG_MAX_TOKENS", str(STRONG_MODEL_PROFILE.default_max_tokens)))
+
 # 스키마 파싱 실패 시 재시도 횟수 (EX-LLM-004 대응)
 MAX_RETRIES = 2
 
@@ -201,6 +213,7 @@ def describe() -> str:
     src_eff = "환경변수" if _env("OPENAI_REASONING_EFFORT") else "프로필 기본값"
     rows = [
         ("모델 (OPENAI_MODEL)", DEFAULT_MODEL),
+        ("강한 모델 (OPENAI_STRONG_MODEL, 회의록 분석 전용)", STRONG_MODEL + ("  (환경변수)" if _env("OPENAI_STRONG_MODEL") else "  (기본값)")),
         ("계열 프로필", PROFILE.label),
         ("출력 토큰 상한", f"{DEFAULT_MAX_TOKENS}  ({src_tok})"),
         (
