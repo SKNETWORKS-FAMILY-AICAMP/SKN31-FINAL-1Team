@@ -57,9 +57,17 @@ class NodeResult:
 
 
 @traceable(name="meeting_analysis.run")
-def run(meeting_text: str, meeting_id: str) -> NodeResult:
+def run(meeting_text: str, meeting_id: str, on_stage=None) -> NodeResult:
+    # on_stage: 있으면 각 내부 단계 시작 시 사람이 읽을 라벨(str)로 호출한다(선택).
+    # 2026-09-15: 이 노드가 "회의록 분석 중…" 하나로만 뭉뚱그려져 있어 실측 ~100초
+    # 동안 진행 상황이 안 바뀌어 보인다는 요청 — 내부 단계별로 더 세분화한다.
+    def _stage(label: str) -> None:
+        if on_stage:
+            on_stage(label)
+
     # ── [1] AI 구조화 + 스키마 검증 ──────────────────────────
     # Instructor가 JSON 파싱 · Pydantic 검증 · 실패 시 재호출까지 처리합니다.
+    _stage("회의록 구조화 중…")
     try:
         # 2026-09-15: 이 노드만 STRONG_MODEL(기본 gpt-5)로 돌린다 — 긴 회의록에
         # 여러 화제가 섞여 있을 때 프로젝트 범위를 종합적으로 판단하는 게
@@ -135,9 +143,11 @@ def run(meeting_text: str, meeting_id: str) -> NodeResult:
     ).model_dump(mode="json")
 
     # ── [2] Evidence 검증 — 표시만, 삭제 안 함 ───────────────
+    _stage("근거자료 검증 중…")
     report = verify_and_mark(data, meeting_text)
 
     # ── [3] 교차 규칙 검증 ───────────────────────────────────
+    _stage("정합성 검사 중…")
     notes = cross_rules.check(data)
     data["validation_notes"] = notes
 
