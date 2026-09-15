@@ -26,11 +26,9 @@ from pydantic import ValidationError
 
 from shared.llm_client import create_structured
 from shared.retry_config import (
-    DEFAULT_MAX_TOKENS,
     FAST_MODEL,
     FAST_MODEL_MAX_TOKENS,
     MAX_RETRIES,
-    TEMPERATURE_STRUCTURED,
     structured_temperature_for,
 )
 from team_sizing import SKILL_ROLE_MAP, UNMAPPED_ROLE
@@ -196,13 +194,20 @@ def score_candidate_fit(
     for i in range(0, len(unit_payload), FIT_BATCH_SIZE):
         chunk = unit_payload[i : i + FIT_BATCH_SIZE]
         try:
+            # 2026-09-15: DEFAULT_MODEL을 그대로 썼다가 .env가 회의록 분석용으로
+            # gpt-5(추론)로 바뀌면서 이 호출까지 덩달아 느려졌다(실측: 5명x6unit
+            # 기준 gpt-5 23.8초 -> gpt-4o-mini 9.2초, 61% 단축). 후보가 이미 역할별
+            # 상한(≤5명 안팎)으로 좁혀진 뒤라 FAST_MODEL로도 판단 품질 손실이 크지
+            # 않다고 보고 전용 티어를 준다 — DEFAULT_MODEL이 나중에 뭘로 바뀌든
+            # 이 호출 속도는 영향받지 않는다.
             batch: CandidateFitBatch = create_structured(
                 system_prompt=build_candidate_fit_prompt(chunk),
                 user_message="각 업무에 대해 후보들의 적합도를 판단하라.",
                 response_model=CandidateFitBatch,
-                max_tokens=DEFAULT_MAX_TOKENS,
-                temperature=TEMPERATURE_STRUCTURED,
+                max_tokens=FAST_MODEL_MAX_TOKENS,
+                temperature=structured_temperature_for(FAST_MODEL),
                 max_retries=MAX_RETRIES,
+                openai_model=FAST_MODEL,
             )
         except ValidationError as e:
             logger.warning("후보 적합도 판단 스키마 검증 실패(배치) — 개수 기반으로 폴백: %s", e)
