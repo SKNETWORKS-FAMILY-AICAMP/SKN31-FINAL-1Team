@@ -11,13 +11,34 @@ class TaskStatusCode:
     task_assignment.status_code 에 들어갈 common_code.code_id 상수.
     common_code 테이블에 group_code='TASK_STATUS' 로 아래 code_id 들이 시드되어 있어야 한다.
     (기존 TaskAssignment.Status TextChoices 를 CommonCode 로 이관하면서 도입)
+
+    2026-09-15 수정 — common_code.code_id는 테이블 전체에서 전역으로 유일한 PK라
+    그룹마다 같은 문자열을 다시 쓸 수 없다(common/models.py CommonCode 참고). 원래
+    여기 있던 APPROVED/REJECTED/COMPLETED는 TASK_STATUS로 시드된 적이 없고, 실제로는
+    이미 다른 그룹이 선점한 code_id였다(라이브 DB로 실측 확인):
+      - APPROVED  -> REQSPEC_STATUS("승인완료")
+      - REJECTED  -> REQSPEC_STATUS("반려")
+      - COMPLETED -> PROJECT_STATUS("완료")
+    FK가 그룹을 검증하지 않아 에러 없이 조용히 엉뚱한 그룹의 행을 가리켜왔다(예:
+    대시보드의 완료 업무 집계가 TaskStatusCode.COMPLETED로 필터링해 항상 0건이었음).
+
+    (팀 결정, 2026-09-15) 새 code_id를 따로 시드하지 않고 TASK_STATUS에 이미 있는
+    값을 재사용한다 — APPROVED->DONE, REJECTED->CANCELLED. 업무 배분이 막 확정된
+    시점의 초기 상태는 PENDING_APPROVAL이다(confirm_task_assignments 참고).
+
+    2026-09-15 (임시저장): AI가 "업무 배분 실행" 직후 만드는 초안도 이제 즉시
+    TaskAssignment로 저장한다(그래야 PM이 며칠 뒤 돌아와도 안 날아감) — 이때는
+    아직 아무도 검토 전이라 PENDING_APPROVAL과는 구분해야 한다. 새 code_id를
+    또 만들지 않고 TASK_STATUS에 이미 있지만 아무 데도 안 쓰이던 BACKLOG("대기")를
+    "AI 초안, 검토 전" 의미로 재사용한다 — PM이 확정하면 PENDING_APPROVAL로 전환.
     """
+    BACKLOG = 'BACKLOG'
     PENDING_APPROVAL = 'PENDING_APPROVAL'
-    APPROVED = 'APPROVED'
-    REJECTED = 'REJECTED'
+    APPROVED = 'DONE'
+    REJECTED = 'CANCELLED'
     IN_PROGRESS = 'IN_PROGRESS'
-    COMPLETED = 'COMPLETED'
-    VALUES = {PENDING_APPROVAL, APPROVED, REJECTED, IN_PROGRESS, COMPLETED}
+    COMPLETED = 'DONE'
+    VALUES = {BACKLOG, PENDING_APPROVAL, APPROVED, REJECTED, IN_PROGRESS, COMPLETED}
 
 #tasks/models.py
 class TaskAssignment(models.Model):

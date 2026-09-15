@@ -37,11 +37,15 @@ class DashboardOverviewView(APIView):
         user = request.user
         is_pm = user.is_staff  # 백엔드 단일 기준(is_staff) 적용
 
+        # 2026-09-15: BACKLOG(AI 배분 직후 자동저장된 초안, PM 확정 전)는 PM 화면
+        # 포함 대시보드 집계에서 전부 제외한다 — 확정 전 수치는 "진짜" 업무량이
+        # 아니고, PM이 검토/수정 중인 화면은 generate_task_suggestions()가 반환한
+        # suggestions로 따로 보여주는 게 맞다(대시보드는 그 화면이 아님).
         if is_pm:
-            task_qs = TaskAssignment.objects.all()
+            task_qs = TaskAssignment.objects.exclude(status_code_id=TaskStatusCode.BACKLOG)
             project_qs = Project.objects.all()
         else:
-            task_qs = TaskAssignment.objects.filter(assigned_user=user)
+            task_qs = TaskAssignment.objects.filter(assigned_user=user).exclude(status_code_id=TaskStatusCode.BACKLOG)
             project_qs = Project.objects.filter(task_assignments__assigned_user=user).distinct()
 
         # 1. 요약 정보 (summary)
@@ -212,9 +216,10 @@ class DashboardAnalyticsView(APIView):
             average_process_time = 0.0
 
         # 4. 승인 통과율 (approvalPassRate)
+        # 2026-09-15: APPROVED == COMPLETED(둘 다 'DONE', 팀 결정으로 기존 코드 재사용)라
+        # 목록에 따로 안 넣어도 된다 — 넣어도 틀리진 않지만 같은 값이 중복돼 헷갈린다.
         approved_count = TaskAssignment.objects.filter(
             status_code__code_id__in=[
-                TaskStatusCode.APPROVED,
                 TaskStatusCode.IN_PROGRESS,
                 TaskStatusCode.COMPLETED
             ]
@@ -236,7 +241,6 @@ class DashboardAnalyticsView(APIView):
                 project=proj,
                 status_code__code_id__in=[
                     TaskStatusCode.PENDING_APPROVAL,
-                    TaskStatusCode.APPROVED,
                     TaskStatusCode.IN_PROGRESS
                 ]
             ).count()
