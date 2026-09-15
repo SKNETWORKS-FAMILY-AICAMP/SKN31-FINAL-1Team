@@ -18,7 +18,7 @@ import { exportReqSpecPptx } from "@/lib/exportReqSpecPptx";
 import type { ProposalDoc, ReqSpecDoc } from "@/lib/documentTemplates";
 import { Toast } from "@/components/ui/Toast";
 import { AgGridReact } from "ag-grid-react";
-import { AllCommunityModule, ModuleRegistry, themeQuartz, type ColDef } from "ag-grid-community";
+import { AllCommunityModule, ModuleRegistry, themeQuartz, type ColDef, type ColGroupDef } from "ag-grid-community";
 
 // 2026-09-15: "업무 일정 보기" 간트를 실제 스프레드시트 UI(AG Grid)로 렌더링한다.
 // 모듈 등록은 파일당 한 번만 하면 되므로 컴포넌트 바깥(모듈 스코프)에서 실행한다.
@@ -2574,10 +2574,13 @@ function GanttChart({ items }: { items: GanttItem[] }) {
 
   const BAR_COLOR = "#4f46e5";
 
-  const columnDefs: ColDef<Row>[] = [
-    { headerName: "작업명", field: "title", pinned: "left", width: 220, cellClass: "text-xs font-semibold" },
-    { headerName: "담당자", field: "assigneeName", pinned: "left", width: 110, cellClass: "text-xs" },
-    ...days.map((d, i) => ({
+  // 2026-09-15: 업무 배정 자체는(백엔드 scheduler.py) 평일만 계산하는데, 화면의
+  // 막대는 시작~종료일 사이 달력일을 통째로 칠해서 주말도 진행 중인 것처럼
+  // 보였다 — 주말은 막대 색을 칠하지 않고(실제로 일이 없는 날), 날짜 숫자만
+  // 빨간 글씨로 구분해서 보여준다.
+  const dayColumns: ColDef<Row>[] = days.map((d, i) => {
+    const isWeekend = d.getDay() === 0 || d.getDay() === 6;
+    return {
       headerName: fmtHeader(d),
       headerTooltip: fmtFullDate(d),
       colId: `day_${i}`,
@@ -2590,16 +2593,42 @@ function GanttChart({ items }: { items: GanttItem[] }) {
       sortable: false,
       suppressMovable: true,
       // 매달 1일은 경계를 굵게 표시해 월이 바뀌는 지점을 알 수 있게 한다.
-      headerClass: cn("ag-header-cell-day", i === todayIndex && "ag-header-cell-today", d.getDate() === 1 && "ag-header-cell-month-start"),
+      headerClass: cn(
+        "ag-header-cell-day",
+        isWeekend && "ag-header-cell-weekend",
+        i === todayIndex && "ag-header-cell-today",
+        d.getDate() === 1 && "ag-header-cell-month-start"
+      ),
       // 2026-09-15: 막대가 없는 빈 날짜 칸은 구분선이 없어 어느 날짜인지 눈으로
       // 따라가기 어렵다는 요청 — 칸마다 세로선을 그어 색칠 여부와 무관하게
       // 매 날짜 경계가 보이게 한다.
       cellClass: "ag-cell-day-col",
-      cellStyle: (params: { data?: Row }) =>
-        params.data && params.data.startIdx <= i && i <= params.data.endIdx
+      cellStyle: (params: { data?: Row }) => {
+        if (isWeekend) return undefined; // 주말은 절대 막대 색을 칠하지 않는다.
+        return params.data && params.data.startIdx <= i && i <= params.data.endIdx
           ? { backgroundColor: BAR_COLOR }
-          : undefined,
-    })),
+          : undefined;
+      },
+    };
+  });
+
+  // 날짜 칸 위에 월(月) 그룹 헤더를 한 줄 더 얹는다 — 같은 달인 날짜끼리 하나의
+  // 그룹으로 묶어 AG Grid의 2단 헤더로 표시한다.
+  const dayGroups: ColGroupDef<Row>[] = [];
+  days.forEach((d, i) => {
+    const label = `${d.getMonth() + 1}월`;
+    const last = dayGroups[dayGroups.length - 1];
+    if (last && last.headerName === label) {
+      (last.children as ColDef<Row>[]).push(dayColumns[i]);
+    } else {
+      dayGroups.push({ headerName: label, children: [dayColumns[i]] });
+    }
+  });
+
+  const columnDefs: (ColDef<Row> | ColGroupDef<Row>)[] = [
+    { headerName: "작업명", field: "title", pinned: "left", width: 220, cellClass: "text-xs font-semibold" },
+    { headerName: "담당자", field: "assigneeName", pinned: "left", width: 110, cellClass: "text-xs" },
+    ...dayGroups,
   ];
 
   return (
@@ -2618,6 +2647,7 @@ function GanttChart({ items }: { items: GanttItem[] }) {
         .ag-header-cell-day .ag-header-cell-text { font-size: 11px; }
         .ag-header-cell-today { background-color: #dce7ff !important; }
         .ag-header-cell-month-start { border-left: 2px solid #94a3b8 !important; }
+        .ag-header-cell-weekend .ag-header-cell-text { color: #dc2626; }
         /* 막대가 없는 빈 날짜 칸도 세로 구분선이 보이도록 — 색칠 여부와 무관하게
            모든 날짜 칸에 적용된다. */
         .ag-cell-day-col { border-right: 1px solid #e2e8f0; }
@@ -2626,7 +2656,8 @@ function GanttChart({ items }: { items: GanttItem[] }) {
         theme={themeQuartz}
         columnDefs={columnDefs}
         rowData={rowData}
-        headerHeight={32}
+        headerHeight={28}
+        groupHeaderHeight={22}
         rowHeight={28}
         suppressCellFocus
       />
