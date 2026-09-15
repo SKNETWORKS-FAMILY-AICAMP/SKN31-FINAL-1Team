@@ -181,23 +181,84 @@ def repair_feature_decision_categories(data: dict) -> list[str]:
     return notes
  
  
+def dedupe_requirement_categories(data: dict) -> list[str]:
+    """
+    같은 내용이 여러 요구사항 분류에 중복 등록된 항목을 제거합니다.
+
+    ## 왜 필요한가
+
+    실행 결과에서 같은 내용이 functional과 technical에 동일하게
+    중복 등록되는 사례가 확인됐습니다
+    (예: "주클로 모델을 사용하여 패션 데이터를 분류한다"가 두 분류
+    모두에 들어감). 기획서 5·6·7번 섹션(주요 기능·기술 및 제약사항·
+    최종 결정사항)이 이 requirements를 그대로 재료로 쓰므로, 중복을
+    남겨두면 같은 내용이 서로 다른 섹션에 반복 표시됩니다.
+
+    ## 왜 기록만 하지 않고 제거까지 하는가
+
+    다른 교차 규칙은 대부분 판단이 필요해 기록만 하지만, 이 중복은
+    원인이 한 가지뿐입니다 — 같은 content가 두 분류에 걸쳐 있으면
+    같은 사실이 기능이면서 동시에 기술 스택일 수는 없으므로 하나는
+    반드시 잘못된 분류입니다. 판단 없이 기계적으로 정리할 수 있는
+    경우라 안전하게 제거합니다. check_unresolved_consistency와 같은
+    이유로 제거하되, 제거 사실은 notes에 남겨 추적할 수 있게 합니다.
+
+    REQ_CATEGORIES 순서(functional 우선)로 먼저 나온 분류를 남깁니다.
+    같은 분류 안의 중복(예: non_functional 안에서 같은 내용이 두 번)은
+    이 함수가 보는 대상이 아닙니다 — 분류 간 혼선만 봅니다.
+    """
+    reqs = data.get("requirements") or {}
+    seen: dict[str, str] = {}
+    notes: list[str] = []
+
+    for category in REQ_CATEGORIES:
+        items = reqs.get(category) or []
+        kept: list = []
+
+        for item in items:
+            key = normalize(item.get("content", ""))
+
+            # 다른 분류에 이미 등록된 내용만 중복으로 봅니다.
+            # 같은 분류 안의 중복은 이 규칙의 대상이 아닙니다
+            # (test_같은_분류_안의_중복은_기록하지_않는다 참고).
+            if key and key in seen and seen[key] != category:
+                notes.append(
+                    f"중복 등록을 제거했습니다: {seen[key]}에 이미 있는 내용이 "
+                    f"{category}에도 등록되어 있었습니다 — "
+                    f"{str(item.get('content', ''))[:25]}"
+                )
+                continue
+
+            if key and key not in seen:
+                seen[key] = category
+
+            kept.append(item)
+
+        reqs[category] = kept
+
+    return notes
+
+
 def check(data: dict) -> list[str]:
     """
     교차 규칙 전체.
     반환값은 validation_notes에 담깁니다.
- 
+
     ※ 아래 규칙 3개는 예시입니다.
       실제 목록은 회의록을 더 돌려보고 확정하세요.
     """
     notes: list[str] = []
     reqs = data.get("requirements", {})
- 
+
     # ── unresolved 모순 검사 (데이터 수정 있음) ──────────────
     notes += check_unresolved_consistency(data)
 
     # ── 결정사항 분류 보정 (검증된 동일 quote일 때만 수정) ────
     notes += repair_feature_decision_categories(data)
- 
+
+    # ── 요구사항 분류 간 중복 제거 (데이터 수정 있음) ─────────
+    notes += dedupe_requirement_categories(data)
+
     # 규칙 1: 기술 결정이 있는데 기술 요구사항이 비어 있는가
     tech_decisions = [
         d for d in data.get("decisions", []) if d.get("category") == "tech"
@@ -206,23 +267,7 @@ def check(data: dict) -> list[str]:
         notes.append(
             "기술 관련 결정사항이 있으나 기술 요구사항이 비어 있습니다. 확인이 필요합니다."
         )
- 
-    # 규칙 2: 같은 내용이 여러 분류에 중복 등록됐는가
-    seen: dict[str, str] = {}
-    for category in REQ_CATEGORIES:
-        for item in reqs.get(category, []):
-            key = normalize(item.get("content", ""))
-            if not key:
-                continue
-            if key in seen and seen[key] != category:
-                notes.append(
-                    f"동일 내용이 {seen[key]}와 {category}에 중복 등록됐습니다: "
-                    f"{item['content'][:25]}"
-                )
-            seen[key] = category
- 
-   
- 
+
     # 규칙 4: 항목 수가 비정상적으로 많은가 (프롬프트 폭주 신호)
     for category in REQ_CATEGORIES:
         count = len(reqs.get(category, []))
