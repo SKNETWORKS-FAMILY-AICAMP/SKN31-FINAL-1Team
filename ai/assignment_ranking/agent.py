@@ -25,7 +25,14 @@ from typing import Any, Dict, List
 from pydantic import ValidationError
 
 from shared.llm_client import create_structured
-from shared.retry_config import DEFAULT_MAX_TOKENS, MAX_RETRIES, TEMPERATURE_STRUCTURED
+from shared.retry_config import (
+    DEFAULT_MAX_TOKENS,
+    FAST_MODEL,
+    FAST_MODEL_MAX_TOKENS,
+    MAX_RETRIES,
+    TEMPERATURE_STRUCTURED,
+    structured_temperature_for,
+)
 from team_sizing import SKILL_ROLE_MAP, UNMAPPED_ROLE
 from assignee_recommend.rule_filter import _match_skills
 
@@ -95,13 +102,16 @@ def decide_package_splits(
         return {}
 
     try:
+        # 2026-09-14: "나눌지 말지 + 왜"만 판단하는 저난도 호출이라 FAST_MODEL을 쓴다
+        # (score_candidate_fit은 경력기술서 내용을 대조하는 질적 판단이라 그대로 둠).
         batch: PackageSplitBatch = create_structured(
             system_prompt=build_split_prompt(payload, max_hours_per_assignee),
             user_message="각 기능 묶음을 분할할지 판단하라.",
             response_model=PackageSplitBatch,
-            max_tokens=DEFAULT_MAX_TOKENS,
-            temperature=TEMPERATURE_STRUCTURED,
+            max_tokens=FAST_MODEL_MAX_TOKENS,
+            temperature=structured_temperature_for(FAST_MODEL),
             max_retries=MAX_RETRIES,
+            openai_model=FAST_MODEL,
         )
     except ValidationError as e:
         logger.warning("패키지 분할 판단 스키마 검증 실패 — 분할 없이 진행: %s", e)

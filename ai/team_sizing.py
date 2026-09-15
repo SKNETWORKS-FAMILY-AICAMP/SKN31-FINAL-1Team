@@ -151,6 +151,28 @@ def _distribute_unit_hours(
     return out
 
 
+def role_hours(
+    tasks: List[Dict[str, Any]],
+    skill_role_map: Optional[Dict[str, Dict[str, float]]] = None,
+) -> Dict[str, float]:
+    """업무 목록의 estimated_hours를 역할별로 분배한 합계(role -> hours).
+
+    estimate_team_size()와 assignee_mapping.rule_filter.filter_candidates()의
+    용량 기반 후보 캡(2026-09-14)이 이 계산을 공유한다 — 두 곳이 각자 정의하면
+    어긋나기 쉽다(과거 FOCUS_HOURS_PER_DAY 이원화로 배정-일정 불일치가 났던
+    사고와 같은 패턴). 정의는 여기 한 곳에만 둔다.
+    """
+    units = flatten_assignable_units(tasks)
+    if skill_role_map is None:
+        skill_role_map = _SEED_SKILL_ROLE_MAP
+
+    hours_by_role: Dict[str, float] = {}
+    for unit in units:
+        for role, h in _distribute_unit_hours(unit, skill_role_map).items():
+            hours_by_role[role] = hours_by_role.get(role, 0.0) + h
+    return hours_by_role
+
+
 def estimate_team_size(
     tasks: List[Dict[str, Any]],
     project_start_date: Union[str, date],
@@ -172,14 +194,7 @@ def estimate_team_size(
         role == UNMAPPED_ROLE 인 항목이 있으면 "그 스킬을 가진 인력이 우리 팀에 없다"는 뜻.
     """
     max_hours = calculate_max_hours_per_assignee(project_start_date, project_end_date)
-    units = flatten_assignable_units(tasks)
-    if skill_role_map is None:
-        skill_role_map = _SEED_SKILL_ROLE_MAP
-
-    hours_by_role: Dict[str, float] = {}
-    for unit in units:
-        for role, h in _distribute_unit_hours(unit, skill_role_map).items():
-            hours_by_role[role] = hours_by_role.get(role, 0.0) + h
+    hours_by_role = role_hours(tasks, skill_role_map)
 
     by_role = [
         {

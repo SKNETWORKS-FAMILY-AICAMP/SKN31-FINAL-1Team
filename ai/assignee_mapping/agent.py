@@ -14,6 +14,11 @@ EmployeeFitnessProfile을 만든다.
 후보 필터링(재직 여부/필요 직무/필요 기술)은 호출부가 SQL로 미리 걸러주는 게
 아니라, 이 에이전트가 rule_filter.filter_candidates()로 직접 한다(2026-09-02
 결정) — 호출부는 필터링 없이 사원 원본 데이터를 그대로 넘기면 된다.
+
+2026-09-14: state에 current_workload/total_workdays/skill_role_map을 채워
+넘기면(전부 있어야 함) rule_filter가 역할별 후보 상한(기본 5명 + 가용시간
+부족 시 확장)도 적용한다 — 성능 최적화이며 없어도 동작한다(rule_filter.py
+모듈 docstring 참고).
 """
 
 import logging
@@ -125,8 +130,16 @@ def assignee_mapping_node(state: Dict[str, Any]) -> Dict[str, Any]:
         if text not in _experience_tags_cache:
             _experience_tags_cache[text] = tags
 
-    # LLM 호출 전, 후보를 코드로 먼저 추린다 (rule_filter.py 참고)
-    candidates = filter_candidates(raw_profiles, state["tasks"])
+    # LLM 호출 전, 후보를 코드로 먼저 추린다 (rule_filter.py 참고). 아래 세
+    # 키(current_workload/total_workdays/skill_role_map)가 전부 있으면 역할별
+    # 상한(2026-09-14, 성능)도 함께 적용된다 — 없으면 예전처럼 스킬 겹침만으로 거른다.
+    candidates = filter_candidates(
+        raw_profiles,
+        state["tasks"],
+        current_workload=state.get("current_workload"),
+        total_workdays=state.get("total_workdays"),
+        skill_role_map=state.get("skill_role_map"),
+    )
 
     tags_by_employee: Dict[str, ExtractedExperienceTags] = {}
     to_call: List[RawEmployeeProfile] = []

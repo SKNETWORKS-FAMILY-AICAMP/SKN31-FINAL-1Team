@@ -296,11 +296,25 @@ def generate_task_suggestions(spec_id: int, on_stage=None) -> dict:
     # 호출부가 채운 적 없음) 실행할 때마다 매번 LLM으로 다시 태그를 뽑고
     # 있었다 — DB 캐시(EmployeeExperienceTagCache)에서 미리 읽어 시드한다.
     known_experience_tags = load_known_experience_tags(raw_profiles)
+    # 2026-09-14: 프로젝트 전체 누적 부하(취소된 업무는 실제 부하가 아니므로 제외) —
+    # 원래 A2-3 직전에만 조회했는데, 담당자매핑(A2-2.5)의 역할별 후보 상한
+    # (rule_filter.filter_candidates)이 "이 역할 상위 후보들의 남는 가용시간이
+    # 부족하면 후보를 더 넣는다" 판단에 이 값을 써야 해서 여기로 당겨왔다.
+    workload_qs = (
+        TaskAssignment.objects
+        .exclude(status_code_id='CANCELLED')
+        .values('assigned_user_id')
+        .annotate(total=Sum('estimated_hours'))
+    )
+    current_workload = {str(row['assigned_user_id']): float(row['total'] or 0) for row in workload_qs}
     try:
         mapping_result = assignee_mapping_node({
             "raw_employee_profiles": raw_profiles,
             "tasks": tasks,
             "known_experience_tags": known_experience_tags,
+            "current_workload": current_workload,
+            "total_workdays": project_period["workdays"],
+            "skill_role_map": skill_role_map,
         })
     except Exception as e:
         logger.exception("담당자 매핑 실패 (spec_id=%s)", spec_id)
@@ -312,15 +326,6 @@ def generate_task_suggestions(spec_id: int, on_stage=None) -> dict:
         return {"status": "error", "message": "업무에 필요한 스킬을 가진 재직 사원이 없습니다."}
     # 새로 뽑았든 캐시에서 왔든 다시 저장해둔다 — 다음 실행부터 확실히 히트하게.
     persist_experience_tags(raw_profiles, member_profiles)
-
-    # 프로젝트 전체 누적 부하 — 취소된 업무는 실제 부하가 아니므로 제외.
-    workload_qs = (
-        TaskAssignment.objects
-        .exclude(status_code_id='CANCELLED')
-        .values('assigned_user_id')
-        .annotate(total=Sum('estimated_hours'))
-    )
-    current_workload = {str(row['assigned_user_id']): float(row['total'] or 0) for row in workload_qs}
 
     _stage("담당자 배정 추천 중…")
     try:

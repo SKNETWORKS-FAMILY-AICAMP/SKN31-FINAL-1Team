@@ -26,7 +26,7 @@ from typing import Any, Dict, List, Optional
 from pydantic import ValidationError
 
 from shared.llm_client import create_structured
-from shared.retry_config import DEFAULT_MAX_TOKENS, MAX_RETRIES, TEMPERATURE_STRUCTURED
+from shared.retry_config import FAST_MODEL, FAST_MODEL_MAX_TOKENS, MAX_RETRIES, structured_temperature_for
 
 from .prompt_builder import (
     build_hold_batch_prompt,
@@ -69,15 +69,21 @@ def _priority_by_req_id(requirement_doc: Dict[str, Any]) -> Dict[str, Optional[s
     return {r["id"]: r.get("priority") for r in requirement_doc.get("requirements", [])}
 
 
+# 2026-09-14: 근거 문장/보류 사유는 코드가 이미 정한 결과(스코어·배정·보류 여부)를
+# 한두 문장으로 서술만 하는 저난도 호출이라 FAST_MODEL(retry_config 참고)을 쓴다.
+_FAST_TEMPERATURE = structured_temperature_for(FAST_MODEL)
+
+
 def generate_reason(unit: Dict[str, Any], candidate: Dict[str, Any]) -> RecommendationReason:
     prompt = build_reason_prompt(unit, candidate)
     return create_structured(
         system_prompt=prompt,
         user_message="위 후보에 대한 추천 근거를 작성하라.",
         response_model=RecommendationReason,
-        max_tokens=DEFAULT_MAX_TOKENS,
-        temperature=TEMPERATURE_STRUCTURED,
+        max_tokens=FAST_MODEL_MAX_TOKENS,
+        temperature=_FAST_TEMPERATURE,
         max_retries=MAX_RETRIES,
+        openai_model=FAST_MODEL,
     )
 
 
@@ -87,9 +93,10 @@ def generate_hold_explanation(unit: Dict[str, Any]) -> HoldExplanation:
         system_prompt=prompt,
         user_message="이 업무가 왜 배정 보류됐는지 설명하라.",
         response_model=HoldExplanation,
-        max_tokens=DEFAULT_MAX_TOKENS,
-        temperature=TEMPERATURE_STRUCTURED,
+        max_tokens=FAST_MODEL_MAX_TOKENS,
+        temperature=_FAST_TEMPERATURE,
         max_retries=MAX_RETRIES,
+        openai_model=FAST_MODEL,
     )
 
 
@@ -102,9 +109,10 @@ def generate_reasons_batch(items: List[Dict[str, Any]]) -> Dict[str, Recommendat
         system_prompt=prompt,
         user_message="위 후보들에 대한 추천 근거를 각각 작성하라.",
         response_model=ReasonBatch,
-        max_tokens=DEFAULT_MAX_TOKENS,
-        temperature=TEMPERATURE_STRUCTURED,
+        max_tokens=FAST_MODEL_MAX_TOKENS,
+        temperature=_FAST_TEMPERATURE,
         max_retries=MAX_RETRIES,
+        openai_model=FAST_MODEL,
     )
     return {
         r.unit_id: RecommendationReason(
@@ -123,9 +131,10 @@ def generate_hold_explanations_batch(units: List[Dict[str, Any]]) -> Dict[str, s
         system_prompt=prompt,
         user_message="아래 업무들이 왜 배정 보류됐는지 각각 설명하라.",
         response_model=HoldBatch,
-        max_tokens=DEFAULT_MAX_TOKENS,
-        temperature=TEMPERATURE_STRUCTURED,
+        max_tokens=FAST_MODEL_MAX_TOKENS,
+        temperature=_FAST_TEMPERATURE,
         max_retries=MAX_RETRIES,
+        openai_model=FAST_MODEL,
     )
     return {h.unit_id: h.explanation for h in batch.items}
 
