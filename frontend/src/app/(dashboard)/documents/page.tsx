@@ -1395,6 +1395,10 @@ const TASK_GEN_STAGES: { label: string; match: (s: string) => boolean }[] = [
       s.includes("담당자 배정") || s.startsWith("총 ") || s.includes("사유 작성") ||
       s.includes("배정 가능한 담당자가 없어"),
   },
+  // 2026-09-15: "계획 요약 작성 중…" 단계가 이 목록에 없어서, 해당 단계에 들어가면
+  // currentStageIndex가 매칭되는 단계를 못 찾고 0(업무 생성)으로 되돌아가 보이던
+  // 문제 수정 — 마지막 단계로 추가한다.
+  { label: "계획 요약", match: (s) => s.includes("계획 요약") },
 ];
 
 // 단계 라벨을 대략의 진행률(%)로도 매핑한다 — 정확한 값은 아니지만(파이프라인
@@ -1402,14 +1406,22 @@ const TASK_GEN_STAGES: { label: string; match: (s: string) => boolean }[] = [
 // 시간 ÷ 진행률"로 역산하는 데 쓴다. "(3/8건)"처럼 실제 분모/분자가 찍히는
 // 단계는 그 비율을 그대로 반영한다.
 function taskGenStageProgressPercent(stage: string): number {
+  // 2026-09-15: "담당자 배정 추천 중…"(이 단계 진입 시 맨 처음 뜨는 문구)이
+  // 아래 어느 조건에도 안 걸려서 항상 5%로 떨어지던 문제 수정 — 이 단계는
+  // 실제로 전체 파이프라인의 절반을 넘긴 지점(50%대)인데 5%로 되돌아가
+  // 보이면서 "남은 시간"도 같이 크게 튀었다. 또한 마지막 단계인 "계획 요약
+  // 작성 중…"도 매칭되는 게 없어 5%로 떨어졌던 것도 같이 고친다.
+  if (stage.includes("계획 요약")) return 97;
   const ratioMatch = stage.match(/\((\d+)\/(\d+)\D*\)/);
   if (ratioMatch) {
     const done = Number(ratioMatch[1]);
     const total = Number(ratioMatch[2]) || 1;
-    return Math.min(96, 65 + Math.round((done / total) * 30));
+    return Math.min(96, 60 + Math.round((done / total) * 35));
   }
   if (stage.includes("배정 가능한 담당자가 없어")) return 70;
   if (stage.startsWith("총 ") && stage.includes("배정")) return 60;
+  if (stage.includes("사유 작성")) return 62;
+  if (stage.includes("담당자 배정")) return 55;
   if (stage.includes("담당자 정보 분석")) return 50;
   if (stage.includes("업무 패키지 분할")) return 38;
   if (stage.includes("프로젝트 규모 판단")) return 25;
@@ -2569,12 +2581,16 @@ function GanttChart({ items }: { items: GanttItem[] }) {
       headerName: fmtHeader(d),
       headerTooltip: fmtFullDate(d),
       colId: `day_${i}`,
-      width: 32,
+      // 2026-09-15: 34px에 패딩만 줄여서는 "15"/"23" 같은 두 자리 날짜가 여전히
+      // 잘려 보였다(헤더 셀 안쪽에 정렬/리사이즈용 wrapper가 더 있어서 padding:0
+      // 만으로는 부족) — 칸을 40px로 넓히고 그 wrapper까지 함께 덮어써서
+      // 실제로 두 자리가 다 보이게 한다.
+      width: 40,
       resizable: false,
       sortable: false,
       suppressMovable: true,
       // 매달 1일은 경계를 굵게 표시해 월이 바뀌는 지점을 알 수 있게 한다.
-      headerClass: cn(i === todayIndex && "ag-header-cell-today", d.getDate() === 1 && "ag-header-cell-month-start"),
+      headerClass: cn("ag-header-cell-day", i === todayIndex && "ag-header-cell-today", d.getDate() === 1 && "ag-header-cell-month-start"),
       cellStyle: (params: { data?: Row }) =>
         params.data && params.data.startIdx <= i && i <= params.data.endIdx
           ? { backgroundColor: BAR_COLOR }
@@ -2583,9 +2599,19 @@ function GanttChart({ items }: { items: GanttItem[] }) {
   ];
 
   return (
-    <div className="border border-border rounded-xl p-2">
-      {/* AG Grid 자체가 가로 스크롤을 처리하므로 별도 wheel/overflow 핸들링이 필요 없다. */}
+    // 2026-09-15: domLayout="autoHeight"로 두면 AG Grid가 세로 스크롤을 포기하고
+    // 행 수만큼 계속 늘어나 버려서(가로 스크롤만 되고 세로는 바깥 모달에 맡기는
+    // 구조), 행이 많으면 모달 밖으로 잘려 보이는 문제가 있었다 — h-full + 기본
+    // domLayout(normal)으로 바꿔 AG Grid 자신이 가로·세로 스크롤을 전부 갖게 한다.
+    <div className="h-full">
       <style>{`
+        /* AG Grid 기본 헤더 셀(.ag-header-cell)이 좌우 16px씩 패딩을 갖고 있어서
+           40px짜리 좁은 날짜 칸은 실제 글자 공간이 8px밖에 안 남아 "15" 같은
+           두 자리가 통째로 잘렸다 — 진짜 원인은 이 바깥쪽 패딩이었다. */
+        .ag-header-cell-day { padding: 0 !important; }
+        .ag-header-cell-day .ag-header-cell-comp-wrapper,
+        .ag-header-cell-day .ag-header-cell-label { padding: 0 !important; margin: 0 !important; justify-content: center !important; }
+        .ag-header-cell-day .ag-header-cell-text { font-size: 11px; }
         .ag-header-cell-today { background-color: #dce7ff !important; }
         .ag-header-cell-month-start { border-left: 2px solid #94a3b8 !important; }
       `}</style>
@@ -2593,7 +2619,6 @@ function GanttChart({ items }: { items: GanttItem[] }) {
         theme={themeQuartz}
         columnDefs={columnDefs}
         rowData={rowData}
-        domLayout="autoHeight"
         headerHeight={32}
         rowHeight={28}
         suppressCellFocus
@@ -2633,7 +2658,9 @@ function GanttSection({ items, title }: { items: GanttItem[]; title: string }) {
       {open && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm" onClick={() => setOpen(false)}>
           <div
-            className="bg-background rounded-2xl shadow-2xl w-full max-w-6xl border border-border flex flex-col max-h-[90vh] overflow-hidden"
+            // 2026-09-15: "더 크게 해달라"는 요청 — max-w-6xl(72rem)에서
+            // 뷰포트의 96%까지 쓰도록 넓혔다. 세로도 90vh 그대로 최대한 확보.
+            className="bg-background rounded-2xl shadow-2xl w-full max-w-[96vw] h-[90vh] border border-border flex flex-col overflow-hidden"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex justify-between items-center p-5 border-b border-border shrink-0">
@@ -2658,11 +2685,12 @@ function GanttSection({ items, title }: { items: GanttItem[]; title: string }) {
                 </button>
               </div>
             </div>
-            {/* min-h-0: flex 자식은 기본 min-height:auto라 overflow-y-auto를 줘도
-                내용이 넘치는 만큼 부모(max-h-90vh)를 그냥 뚫고 나가 버린다(가로
-                스크롤에서 겪은 min-w-0와 같은 문제의 세로 버전) — 이거 없으면
-                담당자가 많을 때 아래쪽 행이 스크롤 없이 그냥 잘려서 안 보인다. */}
-            <div className="p-5 overflow-y-auto flex-1 min-h-0">
+            {/* min-h-0: flex 자식은 기본 min-height:auto라 h-full을 줘도 내용이
+                넘치는 만큼 부모를 그냥 뚫고 나가 버린다 — 이거 없으면 AG Grid가
+                자기 높이를 못 정하고 계속 늘어난다. 세로/가로 스크롤은 이제
+                AG Grid 자신이 담당하므로(GanttChart 참고) 여기서는 overflow를
+                주지 않는다(주면 스크롤이 두 군데로 겹쳐서 조작이 헷갈린다). */}
+            <div className="p-5 flex-1 min-h-0">
               <GanttChart items={items} />
             </div>
           </div>
