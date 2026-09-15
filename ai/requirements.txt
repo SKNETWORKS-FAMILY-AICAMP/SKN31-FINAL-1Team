@@ -16,6 +16,13 @@
 instructor==1.15.4
 openai==2.54.0
 
+# ---- 관측(LangSmith) ----
+# 2026-09-15: LANGSMITH_TRACING=true(.env)일 때 모든 LLM 호출을 자동으로
+# LangSmith(project=SKN31)에 기록한다 — 어느 호출이 느린지 실측 확인용
+# (shared/llm_client.py의 wrap_openai/traceable 참고). 미설치여도 안 죽고
+# 트레이싱만 안 됨.
+langsmith==0.10.2
+
 # ---- 스키마 정의·검증 ----
 pydantic==2.13.4
 

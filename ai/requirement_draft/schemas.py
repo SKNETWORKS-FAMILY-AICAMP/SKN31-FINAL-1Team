@@ -113,10 +113,22 @@ class RequirementItem(BaseModel):
     category_2: str
     title: str
     description: str
+    related_feature: str = Field(..., min_length=1, description="관련 기획서 기능/절. 추가 제안이면 그 사실 명시")
+    input_output: str = Field(..., min_length=1, description="입력·처리·출력. 미정은 명시")
+    acceptance_criteria: str = Field(..., min_length=1, description="검증 가능한 수용 기준. 미정 시험조건 명시")
+    note: str = Field(..., min_length=1, description="필수 여부·출처·도출 제안·미정·범위 제약")
     type: ReqType
     priority: Optional[Priority] = None
     source: Source
     review_status: ItemReviewStatus
+
+    @field_validator("related_feature", "input_output", "acceptance_criteria", "note")
+    @classmethod
+    def validate_export_details(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("요구사항 상세 항목은 비울 수 없습니다. 근거와 미정 조건을 명시하세요.")
+        return value
 
     @field_validator("priority", mode="before")
     @classmethod

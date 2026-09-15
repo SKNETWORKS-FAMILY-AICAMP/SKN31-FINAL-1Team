@@ -35,7 +35,7 @@ from typing import Any, Dict, List, Optional, Set
 
 from pydantic import ValidationError
 
-from shared.llm_client import create_structured
+from shared.llm_client import create_structured, traceable
 from shared.retry_config import DEFAULT_MAX_TOKENS, MAX_RETRIES, TEMPERATURE_STRUCTURED
 
 from .prompt_builder import build_skill_remap_prompt, build_system_prompt
@@ -184,6 +184,7 @@ def _remap_skill_vocabulary(tasks: List[TaskItem], available_skills: List[str]) 
     return tasks
 
 
+@traceable(name="task_generation.generate_tasks")
 def generate_tasks(
     requirement_doc: dict,
     available_skills: Optional[List[str]] = None,

@@ -26,6 +26,7 @@ from assignee_recommend.rule_filter import (
 from assignment_ranking.agent import decide_package_splits
 from assignment_explanation.agent import summarize_plan
 from common.models import CommonCode
+from shared.llm_client import traceable
 
 # 2026-09-11 (Phase 1): 일정 배치는 tasks.scheduler(결정적 순수 모듈)에 위임한다.
 from tasks.scheduler import (
@@ -180,6 +181,7 @@ def _build_briefing_context(
     }
 
 
+@traceable(name="generate_task_suggestions")
 def generate_task_suggestions(spec_id: int, on_stage=None) -> dict:
     """
     요구사항정의서 승인 후 PM이 누르는 "업무 배분 실행" — 실제 AI 파이프라인
@@ -296,11 +298,25 @@ def generate_task_suggestions(spec_id: int, on_stage=None) -> dict:
     # 호출부가 채운 적 없음) 실행할 때마다 매번 LLM으로 다시 태그를 뽑고
     # 있었다 — DB 캐시(EmployeeExperienceTagCache)에서 미리 읽어 시드한다.
     known_experience_tags = load_known_experience_tags(raw_profiles)
+    # 2026-09-14: 프로젝트 전체 누적 부하(취소된 업무는 실제 부하가 아니므로 제외) —
+    # 원래 A2-3 직전에만 조회했는데, 담당자매핑(A2-2.5)의 역할별 후보 상한
+    # (rule_filter.filter_candidates)이 "이 역할 상위 후보들의 남는 가용시간이
+    # 부족하면 후보를 더 넣는다" 판단에 이 값을 써야 해서 여기로 당겨왔다.
+    workload_qs = (
+        TaskAssignment.objects
+        .exclude(status_code_id='CANCELLED')
+        .values('assigned_user_id')
+        .annotate(total=Sum('estimated_hours'))
+    )
+    current_workload = {str(row['assigned_user_id']): float(row['total'] or 0) for row in workload_qs}
     try:
         mapping_result = assignee_mapping_node({
             "raw_employee_profiles": raw_profiles,
             "tasks": tasks,
             "known_experience_tags": known_experience_tags,
+            "current_workload": current_workload,
+            "total_workdays": project_period["workdays"],
+            "skill_role_map": skill_role_map,
         })
     except Exception as e:
         logger.exception("담당자 매핑 실패 (spec_id=%s)", spec_id)
@@ -313,16 +329,24 @@ def generate_task_suggestions(spec_id: int, on_stage=None) -> dict:
     # 새로 뽑았든 캐시에서 왔든 다시 저장해둔다 — 다음 실행부터 확실히 히트하게.
     persist_experience_tags(raw_profiles, member_profiles)
 
-    # 프로젝트 전체 누적 부하 — 취소된 업무는 실제 부하가 아니므로 제외.
-    workload_qs = (
-        TaskAssignment.objects
-        .exclude(status_code_id='CANCELLED')
-        .values('assigned_user_id')
-        .annotate(total=Sum('estimated_hours'))
-    )
-    current_workload = {str(row['assigned_user_id']): float(row['total'] or 0) for row in workload_qs}
-
     _stage("담당자 배정 추천 중…")
+
+    def _on_assignee_progress(event: dict) -> None:
+        if event["type"] == "scheduled":
+            assignee_ids = sorted({
+                s["employee_id"] for s in event["scheduled"] if s["employee_id"] is not None
+            })
+            names = [n for n in (_assignee_display_name(i) for i in assignee_ids) if n]
+            if not names:
+                _stage("배정 가능한 담당자가 없어 보류 사유 작성 중…")
+                return
+            shown = ", ".join(names[:3])
+            if len(names) > 3:
+                shown += f" 외 {len(names) - 3}명"
+            _stage(f"총 {len(names)}명 배정 중 — {shown}")
+        elif event["type"] == "reasons_progress":
+            _stage(f"배정 사유 작성 중 ({event['done']}/{event['total']}건)")
+
     try:
         recommend_result = assignee_recommend_node({
             "member_profiles": member_profiles,
@@ -332,6 +356,7 @@ def generate_task_suggestions(spec_id: int, on_stage=None) -> dict:
             "tasks": tasks,
             "requirement_doc": requirement_doc,
             "package_by_unit": package_by_unit,  # Phase 3: 분할 반영된 그룹핑
+            "on_progress": _on_assignee_progress,
         })
     except Exception as e:
         logger.exception("담당자 추천 실패 (spec_id=%s)", spec_id)

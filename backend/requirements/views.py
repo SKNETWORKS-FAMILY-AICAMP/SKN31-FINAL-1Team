@@ -527,7 +527,9 @@ def _run_generate_tasks_job(job_id, actor_user_id):
         )
 
         def on_stage(label):
-            TaskGenerationJob.objects.filter(pk=job_id).update(stage=label, updated_at=timezone.now())
+            TaskGenerationJob.objects.filter(pk=job_id).update(
+                stage=label[:100], updated_at=timezone.now()
+            )
 
         job = TaskGenerationJob.objects.get(pk=job_id)
         result = generate_task_suggestions(job.spec_id, on_stage=on_stage)

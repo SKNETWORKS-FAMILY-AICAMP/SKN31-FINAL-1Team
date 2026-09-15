@@ -1,0 +1,172 @@
+#meetings/services.py
+import json
+import re
+import html
+
+from django.contrib.auth import get_user_model
+
+from meetings.models import MeetingNote, SpecDocument
+from meetings.serializers import MeetingNoteSerializer, SpecDocumentSerializer
+from projects.models import PipelineHistory
+
+from meeting_analysis.node import run as analyze_meeting
+from plan_draft.agent import run as generate_plan
+
+User = get_user_model()
+
+# ai/plan_draft/schemas.py의 SECTION_SPEC(노드②의 설계도)과 동일한 key ↔
+# SpecDocument 필드명 매핑. 근거자료(evidence_data)도 이 키로 저장해야 프론트
+# (documents/page.tsx의 EVIDENCE_KEY_ALIASES)가 올바른 섹션에 붙여준다.
+SECTION_KEY_TO_FIELD = {
+    'overview': 'overview',
+    'problem': 'problem_definition',
+    'users': 'target_users',
+    'features': 'key_features',
+    'goals': 'goals',
+    'tech_scope': 'tech_stack',
+    'decisions': 'final_decisions',
+}
+
+NOT_DISCUSSED = "회의에서 논의되지 않았습니다."
+
+
+def _strip_html_tags(text):
+    if not text:
+        return ""
+    text_str = str(text)
+    decoded_text = html.unescape(text_str)
+    clean_text = re.sub(r'<[^>]+>', ' ', decoded_text)
+    clean_text = re.sub(r'[ \t]+', ' ', clean_text)
+    clean_text = re.sub(r'\n\s*\n', '\n', clean_text)
+    return clean_text.strip()
+
+
+def run_meeting_analysis(note_id: int, actor_user_id, on_stage=None) -> dict:
+    """
+    "기획서 생성" 버튼 — 회의록 AI 분석(노드①) → 기획서 초안 생성(노드②)을 순서대로
+    호출해 SpecDocument를 upsert한다. MeetingNoteAnalyzeView.post에 있던 로직을
+    그대로 옮긴 것(2026-09-15, 백그라운드 실행 + 진행 단계 폴링 도입) — 로직/순서는
+    바꾸지 않았다.
+
+    on_stage: 있으면 각 단계 시작 시 사람이 읽을 라벨(str)로 호출한다(선택). 노드①이
+    실측 ~100초로 특히 오래 걸려(2026-09-14 "느리다" 문의 확인) 업무 배분 실행과
+    같은 방식으로 체감을 개선한다.
+    """
+    def _stage(label: str) -> None:
+        if on_stage:
+            on_stage(label)
+
+    meeting = MeetingNote.objects.get(pk=note_id)
+    actor = User.objects.filter(pk=actor_user_id).first() if actor_user_id else None
+
+    meeting.status = MeetingNote.Status.PROCESSING
+    meeting.save()
+
+    try:
+        _stage("회의록 분석 중…")
+        analysis_result = analyze_meeting(meeting.content, str(meeting.pk))
+        structured_data = analysis_result.data if hasattr(analysis_result, 'data') else analysis_result
+
+        _stage("기획서 초안 생성 중…")
+        proposal_id = f"PLN-{meeting.pk:03d}"
+        doc = generate_plan(structured_data, proposal_id)
+
+        if hasattr(doc, 'model_dump'):
+            plan_dict = doc.model_dump(mode="json")
+        elif hasattr(doc, 'dict'):
+            plan_dict = doc.dict()
+        elif isinstance(doc, dict):
+            plan_dict = doc
+        else:
+            plan_dict = {}
+
+        summary_val = structured_data.get('summary') if isinstance(structured_data, dict) else None
+        meeting.summary_content = summary_val or f"[{meeting.title}] AI 분석이 완료되었습니다."
+        meeting.status = MeetingNote.Status.REVIEWED
+        meeting.save()
+
+        sections_map = {}
+        evidence_map = {}
+        for sec in (plan_dict.get('sections') or []):
+            if not isinstance(sec, dict):
+                continue
+            sec_key = sec.get('key')
+            if not sec_key or not isinstance(sec_key, str):
+                continue
+
+            content = sec.get('content_html') or ""
+            if not content and isinstance(sec.get('items'), list):
+                content = "\n".join(f"- {item}" for item in sec['items'] if isinstance(item, (str, int)))
+            if not content and isinstance(sec.get('features'), list):
+                lines = []
+                for f in sec['features']:
+                    if isinstance(f, dict):
+                        lines.append(f"• {f.get('title', '')}: {f.get('description', '')}")
+                content = "\n".join(lines)
+
+            sections_map[sec_key] = content
+
+            quotes = [
+                e.get('quote') for e in (sec.get('evidence') or [])
+                if isinstance(e, dict) and e.get('status') == 'verified' and e.get('quote')
+            ]
+            field_name = SECTION_KEY_TO_FIELD.get(sec_key)
+            if quotes and field_name:
+                evidence_map[field_name] = "\n".join(f"- {q}" for q in quotes)
+
+        def section_or_not_discussed(key):
+            val = sections_map.get(key, "")
+            return val if val.strip() else NOT_DISCUSSED
+
+        spec_defaults = {
+            'title': f"{meeting.title} - 기획 초안",
+            'overview': section_or_not_discussed('overview'),
+            'problem_definition': section_or_not_discussed('problem'),
+            'target_users': section_or_not_discussed('users'),
+            'key_features': section_or_not_discussed('features'),
+            'goals': section_or_not_discussed('goals'),
+            'tech_stack': section_or_not_discussed('tech_scope'),
+            'final_decisions': section_or_not_discussed('decisions'),
+        }
+        if evidence_map:
+            spec_defaults['evidence_data'] = json.dumps(evidence_map, ensure_ascii=False)
+
+        period_match = re.search(
+            r'(\d{4}-\d{2}-\d{2})\s*(?:~|-|부터)\s*(\d{4}-\d{2}-\d{2})',
+            meeting.content or "",
+        )
+        if period_match:
+            spec_defaults['period_start'] = period_match.group(1)
+            spec_defaults['period_end'] = period_match.group(2)
+
+        spec, created = SpecDocument.objects.update_or_create(
+            meeting=meeting,
+            defaults=spec_defaults
+        )
+
+        if meeting.project_id:
+            PipelineHistory.objects.create(
+                project=meeting.project,
+                meeting=meeting,
+                spec=spec,
+                step_type='SPEC_AI_GENERATED',
+                title=f"기획서 생성: {spec.title}",
+                description=f"실행자: {actor.username if actor else '알 수 없음'} 사원",
+                actor=actor,
+            )
+
+        return {
+            "status": "success",
+            "message": "회의록 AI 분석 및 기획서 초안 생성이 완료되었습니다.",
+            "meeting": MeetingNoteSerializer(meeting).data,
+            "created_spec": SpecDocumentSerializer(spec).data,
+        }
+
+    except Exception as e:
+        meeting.status = MeetingNote.Status.DRAFT
+        meeting.save()
+        return {
+            "status": "error",
+            "message": "AI 기획서 생성 중 오류가 발생했습니다.",
+            "detail": str(e),
+        }

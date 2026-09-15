@@ -148,13 +148,30 @@ def is_reasoning_model(model: str) -> bool:
     return not resolve_profile(model).supports_temperature
 
 
+def _max_tokens_for(profile: ModelProfile, env_name: str) -> int:
+    """env_name 오버라이드가 있으면 쓰되, 그 모델 계열의 실제 상한(profile.default_max_tokens)을
+    넘지 못하게 자른다.
+
+    2026-09-15: DEFAULT_MAX_TOKENS를 FAST_MODEL 호출에 그대로 재사용하다 걸린 400
+    (max_tokens is too large)을 고치면서, FAST_MODEL_MAX_TOKENS를 자기 프로필
+    기준으로 따로 뒀는데 — 그 값도 OPENAI_FAST_MAX_TOKENS로 사람이 직접 오버라이드할
+    수 있고, 그때는 아무 검증이 없어 같은 부류의 400을 다시 낼 수 있었다(예:
+    FAST_MODEL=gpt-4o-mini인데 OPENAI_FAST_MAX_TOKENS=32768로 잘못 적는 경우).
+    기본값 상속이든 사람이 직접 적은 오버라이드든, 이 함수를 거치면 항상 그 모델이
+    실제로 받을 수 있는 값 이하로 잘린다.
+    """
+    value = int(_env(env_name, str(profile.default_max_tokens)))
+    return min(value, profile.default_max_tokens)
+
+
 # ── .env에서 읽어 확정 ────────────────────────────────────────────────
 DEFAULT_MODEL = _env("OPENAI_MODEL", "gpt-4o")
 PROFILE = resolve_profile(DEFAULT_MODEL)
 IS_REASONING_MODEL = not PROFILE.supports_temperature
 
-# 출력 토큰 상한: .env가 있으면 우선, 없으면 프로필 기본값.
-DEFAULT_MAX_TOKENS = int(_env("OPENAI_MAX_TOKENS", str(PROFILE.default_max_tokens)))
+# 출력 토큰 상한: .env가 있으면 우선, 없으면 프로필 기본값 — 어느 쪽이든 그 모델
+# 계열의 실제 상한을 넘지 않게 _max_tokens_for()가 자른다.
+DEFAULT_MAX_TOKENS = _max_tokens_for(PROFILE, "OPENAI_MAX_TOKENS")
 
 # temperature: 구조화 생성(JSON) 0.0 / 자연어 답변 0.3.
 # 프로필이 temperature를 안 받으면 None → 호출 시 인자 자체를 생략.
@@ -168,6 +185,46 @@ if PROFILE.supports_reasoning_effort:
     )
 else:
     REASONING_EFFORT = None
+
+# 2026-09-15: 노드①(회의록 구조화)은 56분짜리 긴 회의록처럼 여러 화제가 섞인
+# 입력을 종합적으로 판단해 프로젝트 범위를 골라야 하는데, gpt-4o로는 이 판단이
+# 매번 좁은 화제 하나로 쏠리는 현상이 실측됨(같은 입력을 여러 번 돌려도 일관되게
+# 좁게 나옴 — 프롬프트/few-shot 보강으로도 해결 안 됨). 같은 입력을 추론 계열
+# 모델(gpt-5)로 돌리자 훨씬 넓고 완전한 결과가 나와, 이 노드 하나만 강한 모델로
+# 분리했다(meeting_analysis/node.py 참고). 속도가 훨씬 느려지는 트레이드오프가
+# 있지만(실측 약 100초/건), 회의록 분석은 반복 실행되는 단계가 아니라 회의록당
+# 1회만 도는 단계라 감내 가능하다고 판단.
+STRONG_MODEL = _env("OPENAI_STRONG_MODEL", "gpt-5")
+STRONG_MODEL_PROFILE = resolve_profile(STRONG_MODEL)
+STRONG_MODEL_MAX_TOKENS = _max_tokens_for(STRONG_MODEL_PROFILE, "OPENAI_STRONG_MAX_TOKENS")
+
+# 2026-09-14: 반대 방향 — 판단 난이도가 낮은 호출(코드가 이미 정한 결과를 한두
+# 문장으로 서술만 하는 것 — 배정 근거 문장, 보류 사유 설명, 패키지 분할 여부
+# 판단)엔 DEFAULT_MODEL보다 가볍고 빠른 모델을 따로 쓴다. 실제 추론이 필요한
+# task_generation과 assignment_ranking.score_candidate_fit(경력기술서 내용
+# 대조)는 DEFAULT_MODEL을 그대로 쓴다 — 호출부가 openai_model=FAST_MODEL을
+# 명시한 곳만 이 모델을 탄다, 나머지는 그대로 DEFAULT_MODEL.
+FAST_MODEL = _env("OPENAI_FAST_MODEL", "gpt-4o-mini")
+FAST_MODEL_PROFILE = resolve_profile(FAST_MODEL)
+# 2026-09-15: DEFAULT_MAX_TOKENS를 그대로 재사용하면 안 된다 — DEFAULT_MODEL이
+# 추론 계열(예: gpt-5, 상한 32768)일 때 DEFAULT_MAX_TOKENS도 32768이 되는데,
+# FAST_MODEL(gpt-4o-mini, 실제 상한 16384)에 그대로 넘기면 OpenAI가 400을
+# 던진다(실측: "max_tokens is too large: 32768 ... at most 16384"). STRONG_MODEL이
+# 이미 이 패턴(자기 프로필 기준 상한)을 쓰고 있어 FAST_MODEL도 동일하게 맞춘다.
+FAST_MODEL_MAX_TOKENS = _max_tokens_for(FAST_MODEL_PROFILE, "OPENAI_FAST_MAX_TOKENS")
+
+
+def structured_temperature_for(model: str) -> float | None:
+    """model의 계열 프로필을 보고 구조화 생성용 temperature(0.0 또는 None)를 고른다.
+
+    위 TEMPERATURE_STRUCTURED는 DEFAULT_MODEL 기준으로 한 번만 고정된 값이라,
+    DEFAULT_MODEL과 다른 계열의 모델(FAST_MODEL·STRONG_MODEL)로 호출할 땐 맞지
+    않을 수 있다 — build_chat_kwargs()가 모델별로 supports_temperature를 다시
+    확인해 안 받는 모델엔 알아서 안 보내주긴 하지만(STRONG_MODEL 호출부가 그
+    가드에 기대는 중), 반대 방향(그 모델은 받는데 TEMPERATURE_STRUCTURED가
+    None이라 안 보내는 경우)까지 맞추려면 모델별로 다시 판단해야 한다.
+    """
+    return 0.0 if resolve_profile(model).supports_temperature else None
 
 # 스키마 파싱 실패 시 재시도 횟수 (EX-LLM-004 대응)
 MAX_RETRIES = 3
@@ -201,6 +258,7 @@ def describe() -> str:
     src_eff = "환경변수" if _env("OPENAI_REASONING_EFFORT") else "프로필 기본값"
     rows = [
         ("모델 (OPENAI_MODEL)", DEFAULT_MODEL),
+        ("강한 모델 (OPENAI_STRONG_MODEL, 회의록 분석 전용)", STRONG_MODEL + ("  (환경변수)" if _env("OPENAI_STRONG_MODEL") else "  (기본값)")),
         ("계열 프로필", PROFILE.label),
         ("출력 토큰 상한", f"{DEFAULT_MAX_TOKENS}  ({src_tok})"),
         (

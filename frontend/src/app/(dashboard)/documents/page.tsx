@@ -369,6 +369,12 @@ export default function DocumentsPage() {
   // 정상이다("느리다" 문의 확인) — 폴링 중 현재 단계를 보여줘 체감을 낮춘다.
   const genTasksSeqRef = useRef(0);
   const [generatingStage, setGeneratingStage] = useState("");
+  const [generatingStartedAt, setGeneratingStartedAt] = useState<number | null>(null);
+  // 2026-09-15: 기획서 생성(analyze)도 업무 배분과 같은 job/폴링 구조로 바꿔
+  // 진행 단계(회의록 분석 → 기획서 초안 생성)를 보여준다.
+  const specGenSeqRef = useRef(0);
+  const [specGenStartedAt, setSpecGenStartedAt] = useState<number | null>(null);
+  const [specGenStage, setSpecGenStage] = useState("");
   const [confirmingTasks, setConfirmingTasks] = useState(false);
   const [reassigningTaskId, setReassigningTaskId] = useState<number | null>(null);
   const [members, setMembers] = useState<Member[]>([]);
@@ -435,8 +441,11 @@ export default function DocumentsPage() {
       .catch(() => {});
   }, []);
 
+  // 2026-09-15: updated_at 기준 정렬이었으나, 카드에 보이는 날짜는 meeting_date(수동
+  // 입력값)라 정렬 순서와 화면에 보이는 날짜가 안 맞아 보인다는 피드백 — "등록된 순서"
+  // 즉 실제 생성 시각(created_at) 기준 최신순으로 바꾼다.
   const sortedNotes = useMemo(
-    () => notes.slice().sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()),
+    () => notes.slice().sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()),
     [notes]
   );
   const selectedNote = useMemo(
@@ -515,15 +524,62 @@ export default function DocumentsPage() {
   };
 
   const handleGenerateSpec = async (note: NoteDto) => {
+    const seq = ++specGenSeqRef.current;
     setBusy(`${note.id}-generate`);
-    try {
-      await apiFetch(`/api/meetings/notes/${note.id}/analyze/`, { method: "POST" });
-      await refetchNote(note.id);
-      setToastMessage("기획서 생성이 완료되었습니다");
-    } catch (err: any) {
-      setErrorToast(err.message || "기획서 생성에 실패했습니다.");
-    } finally {
+    setSpecGenStartedAt(Date.now());
+    setSpecGenStage("회의록 분석 중…");
+    const stop = () => {
       setBusy(null);
+      setSpecGenStartedAt(null);
+      setSpecGenStage("");
+    };
+    try {
+      const started = await apiFetch<{ status: string; job_id?: string }>(
+        `/api/meetings/notes/${note.id}/analyze/`,
+        { method: "POST" }
+      );
+      if (started.status !== "started" || !started.job_id) {
+        setErrorToast("기획서 생성에 실패했습니다.");
+        stop();
+        return;
+      }
+
+      const poll = async (): Promise<void> => {
+        if (specGenSeqRef.current !== seq) return;
+        let job: { status: string; stage?: string; message?: string };
+        try {
+          job = await apiFetch<{ status: string; stage?: string; message?: string }>(
+            `/api/meetings/notes/analyze-jobs/${started.job_id}/`
+          );
+        } catch (err: any) {
+          if (specGenSeqRef.current !== seq) return;
+          setErrorToast(err.message || "기획서 생성 진행 상태를 확인하지 못했습니다.");
+          stop();
+          return;
+        }
+        if (specGenSeqRef.current !== seq) return;
+
+        if (job.status === "PENDING" || job.status === "RUNNING") {
+          if (job.stage) setSpecGenStage(job.stage);
+          setTimeout(poll, 1500);
+          return;
+        }
+        if (job.status === "ERROR") {
+          setErrorToast(job.message || "기획서 생성에 실패했습니다.");
+          stop();
+          return;
+        }
+
+        // SUCCESS
+        await refetchNote(note.id);
+        setToastMessage("기획서 생성이 완료되었습니다");
+        stop();
+      };
+      await poll();
+    } catch (err: any) {
+      if (specGenSeqRef.current !== seq) return;
+      setErrorToast(err.message || "기획서 생성에 실패했습니다.");
+      stop();
     }
   };
 
@@ -805,7 +861,13 @@ export default function DocumentsPage() {
     const seq = ++genTasksSeqRef.current;
     setGeneratingTasks(true);
     setGeneratingStage("작업을 준비하는 중…");
+    setGeneratingStartedAt(Date.now());
     setBusy(`reqdef-${reqDefId}-tasks`);
+    const stop = () => {
+      setGeneratingTasks(false);
+      setGeneratingStartedAt(null);
+      setBusy(null);
+    };
     try {
       const started = await apiFetch<{ status: string; job_id?: string }>(
         `/api/requirements/${spec.id}/generate-tasks/`,
@@ -813,8 +875,7 @@ export default function DocumentsPage() {
       );
       if (started.status !== "started" || !started.job_id) {
         setErrorToast("업무 배분 제안 생성에 실패했습니다.");
-        setGeneratingTasks(false);
-        setBusy(null);
+        stop();
         return;
       }
 
@@ -826,8 +887,7 @@ export default function DocumentsPage() {
         } catch (err: any) {
           if (genTasksSeqRef.current !== seq) return;
           setErrorToast(err.message || "업무 배분 진행 상태를 확인하지 못했습니다.");
-          setGeneratingTasks(false);
-          setBusy(null);
+          stop();
           return;
         }
         if (genTasksSeqRef.current !== seq) return;
@@ -839,8 +899,7 @@ export default function DocumentsPage() {
         }
         if (job.status === "ERROR") {
           setErrorToast(job.message || "업무 배분 제안 생성에 실패했습니다.");
-          setGeneratingTasks(false);
-          setBusy(null);
+          stop();
           return;
         }
 
@@ -848,8 +907,7 @@ export default function DocumentsPage() {
         const result = job.result;
         if (!result || result.status !== "success") {
           setErrorToast(result?.message || "업무 배분 제안 생성에 실패했습니다.");
-          setGeneratingTasks(false);
-          setBusy(null);
+          stop();
           return;
         }
         setTaskDrafts((result.suggestions ?? []).map(suggestionToDraft));
@@ -860,15 +918,13 @@ export default function DocumentsPage() {
         setPlanBriefing(result.plan_briefing ?? null); // 2026-09-11 (Phase 4)
         setActiveTab("taskAssignment");
         setToastMessage("업무 배분 제안이 생성되었습니다. 검토 후 확정해주세요.");
-        setGeneratingTasks(false);
-        setBusy(null);
+        stop();
       };
       await poll();
     } catch (err: any) {
       if (genTasksSeqRef.current !== seq) return;
       setErrorToast(err.message || "업무 배분 제안 생성에 실패했습니다.");
-      setGeneratingTasks(false);
-      setBusy(null);
+      stop();
     }
   };
 
@@ -1067,7 +1123,9 @@ export default function DocumentsPage() {
             형제 요소라 display:none(print:hidden)으로 완전히 레이아웃에서 빼도 안전하다. */}
         <div className={cn(
           "glass rounded-2xl border border-border print:hidden transition-all",
-          listCollapsed ? "p-2 flex flex-col items-center" : "p-4 space-y-3"
+          listCollapsed
+            ? "p-2 flex flex-col items-center"
+            : "p-4 flex flex-col gap-3 sticky top-6 max-h-[calc(100vh-3rem)]"
         )}>
           {listCollapsed ? (
             <button
@@ -1080,7 +1138,7 @@ export default function DocumentsPage() {
             </button>
           ) : (
             <>
-          <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center justify-between gap-2 shrink-0">
             <span className="text-sm font-bold text-muted-foreground pl-1">문서 목록</span>
             <button
               onClick={() => setListCollapsed(true)}
@@ -1094,13 +1152,13 @@ export default function DocumentsPage() {
           {!isPM && (
             <button
               onClick={() => setNewDocModalOpen(true)}
-              className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-bold hover:bg-primary/90 transition-colors"
+              className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-bold hover:bg-primary/90 transition-colors shrink-0"
             >
               <Plus className="w-4 h-4" /> 새 회의록 / 문서
             </button>
           )}
 
-          <div className="space-y-2">
+          <div className="space-y-2 overflow-y-auto min-h-0 flex-1 pr-1 -mr-1">
             {sortedNotes.length === 0 ? (
               <p className="text-sm text-muted-foreground text-center py-10">
                 등록된 회의록이 없습니다.<br />회의록을 등록하세요.
@@ -1154,7 +1212,10 @@ export default function DocumentsPage() {
                         <Icon className="w-3 h-3" /> {spec ? meta.label : "기획서 미생성"}
                       </span>
                       <p className="text-[11px] text-muted-foreground mt-1 flex items-center gap-1.5">
-                        <span>{new Date(note.meeting_date ?? note.updated_at).toLocaleDateString("ko-KR")}</span>
+                        {/* 2026-09-15: meeting_date(회의 날짜, 수동 입력값)를 보여주면 목록
+                            정렬 기준(등록일=created_at)과 화면에 보이는 날짜가 달라서 "최신순인데
+                            맨 위가 옛날 날짜"로 보이는 혼란이 있었다 — 정렬 기준과 같은 날짜를 표시. */}
+                        <span>{new Date(note.created_at).toLocaleDateString("ko-KR")}</span>
                         <span className="text-muted-foreground/60">·</span>
                         <span className="truncate">작성자 {note.created_by_name || "알 수 없음"}</span>
                       </p>
@@ -1201,6 +1262,8 @@ export default function DocumentsPage() {
               isPM={isPM}
               currentUserId={user?.id}
               busy={busy}
+              specGenStartedAt={specGenStartedAt}
+              specGenStage={specGenStage}
               onGenerateSpec={() => handleGenerateSpec(selectedNote)}
               onSaveNoteContent={(content) => handleSaveNoteContent(selectedNote, content)}
               onSaveSpec={(spec, doc) => handleSaveSpec(selectedNote, spec, doc)}
@@ -1225,6 +1288,7 @@ export default function DocumentsPage() {
               planBriefing={planBriefing}
               generatingTasks={generatingTasks}
               generatingStage={generatingStage}
+              generatingStartedAt={generatingStartedAt}
               confirmingTasks={confirmingTasks}
               onConfirmTasks={(spec) => handleConfirmTasks(selectedNote, spec)}
               onCancelTaskDrafts={() => { setTaskDrafts(null); setTaskDraftsReqDefId(null); setScheduleSummary(null); setPackageSplits([]); setPlanReview(null); setPlanBriefing(null); }}
@@ -1311,16 +1375,181 @@ export default function DocumentsPage() {
   );
 }
 
+// 2026-09-15: "업무 배분 실행" 진행 단계 라벨(services.py _stage 호출 문자열)을
+// 5개의 고정 파이프라인 단계에 매핑한다 — 실제 문구는 자유 텍스트(예: "총 3명
+// 배정 중 — 홍길동 외 2명")라 정확한 %는 알 수 없지만, 어느 단계인지는 구분 가능하다.
+const TASK_GEN_STAGES: { label: string; match: (s: string) => boolean }[] = [
+  { label: "업무 생성", match: (s) => s.includes("업무 생성") },
+  { label: "규모 판단", match: (s) => s.includes("프로젝트 규모") },
+  { label: "패키지 분할", match: (s) => s.includes("패키지 분할") },
+  { label: "담당자 분석", match: (s) => s.includes("담당자 정보 분석") },
+  {
+    label: "담당자 배정",
+    match: (s) =>
+      s.includes("담당자 배정") || s.startsWith("총 ") || s.includes("사유 작성") ||
+      s.includes("배정 가능한 담당자가 없어"),
+  },
+];
+
+// 단계 라벨을 대략의 진행률(%)로도 매핑한다 — 정확한 값은 아니지만(파이프라인
+// 각 단계가 실제로 몇 %인지는 알 수 없음), 아래 "남은 시간"을 "지금까지 걸린
+// 시간 ÷ 진행률"로 역산하는 데 쓴다. "(3/8건)"처럼 실제 분모/분자가 찍히는
+// 단계는 그 비율을 그대로 반영한다.
+function taskGenStageProgressPercent(stage: string): number {
+  const ratioMatch = stage.match(/\((\d+)\/(\d+)\D*\)/);
+  if (ratioMatch) {
+    const done = Number(ratioMatch[1]);
+    const total = Number(ratioMatch[2]) || 1;
+    return Math.min(96, 65 + Math.round((done / total) * 30));
+  }
+  if (stage.includes("배정 가능한 담당자가 없어")) return 70;
+  if (stage.startsWith("총 ") && stage.includes("배정")) return 60;
+  if (stage.includes("담당자 정보 분석")) return 50;
+  if (stage.includes("업무 패키지 분할")) return 38;
+  if (stage.includes("프로젝트 규모 판단")) return 25;
+  if (stage.includes("업무 생성")) return 10;
+  return 5;
+}
+
+// 2026-09-15: "기획서 생성"(회의록 분석 → 기획서 초안 생성)도 업무 배분과 같은
+// 백그라운드 job + 폴링 구조로 바꿨다 — 다만 실제 LLM 호출은 2번뿐이라 단계도 2개.
+// 노드①(회의록 분석)이 실측 ~100초로 대부분의 시간을 차지해, 노드②로 넘어가기
+// 전까지는 %가 낮게 머물러 있는 게 정상이다.
+const SPEC_GEN_STAGES: { label: string; match: (s: string) => boolean }[] = [
+  { label: "회의록 분석", match: (s) => s.includes("회의록 분석") },
+  { label: "기획서 초안 생성", match: (s) => s.includes("기획서 초안 생성") },
+];
+
+function specGenStageProgressPercent(stage: string): number {
+  if (stage.includes("기획서 초안 생성")) return 70;
+  if (stage.includes("회의록 분석")) return 10;
+  return 5;
+}
+
+function currentStageIndex(stages: { label: string; match: (s: string) => boolean }[], stage: string): number {
+  for (let i = stages.length - 1; i >= 0; i--) {
+    if (stages[i].match(stage)) return i;
+  }
+  return 0;
+}
+
+function formatDuration(totalSeconds: number): string {
+  const s = Math.max(0, Math.round(totalSeconds));
+  const m = Math.floor(s / 60);
+  const sec = s % 60;
+  return `${m}:${sec.toString().padStart(2, "0")}`;
+}
+
+function useElapsedSeconds(startedAt: number | null): number {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (startedAt == null) return;
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [startedAt]);
+  return startedAt != null ? Math.max(0, (now - startedAt) / 1000) : 0;
+}
+
+function StageTracker({ stages, current }: { stages: string[]; current: number }) {
+  return (
+    <div className="flex items-start gap-1.5">
+      {stages.map((label, i) => {
+        const done = i < current;
+        const active = i === current;
+        return (
+          <Fragment key={label}>
+            {i > 0 && (
+              <div
+                className={cn(
+                  "h-0.5 flex-1 mt-2.5 rounded-full transition-colors duration-500",
+                  i <= current ? "bg-cyan-400" : "bg-black/10 dark:bg-white/10"
+                )}
+              />
+            )}
+            <div className="flex flex-col items-center gap-1 shrink-0">
+              <div
+                className={cn(
+                  "w-5 h-5 rounded-full flex items-center justify-center shrink-0 transition-colors duration-500",
+                  done || active
+                    ? "bg-cyan-500 text-white"
+                    : "bg-black/10 dark:bg-white/10 text-muted-foreground/50"
+                )}
+              >
+                {done ? (
+                  <svg viewBox="0 0 24 24" className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth={3} strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M20 6 9 17l-5-5" />
+                  </svg>
+                ) : active ? (
+                  <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
+                ) : (
+                  <span className="w-1.5 h-1.5 rounded-full bg-current" />
+                )}
+              </div>
+              <span className={cn("text-[9px] whitespace-nowrap", active ? "text-foreground font-semibold" : "text-muted-foreground/50")}>
+                {label}
+              </span>
+            </div>
+          </Fragment>
+        );
+      })}
+    </div>
+  );
+}
+
+// 정확한 총 소요시간을 알 방법이 없어(순차 LLM 호출 여러 개), "지금까지 걸린
+// 시간이 전체 진행률의 몇 %인지"로 총 예상시간을 역산해 남은 시간을 추정한다 —
+// 대략적인 값이라는 걸 명확히 하려고 "약"을 붙인다.
+function ProgressTimeline({
+  stages, stage, pct, startedAt,
+}: {
+  stages: { label: string; match: (s: string) => boolean }[];
+  stage: string;
+  pct: number;
+  startedAt: number | null;
+}) {
+  const current = currentStageIndex(stages, stage);
+  const elapsedSec = useElapsedSeconds(startedAt);
+  const estimatedTotalSec = pct > 5 ? elapsedSec / (pct / 100) : null;
+  const remainingSec = estimatedTotalSec != null ? Math.max(0, estimatedTotalSec - elapsedSec) : null;
+
+  return (
+    <div className="flex flex-col gap-1.5 w-80 shrink-0">
+      <StageTracker stages={stages.map((s) => s.label)} current={current} />
+      <div className="flex items-center gap-1.5 text-[10px] font-mono tabular-nums text-muted-foreground/70">
+        <span className="font-bold text-cyan-500">{pct}%</span>
+        <span>·</span>
+        <span>경과 {formatDuration(elapsedSec)}</span>
+        {remainingSec != null && (
+          <>
+            <span>·</span>
+            <span>남은 시간 약 {formatDuration(remainingSec)}</span>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function TaskGenProgressBar({ stage, startedAt }: { stage: string; startedAt: number | null }) {
+  return <ProgressTimeline stages={TASK_GEN_STAGES} stage={stage} pct={taskGenStageProgressPercent(stage)} startedAt={startedAt} />;
+}
+
+function SpecGenProgressBar({ stage, startedAt }: { stage: string; startedAt: number | null }) {
+  return <ProgressTimeline stages={SPEC_GEN_STAGES} stage={stage} pct={specGenStageProgressPercent(stage)} startedAt={startedAt} />;
+}
+
 function NoteDetail({
   note, spec, reqDef, activeTab, isPM, currentUserId, busy,
-  onGenerateSpec, onSaveNoteContent, onSaveSpec, onSavePeriod, onSubmitReview, onApprove, onReject,
+  onGenerateSpec, specGenStartedAt, specGenStage, onSaveNoteContent, onSaveSpec, onSavePeriod, onSubmitReview, onApprove, onReject,
   onCreateReqDef, onExtractItems, onAddItem, onUpdateItem, onDeleteItem, onReqDefStatusChange,
   onGenerateTasks, taskAssignments, onRejectReqDef,
-  taskDrafts, setTaskDrafts, scheduleSummary, packageSplits, planReview, planBriefing, generatingTasks, generatingStage, confirmingTasks, onConfirmTasks, onCancelTaskDrafts,
+  taskDrafts, setTaskDrafts, scheduleSummary, packageSplits, planReview, planBriefing, generatingTasks, generatingStage, generatingStartedAt, confirmingTasks, onConfirmTasks, onCancelTaskDrafts,
   members, reassigningTaskId, onReassignTask,
 }: {
   note: NoteDto; spec: SpecDto | null; reqDef: ReqDefDto | null; activeTab: PipelineTab; isPM: boolean; currentUserId: string | undefined; busy: string | null;
   onGenerateSpec: () => void;
+  specGenStartedAt: number | null;
+  specGenStage: string;
   onSaveNoteContent: (content: string) => void;
   onSaveSpec: (spec: SpecDto, doc: ProposalDoc) => void;
   onSavePeriod: (spec: SpecDto, period: { start: string; end: string }) => void;
@@ -1344,6 +1573,7 @@ function NoteDetail({
   planBriefing: PlanBriefingDto | null; // 2026-09-11 (Phase 4)
   generatingTasks: boolean;
   generatingStage: string;
+  generatingStartedAt: number | null;
   confirmingTasks: boolean;
   onConfirmTasks: (spec: SpecDto) => void;
   onCancelTaskDrafts: () => void;
@@ -1551,27 +1781,30 @@ function NoteDetail({
         )}
       </div>
 
-      <div className="flex justify-end items-center gap-3 pt-2">
+      <div className="flex flex-wrap justify-end items-center gap-3 pt-2">
         {spec && (
-          <div className="flex items-center gap-2 mr-auto">
-            <button onClick={handlePrint} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 text-xs font-semibold transition-colors">
+          <div className="flex items-center gap-2 mr-auto shrink-0">
+            <button onClick={handlePrint} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 text-xs font-semibold transition-colors whitespace-nowrap">
               <Printer className="w-3.5 h-3.5" /> PDF 다운로드
             </button>
-            <button onClick={handlePptx} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 text-xs font-semibold transition-colors">
+            <button onClick={handlePptx} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 text-xs font-semibold transition-colors whitespace-nowrap">
               <Download className="w-3.5 h-3.5" /> PPTX 다운로드
             </button>
           </div>
         )}
 
         {!spec && canGenerate && !isPM && (
-          <button
-            onClick={onGenerateSpec}
-            disabled={busy === busyKey("generate")}
-            className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-bold hover:bg-primary/90 disabled:opacity-50"
-          >
-            {busy === busyKey("generate") ? <Loader2 className="w-4 h-4 animate-spin" /> : <Bot className="w-4 h-4" />}
-            기획서 생성
-          </button>
+          <>
+            {busy === busyKey("generate") && <SpecGenProgressBar stage={specGenStage} startedAt={specGenStartedAt} />}
+            <button
+              onClick={onGenerateSpec}
+              disabled={busy === busyKey("generate")}
+              className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-bold hover:bg-primary/90 disabled:opacity-50 whitespace-nowrap"
+            >
+              {busy === busyKey("generate") ? <Loader2 className="w-4 h-4 animate-spin" /> : <Bot className="w-4 h-4" />}
+              {busy === busyKey("generate") ? (specGenStage || "기획서 생성 중…") : "기획서 생성"}
+            </button>
+          </>
         )}
 
         {/* 2026-09-10: 팀원 요청으로 추가한 "재생성" 버튼 — analyze 엔드포인트가 이미
@@ -1580,18 +1813,21 @@ function NoteDetail({
             사용자가 인지하지 못한 채 AI 재생성으로 통째로 바뀌면 안 되기 때문(검토요청 버튼과
             같은 조건). "직접수정"으로 손댄 내용도 재생성하면 사라지므로 실행 전 확인창을 띄운다. */}
         {spec && !isPM && canGenerate && (status === "DRAFT" || status === "REJECTED") && (
-          <button
-            onClick={() => {
-              if (window.confirm("기획서를 다시 생성하면 현재 내용(직접 수정한 부분 포함)이 AI 결과로 덮어써집니다. 계속하시겠습니까?")) {
-                onGenerateSpec();
-              }
-            }}
-            disabled={busy === busyKey("generate")}
-            className="flex items-center gap-2 px-3 py-2 rounded-lg bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 text-xs font-semibold transition-colors disabled:opacity-50"
-          >
-            {busy === busyKey("generate") ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RotateCcw className="w-3.5 h-3.5" />}
-            재생성
-          </button>
+          <>
+            {busy === busyKey("generate") && <SpecGenProgressBar stage={specGenStage} startedAt={specGenStartedAt} />}
+            <button
+              onClick={() => {
+                if (window.confirm("기획서를 다시 생성하면 현재 내용(직접 수정한 부분 포함)이 AI 결과로 덮어써집니다. 계속하시겠습니까?")) {
+                  onGenerateSpec();
+                }
+              }}
+              disabled={busy === busyKey("generate")}
+              className="flex items-center gap-2 px-3 py-2 rounded-lg bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 text-xs font-semibold transition-colors disabled:opacity-50 whitespace-nowrap"
+            >
+              {busy === busyKey("generate") ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RotateCcw className="w-3.5 h-3.5" />}
+              {busy === busyKey("generate") ? (specGenStage || "재생성 중…") : "재생성"}
+            </button>
+          </>
         )}
 
         {/* 검토요청은 하단, 승인/반려는 상단 우측 — "직접수정"도 하단에 있어서 사용자
@@ -1600,7 +1836,7 @@ function NoteDetail({
           <button
             onClick={() => onSubmitReview(spec)}
             disabled={busy === busyKey("submit")}
-            className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-bold hover:bg-primary/90 disabled:opacity-50"
+            className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-bold hover:bg-primary/90 disabled:opacity-50 whitespace-nowrap"
           >
             {busy === busyKey("submit") ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
             검토요청
@@ -1612,7 +1848,7 @@ function NoteDetail({
         {spec && (status === "REJECTED" || status === "DRAFT") && (canGenerate || isPM) && !editMode && (
           <button
             onClick={startEdit}
-            className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 text-sm font-bold transition-colors"
+            className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 text-sm font-bold transition-colors whitespace-nowrap"
           >
             <Pencil className="w-4 h-4" /> 직접 수정
           </button>
@@ -1702,6 +1938,7 @@ function NoteDetail({
             onGenerateTasks={() => onGenerateTasks(spec!, reqDef!.id)}
             generatingTasks={!!reqDef && busy === `reqdef-${reqDef.id}-tasks`}
             generatingStage={!!reqDef && busy === `reqdef-${reqDef.id}-tasks` ? generatingStage : ""}
+            generatingStartedAt={!!reqDef && busy === `reqdef-${reqDef.id}-tasks` ? generatingStartedAt : null}
             onRejectClick={() => onRejectReqDef(spec!, reqDef!.id)}
             tasksAlreadyAssigned={tasksForReqDef.length > 0}
           />
@@ -2482,7 +2719,7 @@ function GanttSection({ items, title }: { items: GanttItem[]; title: string }) {
 
 function RequirementSection({
   spec, reqDef, isPM, canGenerate, busy, onCreate, onExtract, onAddItem, onUpdateItem, onDeleteItem, onStatusChange,
-  onGenerateTasks, generatingTasks, generatingStage, onRejectClick, tasksAlreadyAssigned,
+  onGenerateTasks, generatingTasks, generatingStage, generatingStartedAt, onRejectClick, tasksAlreadyAssigned,
 }: {
   spec: SpecDto; reqDef: ReqDefDto | null; isPM: boolean;
   // 기획서 탭과 동일한 규칙 — 이 문서(회의록)를 시작한 작성자 본인만 요구사항정의서를
@@ -2503,6 +2740,7 @@ function RequirementSection({
   // 2026-09-14: 순차 LLM 호출 여러 개라 1~수 분 걸릴 수 있어(폴링 진행 중에만
   // 값이 있음), 버튼 옆에 현재 단계를 보여줘 멈춘 것처럼 보이지 않게 한다.
   generatingStage: string;
+  generatingStartedAt: number | null;
   onRejectClick: () => void;
   // 이미 배분을 확정한 뒤에는 "업무 배분 실행" 버튼을 완전히 숨긴다 — PM이 요구사항정의서
   // 탭으로 돌아왔을 때 버튼이 그대로 남아있으면 실수로 다시 눌러 기존 배정을 통째로
@@ -2596,7 +2834,7 @@ function RequirementSection({
 
   return (
     <fieldset disabled={busy !== null} aria-busy={!!extracting} className="min-w-0 border-t border-border pt-5 mt-2 space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <div className="flex items-center gap-2">
             {/* reqDef.title은 "{회의록 제목} - 요구사항 정의서" 형태라 위쪽 페이지 헤더의
@@ -2629,11 +2867,6 @@ function RequirementSection({
           )}
         </div>
         <div className="flex items-center gap-2">
-          {reqStatus === "APPROVED" && (
-            <span className="flex items-center gap-1 text-[11px] text-muted-foreground/70">
-              <Lock className="w-3 h-3" /> 승인되어 항목이 잠겼습니다
-            </span>
-          )}
           {/* heyzzabi2와 동일 — 요구사항정의서가 승인되면 PM이 다음 단계(업무분배)로
               넘어갈 업무를 AI로 자동 추출·배정할 수 있다. 이미 확정된 배정이 있으면
               버튼 자체를 숨긴다(사용자 요청) — 재배분은 업무배분 탭에서만. */}
@@ -2643,17 +2876,15 @@ function RequirementSection({
             </span>
           )}
           {reqStatus === "APPROVED" && isPM && !tasksAlreadyAssigned && (
-            <div className="flex items-center gap-2">
-              {generatingTasks && generatingStage && (
-                <span className="text-[11px] text-muted-foreground/70">{generatingStage}</span>
-              )}
+            <div className="flex items-center gap-3">
+              {generatingTasks && <TaskGenProgressBar stage={generatingStage} startedAt={generatingStartedAt} />}
               <button
                 onClick={onGenerateTasks}
                 disabled={generatingTasks}
-                className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-primary text-primary-foreground text-xs font-bold hover:bg-primary/90 disabled:opacity-50"
+                className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-primary text-primary-foreground text-xs font-bold hover:bg-primary/90 disabled:opacity-50 whitespace-nowrap"
               >
                 {generatingTasks ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Bot className="w-3.5 h-3.5" />}
-                업무 배분 실행
+                {generatingTasks ? (generatingStage || "배분 진행 중…") : "업무 배분 실행"}
               </button>
             </div>
           )}

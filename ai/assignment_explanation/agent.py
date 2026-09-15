@@ -14,7 +14,7 @@ from typing import Any, Dict
 
 from pydantic import ValidationError
 
-from shared.llm_client import create_structured
+from shared.llm_client import create_structured, traceable
 from shared.retry_config import DEFAULT_MAX_TOKENS, MAX_RETRIES, TEMPERATURE_GENERATIVE
 
 from .schemas import PlanBriefing
@@ -42,6 +42,7 @@ risks는 2~4개, 각각 구체적인 한 문장. checkpoints는 PM이 실제로 
 """
 
 
+@traceable(name="assignment_explanation.summarize_plan")
 def summarize_plan(context: Dict[str, Any]) -> PlanBriefing:
     """
     context 예시 키:

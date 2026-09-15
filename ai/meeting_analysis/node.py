@@ -35,11 +35,13 @@ except ImportError:
     from instructor.exceptions import InstructorRetryException
 
 from shared.errors import NodeGenerationError
-from shared.llm_client import build_chat_kwargs, get_client
+from shared.llm_client import build_chat_kwargs, get_client, traceable
 from shared.retry_config import (
     MAX_RETRIES,
     MAX_TOKENS,
     MODEL,
+    STRONG_MODEL,
+    STRONG_MODEL_MAX_TOKENS,
     TEMPERATURE,
 )
 
@@ -75,6 +77,7 @@ class NodeResult:
     notes: list[str] = field(default_factory=list)
 
 
+@traceable(name="meeting_analysis.run")
 def run(
     meeting_text: str,
     meeting_id: str,
@@ -85,6 +88,15 @@ def run(
 
     glossary_text는 선택값입니다.
     용어집이 없거나 빈 문자열이어도 정상적으로 실행됩니다.
+
+    관련성 판별(assess_meeting)은 MODEL(기본 gpt-4o)로 충분해 그대로 두고,
+    실제 구조화 추출만 STRONG_MODEL(기본 gpt-5)로 돌립니다 — 긴 회의록에서
+    여러 화제가 섞여 있을 때 프로젝트 범위를 종합적으로 판단하는 게
+    MODEL로는 매번 좁게 쏠리는 현상이 실측됐고(shared/retry_config.py의
+    STRONG_MODEL 주석 참고), 추론 계열 모델로 바꾸니 근거 통과율 100%까지
+    나올 만큼 훨씬 넓고 완전한 결과가 나왔습니다. 호출당 훨씬 느려지지만
+    (실측 약 100초) 회의록 분석은 회의록당 1회만 도는 단계라 감내 가능하다고
+    판단했습니다.
     """
 
     try:
@@ -94,10 +106,8 @@ def run(
                 cause_code="MEETING_NEEDS_CLARIFICATION",
             )
 
-        client = get_client(MODEL)
-
         eligibility, relevant_text = assess_meeting(
-            client=client,
+            client=get_client(MODEL),
             meeting_text=meeting_text,
             glossary_text=glossary_text,
             model=MODEL,
@@ -108,9 +118,9 @@ def run(
 
         messages = build_messages(relevant_text)
 
-        extraction = client.chat.completions.create(
+        extraction = get_client(STRONG_MODEL).chat.completions.create(
             **build_chat_kwargs(
-                model=MODEL,
+                model=STRONG_MODEL,
                 messages=[
                     {
                         "role": "system",
@@ -121,7 +131,7 @@ def run(
                     *messages,
                 ],
                 response_model=MeetingExtraction,
-                max_tokens=MAX_TOKENS,
+                max_tokens=STRONG_MODEL_MAX_TOKENS,
                 max_retries=MAX_RETRIES,
                 temperature=TEMPERATURE,
             )
