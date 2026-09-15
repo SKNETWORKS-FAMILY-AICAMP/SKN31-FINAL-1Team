@@ -170,7 +170,11 @@ function KanbanColumn({ column, tasks, members, onAssign, onCardClick, isPM, onA
         </div>
       </div>
 
-      <div ref={setNodeRef} className="flex-1 p-3 space-y-3 min-h-[200px]">
+      {/* 2026-09-15: 위 주석(칸마다 스크롤바 vs 페이지 전체 스크롤)의 절충안 — 카드가
+          6장 정도(약 820px)까지는 그대로 다 보이고, 그보다 많아지면 이 컬럼만
+          스크롤되게 한다(사용자 요청). max-h를 넘기기 전까지는 기존과 동일하게
+          내용 높이만큼만 차지해서, 카드가 적은 칸이 불필요하게 커지지 않는다. */}
+      <div ref={setNodeRef} className="flex-1 p-3 space-y-3 min-h-[200px] max-h-[820px] overflow-y-auto">
         <SortableContext items={tasks.map((t: any) => t.id)} strategy={verticalListSortingStrategy}>
           {tasks.map((task: any) => (
             <SortableTask
@@ -323,9 +327,10 @@ export function KanbanBoard({ initialTasks, members = [], onTaskChange }: { proj
       <Toast message={errorToast} variant="error" onDismiss={() => setErrorToast(null)} />
       <DndContext sensors={sensors} collisionDetection={closestCorners} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
         {/* 컬럼 4개가 가로 스크롤 없이 화면 폭에 맞춰 균등하게 나뉘도록 grid로 배치 — 완료 컬럼까지 한 화면에 다 보이게.
-            높이를 여기서 가두지 않는다 — 예전엔 부모가 h-[70vh]로 고정하고 각 컬럼이 그 안에서 따로
-            스크롤됐는데(칸마다 스크롤바), 그러면 카드가 많은 칸은 잘려 보이고 스크롤도 4번 따로 해야 했다.
-            내용 높이만큼 자연스럽게 늘어나게 하고, 스크롤은 페이지 전체(오른쪽 하나)에 맡긴다. */}
+            여기서 전체 높이를 가두진 않는다 — 카드 6장 정도까지는 컬럼이 내용 높이만큼 자연스럽게
+            늘어나고, 그보다 많아지면 KanbanColumn 안쪽(max-h-[820px] + overflow-y-auto)에서
+            그 컬럼만 스크롤된다(2026-09-15, 사용자 요청 — 첨부파일 등으로 카드가 6개 넘게
+            쌓이는 칸이 생기면서 페이지 전체 스크롤만으로는 다른 칸을 보기 번거로워짐). */}
         <div className="w-full pb-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 items-start">
             <SortableContext items={COLUMNS.map((c) => c.id)}>

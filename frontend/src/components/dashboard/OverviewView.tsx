@@ -293,7 +293,7 @@ export default function OverviewView() {
                 )}
               </div>
             ) : (
-              <div className="space-y-3">
+              <div className="space-y-3 max-h-[420px] overflow-y-auto pr-1 -mr-1">
                 {projectList.map((p: ProjectStat) => (
                   <Link key={p.id} href={`/projects/${p.id}`} className="block group">
                     <div className="flex items-center justify-between mb-1">
