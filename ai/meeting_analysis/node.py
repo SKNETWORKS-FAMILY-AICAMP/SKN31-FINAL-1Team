@@ -31,7 +31,7 @@ except ImportError:  # 구버전 instructor 호환
     from instructor.exceptions import InstructorRetryException
 
 from shared.errors import NodeGenerationError
-from shared.llm_client import build_chat_kwargs, get_client
+from shared.llm_client import build_chat_kwargs, get_client, traceable
 from shared.retry_config import (
     MAX_RETRIES,
     STRONG_MODEL,
@@ -56,6 +56,7 @@ class NodeResult:
     notes: list[str] = field(default_factory=list)
 
 
+@traceable(name="meeting_analysis.run")
 def run(meeting_text: str, meeting_id: str) -> NodeResult:
     # ── [1] AI 구조화 + 스키마 검증 ──────────────────────────
     # Instructor가 JSON 파싱 · Pydantic 검증 · 실패 시 재호출까지 처리합니다.

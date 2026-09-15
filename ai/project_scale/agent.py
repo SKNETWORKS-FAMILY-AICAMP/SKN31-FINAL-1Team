@@ -20,7 +20,7 @@ team_sizing.apply_complexity_buffer()(순수 코드, 고정 매핑표)의 책임
 
 import logging
 
-from shared.llm_client import create_structured
+from shared.llm_client import create_structured, traceable
 from shared.retry_config import DEFAULT_MAX_TOKENS, MAX_RETRIES, TEMPERATURE_STRUCTURED
 
 from .prompt_builder import build_complexity_prompt
@@ -29,6 +29,7 @@ from .schemas import ProjectScaleAssessment
 logger = logging.getLogger(__name__)
 
 
+@traceable(name="project_scale.assess_project_complexity")
 def assess_project_complexity(project_context: dict) -> ProjectScaleAssessment:
     """
     project_context: {"overview", "problem_definition", "key_features",

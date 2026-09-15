@@ -43,6 +43,26 @@ try:
 except ImportError:
     pass  # python-dotenv 미설치 시, 시스템 환경변수만 사용
 
+# 2026-09-15: LANGSMITH_TRACING=true(.env)일 때 OpenAI 클라이언트를 wrap_openai로
+# 감싸면, 이 클라이언트로 나가는 모든 chat.completions.create() 호출(모델·토큰·
+# 소요시간·입출력)이 자동으로 LangSmith(project=SKN31)에 기록된다 — 호출부
+# (agent.py들)를 하나도 안 고쳐도 전부 적용된다. 실제 트레이싱 여부는 이 라이브러리가
+# LANGSMITH_TRACING 값을 자체적으로 보고 켜고 끄므로, 여기서는 그냥 항상 감싸기만
+# 한다. langsmith 미설치 환경(요구사항 재설치 전 팀원 PC 등)에서도 안 죽게 폴백.
+try:
+    from langsmith.wrappers import wrap_openai
+    from langsmith import traceable
+except ImportError:
+    wrap_openai = None
+
+    def traceable(*_args, **_kwargs):
+        """langsmith 미설치 환경 폴백 — 파이프라인 노드 함수의 @traceable을 무동작으로
+        만든다(호출 자체는 그대로 통과, 트레이싱만 없음). 다른 모듈은 이걸 그대로
+        가져다 써서 각자 try/except를 반복할 필요가 없다."""
+        def _wrap(fn):
+            return fn
+        return _wrap
+
 from .retry_config import DEFAULT_MODEL, REASONING_EFFORT, resolve_profile
 
 logger = logging.getLogger(__name__)
@@ -86,14 +106,19 @@ def build_chat_kwargs(
 
 
 def get_raw_client() -> OpenAI:
-    """Instructor 래핑 없는 순수 OpenAI 클라이언트. 헬스체크 등 비구조화 호출용."""
+    """Instructor 래핑 없는 순수 OpenAI 클라이언트. 헬스체크 등 비구조화 호출용.
+
+    LANGSMITH_TRACING=true면 wrap_openai로 감싸 모든 호출을 자동 트레이싱한다
+    (모듈 상단 주석 참고).
+    """
     api_key = os.environ.get("OPENAI_API_KEY")
     if not api_key:
         raise RuntimeError(
             "OPENAI_API_KEY가 설정되지 않았습니다. "
             "프로젝트 루트에 .env 파일을 만들거나 환경변수로 설정하세요."
         )
-    return OpenAI(api_key=api_key)
+    client = OpenAI(api_key=api_key)
+    return wrap_openai(client) if wrap_openai else client
 
 
 _INSTRUCTOR_MODES = {

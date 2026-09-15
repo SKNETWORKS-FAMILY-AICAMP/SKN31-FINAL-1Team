@@ -39,11 +39,15 @@ class DashboardOverviewView(APIView):
         user = request.user
         is_pm = user.is_staff  # 백엔드 단일 기준(is_staff) 적용
 
+        # 2026-09-15: BACKLOG(AI 배분 직후 자동저장된 초안, PM 확정 전)는 PM 화면
+        # 포함 대시보드 집계에서 전부 제외한다 — 확정 전 수치는 "진짜" 업무량이
+        # 아니고, PM이 검토/수정 중인 화면은 generate_task_suggestions()가 반환한
+        # suggestions로 따로 보여주는 게 맞다(대시보드는 그 화면이 아님).
         if is_pm:
-            task_qs = TaskAssignment.objects.all()
+            task_qs = TaskAssignment.objects.exclude(status_code_id=TaskStatusCode.BACKLOG)
             project_qs = Project.objects.all()
         else:
-            task_qs = TaskAssignment.objects.filter(assigned_user=user)
+            task_qs = TaskAssignment.objects.filter(assigned_user=user).exclude(status_code_id=TaskStatusCode.BACKLOG)
             project_qs = Project.objects.filter(task_assignments__assigned_user=user).distinct()
 
         # 1. 요약 정보 (summary)
@@ -218,7 +222,8 @@ class DashboardAnalyticsView(APIView):
         # "승인 8건·반려 0건"처럼 뭉뚱그려 보였고, 정작 승인/반려가 실제로 일어나는
         # 기획서·요구사항정의서 단계별로는 몇 건인지 알 수 없었다(사용자 요청 —
         # "대체 몇 건을 승인했고 몇 건을 반려했는지 전혀 모르겠다"). 문서 종류별로
-        # 나눠서 집계한다.
+        # 나눠서 집계한다(develop에서 병합된 TaskAssignment 기준 approved_count/
+        # rejected_count는 이 방식으로 대체되어 더 안 쓴다).
         proposal_approved = SpecDocument.objects.filter(status_code__code_id='PROPOSAL_APPROVED').count()
         proposal_rejected = SpecDocument.objects.filter(status_code__code_id='PROPOSAL_REJECTED').count()
         requirement_approved = RequirementDefinition.objects.filter(status_code__code_id='APPROVED').count()
@@ -237,7 +242,6 @@ class DashboardAnalyticsView(APIView):
                 project=proj,
                 status_code__code_id__in=[
                     TaskStatusCode.PENDING_APPROVAL,
-                    TaskStatusCode.APPROVED,
                     TaskStatusCode.IN_PROGRESS
                 ]
             ).count()

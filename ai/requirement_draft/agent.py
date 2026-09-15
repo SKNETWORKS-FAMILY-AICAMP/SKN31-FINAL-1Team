@@ -10,7 +10,7 @@ from typing import Any, Dict, List
 
 from pydantic import ValidationError
 
-from shared.llm_client import create_structured
+from shared.llm_client import create_structured, traceable
 from shared.retry_config import DEFAULT_MAX_TOKENS, MAX_RETRIES, TEMPERATURE_STRUCTURED
 
 from .prompt_builder import build_messages, load_nfr_checklist
@@ -96,6 +96,7 @@ def verify_source_consistency(doc: RequirementDocument) -> List[str]:
     ]
 
 
+@traceable(name="requirement_draft.generate_requirements")
 def generate_requirements(plan: PlanDocument, plan_id: str | None = None) -> RequirementDocumentOutput:
     messages = build_messages(plan)
     system_prompt = messages[0]["content"]

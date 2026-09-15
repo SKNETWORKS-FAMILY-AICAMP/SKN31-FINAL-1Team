@@ -25,7 +25,7 @@ from typing import Any, Dict, List, Optional
 
 from pydantic import ValidationError
 
-from shared.llm_client import create_structured
+from shared.llm_client import create_structured, traceable
 from shared.retry_config import FAST_MODEL, FAST_MODEL_MAX_TOKENS, MAX_RETRIES, structured_temperature_for
 
 from .prompt_builder import (
@@ -139,6 +139,7 @@ def generate_hold_explanations_batch(units: List[Dict[str, Any]]) -> Dict[str, s
     return {h.unit_id: h.explanation for h in batch.items}
 
 
+@traceable(name="assignee_recommend.assignee_recommend_node")
 def assignee_recommend_node(state: Dict[str, Any]) -> Dict[str, Any]:
     missing = [
         k

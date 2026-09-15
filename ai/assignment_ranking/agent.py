@@ -24,7 +24,7 @@ from typing import Any, Dict, List
 
 from pydantic import ValidationError
 
-from shared.llm_client import create_structured
+from shared.llm_client import create_structured, traceable
 from shared.retry_config import (
     FAST_MODEL,
     FAST_MODEL_MAX_TOKENS,
@@ -62,6 +62,7 @@ def _package_needs_llm(pkg: Dict[str, Any], pkg_units: List[Dict[str, Any]], max
     return False
 
 
+@traceable(name="assignment_ranking.decide_package_splits")
 def decide_package_splits(
     packages: List[Dict[str, Any]],
     units_by_id: Dict[str, Dict[str, Any]],
@@ -147,6 +148,7 @@ def _candidates_for_unit(unit: Dict[str, Any], members: List[Dict[str, Any]]) ->
     return out
 
 
+@traceable(name="assignment_ranking.score_candidate_fit")
 def score_candidate_fit(
     units: List[Dict[str, Any]], members: List[Dict[str, Any]]
 ) -> Dict[str, Dict[str, Dict[str, Any]]]:
