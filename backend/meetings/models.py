@@ -1,4 +1,5 @@
 #meetings/models.py
+import uuid
 from django.db import models
 from django.conf import settings
 from common.models import CommonCode
@@ -156,3 +157,50 @@ class SpecDocument(models.Model):
 
     def __str__(self):
         return f"[{self.spec_id}] {self.title}"
+
+
+class MeetingAnalysisJob(models.Model):
+    """
+    "기획서 생성"(회의록 AI 분석 → 기획서 초안 생성)이 순차 LLM 호출 2번(노드①
+    회의록 분석, 노드② 기획서 초안 생성 — 노드①만 실측 ~100초)이라 동기 요청으로
+    두면 사용자가 화면을 몇 분씩 붙잡고 있어야 한다. tasks.TaskGenerationJob과
+    동일한 패턴(백그라운드 스레드 + 진행 단계 폴링)을 그대로 따른다 — 이 프로젝트에
+    아직 Celery/Redis 같은 워커 인프라가 없어(2026-09-14 확인) threading.Thread로
+    가볍게 구현했다. 운영에서 워커가 여러 개거나 재시작되면 실행 중이던 스레드가
+    유실될 수 있는 한계는 TaskGenerationJob과 동일하게 감수한다.
+    """
+    STATUS_PENDING = "PENDING"
+    STATUS_RUNNING = "RUNNING"
+    STATUS_SUCCESS = "SUCCESS"
+    STATUS_ERROR = "ERROR"
+    STATUS_CHOICES = [
+        (STATUS_PENDING, "대기"),
+        (STATUS_RUNNING, "진행 중"),
+        (STATUS_SUCCESS, "완료"),
+        (STATUS_ERROR, "실패"),
+    ]
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    note = models.ForeignKey(
+        MeetingNote, on_delete=models.CASCADE,
+        related_name='analysis_jobs', verbose_name="대상 회의록",
+    )
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True,
+        related_name='meeting_analysis_jobs', verbose_name="실행자",
+    )
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default=STATUS_PENDING, verbose_name="상태")
+    stage = models.CharField(max_length=100, default="", blank=True, verbose_name="현재 진행 단계(사람이 읽는 라벨)")
+    result = models.JSONField(null=True, blank=True, verbose_name="성공 시 결과(MeetingNoteAnalyzeView 응답과 동일)")
+    error_message = models.TextField(null=True, blank=True, verbose_name="실패 시 오류 메시지")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "meeting_analysis_job"
+        verbose_name = "기획서 생성 실행 작업"
+        verbose_name_plural = "기획서 생성 실행 작업 목록"
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"[{self.status}] note={self.note_id} ({self.stage})"

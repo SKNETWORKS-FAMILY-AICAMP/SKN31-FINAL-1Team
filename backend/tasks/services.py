@@ -328,6 +328,23 @@ def generate_task_suggestions(spec_id: int, on_stage=None) -> dict:
     persist_experience_tags(raw_profiles, member_profiles)
 
     _stage("담당자 배정 추천 중…")
+
+    def _on_assignee_progress(event: dict) -> None:
+        if event["type"] == "scheduled":
+            assignee_ids = sorted({
+                s["employee_id"] for s in event["scheduled"] if s["employee_id"] is not None
+            })
+            names = [n for n in (_assignee_display_name(i) for i in assignee_ids) if n]
+            if not names:
+                _stage("배정 가능한 담당자가 없어 보류 사유 작성 중…")
+                return
+            shown = ", ".join(names[:3])
+            if len(names) > 3:
+                shown += f" 외 {len(names) - 3}명"
+            _stage(f"총 {len(names)}명 배정 중 — {shown}")
+        elif event["type"] == "reasons_progress":
+            _stage(f"배정 사유 작성 중 ({event['done']}/{event['total']}건)")
+
     try:
         recommend_result = assignee_recommend_node({
             "member_profiles": member_profiles,
@@ -337,6 +354,7 @@ def generate_task_suggestions(spec_id: int, on_stage=None) -> dict:
             "tasks": tasks,
             "requirement_doc": requirement_doc,
             "package_by_unit": package_by_unit,  # Phase 3: 분할 반영된 그룹핑
+            "on_progress": _on_assignee_progress,
         })
     except Exception as e:
         logger.exception("담당자 추천 실패 (spec_id=%s)", spec_id)

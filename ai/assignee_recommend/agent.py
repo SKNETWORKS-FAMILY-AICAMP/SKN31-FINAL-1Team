@@ -190,6 +190,17 @@ def assignee_recommend_node(state: Dict[str, Any]) -> Dict[str, Any]:
         units, members, current_workload, max_hours_per_assignee, total_workdays, fit_scores=fit_scores
     )
 
+    # 2026-09-15: 배정 자체(누가 어디에 배정됐는지)는 여기서 이미 확정된다 — 아래
+    # 배치 LLM 호출은 근거 문장만 만든다. 호출부(services.py)가 진행 상황을
+    # 표시할 수 있도록, 확정 직후와 배치 진행마다 on_progress로 알려준다.
+    on_progress = state.get("on_progress")
+
+    def _progress(event: Dict[str, Any]) -> None:
+        if on_progress:
+            on_progress(event)
+
+    _progress({"type": "scheduled", "scheduled": scheduled})
+
     # 3. 확정된 결과를 배정 성공/보류로 나눠 각각 배치로 LLM 호출한다
     #    (유닛 1개당 1회 호출하면 OpenAI TPM 한도를 넘기 쉬워, 묶어서 호출 수를 줄인다).
     assigned_items = [item for item in scheduled if item["employee_id"] is not None]
@@ -200,6 +211,11 @@ def assignee_recommend_node(state: Dict[str, Any]) -> Dict[str, Any]:
     try:
         for batch in _chunked(assigned_items, REASON_BATCH_SIZE):
             reasons_by_unit.update(generate_reasons_batch(batch))
+            _progress({
+                "type": "reasons_progress",
+                "done": len(reasons_by_unit),
+                "total": len(assigned_items),
+            })
         for batch in _chunked([item["unit"] for item in held_items], HOLD_BATCH_SIZE):
             holds_by_unit.update(generate_hold_explanations_batch(batch))
     except ValidationError as e:

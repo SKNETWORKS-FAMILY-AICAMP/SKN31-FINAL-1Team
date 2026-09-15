@@ -1,8 +1,8 @@
 #meetings/views.py
-import json
-import re
-import html
+import threading
 from django.shortcuts import get_object_or_404
+from django.db import close_old_connections
+from django.utils import timezone
 from rest_framework import status, permissions, generics, parsers
 from rest_framework.views import APIView
 from rest_framework.response import Response
@@ -14,20 +14,17 @@ from docx.text.paragraph import Paragraph
 
 from pypdf import PdfReader
 
-from meetings.models import MeetingNote, SpecDocument
+from meetings.models import MeetingNote, SpecDocument, MeetingAnalysisJob
 from meetings.serializers import (
     MeetingNoteSerializer,
     MeetingNoteCreateSerializer,
     SpecDocumentSerializer,
 )
+from meetings.services import run_meeting_analysis
 from common.models import CommonCode
 from users.permissions import IsPMUser, IsOwnerOrPM  # IsOwnerOrPM 추가
 from notifications.services import notify_user, notify_all_pms
 from projects.models import PipelineHistory
-
-# AI 모듈 불러오기
-from meeting_analysis.node import run as analyze_meeting
-from plan_draft.agent import run as generate_plan
 
 
 # ==========================================
@@ -133,20 +130,63 @@ class MeetingNoteDetailView(generics.RetrieveUpdateDestroyAPIView):
         return super().delete(request, *args, **kwargs)
 
 
+def _run_analyze_job(job_id, actor_user_id):
+    """
+    MeetingNoteAnalyzeView.post가 스레드로 띄우는 실제 작업 — tasks/_run_generate_tasks_job과
+    동일한 패턴(2026-09-15). 노드①(회의록 분석)이 실측 ~100초라 동기로 기다리는 대신
+    여기서 백그라운드로 돌리고 MeetingAnalysisJob에 진행 단계를 기록한다 — 프론트는
+    job_id로 폴링한다.
+    """
+    close_old_connections()
+    try:
+        MeetingAnalysisJob.objects.filter(pk=job_id).update(
+            status=MeetingAnalysisJob.STATUS_RUNNING, updated_at=timezone.now()
+        )
+
+        def on_stage(label):
+            MeetingAnalysisJob.objects.filter(pk=job_id).update(stage=label[:100], updated_at=timezone.now())
+
+        job = MeetingAnalysisJob.objects.get(pk=job_id)
+        result = run_meeting_analysis(job.note_id, actor_user_id, on_stage=on_stage)
+    except Exception as e:
+        MeetingAnalysisJob.objects.filter(pk=job_id).update(
+            status=MeetingAnalysisJob.STATUS_ERROR, error_message=str(e), updated_at=timezone.now()
+        )
+        close_old_connections()
+        return
+
+    if result.get("status") == "success":
+        MeetingAnalysisJob.objects.filter(pk=job_id).update(
+            status=MeetingAnalysisJob.STATUS_SUCCESS, result=result, stage="완료", updated_at=timezone.now()
+        )
+    else:
+        MeetingAnalysisJob.objects.filter(pk=job_id).update(
+            status=MeetingAnalysisJob.STATUS_ERROR,
+            error_message=result.get("detail") or result.get("message") or "알 수 없는 오류",
+            updated_at=timezone.now(),
+        )
+    close_old_connections()
+
+
 class MeetingNoteAnalyzeView(APIView):
     """
     회의록 AI 분석 및 기획 초안 자동 생성 API
-    POST /api/meetings/notes/{id}/analyze/
+    POST /api/meetings/notes/{id}/analyze/ — 백그라운드 작업 시작(job_id만 즉시 반환).
+    실제 결과는 GET /api/meetings/notes/analyze-jobs/{job_id}/ 를 폴링해서 받는다.
     """
     permission_classes = [permissions.IsAuthenticated]
 
     @extend_schema(
         tags=['1단계 - 회의록'],
-        summary='회의록 AI 분석 및 기획서 자동 생성',
-        description='회의록 내용을 AI로 분석하여 요약 및 기획서 초안(SpecDocument)을 자동 생성합니다.',
+        summary='회의록 AI 분석 및 기획서 자동 생성 — 백그라운드 작업 시작',
+        description=(
+            '순차 LLM 호출 2번(노드①이 실측 ~100초)이라 동기로 기다리지 않는다. '
+            '이 호출은 즉시 job_id만 반환하고, 실제 결과는 '
+            'GET /api/meetings/notes/analyze-jobs/{job_id}/ 를 폴링해서 받는다.'
+        ),
         responses={
-            200: OpenApiResponse(description='분석 완료 및 기획서 생성 성공'),
-            500: OpenApiResponse(description='AI 분석 중 오류 발생')
+            202: OpenApiResponse(description='작업 시작됨 (job_id)'),
+            403: OpenApiResponse(description='작성자 본인이 아님'),
         }
     )
     def post(self, request, pk):
@@ -155,154 +195,37 @@ class MeetingNoteAnalyzeView(APIView):
         # 작성자 본인 확인
         if meeting.created_by != request.user:
             return Response(
-                {"error": "작성자 본인만 검토 요청을 할 수 있습니다."}, 
+                {"error": "작성자 본인만 검토 요청을 할 수 있습니다."},
                 status=status.HTTP_403_FORBIDDEN
             )
-        
-        # 1. 상태 업데이트: AI 분석 중
-        meeting.status = MeetingNote.Status.PROCESSING
-        meeting.save()
 
-        try:
-            # 2. AI 노드 ①: 회의록 분석
-            analysis_result = analyze_meeting(meeting.content, str(meeting.pk))
-            structured_data = analysis_result.data if hasattr(analysis_result, 'data') else analysis_result
+        job = MeetingAnalysisJob.objects.create(note=meeting, created_by=request.user)
+        threading.Thread(
+            target=_run_analyze_job, args=(job.id, request.user.id), daemon=True
+        ).start()
+        return Response({"status": "started", "job_id": str(job.id)}, status=status.HTTP_202_ACCEPTED)
 
-            # 3. AI 노드 ②: 기획서 초안 생성
-            proposal_id = f"PLN-{meeting.pk:03d}"
-            doc = generate_plan(structured_data, proposal_id)
-            
-            # Pydantic 또는 객체/dict 변환
-            if hasattr(doc, 'model_dump'):
-                plan_dict = doc.model_dump(mode="json")
-            elif hasattr(doc, 'dict'):
-                plan_dict = doc.dict()
-            elif isinstance(doc, dict):
-                plan_dict = doc
-            else:
-                plan_dict = {}
 
-            # 4. 회의록 상태 업데이트
-            summary_val = structured_data.get('summary') if isinstance(structured_data, dict) else None
-            meeting.summary_content = summary_val or f"[{meeting.title}] AI 분석이 완료되었습니다."
-            meeting.status = MeetingNote.Status.REVIEWED
-            meeting.save()
+class MeetingNoteAnalyzeJobStatusView(APIView):
+    """기획서 생성 작업 진행 상태 조회(폴링) — GET /api/meetings/notes/analyze-jobs/{job_id}/"""
+    permission_classes = [permissions.IsAuthenticated]
 
-            def strip_html_tags(text):
-                if not text:
-                    return ""
-                text_str = str(text)
-                decoded_text = html.unescape(text_str)
-                clean_text = re.sub(r'<[^>]+>', ' ', decoded_text)
-                clean_text = re.sub(r'[ \t]+', ' ', clean_text)
-                clean_text = re.sub(r'\n\s*\n', '\n', clean_text)
-                return clean_text.strip()
-
-            # ai/plan_draft/schemas.py의 SECTION_SPEC(노드②의 설계도)과 동일한 key ↔
-            # SpecDocument 필드명 매핑. 근거자료(evidence_data)도 이 키로 저장해야 프론트
-            # (documents/page.tsx의 EVIDENCE_KEY_ALIASES)가 올바른 섹션에 붙여준다.
-            SECTION_KEY_TO_FIELD = {
-                'overview': 'overview',
-                'problem': 'problem_definition',
-                'users': 'target_users',
-                'features': 'key_features',
-                'goals': 'goals',
-                'tech_scope': 'tech_stack',
-                'decisions': 'final_decisions',
-            }
-
-            sections_map = {}
-            evidence_map = {}
-            for sec in (plan_dict.get('sections') or []):
-                if not isinstance(sec, dict):
-                    continue
-                sec_key = sec.get('key')
-                if not sec_key or not isinstance(sec_key, str):
-                    continue
-
-                content = sec.get('content_html') or ""
-                if not content and isinstance(sec.get('items'), list):
-                    content = "\n".join(f"- {item}" for item in sec['items'] if isinstance(item, (str, int)))
-                if not content and isinstance(sec.get('features'), list):
-                    lines = []
-                    for f in sec['features']:
-                        if isinstance(f, dict):
-                            lines.append(f"• {f.get('title', '')}: {f.get('description', '')}")
-                    content = "\n".join(lines)
-
-                sections_map[sec_key] = content
-
-                # PlanSection.evidence(VerifiedEvidence 목록)는 노드①이 이미 원문 대조를
-                # 마친 근거라 status를 갖는다 — 회의록에 실제로 없는 문장을 "근거"로 보여주는
-                # 걸 막기 위해(환각 방지 원칙) status="verified"인 것만 채택한다.
-                quotes = [
-                    e.get('quote') for e in (sec.get('evidence') or [])
-                    if isinstance(e, dict) and e.get('status') == 'verified' and e.get('quote')
-                ]
-                field_name = SECTION_KEY_TO_FIELD.get(sec_key)
-                if quotes and field_name:
-                    evidence_map[field_name] = "\n".join(f"- {q}" for q in quotes)
-
-            NOT_DISCUSSED = "회의에서 논의되지 않았습니다."
-
-            def section_or_not_discussed(key):
-                val = sections_map.get(key, "")
-                return val if val.strip() else NOT_DISCUSSED
-
-            spec_defaults = {
-                'title': f"{meeting.title} - 기획 초안",
-                'overview': section_or_not_discussed('overview'),
-                'problem_definition': section_or_not_discussed('problem'),
-                'target_users': section_or_not_discussed('users'),
-                'key_features': section_or_not_discussed('features'),
-                'goals': section_or_not_discussed('goals'),
-                'tech_stack': section_or_not_discussed('tech_scope'),
-                'final_decisions': section_or_not_discussed('decisions'),
-            }
-            if evidence_map:
-                spec_defaults['evidence_data'] = json.dumps(evidence_map, ensure_ascii=False)
-
-            period_match = re.search(
-                r'(\d{4}-\d{2}-\d{2})\s*(?:~|-|부터)\s*(\d{4}-\d{2}-\d{2})',
-                meeting.content or "",
-            )
-            if period_match:
-                spec_defaults['period_start'] = period_match.group(1)
-                spec_defaults['period_end'] = period_match.group(2)
-
-            # 6. 기존 기획서가 있다면 필드 값 업데이트
-            spec, created = SpecDocument.objects.update_or_create(
-                meeting=meeting,
-                defaults=spec_defaults
-            )
-
-            # 파이프라인 이력 로그 생성 — "기획서 생성" 버튼(AI 호출) 시점.
-            # 승인 시점의 SPEC_GENERATED와 구분되는 별도 step_type이라 히스토리
-            # "에이전트" 탭에 실제 AI 실행으로 잡힌다(사람이 누른 승인과 혼동 방지).
-            if meeting.project_id:
-                PipelineHistory.objects.create(
-                    project=meeting.project,
-                    meeting=meeting,
-                    spec=spec,
-                    step_type='SPEC_AI_GENERATED',
-                    title=f"기획서 생성: {spec.title}",
-                    description=f"실행자: {request.user.username} 사원",
-                    actor=request.user,
-                )
-
-            return Response({
-                "message": "회의록 AI 분석 및 기획서 초안 생성이 완료되었습니다.",
-                "meeting": MeetingNoteSerializer(meeting).data,
-                "created_spec": SpecDocumentSerializer(spec).data
-            }, status=status.HTTP_200_OK)
-
-        except Exception as e:
-            meeting.status = MeetingNote.Status.DRAFT
-            meeting.save()
-            return Response(
-                {"error": "AI 기획서 생성 중 오류가 발생했습니다.", "detail": str(e)},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
+    @extend_schema(
+        tags=['1단계 - 회의록'],
+        summary='기획서 생성 작업 진행 상태 조회(폴링)',
+        parameters=[
+            OpenApiParameter(name='job_id', type=OpenApiTypes.STR, location=OpenApiParameter.PATH, description='MeetingNoteAnalyzeView가 반환한 job_id')
+        ],
+        responses={200: OpenApiResponse(description='작업 상태(진행 중/완료/실패)')}
+    )
+    def get(self, request, job_id):
+        job = get_object_or_404(MeetingAnalysisJob, pk=job_id)
+        payload = {"status": job.status, "stage": job.stage}
+        if job.status == MeetingAnalysisJob.STATUS_SUCCESS:
+            payload["result"] = job.result
+        elif job.status == MeetingAnalysisJob.STATUS_ERROR:
+            payload["message"] = job.error_message
+        return Response(payload)
 
 
 # ==========================================
