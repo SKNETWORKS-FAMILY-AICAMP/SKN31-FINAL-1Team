@@ -26,6 +26,7 @@ from assignee_recommend.rule_filter import (
 from assignment_ranking.agent import decide_package_splits
 from assignment_explanation.agent import summarize_plan
 from common.models import CommonCode
+from shared.llm_client import traceable
 
 # 2026-09-11 (Phase 1): 일정 배치는 tasks.scheduler(결정적 순수 모듈)에 위임한다.
 from tasks.scheduler import (
@@ -180,6 +181,7 @@ def _build_briefing_context(
     }
 
 
+@traceable(name="generate_task_suggestions")
 def generate_task_suggestions(spec_id: int, on_stage=None) -> dict:
     """
     요구사항정의서 승인 후 PM이 누르는 "업무 배분 실행" — 실제 AI 파이프라인

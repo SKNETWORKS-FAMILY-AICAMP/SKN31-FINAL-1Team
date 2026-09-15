@@ -26,7 +26,7 @@ from typing import Any, Dict, List, Optional
 
 from pydantic import ValidationError
 
-from shared.llm_client import create_structured
+from shared.llm_client import create_structured, traceable
 from shared.retry_config import DEFAULT_MAX_TOKENS, MAX_RETRIES, TEMPERATURE_STRUCTURED
 
 from .prompt_builder import build_extraction_batch_prompt, build_extraction_prompt
@@ -111,6 +111,7 @@ def extract_experience_tags_batch(
     return result
 
 
+@traceable(name="assignee_mapping.assignee_mapping_node")
 def assignee_mapping_node(state: Dict[str, Any]) -> Dict[str, Any]:
     missing = [k for k in ("raw_employee_profiles", "tasks") if k not in state]
     if missing:

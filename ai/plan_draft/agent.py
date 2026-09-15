@@ -26,7 +26,7 @@ except ImportError:  # 구버전 instructor 호환
     from instructor.exceptions import InstructorRetryException
 
 from shared.errors import NodeGenerationError
-from shared.llm_client import build_chat_kwargs, get_client
+from shared.llm_client import build_chat_kwargs, get_client, traceable
 from shared.retry_config import MAX_RETRIES, MAX_TOKENS, MODEL, TEMPERATURE
 
 from . import list_builder
@@ -170,6 +170,7 @@ def _source_is_empty(structured: dict, source_fields: list[str]) -> bool:
     return True
 
 
+@traceable(name="plan_draft.run")
 def run(structured: dict, proposal_id: str) -> PlanDocument:
     # ── [1] 서술형 5개 생성 ──────────────────────────────────
     result: PlanSections = _call(
@@ -253,6 +254,7 @@ def run(structured: dict, proposal_id: str) -> PlanDocument:
     )
 
 
+@traceable(name="plan_draft.regenerate_section")
 def regenerate_section(
     structured: dict, section_key: str, reject_type: str, comment: str
 ) -> PlanSection:
