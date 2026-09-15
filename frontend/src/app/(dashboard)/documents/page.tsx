@@ -2591,6 +2591,10 @@ function GanttChart({ items }: { items: GanttItem[] }) {
       suppressMovable: true,
       // 매달 1일은 경계를 굵게 표시해 월이 바뀌는 지점을 알 수 있게 한다.
       headerClass: cn("ag-header-cell-day", i === todayIndex && "ag-header-cell-today", d.getDate() === 1 && "ag-header-cell-month-start"),
+      // 2026-09-15: 막대가 없는 빈 날짜 칸은 구분선이 없어 어느 날짜인지 눈으로
+      // 따라가기 어렵다는 요청 — 칸마다 세로선을 그어 색칠 여부와 무관하게
+      // 매 날짜 경계가 보이게 한다.
+      cellClass: "ag-cell-day-col",
       cellStyle: (params: { data?: Row }) =>
         params.data && params.data.startIdx <= i && i <= params.data.endIdx
           ? { backgroundColor: BAR_COLOR }
@@ -2614,6 +2618,9 @@ function GanttChart({ items }: { items: GanttItem[] }) {
         .ag-header-cell-day .ag-header-cell-text { font-size: 11px; }
         .ag-header-cell-today { background-color: #dce7ff !important; }
         .ag-header-cell-month-start { border-left: 2px solid #94a3b8 !important; }
+        /* 막대가 없는 빈 날짜 칸도 세로 구분선이 보이도록 — 색칠 여부와 무관하게
+           모든 날짜 칸에 적용된다. */
+        .ag-cell-day-col { border-right: 1px solid #e2e8f0; }
       `}</style>
       <AgGridReact<Row>
         theme={themeQuartz}
