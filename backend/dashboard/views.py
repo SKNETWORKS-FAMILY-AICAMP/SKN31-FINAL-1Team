@@ -12,6 +12,8 @@ from users.permissions import IsPMUser
 from tasks.models import TaskAssignment, TaskStatusCode
 from projects.models import Project
 from common.models import CommonCode
+from meetings.models import SpecDocument
+from requirements.models import RequirementDefinition
 
 # 5단계에서 작성한 Serializer 임포트
 from dashboard.serializers import (
@@ -216,21 +218,20 @@ class DashboardAnalyticsView(APIView):
             average_process_time = 0.0
 
         # 4. 승인 통과율 (approvalPassRate)
-        # 2026-09-15: APPROVED == COMPLETED(둘 다 'DONE', 팀 결정으로 기존 코드 재사용)라
-        # 목록에 따로 안 넣어도 된다 — 넣어도 틀리진 않지만 같은 값이 중복돼 헷갈린다.
-        approved_count = TaskAssignment.objects.filter(
-            status_code__code_id__in=[
-                TaskStatusCode.IN_PROGRESS,
-                TaskStatusCode.COMPLETED
-            ]
-        ).count()
-        rejected_count = TaskAssignment.objects.filter(
-            status_code__code_id=TaskStatusCode.REJECTED
-        ).count()
+        # 2026-09-15: 지금까지는 TaskAssignment(개별 업무) 기준으로만 집계해서
+        # "승인 8건·반려 0건"처럼 뭉뚱그려 보였고, 정작 승인/반려가 실제로 일어나는
+        # 기획서·요구사항정의서 단계별로는 몇 건인지 알 수 없었다(사용자 요청 —
+        # "대체 몇 건을 승인했고 몇 건을 반려했는지 전혀 모르겠다"). 문서 종류별로
+        # 나눠서 집계한다(develop에서 병합된 TaskAssignment 기준 approved_count/
+        # rejected_count는 이 방식으로 대체되어 더 안 쓴다).
+        proposal_approved = SpecDocument.objects.filter(status_code__code_id='PROPOSAL_APPROVED').count()
+        proposal_rejected = SpecDocument.objects.filter(status_code__code_id='PROPOSAL_REJECTED').count()
+        requirement_approved = RequirementDefinition.objects.filter(status_code__code_id='APPROVED').count()
+        requirement_rejected = RequirementDefinition.objects.filter(status_code__code_id='REJECTED').count()
 
         approval_pass_rate = {
-            "approved": approved_count,
-            "rejected": rejected_count
+            "proposal": {"approved": proposal_approved, "rejected": proposal_rejected},
+            "requirement": {"approved": requirement_approved, "rejected": requirement_rejected},
         }
 
         # 5. 프로젝트 번다운 (projectBurndown)

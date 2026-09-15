@@ -65,9 +65,14 @@ class TeamContributionItemSerializer(serializers.Serializer):
     inProgress = serializers.IntegerField()
 
 
-class ApprovalPassRateSerializer(serializers.Serializer):
+class ApprovalCountSerializer(serializers.Serializer):
     approved = serializers.IntegerField()
     rejected = serializers.IntegerField()
+
+
+class ApprovalPassRateSerializer(serializers.Serializer):
+    proposal = ApprovalCountSerializer()
+    requirement = ApprovalCountSerializer()
 
 
 class ProjectBurndownItemSerializer(serializers.Serializer):
