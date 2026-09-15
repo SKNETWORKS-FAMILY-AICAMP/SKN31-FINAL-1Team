@@ -435,8 +435,11 @@ export default function DocumentsPage() {
       .catch(() => {});
   }, []);
 
+  // 2026-09-15: updated_at 기준 정렬이었으나, 카드에 보이는 날짜는 meeting_date(수동
+  // 입력값)라 정렬 순서와 화면에 보이는 날짜가 안 맞아 보인다는 피드백 — "등록된 순서"
+  // 즉 실제 생성 시각(created_at) 기준 최신순으로 바꾼다.
   const sortedNotes = useMemo(
-    () => notes.slice().sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()),
+    () => notes.slice().sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()),
     [notes]
   );
   const selectedNote = useMemo(
@@ -1154,7 +1157,10 @@ export default function DocumentsPage() {
                         <Icon className="w-3 h-3" /> {spec ? meta.label : "기획서 미생성"}
                       </span>
                       <p className="text-[11px] text-muted-foreground mt-1 flex items-center gap-1.5">
-                        <span>{new Date(note.meeting_date ?? note.updated_at).toLocaleDateString("ko-KR")}</span>
+                        {/* 2026-09-15: meeting_date(회의 날짜, 수동 입력값)를 보여주면 목록
+                            정렬 기준(등록일=created_at)과 화면에 보이는 날짜가 달라서 "최신순인데
+                            맨 위가 옛날 날짜"로 보이는 혼란이 있었다 — 정렬 기준과 같은 날짜를 표시. */}
+                        <span>{new Date(note.created_at).toLocaleDateString("ko-KR")}</span>
                         <span className="text-muted-foreground/60">·</span>
                         <span className="truncate">작성자 {note.created_by_name || "알 수 없음"}</span>
                       </p>
