@@ -43,9 +43,34 @@ def get_target_author(req_def):
     return None
 
 
+def _parse_feature_lines(raw_features) -> list:
+    """SpecDocument.key_features(TextField, 줄바꿈으로 구분된 자유 텍스트)를
+    기능 항목별 줄로 분리한다.
+
+    이전 코드는 `isinstance(raw_features, list)`를 조건으로 걸었는데,
+    key_features는 실제로는 항상 str(TextField)라 이 조건이 절대 참이 될 수
+    없었다 — 그래서 매번 else 분기(제목/개요 하나짜리 제네릭 요구사항)로만
+    빠져, AI가 기능별로 요구사항을 쪼갤 근거 자체가 사라지고 있었다.
+    meetings/services.py가 최초 생성 시 "• 제목: 설명" 줄 형식으로 채우지만,
+    이후 PM이 ProposalTemplate 화면에서 자유 텍스트로 고칠 수 있으므로
+    불릿 기호나 콜론 유무를 강제하지 않고 줄 단위로만 분리한다.
+    """
+    if isinstance(raw_features, list):
+        return [str(f).strip() for f in raw_features if str(f).strip()]
+    if not raw_features:
+        return []
+    lines = []
+    for raw_line in str(raw_features).splitlines():
+        line = raw_line.strip().lstrip("•-*").strip()
+        if not line or "회의에서 논의되지 않았습니다" in line:
+            continue
+        lines.append(line)
+    return lines
+
+
 def process_ai_requirement_extraction(spec_document, user):
     """
-    SpecDocument 기반으로 AI 에이전트를 실행하고 
+    SpecDocument 기반으로 AI 에이전트를 실행하고
     RequirementDefinition 및 하위 RequirementItem들을 생성/저장하는 공통 헬퍼 함수
     """
     spec_id = spec_document.spec_id
@@ -57,16 +82,21 @@ def process_ai_requirement_extraction(spec_document, user):
     else:
         goal_str = str(raw_goals) if raw_goals else "요구사항 분석 및 기획서 도출"
 
-    raw_features = getattr(spec_document, "key_features", [])
-    if raw_features and isinstance(raw_features, list):
-        requirements_input = [
-            {
+    feature_lines = _parse_feature_lines(getattr(spec_document, "key_features", None))
+    if feature_lines:
+        requirements_input = []
+        for i, line in enumerate(feature_lines):
+            sep = ":" if ":" in line else ("：" if "：" in line else None)
+            if sep:
+                title, _, desc = line.partition(sep)
+                title, desc = title.strip(), desc.strip()
+            else:
+                title, desc = line, line
+            requirements_input.append({
                 "id": f"REQ-{i+1:02d}",
-                "title": str(feat),
-                "description": str(feat)
-            }
-            for i, feat in enumerate(raw_features)
-        ]
+                "title": title or line,
+                "description": desc or line,
+            })
     else:
         requirements_input = [
             {
