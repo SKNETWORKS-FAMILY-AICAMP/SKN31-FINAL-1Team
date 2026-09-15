@@ -86,7 +86,8 @@ class DashboardOverviewView(APIView):
         # 늘어나는 문제가 있었다(2026-09-14 확인) — 업무량 상위 TOP_N명만
         # 보여주도록 슬라이스를 추가한다. PM이 "전체 기준"으로 보는 건 그대로
         # 유지하고(회사 전체 집계), 화면에 그릴 막대 개수만 제한한다.
-        WORKLOAD_TOP_N = 10
+        # 2026-09-15: 직원 수가 많아지면 막대/라벨이 겹친다는 요청으로 7명으로 축소.
+        WORKLOAD_TOP_N = 7
         workload = []
         if is_pm:
             workload_data = (
@@ -185,6 +186,11 @@ class DashboardAnalyticsView(APIView):
             })
 
         # 2. 팀원별 기여도 (teamContribution)
+        # 2026-09-15: 업무를 한 번이라도 배정받은 적 있으면(완료/진행중 건수가 0이어도)
+        # 무조건 막대가 하나 생겨서, 인원이 늘수록 의미 없는 빈 막대가 계속 늘어나는
+        # 문제가 있었다 — workload 차트의 TOP_N 패턴과 동일하게, 기여(done+inProgress)가
+        # 있는 사람만 남기고 기여도 상위 TOP_N명만 보여준다.
+        CONTRIBUTION_TOP_N = 10
         team_data = (
             TaskAssignment.objects.filter(assigned_user__isnull=False)
             .values('assigned_user__id', 'assigned_user__username', 'assigned_user__first_name', 'assigned_user__last_name')
@@ -192,6 +198,8 @@ class DashboardAnalyticsView(APIView):
                 done=Count('id', filter=Q(status_code__code_id=TaskStatusCode.COMPLETED)),
                 inProgress=Count('id', filter=Q(status_code__code_id=TaskStatusCode.IN_PROGRESS))
             )
+            .filter(Q(done__gt=0) | Q(inProgress__gt=0))
+            .order_by('-done', '-inProgress')[:CONTRIBUTION_TOP_N]
         )
         team_contribution = []
         for t in team_data:
