@@ -32,13 +32,16 @@ type Task = {
 
 type Member = { id: string; name: string; email: string; role: string };
 
-// Django TaskAssignment.Status 실제 값 — 예전 BACKLOG/DONE은 없고 REJECTED가 추가됐다.
+// 2026-09-15: id는 실제 common_code.code_id(TASK_STATUS)와 일치해야 PATCH가 통과한다
+// (backend/tasks/models.py TaskStatusCode 참고) — "APPROVED"/"COMPLETED"/"REJECTED"는
+// TASK_STATUS에 존재한 적 없는 값(REQSPEC_STATUS/PROJECT_STATUS가 선점)이라 실제 값
+// (TASK_APPROVED/DONE/CANCELLED)으로 맞춘다.
 const STATUSES = [
   { id: "PENDING_APPROVAL", label: "배분승인대기", color: "text-orange-500", bg: "bg-orange-500/10" },
-  { id: "APPROVED", label: "승인됨", color: "text-sky-500", bg: "bg-sky-500/10" },
+  { id: "TASK_APPROVED", label: "승인됨", color: "text-sky-500", bg: "bg-sky-500/10" },
   { id: "IN_PROGRESS", label: "진행 중", color: "text-amber-500", bg: "bg-amber-500/10" },
-  { id: "COMPLETED", label: "완료", color: "text-emerald-500", bg: "bg-emerald-500/10" },
-  { id: "REJECTED", label: "반려됨", color: "text-red-500", bg: "bg-red-500/10" },
+  { id: "DONE", label: "완료", color: "text-emerald-500", bg: "bg-emerald-500/10" },
+  { id: "CANCELLED", label: "반려됨", color: "text-red-500", bg: "bg-red-500/10" },
 ];
 
 export default function TasksPage() {
@@ -309,7 +312,7 @@ export default function TasksPage() {
                                   statusInfo.bg, statusInfo.color
                                 )}
                               >
-                                {STATUSES.filter(s => s.id !== "PENDING_APPROVAL" && s.id !== "REJECTED").map(s => <option key={s.id} value={s.id} className="bg-background text-foreground">{s.label}</option>)}
+                                {STATUSES.filter(s => s.id !== "PENDING_APPROVAL" && s.id !== "CANCELLED").map(s => <option key={s.id} value={s.id} className="bg-background text-foreground">{s.label}</option>)}
                               </select>
                             )}
                           </td>
@@ -379,7 +382,7 @@ function WbsBoardView({ tasks, onRowClick }: { tasks: Task[]; onRowClick: (task:
     acc[s.id] = tasks.filter(t => t.status_code === s.id).length;
     return acc;
   }, {} as Record<string, number>);
-  const doneCount = counts["COMPLETED"] ?? 0;
+  const doneCount = counts["DONE"] ?? 0;
   const overallProgress = total > 0 ? Math.round((doneCount / total) * 100) : 0;
 
   const PAGE_SIZE = 10;

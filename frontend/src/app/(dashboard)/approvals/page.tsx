@@ -60,7 +60,7 @@ export default function ApprovalsPage() {
     try {
       await apiFetch(`/api/tasks/assignments/${taskId}/status/`, {
         method: "PATCH",
-        body: JSON.stringify({ status_code: "APPROVED" }),
+        body: JSON.stringify({ status_code: "TASK_APPROVED" }),
       });
       setTasks(prev => prev.filter(t => t.id !== taskId));
     } catch (e: any) {
@@ -76,7 +76,7 @@ export default function ApprovalsPage() {
     try {
       await apiFetch(`/api/tasks/assignments/${rejectModal.id}/status/`, {
         method: "PATCH",
-        body: JSON.stringify({ status_code: "REJECTED", reject_reason: rejectReason }),
+        body: JSON.stringify({ status_code: "CANCELLED", reject_reason: rejectReason }),
       });
       setTasks(prev => prev.filter(t => t.id !== rejectModal.id));
       setRejectModal(null);

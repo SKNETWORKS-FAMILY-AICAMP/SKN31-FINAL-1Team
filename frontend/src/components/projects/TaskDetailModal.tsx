@@ -162,7 +162,7 @@ export function TaskDetailModal({
             </div>
           </div>
 
-          {task.status_code === "REJECTED" && task.reject_reason && (
+          {task.status_code === "CANCELLED" && task.reject_reason && (
             <div className="p-3 rounded-lg bg-red-500/10 text-red-400 text-sm">
               반려 사유: {task.reject_reason}
             </div>

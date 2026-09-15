@@ -22,9 +22,18 @@ class TaskStatusCode:
     FK가 그룹을 검증하지 않아 에러 없이 조용히 엉뚱한 그룹의 행을 가리켜왔다(예:
     대시보드의 완료 업무 집계가 TaskStatusCode.COMPLETED로 필터링해 항상 0건이었음).
 
-    (팀 결정, 2026-09-15) 새 code_id를 따로 시드하지 않고 TASK_STATUS에 이미 있는
-    값을 재사용한다 — APPROVED->DONE, REJECTED->CANCELLED. 업무 배분이 막 확정된
-    시점의 초기 상태는 PENDING_APPROVAL이다(confirm_task_assignments 참고).
+    REJECTED는 TASK_STATUS에 이미 있는 CANCELLED를 재사용한다(팀 결정) — 프론트가
+    둘을 구분해서 쓰는 곳이 없어(taskOverdue.ts는 DONE/CANCELLED/COMPLETED/REJECTED를
+    어차피 동일하게 "종료됨"으로 취급) 충돌이 없다.
+
+    APPROVED는 한때 COMPLETED(DONE)와 합쳤었는데(2026-09-15), 프론트
+    (projects/[id]/page.tsx, tasks/page.tsx, KanbanBoard.tsx)가 "승인됨"을
+    "완료"와 다른 색·다른 칸반 단계로 이미 설계해둔 게 뒤늦게 확인돼 되돌렸다 —
+    TASK_STATUS 전용 code_id(TASK_APPROVED)를 새로 시드했다
+    (common/migrations/0002_add_task_status_approved.py). 업무 배분이 막
+    확정된 시점의 초기 상태는 APPROVED가 아니라 PENDING_APPROVAL이다(PM이 개별
+    업무를 나중에 승인/반려하는 것과, 배분 자체를 확정하는 것은 서로 다른 액션 —
+    confirm_task_assignments 참고).
 
     2026-09-15 (임시저장): AI가 "업무 배분 실행" 직후 만드는 초안도 이제 즉시
     TaskAssignment로 저장한다(그래야 PM이 며칠 뒤 돌아와도 안 날아감) — 이때는
@@ -34,7 +43,7 @@ class TaskStatusCode:
     """
     BACKLOG = 'BACKLOG'
     PENDING_APPROVAL = 'PENDING_APPROVAL'
-    APPROVED = 'DONE'
+    APPROVED = 'TASK_APPROVED'
     REJECTED = 'CANCELLED'
     IN_PROGRESS = 'IN_PROGRESS'
     COMPLETED = 'DONE'

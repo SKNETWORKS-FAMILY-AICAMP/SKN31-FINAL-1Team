@@ -2503,7 +2503,7 @@ function TaskAssignmentList({
                         수정(이전엔 APPROVED 상태에서도 재배정 드롭박스를 열어뒀었다). 확정
                         전 상태(PENDING_APPROVAL — 자동배정 등 다른 경로로 만들어진 업무)만
                         드롭박스로 담당자를 바꿀 수 있고, 확정된 뒤엔 읽기 전용으로 보여준다. */}
-                    {isPM && t.status_info?.code_id !== "APPROVED" ? (
+                    {isPM && t.status_info?.code_id !== "TASK_APPROVED" ? (
                       <div className="flex items-center gap-1">
                         <select
                           value={pendingReassign[t.id] ?? t.assigned_user}
@@ -2572,18 +2572,19 @@ function TaskAssignmentList({
                     ) : "-"}
                   </td>
                   <td className="px-4 py-3">
-                    {/* 이 화면에서 확정된 업무는 APPROVED로 바로 시작한다(PM 본인이 확정하는
-                        액션이라 "확정 = 이미 승인됨" — 위 담당자 드롭박스 조건 주석 참고).
-                        PENDING_APPROVAL은 다른 배정 경로(자동배정 등)로 만들어진 업무에만
-                        남아있을 수 있어 그 경우에 대비해 문구만 유지한다. */}
+                    {/* 2026-09-15: 백엔드 TaskStatusCode 정리로 이 화면에서 확정된 업무는
+                        이제 PENDING_APPROVAL로 저장된다(팀 결정 — 배분 확정 시점의 상태는
+                        PENDING_APPROVAL). PM이 확정 버튼을 누른 시점에 "PM 승인 대기"라는
+                        별도 개념은 없으므로 문구는 "배분완료"만 보여준다. TASK_APPROVED("승인됨")
+                        /DONE("완료")은 나중에 개별 승인·완료 액션(projects/[id] 페이지,
+                        칸반보드)으로만 바뀌므로 여기선 code_name을 그대로 쓴다. */}
                     <span className={cn(
                       "inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold",
-                      t.status_info?.code_id === "APPROVED" ? "bg-emerald-500/10 text-emerald-500" : "bg-orange-500/10 text-orange-500"
+                      (t.status_info?.code_id === "DONE" || t.status_info?.code_id === "TASK_APPROVED")
+                        ? "bg-emerald-500/10 text-emerald-500" : "bg-orange-500/10 text-orange-500"
                     )}>
                       {t.status_info?.code_id === "PENDING_APPROVAL"
-                        ? "배분완료 · PM 승인 대기"
-                        : t.status_info?.code_id === "APPROVED"
-                        ? "배분 확정됨"
+                        ? "배분완료"
                         : t.status_info?.code_name ?? "미지정"}
                     </span>
                   </td>

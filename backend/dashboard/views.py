@@ -246,10 +246,13 @@ class DashboardAnalyticsView(APIView):
         project_burndown = []
         projects = Project.objects.all()
         for proj in projects:
+            # 2026-09-15: APPROVED가 COMPLETED(DONE)와 다시 별개 값이 됐으니(팀 결정)
+            # "승인됐지만 아직 안 끝난" 업무도 남은 업무에 다시 포함한다.
             remaining_count = TaskAssignment.objects.filter(
                 project=proj,
                 status_code__code_id__in=[
                     TaskStatusCode.PENDING_APPROVAL,
+                    TaskStatusCode.APPROVED,
                     TaskStatusCode.IN_PROGRESS
                 ]
             ).count()

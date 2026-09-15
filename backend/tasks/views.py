@@ -339,18 +339,17 @@ class TaskStatusUpdateView(APIView):
                 )
 
             # ── 상태별 세부 권한 분기 ────────────────────────────────────
-            # 2026-09-15: APPROVED와 COMPLETED가 같은 code_id(DONE)를 공유하게 되면서
-            # (팀 결정 — 별도 "승인" 코드를 새로 안 만들고 기존 값 재사용) 값만으로는
-            # "PM 승인"과 "담당자 완료 처리"를 더 이상 구분할 수 없다. 반려(REJECTED=
-            # CANCELLED)만 여전히 PM 전용으로 남기고, DONE(승인·완료 겸용)은 원래
-            # COMPLETED가 허용하던 대로 담당자 본인도 계속 처리할 수 있게 둔다 —
-            # 담당자의 자가 완료 처리 권한을 이번 변경으로 뺏지 않기 위함.
-            if new_status == TaskStatusCode.REJECTED:
+            # 2026-09-15: APPROVED가 다시 COMPLETED(DONE)와 별개 code_id(TASK_APPROVED)를
+            # 갖게 되면서(프론트가 "승인됨"/"완료"를 별개 칸반 단계로 이미 쓰고 있어서
+            # 되돌림) 값만으로 "PM 승인"과 "담당자 완료 처리"를 다시 구분할 수 있다 —
+            # A. 배분 승인(APPROVED)/반려(REJECTED)는 PM만 가능.
+            if new_status in [TaskStatusCode.APPROVED, TaskStatusCode.REJECTED]:
                 if not is_pm:
                     return Response(
-                        {"error": "FORBIDDEN", "details": "업무 배정 반려는 PM 권한이 필요합니다."},
+                        {"error": "FORBIDDEN", "details": "업무 배분 승인 및 반려는 PM 권한이 필요합니다."},
                         status=status.HTTP_403_FORBIDDEN
                     )
+            # B. 기타 상태 변경(IN_PROGRESS, COMPLETED 등)은 PM 또는 담당자 본인만 가능
             else:
                 if not is_pm and task.assigned_user_id != user.id:
                     return Response(
@@ -372,8 +371,7 @@ class TaskStatusUpdateView(APIView):
 
             task.status_code_id = new_status
 
-            # DONE 도달 시 담당 개발자 is_busy 해제 — 승인이든 완료든 이 업무는 더는
-            # 이 담당자를 붙잡아두지 않는다(다른 진행 중 업무가 없을 때만).
+            # 업무 완료(COMPLETED) 시 담당 개발자 is_busy 해제
             if new_status == TaskStatusCode.COMPLETED:
                 assigned_dev = task.assigned_user
                 if assigned_dev:
@@ -384,24 +382,17 @@ class TaskStatusUpdateView(APIView):
                         assigned_dev.is_busy = False
                         assigned_dev.save()
 
-            # 2026-09-15: DONE이 "승인"과 "완료" 두 의미를 겸하게 되면서 새 상태값만으론
-            # 더 이상 구분이 안 된다 — 대신 "어디서 왔는지"(old_status)로 구분한다.
-            # PENDING_APPROVAL(배분승인대기)에서 곧장 DONE으로 가면 PM의 "승인"으로,
-            # 그 외(주로 IN_PROGRESS)에서 DONE으로 가면 "완료"로 본다.
-            approved_from_pending = old_status == TaskStatusCode.PENDING_APPROVAL and new_status == TaskStatusCode.COMPLETED
-            completed_from_other = new_status == TaskStatusCode.COMPLETED and not approved_from_pending
-
             # 알림 발송
-            if approved_from_pending and task.assigned_user:
+            if new_status == TaskStatusCode.APPROVED and task.assigned_user:
                 notify_user(task.assigned_user, f"'{task.title}' 업무가 승인되었습니다.", type='success', link='/tasks')
-            elif completed_from_other and task.assigned_user:
+            elif new_status == TaskStatusCode.COMPLETED and task.assigned_user:
                 notify_user(task.assigned_user, f"'{task.title}' 업무가 완료되었습니다.", type='success', link='/tasks')
             elif new_status == TaskStatusCode.REJECTED and task.assigned_user:
                 notify_user(task.assigned_user, f"'{task.title}' 업무가 반려되었습니다: {task.reject_reason}", type='error', link='/tasks')
 
             # 파이프라인 히스토리 기록 (실제 상태가 변경된 경우)
             if task.project_id and new_status != old_status:
-                if approved_from_pending:
+                if new_status == TaskStatusCode.APPROVED:
                     PipelineHistory.objects.create(
                         project=task.project,
                         task=task,
@@ -410,7 +401,7 @@ class TaskStatusUpdateView(APIView):
                         description=f"담당자: {task.assigned_user.username if task.assigned_user else '미정'}",
                         actor=user,
                     )
-                elif completed_from_other:
+                elif new_status == TaskStatusCode.COMPLETED:
                     PipelineHistory.objects.create(
                         project=task.project,
                         task=task,
