@@ -533,7 +533,7 @@ export default function DocumentsPage() {
     const seq = ++specGenSeqRef.current;
     setBusy(`${note.id}-generate`);
     setSpecGenStartedAt(Date.now());
-    setSpecGenStage("회의록 분석 중…");
+    setSpecGenStage("회의록 구조화 중…");
     const stop = () => {
       setBusy(null);
       setSpecGenStartedAt(null);
@@ -708,10 +708,27 @@ export default function DocumentsPage() {
   };
 
   // ── 요구사항 정의서 관련 핸들러 ────────────────────────────────
+  // 2026-09-15: 요구사항정의서 생성/재생성도 업무 배분·기획서 생성과 같은
+  // 백그라운드 job + 폴링 구조로 바꿨다 — LLM 호출(1회 + baseline 누락 시
+  // 재시도)이라 동기로 두면 오래 걸릴 수 있다. "생성"(handleCreateReqDef)과
+  // "재생성"(handleExtractItems) 모두 같은 종류의 작업이라 진행 상태 state를
+  // 공유한다(동시에 둘 다 눌릴 일은 없음 — busy가 하나뿐이라 버튼 자체가 막힘).
+  const reqExtractSeqRef = useRef(0);
+  const [reqExtractStage, setReqExtractStage] = useState("");
+  const [reqExtractStartedAt, setReqExtractStartedAt] = useState<number | null>(null);
+
   const handleCreateReqDef = async (note: NoteDto, spec: SpecDto) => {
+    const seq = ++reqExtractSeqRef.current;
     setBusy(`${spec.id}-create-reqdef`);
+    setReqExtractStartedAt(Date.now());
+    setReqExtractStage("요구사항 초안 생성 중…");
+    const stop = () => {
+      setBusy(null);
+      setReqExtractStartedAt(null);
+      setReqExtractStage("");
+    };
     try {
-      await apiFetch("/api/requirements/", {
+      const started = await apiFetch<{ status: string; job_id?: string }>("/api/requirements/", {
         method: "POST",
         body: JSON.stringify({
           spec: spec.id,
@@ -720,29 +737,113 @@ export default function DocumentsPage() {
           version: "v1.0",
         }),
       });
-      const allReqDefs = await apiFetch<ReqDefDto[]>("/api/requirements/");
-      setReqDefs(allReqDefs);
-      setToastMessage("요구사항 정의서가 생성되었습니다");
+      if (started.status !== "started" || !started.job_id) {
+        setErrorToast("요구사항 정의서 생성에 실패했습니다.");
+        stop();
+        return;
+      }
+
+      const poll = async (): Promise<void> => {
+        if (reqExtractSeqRef.current !== seq) return;
+        let job: { status: string; stage?: string; message?: string };
+        try {
+          job = await apiFetch<{ status: string; stage?: string; message?: string }>(
+            `/api/requirements/extraction-jobs/${started.job_id}/`
+          );
+        } catch (err: any) {
+          if (reqExtractSeqRef.current !== seq) return;
+          setErrorToast(err.message || "요구사항 정의서 생성 진행 상태를 확인하지 못했습니다.");
+          stop();
+          return;
+        }
+        if (reqExtractSeqRef.current !== seq) return;
+
+        if (job.status === "PENDING" || job.status === "RUNNING") {
+          if (job.stage) setReqExtractStage(job.stage);
+          setTimeout(poll, 1500);
+          return;
+        }
+        if (job.status === "ERROR") {
+          setErrorToast(job.message || "요구사항 정의서 생성에 실패했습니다.");
+          stop();
+          return;
+        }
+
+        // SUCCESS
+        const allReqDefs = await apiFetch<ReqDefDto[]>("/api/requirements/");
+        setReqDefs(allReqDefs);
+        setToastMessage("요구사항 정의서가 생성되었습니다");
+        stop();
+      };
+      await poll();
     } catch (err: any) {
+      if (reqExtractSeqRef.current !== seq) return;
       setErrorToast(err.message || "요구사항 정의서 생성에 실패했습니다.");
-    } finally {
-      setBusy(null);
+      stop();
     }
   };
 
   const handleExtractItems = async (specId: number, reqDefId: number) => {
+    const seq = ++reqExtractSeqRef.current;
     setBusy(`reqdef-${reqDefId}-extract`);
-    try {
-      const updatedReqDef = await apiFetch<ReqDefDto>(`/api/requirements/${specId}/extract/`, {
-        method: "POST",
-      });
-      setReqDefs(prev => prev.map(r => r.id === reqDefId ? updatedReqDef : r));
-      const itemCount = updatedReqDef.items?.length || 0;
-      setToastMessage(`요구사항정의서가 재생성되었습니다 (${itemCount}건)`);
-    } catch (err: any) {
-      setErrorToast(err.message || "요구사항정의서 재생성에 실패했습니다.");
-    } finally {
+    setReqExtractStartedAt(Date.now());
+    setReqExtractStage("요구사항 초안 생성 중…");
+    const stop = () => {
       setBusy(null);
+      setReqExtractStartedAt(null);
+      setReqExtractStage("");
+    };
+    try {
+      const started = await apiFetch<{ status: string; job_id?: string }>(
+        `/api/requirements/${specId}/extract/`,
+        { method: "POST" }
+      );
+      if (started.status !== "started" || !started.job_id) {
+        setErrorToast("요구사항정의서 재생성에 실패했습니다.");
+        stop();
+        return;
+      }
+
+      const poll = async (): Promise<void> => {
+        if (reqExtractSeqRef.current !== seq) return;
+        let job: { status: string; stage?: string; result?: ReqDefDto; message?: string };
+        try {
+          job = await apiFetch<{ status: string; stage?: string; result?: ReqDefDto; message?: string }>(
+            `/api/requirements/extraction-jobs/${started.job_id}/`
+          );
+        } catch (err: any) {
+          if (reqExtractSeqRef.current !== seq) return;
+          setErrorToast(err.message || "요구사항정의서 재생성 진행 상태를 확인하지 못했습니다.");
+          stop();
+          return;
+        }
+        if (reqExtractSeqRef.current !== seq) return;
+
+        if (job.status === "PENDING" || job.status === "RUNNING") {
+          if (job.stage) setReqExtractStage(job.stage);
+          setTimeout(poll, 1500);
+          return;
+        }
+        if (job.status === "ERROR") {
+          setErrorToast(job.message || "요구사항정의서 재생성에 실패했습니다.");
+          stop();
+          return;
+        }
+
+        // SUCCESS
+        const updatedReqDef = job.result;
+        if (updatedReqDef) {
+          setReqDefs(prev => prev.map(r => r.id === reqDefId ? updatedReqDef : r));
+          const itemCount = updatedReqDef.items?.length || 0;
+          setToastMessage(`요구사항정의서가 재생성되었습니다 (${itemCount}건)`);
+        }
+        stop();
+      };
+      await poll();
+    } catch (err: any) {
+      if (reqExtractSeqRef.current !== seq) return;
+      setErrorToast(err.message || "요구사항정의서 재생성에 실패했습니다.");
+      stop();
     }
   };
 
@@ -1279,6 +1380,8 @@ export default function DocumentsPage() {
               onReject={(spec) => setRejectTarget({ kind: "spec", specId: spec.id })}
               onCreateReqDef={(spec) => handleCreateReqDef(selectedNote, spec)}
               onExtractItems={handleExtractItems}
+              reqExtractStage={reqExtractStage}
+              reqExtractStartedAt={reqExtractStartedAt}
               onAddItem={handleAddItem}
               onUpdateItem={handleUpdateItem}
               onDeleteItem={handleDeleteItem}
@@ -1405,7 +1508,7 @@ const TASK_GEN_STAGES: { label: string; match: (s: string) => boolean }[] = [
 // 각 단계가 실제로 몇 %인지는 알 수 없음), 아래 "남은 시간"을 "지금까지 걸린
 // 시간 ÷ 진행률"로 역산하는 데 쓴다. "(3/8건)"처럼 실제 분모/분자가 찍히는
 // 단계는 그 비율을 그대로 반영한다.
-function taskGenStageProgressPercent(stage: string): number {
+function taskGenStageProgressPercent(stage: string, _elapsedSec: number): number {
   // 2026-09-15: "담당자 배정 추천 중…"(이 단계 진입 시 맨 처음 뜨는 문구)이
   // 아래 어느 조건에도 안 걸려서 항상 5%로 떨어지던 문제 수정 — 이 단계는
   // 실제로 전체 파이프라인의 절반을 넘긴 지점(50%대)인데 5%로 되돌아가
@@ -1430,17 +1533,42 @@ function taskGenStageProgressPercent(stage: string): number {
 }
 
 // 2026-09-15: "기획서 생성"(회의록 분석 → 기획서 초안 생성)도 업무 배분과 같은
-// 백그라운드 job + 폴링 구조로 바꿨다 — 다만 실제 LLM 호출은 2번뿐이라 단계도 2개.
-// 노드①(회의록 분석)이 실측 ~100초로 대부분의 시간을 차지해, 노드②로 넘어가기
-// 전까지는 %가 낮게 머물러 있는 게 정상이다.
+// 백그라운드 job + 폴링 구조로 바꿨다. 처음엔 "회의록 분석 중…" / "기획서 초안
+// 생성 중…" 2단계로만 뭉뚱그렸는데, 업무 배분만큼 세세하게 보여달라는 요청으로
+// 노드 내부 단계(ai/meeting_analysis/node.py, ai/plan_draft/agent.py)까지
+// on_stage로 보고하도록 넓혔다 — 실제 LLM 호출은 여전히 2번뿐이지만(노드①
+// 구조화, 노드② 초안작성) 그 사이 코드 단계(근거검증/정합성검사/목록조립/병합)도
+// 각자 라벨을 보고해 진행 중임을 더 자주 보여준다.
 const SPEC_GEN_STAGES: { label: string; match: (s: string) => boolean }[] = [
-  { label: "회의록 분석", match: (s) => s.includes("회의록 분석") },
-  { label: "기획서 초안 생성", match: (s) => s.includes("기획서 초안 생성") },
+  { label: "구조화", match: (s) => s.includes("구조화") },
+  { label: "근거 검증", match: (s) => s.includes("근거자료 검증") },
+  { label: "정합성 검사", match: (s) => s.includes("정합성 검사") },
+  { label: "초안 작성", match: (s) => s.includes("초안 작성") },
+  { label: "섹션 조립", match: (s) => s.includes("목록형 섹션 조립") },
+  { label: "병합", match: (s) => s.includes("섹션 병합") },
 ];
 
-function specGenStageProgressPercent(stage: string): number {
-  if (stage.includes("기획서 초안 생성")) return 70;
-  if (stage.includes("회의록 분석")) return 10;
+// 2026-09-15: 단계당 고정 %였던 이전 버전은 그 단계 안에서 시간이 아무리 지나도
+// %가 안 올라가서 "1분 넘게 지났는데 10%"처럼 보이고, 그 %로 역산하는 "남은
+// 시간"도 같이 터무니없이 커지는 문제가 있었다(사용자 보고, 실측: 경과 1:28인데
+// 남은 시간 13:12로 표시됨) — 느린 두 단계(구조화 실측 ~100초, 초안작성 추정
+// ~25초)는 경과 시간에 비례해 그 안에서도 %가 계속 올라가게 하고, 나머지
+// 코드뿐인 빠른 단계는 그냥 고정 % 하나씩만 준다(어차피 순식간에 지나간다).
+const SPEC_GEN_STAGE1_SEC = 100; // 구조화(LLM)
+const SPEC_GEN_STAGE2_SEC = 25; // 초안 작성(LLM)
+
+function specGenStageProgressPercent(stage: string, elapsedSec: number): number {
+  if (stage.includes("구조화")) {
+    return Math.min(68, 5 + Math.round((elapsedSec / SPEC_GEN_STAGE1_SEC) * 63));
+  }
+  if (stage.includes("근거자료 검증")) return 72;
+  if (stage.includes("정합성 검사")) return 76;
+  if (stage.includes("초안 작성")) {
+    const t = Math.max(0, elapsedSec - SPEC_GEN_STAGE1_SEC);
+    return Math.min(90, 78 + Math.round((t / SPEC_GEN_STAGE2_SEC) * 12));
+  }
+  if (stage.includes("목록형 섹션 조립")) return 92;
+  if (stage.includes("섹션 병합")) return 95;
   return 5;
 }
 
@@ -1518,15 +1646,16 @@ function StageTracker({ stages, current }: { stages: string[]; current: number }
 // 시간이 전체 진행률의 몇 %인지"로 총 예상시간을 역산해 남은 시간을 추정한다 —
 // 대략적인 값이라는 걸 명확히 하려고 "약"을 붙인다.
 function ProgressTimeline({
-  stages, stage, pct, startedAt,
+  stages, stage, pctFn, startedAt,
 }: {
   stages: { label: string; match: (s: string) => boolean }[];
   stage: string;
-  pct: number;
+  pctFn: (stage: string, elapsedSec: number) => number;
   startedAt: number | null;
 }) {
   const current = currentStageIndex(stages, stage);
   const elapsedSec = useElapsedSeconds(startedAt);
+  const pct = pctFn(stage, elapsedSec);
   const estimatedTotalSec = pct > 5 ? elapsedSec / (pct / 100) : null;
   const remainingSec = estimatedTotalSec != null ? Math.max(0, estimatedTotalSec - elapsedSec) : null;
 
@@ -1549,17 +1678,49 @@ function ProgressTimeline({
 }
 
 function TaskGenProgressBar({ stage, startedAt }: { stage: string; startedAt: number | null }) {
-  return <ProgressTimeline stages={TASK_GEN_STAGES} stage={stage} pct={taskGenStageProgressPercent(stage)} startedAt={startedAt} />;
+  return <ProgressTimeline stages={TASK_GEN_STAGES} stage={stage} pctFn={taskGenStageProgressPercent} startedAt={startedAt} />;
 }
 
 function SpecGenProgressBar({ stage, startedAt }: { stage: string; startedAt: number | null }) {
-  return <ProgressTimeline stages={SPEC_GEN_STAGES} stage={stage} pct={specGenStageProgressPercent(stage)} startedAt={startedAt} />;
+  return <ProgressTimeline stages={SPEC_GEN_STAGES} stage={stage} pctFn={specGenStageProgressPercent} startedAt={startedAt} />;
+}
+
+// 2026-09-15: 요구사항정의서 생성/재생성(ai/requirement_draft/agent.py)도 업무
+// 배분·기획서 생성과 같은 세세한 진행 표시를 추가한다 — LLM 호출은 1회가
+// 기본이고, baseline NFR 카테고리가 누락되면 최대 MAX_RETRIES회까지 추가로
+// 재시도한다(횟수가 매번 다를 수 있어 고정 단계 수로 못 박지 않는다).
+const REQ_EXTRACT_STAGES: { label: string; match: (s: string) => boolean }[] = [
+  { label: "초안 생성", match: (s) => s.includes("초안 생성") },
+  { label: "누락 보완", match: (s) => s.includes("누락 카테고리 보완") },
+  { label: "최종 검증", match: (s) => s.includes("최종 검증") },
+  { label: "저장", match: (s) => s.includes("저장") },
+];
+
+const REQ_EXTRACT_STAGE1_SEC = 40; // "초안 생성"(LLM) 추정 소요시간
+
+function reqExtractStageProgressPercent(stage: string, elapsedSec: number): number {
+  const ratioMatch = stage.match(/\((\d+)\/(\d+)\)/);
+  if (ratioMatch) {
+    const done = Number(ratioMatch[1]);
+    const total = Number(ratioMatch[2]) || 1;
+    return Math.min(90, 70 + Math.round((done / total) * 20));
+  }
+  if (stage.includes("최종 검증")) return 92;
+  if (stage.includes("저장")) return 96;
+  if (stage.includes("초안 생성")) {
+    return Math.min(65, 5 + Math.round((elapsedSec / REQ_EXTRACT_STAGE1_SEC) * 60));
+  }
+  return 5;
+}
+
+function ReqExtractProgressBar({ stage, startedAt }: { stage: string; startedAt: number | null }) {
+  return <ProgressTimeline stages={REQ_EXTRACT_STAGES} stage={stage} pctFn={reqExtractStageProgressPercent} startedAt={startedAt} />;
 }
 
 function NoteDetail({
   note, spec, reqDef, activeTab, isPM, currentUserId, busy,
   onGenerateSpec, specGenStartedAt, specGenStage, onSaveNoteContent, onSaveSpec, onSavePeriod, onSubmitReview, onApprove, onReject,
-  onCreateReqDef, onExtractItems, onAddItem, onUpdateItem, onDeleteItem, onReqDefStatusChange,
+  onCreateReqDef, onExtractItems, reqExtractStage, reqExtractStartedAt, onAddItem, onUpdateItem, onDeleteItem, onReqDefStatusChange,
   onGenerateTasks, taskAssignments, onRejectReqDef,
   taskDrafts, setTaskDrafts, scheduleSummary, packageSplits, planReview, planBriefing, generatingTasks, generatingStage, generatingStartedAt, confirmingTasks, onConfirmTasks, onCancelTaskDrafts,
   members, reassigningTaskId, onReassignTask,
@@ -1576,6 +1737,8 @@ function NoteDetail({
   onReject: (spec: SpecDto) => void;
   onCreateReqDef: (spec: SpecDto) => void;
   onExtractItems: (specId: number, reqDefId: number) => void;
+  reqExtractStage: string;
+  reqExtractStartedAt: number | null;
   onAddItem: (reqDefId: number, item: { req_code: string; req_name: string; description: string; order: number; priority_code: string | null }) => void;
   onUpdateItem: (reqDefId: number, itemId: number, patch: { req_name: string; description: string; priority_code?: string | null }) => void;
   onDeleteItem: (reqDefId: number, itemId: number) => void;
@@ -1949,6 +2112,8 @@ function NoteDetail({
             busy={busy}
             onCreate={() => onCreateReqDef(spec!)}
             onExtract={onExtractItems}
+            reqExtractStage={reqExtractStage}
+            reqExtractStartedAt={reqExtractStartedAt}
             onAddItem={onAddItem}
             onUpdateItem={onUpdateItem}
             onDeleteItem={onDeleteItem}
@@ -2739,7 +2904,7 @@ function GanttSection({ items, title }: { items: GanttItem[]; title: string }) {
 }
 
 function RequirementSection({
-  spec, reqDef, isPM, canGenerate, busy, onCreate, onExtract, onAddItem, onUpdateItem, onDeleteItem, onStatusChange,
+  spec, reqDef, isPM, canGenerate, busy, onCreate, onExtract, reqExtractStage, reqExtractStartedAt, onAddItem, onUpdateItem, onDeleteItem, onStatusChange,
   onGenerateTasks, generatingTasks, generatingStage, generatingStartedAt, onRejectClick, tasksAlreadyAssigned,
 }: {
   spec: SpecDto; reqDef: ReqDefDto | null; isPM: boolean;
@@ -2750,6 +2915,8 @@ function RequirementSection({
   busy: string | null;
   onCreate: () => void;
   onExtract: (specId: number, reqDefId: number) => void;
+  reqExtractStage: string;
+  reqExtractStartedAt: number | null;
   onAddItem: (reqDefId: number, item: { req_code: string; req_name: string; description: string; order: number; priority_code: string | null }) => void;
   onUpdateItem: (reqDefId: number, itemId: number, patch: { req_name: string; description: string; priority_code?: string | null }) => void;
   onDeleteItem: (reqDefId: number, itemId: number) => void;
@@ -2836,14 +3003,17 @@ function RequirementSection({
       <div className="border-t border-border pt-5 mt-2">
         <h3 className="font-bold text-sm mb-2">요구사항 정의서</h3>
         {canGenerate && !isPM ? (
-          <button
-            onClick={onCreate}
-            disabled={creating}
-            className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-bold hover:bg-primary/90 disabled:opacity-50"
-          >
-            {creating ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileText className="w-4 h-4" />}
-            요구사항 정의서 생성
-          </button>
+          <div className="flex items-center gap-3">
+            {creating && <ReqExtractProgressBar stage={reqExtractStage} startedAt={reqExtractStartedAt} />}
+            <button
+              onClick={onCreate}
+              disabled={creating}
+              className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-bold hover:bg-primary/90 disabled:opacity-50 whitespace-nowrap"
+            >
+              {creating ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileText className="w-4 h-4" />}
+              {creating ? (reqExtractStage || "생성 중…") : "요구사항 정의서 생성"}
+            </button>
+          </div>
         ) : (
           <p className="text-sm text-muted-foreground">
             {!canGenerate ? "다른 사용자가 시작한 회의록입니다. 작성자 본인만 생성할 수 있습니다." : "아직 요구사항 정의서가 생성되지 않았습니다."}
@@ -3368,32 +3538,35 @@ function RequirementSection({
             "요구사항정의서 다운로드 버튼도 기획서와 통일"). 요구사항정의서는 표라서
             PDF 대신 엑셀(원본 양식과 같은 컬럼)로, PPTX는 표 슬라이드로 내보낸다.
             상태와 무관하게 항상 노출(초안 단계에서도 팀 공유용으로 뽑아볼 수 있어야 함). */}
-        <div className="flex justify-end items-center gap-3 pt-2">
-          <div className="flex items-center gap-2 mr-auto">
-            <button onClick={handleReqSpecExcel} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 text-xs font-semibold transition-colors">
+        <div className="flex flex-wrap justify-end items-center gap-3 pt-2">
+          <div className="flex items-center gap-2 mr-auto shrink-0">
+            <button onClick={handleReqSpecExcel} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 text-xs font-semibold transition-colors whitespace-nowrap">
               <FileSpreadsheet className="w-3.5 h-3.5" /> Excel 다운로드
             </button>
-            <button onClick={handleReqSpecPptx} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 text-xs font-semibold transition-colors">
+            <button onClick={handleReqSpecPptx} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 text-xs font-semibold transition-colors whitespace-nowrap">
               <Download className="w-3.5 h-3.5" /> PPTX 다운로드
             </button>
           </div>
           {!isPM && canGenerate && !tasksAlreadyAssigned && (reqStatus === "DRAFT" || reqStatus === "REJECTED" || reqStatus === null) && (
-            <button
-              onClick={() => {
-                if (busy !== null) return;
-                if (window.confirm("요구사항정의서를 다시 생성하면 현재 항목(직접 추가·수정한 내용 포함)이 AI 결과로 교체됩니다. 계속하시겠습니까?")) {
-                  setEditingItemId(null);
-                  setAddFormAt(null);
-                  setBottomAddOpen(false);
-                  onExtract(spec.id, reqDef.id);
-                }
-              }}
-              disabled={busy !== null}
-              className="flex items-center gap-2 px-3 py-2 rounded-lg bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 text-xs font-semibold transition-colors disabled:opacity-50"
-            >
-              {extracting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RotateCcw className="w-3.5 h-3.5" />}
-              {extracting ? "재생성 중…" : "재생성"}
-            </button>
+            <>
+              {extracting && <ReqExtractProgressBar stage={reqExtractStage} startedAt={reqExtractStartedAt} />}
+              <button
+                onClick={() => {
+                  if (busy !== null) return;
+                  if (window.confirm("요구사항정의서를 다시 생성하면 현재 항목(직접 추가·수정한 내용 포함)이 AI 결과로 교체됩니다. 계속하시겠습니까?")) {
+                    setEditingItemId(null);
+                    setAddFormAt(null);
+                    setBottomAddOpen(false);
+                    onExtract(spec.id, reqDef.id);
+                  }
+                }}
+                disabled={busy !== null}
+                className="flex items-center gap-2 px-3 py-2 rounded-lg bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 text-xs font-semibold transition-colors disabled:opacity-50 whitespace-nowrap"
+              >
+                {extracting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RotateCcw className="w-3.5 h-3.5" />}
+                {extracting ? (reqExtractStage || "재생성 중…") : "재생성"}
+              </button>
+            </>
           )}
           {/* 검토요청은 하단 우측 — 기획서 탭과 동일한 위치(승인/반려는 상단, 검토요청/
               직접수정 성격의 액션은 하단). reqStatus===null은 REQSPEC_STATUS 도입 전

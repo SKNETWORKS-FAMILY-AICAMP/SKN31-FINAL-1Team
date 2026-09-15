@@ -171,8 +171,15 @@ def _source_is_empty(structured: dict, source_fields: list[str]) -> bool:
 
 
 @traceable(name="plan_draft.run")
-def run(structured: dict, proposal_id: str) -> PlanDocument:
+def run(structured: dict, proposal_id: str, on_stage=None) -> PlanDocument:
+    # on_stage: 있으면 각 내부 단계 시작 시 사람이 읽을 라벨(str)로 호출한다(선택,
+    # 2026-09-15 — "기획서 초안 생성 중…" 하나로 뭉뚱그려져 있던 걸 세분화).
+    def _stage(label: str) -> None:
+        if on_stage:
+            on_stage(label)
+
     # ── [1] 서술형 5개 생성 ──────────────────────────────────
+    _stage("기획서 초안 작성 중…")
     result: PlanSections = _call(
         SYSTEM_PROMPT, build_messages(structured), PlanSections,
         context=f"run proposal_id={proposal_id}",
@@ -180,9 +187,11 @@ def run(structured: dict, proposal_id: str) -> PlanDocument:
     by_key = {s.key: s for s in result.sections}
 
     # ── [2] 나열형 2개 조립 ──────────────────────────────────
+    _stage("목록형 섹션 조립 중…")
     list_sections = {s.key: s for s in list_builder.build_all(structured)}
 
     # ── [3] 병합 + [4] is_incomplete 판정 ────────────────────
+    _stage("섹션 병합 및 근거 매칭 중…")
     sections: list[PlanSection] = []
     for spec in SECTION_SPEC:
         if spec["type"] == SectionType.LIST:

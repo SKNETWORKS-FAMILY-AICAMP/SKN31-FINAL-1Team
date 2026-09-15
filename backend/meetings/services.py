@@ -63,13 +63,14 @@ def run_meeting_analysis(note_id: int, actor_user_id, on_stage=None) -> dict:
     meeting.save()
 
     try:
-        _stage("회의록 분석 중…")
-        analysis_result = analyze_meeting(meeting.content, str(meeting.pk))
+        # 2026-09-15: 두 노드 다 내부적으로 몇 단계씩 더 있어(구조화→근거검증→
+        # 정합성검사, 초안작성→목록조립→병합), 여기서 뭉뚱그려 부르지 않고
+        # on_stage를 그대로 넘겨 노드 내부에서 세분화된 라벨을 직접 보고하게 한다.
+        analysis_result = analyze_meeting(meeting.content, str(meeting.pk), on_stage=on_stage)
         structured_data = analysis_result.data if hasattr(analysis_result, 'data') else analysis_result
 
-        _stage("기획서 초안 생성 중…")
         proposal_id = f"PLN-{meeting.pk:03d}"
-        doc = generate_plan(structured_data, proposal_id)
+        doc = generate_plan(structured_data, proposal_id, on_stage=on_stage)
 
         if hasattr(doc, 'model_dump'):
             plan_dict = doc.model_dump(mode="json")

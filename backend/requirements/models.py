@@ -1,3 +1,4 @@
+import uuid
 from django.db import models
 from django.conf import settings
 from common.models import CommonCode
@@ -111,3 +112,49 @@ class RequirementItem(models.Model):
 
     def __str__(self):
         return f"[{self.req_code}] {self.req_name}"
+
+
+class RequirementExtractionJob(models.Model):
+    """
+    "요구사항정의서 생성"/"재생성"(AI가 기획서에서 세부 항목을 뽑아내는 작업)이
+    순차 LLM 호출(1회 + baseline 카테고리 누락 시 최대 MAX_RETRIES회 추가)이라
+    동기 요청으로 두면 사용자가 화면을 붙잡고 기다려야 한다 — tasks.TaskGenerationJob /
+    meetings.MeetingAnalysisJob과 동일한 패턴(백그라운드 스레드 + 진행 단계 폴링)을
+    그대로 따른다(2026-09-15). Celery/Redis 워커 인프라가 아직 없어(다른 Job
+    모델들과 동일한 사유) threading.Thread로 가볍게 구현했다.
+    """
+    STATUS_PENDING = "PENDING"
+    STATUS_RUNNING = "RUNNING"
+    STATUS_SUCCESS = "SUCCESS"
+    STATUS_ERROR = "ERROR"
+    STATUS_CHOICES = [
+        (STATUS_PENDING, "대기"),
+        (STATUS_RUNNING, "진행 중"),
+        (STATUS_SUCCESS, "완료"),
+        (STATUS_ERROR, "실패"),
+    ]
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    spec = models.ForeignKey(
+        'meetings.SpecDocument', on_delete=models.CASCADE,
+        related_name='requirement_extraction_jobs', verbose_name="대상 기획서",
+    )
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True,
+        related_name='requirement_extraction_jobs', verbose_name="실행자",
+    )
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default=STATUS_PENDING, verbose_name="상태")
+    stage = models.CharField(max_length=100, default="", blank=True, verbose_name="현재 진행 단계(사람이 읽는 라벨)")
+    result = models.JSONField(null=True, blank=True, verbose_name="성공 시 결과(RequirementDefinitionSerializer 데이터)")
+    error_message = models.TextField(null=True, blank=True, verbose_name="실패 시 오류 메시지")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "requirement_extraction_job"
+        verbose_name = "요구사항정의서 생성 실행 작업"
+        verbose_name_plural = "요구사항정의서 생성 실행 작업 목록"
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"[{self.status}] spec={self.spec_id} ({self.stage})"

@@ -7,6 +7,7 @@ from requirements.views import (
     RequirementDefinitionApproveView,
     RequirementDefinitionRejectView,
     RequirementExtractView,
+    RequirementExtractionJobStatusView,
     RequirementGenerateTasksView,
     RequirementGenerateTasksJobStatusView,
     RequirementConfirmTasksView,
@@ -24,6 +25,7 @@ urlpatterns = [
     path('<int:spec_id>/reject/', RequirementDefinitionRejectView.as_view(), name='requirement-reject'),
     
     path('<int:spec_id>/extract/', RequirementExtractView.as_view(), name='requirement-extract'),
+    path('extraction-jobs/<uuid:job_id>/', RequirementExtractionJobStatusView.as_view(), name='requirement-extraction-job-status'),
     path('<int:spec_id>/generate-tasks/', RequirementGenerateTasksView.as_view(), name='requirement-generate-tasks'),
     path('generate-tasks-jobs/<uuid:job_id>/', RequirementGenerateTasksJobStatusView.as_view(), name='requirement-generate-tasks-job-status'),
     path('<int:spec_id>/confirm-tasks/', RequirementConfirmTasksView.as_view(), name='requirement-confirm-tasks'),
