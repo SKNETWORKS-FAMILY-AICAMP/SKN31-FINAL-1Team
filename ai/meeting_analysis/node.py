@@ -32,7 +32,12 @@ except ImportError:  # 구버전 instructor 호환
 
 from shared.errors import NodeGenerationError
 from shared.llm_client import build_chat_kwargs, get_client
-from shared.retry_config import MAX_RETRIES, MAX_TOKENS, MODEL, TEMPERATURE
+from shared.retry_config import (
+    MAX_RETRIES,
+    STRONG_MODEL,
+    STRONG_MODEL_MAX_TOKENS,
+    TEMPERATURE,
+)
 
 from .prompts import SYSTEM_PROMPT, build_messages
 from .schemas import MeetingExtraction, MeetingStructured
@@ -55,15 +60,21 @@ def run(meeting_text: str, meeting_id: str) -> NodeResult:
     # ── [1] AI 구조화 + 스키마 검증 ──────────────────────────
     # Instructor가 JSON 파싱 · Pydantic 검증 · 실패 시 재호출까지 처리합니다.
     try:
-        client = get_client(MODEL)
+        # 2026-09-15: 이 노드만 STRONG_MODEL(기본 gpt-5)로 돌린다 — 긴 회의록에
+        # 여러 화제가 섞여 있을 때 프로젝트 범위를 종합적으로 판단하는 게
+        # gpt-4o로는 매번 좁게 쏠리는 현상이 실측됐고(shared/retry_config.py의
+        # STRONG_MODEL 주석 참고), 추론 계열 모델로 바꾸니 훨씬 넓고 완전하게
+        # 나왔다. 속도는 훨씬 느려지지만(약 100초/건) 회의록당 1회만 도는
+        # 단계라 감내 가능하다고 판단.
+        client = get_client(STRONG_MODEL)
         messages = build_messages(meeting_text)
 
         extraction = client.chat.completions.create(
             **build_chat_kwargs(
-                model=MODEL,
+                model=STRONG_MODEL,
                 messages=[{"role": "system", "content": SYSTEM_PROMPT}] + messages,
                 response_model=MeetingExtraction,
-                max_tokens=MAX_TOKENS,
+                max_tokens=STRONG_MODEL_MAX_TOKENS,
                 max_retries=MAX_RETRIES,
                 temperature=TEMPERATURE,
             )
