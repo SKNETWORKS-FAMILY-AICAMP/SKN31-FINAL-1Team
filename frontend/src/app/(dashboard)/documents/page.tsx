@@ -1513,7 +1513,7 @@ function ProgressTimeline({
   const remainingSec = estimatedTotalSec != null ? Math.max(0, estimatedTotalSec - elapsedSec) : null;
 
   return (
-    <div className="flex flex-col gap-1.5 w-80">
+    <div className="flex flex-col gap-1.5 w-80 shrink-0">
       <StageTracker stages={stages.map((s) => s.label)} current={current} />
       <div className="flex items-center gap-1.5 text-[10px] font-mono tabular-nums text-muted-foreground/70">
         <span className="font-bold text-cyan-500">{pct}%</span>
@@ -1781,13 +1781,13 @@ function NoteDetail({
         )}
       </div>
 
-      <div className="flex justify-end items-center gap-3 pt-2">
+      <div className="flex flex-wrap justify-end items-center gap-3 pt-2">
         {spec && (
-          <div className="flex items-center gap-2 mr-auto">
-            <button onClick={handlePrint} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 text-xs font-semibold transition-colors">
+          <div className="flex items-center gap-2 mr-auto shrink-0">
+            <button onClick={handlePrint} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 text-xs font-semibold transition-colors whitespace-nowrap">
               <Printer className="w-3.5 h-3.5" /> PDF 다운로드
             </button>
-            <button onClick={handlePptx} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 text-xs font-semibold transition-colors">
+            <button onClick={handlePptx} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 text-xs font-semibold transition-colors whitespace-nowrap">
               <Download className="w-3.5 h-3.5" /> PPTX 다운로드
             </button>
           </div>
@@ -1836,7 +1836,7 @@ function NoteDetail({
           <button
             onClick={() => onSubmitReview(spec)}
             disabled={busy === busyKey("submit")}
-            className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-bold hover:bg-primary/90 disabled:opacity-50"
+            className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-bold hover:bg-primary/90 disabled:opacity-50 whitespace-nowrap"
           >
             {busy === busyKey("submit") ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
             검토요청
@@ -1848,7 +1848,7 @@ function NoteDetail({
         {spec && (status === "REJECTED" || status === "DRAFT") && (canGenerate || isPM) && !editMode && (
           <button
             onClick={startEdit}
-            className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 text-sm font-bold transition-colors"
+            className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 text-sm font-bold transition-colors whitespace-nowrap"
           >
             <Pencil className="w-4 h-4" /> 직접 수정
           </button>
@@ -2834,7 +2834,7 @@ function RequirementSection({
 
   return (
     <fieldset disabled={busy !== null} aria-busy={!!extracting} className="min-w-0 border-t border-border pt-5 mt-2 space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <div className="flex items-center gap-2">
             {/* reqDef.title은 "{회의록 제목} - 요구사항 정의서" 형태라 위쪽 페이지 헤더의
