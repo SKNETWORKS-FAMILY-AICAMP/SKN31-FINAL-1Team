@@ -17,6 +17,12 @@ import { exportReqSpecExcel } from "@/lib/exportReqSpecExcel";
 import { exportReqSpecPptx } from "@/lib/exportReqSpecPptx";
 import type { ProposalDoc, ReqSpecDoc } from "@/lib/documentTemplates";
 import { Toast } from "@/components/ui/Toast";
+import { AgGridReact } from "ag-grid-react";
+import { AllCommunityModule, ModuleRegistry, themeQuartz, type ColDef } from "ag-grid-community";
+
+// 2026-09-15: "업무 일정 보기" 간트를 실제 스프레드시트 UI(AG Grid)로 렌더링한다.
+// 모듈 등록은 파일당 한 번만 하면 되므로 컴포넌트 바깥(모듈 스코프)에서 실행한다.
+ModuleRegistry.registerModules([AllCommunityModule]);
 import {
   bareStatus, stepDone, stageOf,
   PIPELINE_STEPS, PIPELINE_TAB_LABEL,
@@ -2503,35 +2509,11 @@ function HeadcountSummary({ assigneeIds, members }: { assigneeIds: (number | nul
   );
 }
 
-// 담당자별로 업무 막대를 타임라인 위에 배치하는 가벼운 간트 차트(heyzzabi2 GanttChart를
-// 그대로 이식, 필드명만 이 파일의 GanttItem에 맞춤). 하루=한 칸인 날짜 그리드라 기간이
-// 짧아도(며칠) 눈금이 중복되지 않는다.
+// 2026-09-15: "업무 일정 보기"를 자유 위치 막대 대신 실제 스프레드시트 UI(AG Grid)로
+// 바꿨다 — 엑셀 다운로드(exportGanttExcel)와 같은 모양(담당자·날짜별 칸)을 화면에서도
+// 그대로 보이게 하자는 요청. 열은 작업명 | 담당자 | 날짜 1일당 1칸이고, 업무 하나당
+// 한 행(담당자 셀 병합은 하지 않음 — 같은 담당자라도 각 업무를 바로 구분할 수 있게).
 function GanttChart({ items }: { items: GanttItem[] }) {
-  // 2026-09-11: 접기/펼치기 토글은 버튼이 잘 안 보인다는 피드백으로 없앴다 — 항상
-  // 실제 날짜 간격 그대로(하루=52px) 그리고, 넘치는 부분은 가로 스크롤로 이동한다.
-  // 스크롤바 자체가 안 보인다는 지적도 있었는데, Windows/Chrome은 기본적으로 마우스를
-  // 올려야만 스크롤바가 나타나는 오버레이 방식이라 "스크롤이 안 된다"는 오해를 사기
-  // 쉽다(요구사항정의서 미리보기 박스에서 같은 이유로 .doc-scroll을 쓴 전례 참고,
-  // globals.css) — 여기도 .doc-scroll을 적용해 스크롤바를 항상 보이게 한다.
-  // 2026-09-11: 마우스 휠을 무조건 가로 스크롤로 바꿨더니, 담당자가 많아 세로로
-  // 길어진 경우 휠을 굴려도 계속 옆으로만 이동하고 아래쪽 행으로는 못 내려가는
-  // 문제가 생겼다(팀원 리포트: "휠로 우측으로 가려니까 하단으로는 못 가는게
-  // 가장 큰 문제"). 이제는 "업무 일정 보기" 모달 안에서 보여주므로 가로
-  // 스크롤바가 맨 아래 멀리 있는 문제 자체가 없다 — 휠 가로채기는 없애고
-  // 일반 휠(세로)/Shift+휠(가로, 브라우저 표준 관례)만 지원한다.
-  const scrollRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    const el = scrollRef.current;
-    if (!el) return;
-    const onWheel = (e: WheelEvent) => {
-      if (!e.shiftKey) return; // Shift 없이는 페이지/모달의 세로 스크롤에 맡긴다
-      if (el.scrollWidth <= el.clientWidth) return;
-      e.preventDefault();
-      el.scrollLeft += e.deltaY;
-    };
-    el.addEventListener("wheel", onWheel, { passive: false });
-    return () => el.removeEventListener("wheel", onWheel);
-  }, []);
   if (items.length === 0) return null;
 
   const toLocalMidnight = (iso: string) => {
@@ -2548,18 +2530,19 @@ function GanttChart({ items }: { items: GanttItem[] }) {
   const dayCount = Math.max(1, Math.round((rangeEndMs - rangeStartMs) / DAY_MS) + 1);
   const days = Array.from({ length: dayCount }, (_, i) => new Date(rangeStartMs + i * DAY_MS));
   const dayIndexOf = (iso: string) => Math.min(dayCount - 1, Math.max(0, Math.round((toLocalMidnight(iso) - rangeStartMs) / DAY_MS)));
-  const fmtDate = (d: Date) => d.toLocaleDateString("ko-KR", { month: "short", day: "numeric" });
+  // 36px짜리 좁은 날짜 칸에 "9/15"를 다 넣으면 잘려 보인다 — 일(day) 숫자만
+  // 표시하고, 전체 날짜는 헤더 툴팁으로 확인하게 한다.
+  const fmtHeader = (d: Date) => `${d.getDate()}`;
+  const fmtFullDate = (d: Date) => `${d.getMonth() + 1}/${d.getDate()}`;
   const todayIndex = Math.round((toLocalMidnight(new Date().toISOString()) - rangeStartMs) / DAY_MS);
 
+  // 담당자별로 묶어 첫 시작일 순으로 정렬 — 셀 병합은 안 해도 같은 담당자 업무가
+  // 이어서 보이도록 순서만 유지한다(엑셀 다운로드와 동일한 정렬 규칙).
   const byAssignee = new Map<string, GanttItem[]>();
   items.forEach(i => {
     if (!byAssignee.has(i.assigneeName)) byAssignee.set(i.assigneeName, []);
     byAssignee.get(i.assigneeName)!.push(i);
   });
-
-  // 2026-09-11: 담당자별로 묶고, 그룹 안에서는 시작일 오름차순으로 정렬한다
-  // (입력 순서 = 배정 순서라 그대로 두면 날짜순이 아니었다). 그룹 자체도 그
-  // 담당자의 첫 시작일 기준으로 정렬해 위에서 아래로 시간 순으로 읽히게 한다.
   const groups = Array.from(byAssignee.entries())
     .map(([name, personItems]) => {
       const sorted = [...personItems].sort((a, b) => toLocalMidnight(a.start) - toLocalMidnight(b.start));
@@ -2567,82 +2550,54 @@ function GanttChart({ items }: { items: GanttItem[] }) {
     })
     .sort((a, b) => a.firstStart - b.firstStart);
 
-  const rows: { label: string | null; item: GanttItem }[] = [];
-  groups.forEach(({ name, items: personItems }) => {
-    personItems.forEach((item, idx) => rows.push({ label: idx === 0 ? name : null, item }));
-  });
+  type Row = { title: string; assigneeName: string; startIdx: number; endIdx: number };
+  const rowData: Row[] = groups.flatMap(({ items: personItems }) =>
+    personItems.map(item => ({
+      title: item.title,
+      assigneeName: item.assigneeName,
+      startIdx: dayIndexOf(item.start),
+      endIdx: dayIndexOf(item.end),
+    }))
+  );
 
-  const dayGridStyle = { gridTemplateColumns: `repeat(${dayCount}, minmax(52px, 1fr))` };
-  const dayColClass = (i: number) =>
-    cn(
-      "border-l border-dashed",
-      i === todayIndex ? "border-primary/40" : "border-border",
-      i === dayCount - 1 && "border-r border-border"
-    );
+  const BAR_COLOR = "#4f46e5";
 
-  // max-w-full + min-w-0: 부모가 flex/grid일 때 자식은 콘텐츠 실제 너비만큼 부모를
-  // 밀어 늘리려는 기본 성질이 있어서(min-width: auto), overflow-x-auto를 줘도 스크롤이
-  // 아니라 그냥 옆으로 계속 넓어지기만 하는 문제가 있었다(팀원 리포트: 펼쳤을 때 하단
-  // 스크롤이 안 생김). 이 두 클래스로 "부모 너비를 절대 넘지 않는다"를 강제해야
-  // overflow-x-auto가 실제로 스크롤로 동작한다.
-  // 담당자 이름 칸(96px)은 sticky left-0으로 고정한다 — 오른쪽으로 한참 스크롤해도
-  // "이게 누구 일정인지"를 계속 볼 수 있게(팀원 요청). bg-background로 배경을 채워야
-  // 뒤에서 막대가 스크롤돼 지나갈 때 이름 위로 겹쳐 보이지 않는다.
-  // 2026-09-11: 이름 칸에 경계선이 없어 스크롤 중 "붕 뜬 느낌"이라는 피드백 —
-  // border-r로 타임라인과의 경계를 분명히 하고, h-full + items-center로 세로
-  // 중앙 정렬해 옆 막대 행과 눈높이가 맞도록 고정한다.
-  const stickyNameCls = "sticky left-0 z-10 bg-background border-r border-border pr-2 h-full flex items-center";
+  const columnDefs: ColDef<Row>[] = [
+    { headerName: "작업명", field: "title", pinned: "left", width: 220, cellClass: "text-xs font-semibold" },
+    { headerName: "담당자", field: "assigneeName", pinned: "left", width: 110, cellClass: "text-xs" },
+    ...days.map((d, i) => ({
+      headerName: fmtHeader(d),
+      headerTooltip: fmtFullDate(d),
+      colId: `day_${i}`,
+      width: 32,
+      resizable: false,
+      sortable: false,
+      suppressMovable: true,
+      // 매달 1일은 경계를 굵게 표시해 월이 바뀌는 지점을 알 수 있게 한다.
+      headerClass: cn(i === todayIndex && "ag-header-cell-today", d.getDate() === 1 && "ag-header-cell-month-start"),
+      cellStyle: (params: { data?: Row }) =>
+        params.data && params.data.startIdx <= i && i <= params.data.endIdx
+          ? { backgroundColor: BAR_COLOR }
+          : undefined,
+    })),
+  ];
+
   return (
-    <div ref={scrollRef} className="doc-scroll border border-border rounded-xl p-4 overflow-x-auto max-w-full min-w-0">
-      <div style={{ minWidth: `${96 + dayCount * 52}px` }}>
-        <div className="grid gap-y-2" style={{ gridTemplateColumns: `96px 1fr` }}>
-          <div className={stickyNameCls} />
-          <div className="flex items-center gap-2 pb-1.5 w-full">
-            <span className="text-[11px] font-semibold text-muted-foreground shrink-0">{fmtDate(days[0])}</span>
-            <span className="flex-1 border-t border-dashed border-border relative h-0">
-              <span className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 bg-background px-2 text-[11px] font-bold text-muted-foreground">
-                ···
-              </span>
-            </span>
-            <span className="text-[11px] font-semibold text-muted-foreground shrink-0">{fmtDate(days[dayCount - 1])}</span>
-          </div>
-
-          {rows.map(({ label, item }) => {
-            const s = dayIndexOf(item.start);
-            const e = dayIndexOf(item.end);
-            const left = (s / dayCount) * 100;
-            const width = ((e - s + 1) / dayCount) * 100;
-            const narrow = width < 14;
-            return (
-              <Fragment key={item.id}>
-                <p className={cn("text-xs font-bold text-muted-foreground gap-1 truncate", stickyNameCls)}>
-                  {label && (<><UserIcon className="w-3 h-3 shrink-0" /><span className="truncate">{label}</span></>)}
-                </p>
-                <div className="relative h-6">
-                  <div className="absolute inset-0 grid" style={dayGridStyle}>
-                    {days.map((_, i) => <div key={i} className={dayColClass(i)} />)}
-                  </div>
-                  <div
-                    title={`${item.title} · ${fmtDate(days[s])} ~ ${fmtDate(days[e])}`}
-                    className="absolute top-0 h-full rounded-md flex items-center px-2 bg-primary/80 hover:bg-primary transition-colors overflow-hidden"
-                    style={{ left: `${left}%`, width: `${width}%` }}
-                  >
-                    {!narrow && <span className="text-[10px] font-semibold text-primary-foreground truncate">{item.title}</span>}
-                  </div>
-                  {narrow && (
-                    <span
-                      className="absolute top-1/2 -translate-y-1/2 text-[10px] font-medium text-foreground whitespace-nowrap pointer-events-none"
-                      style={{ left: `calc(${left}% + ${width}% + 6px)` }}
-                    >
-                      {item.title}
-                    </span>
-                  )}
-                </div>
-              </Fragment>
-            );
-          })}
-        </div>
-      </div>
+    <div className="border border-border rounded-xl p-2">
+      {/* AG Grid 자체가 가로 스크롤을 처리하므로 별도 wheel/overflow 핸들링이 필요 없다. */}
+      <style>{`
+        .ag-header-cell-today { background-color: #dce7ff !important; }
+        .ag-header-cell-month-start { border-left: 2px solid #94a3b8 !important; }
+      `}</style>
+      <AgGridReact<Row>
+        theme={themeQuartz}
+        columnDefs={columnDefs}
+        rowData={rowData}
+        domLayout="autoHeight"
+        headerHeight={32}
+        rowHeight={28}
+        suppressCellFocus
+      />
     </div>
   );
 }
