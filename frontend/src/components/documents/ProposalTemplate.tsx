@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { ChevronDown } from "lucide-react";
 import DOMPurify from "isomorphic-dompurify";
 import type { ProposalDoc } from "@/lib/documentTemplates";
@@ -25,6 +25,87 @@ function sanitizeRestrictedHtml(html: string): string {
     ALLOWED_TAGS: ["p", "strong", "ul", "li"],
     ALLOWED_ATTR: [],
   });
+}
+
+// 2026-09-16: "직접 수정" 모드가 raw HTML을 그대로 담은 textarea라 <p>/<strong>
+// 태그가 글자 그대로 보이는 문제(사용자 보고) — 게시판 글쓰기처럼 툴바(굵게/목록)로
+// 조작하는 간단한 리치텍스트 편집기로 바꾼다. 이 프로젝트엔 TipTap 같은 에디터
+// 라이브러리가 없어(package.json 확인) 새 의존성 없이 브라우저 내장
+// contentEditable + execCommand로 구현한다 — 허용 태그가 p/strong/ul/li 4종류뿐이라
+// (sanitizeRestrictedHtml 참고) "굵게"/"목록" 버튼 2개만으로 충분히 커버된다.
+//
+// contentEditable의 내용을 매 렌더마다 doc 상태값으로 다시 그리면(dangerouslySetInnerHTML을
+// 최신 값으로 계속 갱신) 타이핑할 때마다 커서가 맨 앞으로 튕긴다 — 그래서 마운트 시
+// 값을 한 번만 얼려서(useRef) 그 뒤로는 DOM을 브라우저가 직접 소유하게 하고, React는
+// onInput으로 값만 부모에 전달한다(제어 컴포넌트가 아니라 "초기값만 있는" 컴포넌트).
+function EditableRichText({
+  html, onChange, placeholder, minHeightClass = "min-h-24",
+}: {
+  html: string; onChange: (html: string) => void; placeholder?: string; minHeightClass?: string;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  // useState의 지연 초기화 함수는 마운트 시 한 번만 실행되도록 공식적으로 보장되는
+  // 자리라 이렇게 값을 얼린다(useRef(...).current를 렌더 중에 읽는 것은 최신
+  // eslint-plugin-react-hooks 규칙(react-hooks/refs)이 금지한다).
+  const [initialHtml] = useState(() => sanitizeRestrictedHtml(html));
+
+  // execCommand는 브라우저마다 <b>/<div>를 쓰기도 해서, 저장 형식(p/strong/ul/li)과
+  // 어긋나면 다시 읽어들일 때(sanitizeRestrictedHtml이 b/div를 걸러냄) 서식이
+  // 조용히 사라진다 — 올라오는 값을 우리 허용 태그로 맞춰준다.
+  const normalize = (raw: string) =>
+    raw
+      .replace(/<b(\s|>)/gi, "<strong$1").replace(/<\/b>/gi, "</strong>")
+      .replace(/<div(\s|>)/gi, "<p$1").replace(/<\/div>/gi, "</p>");
+
+  const emitChange = () => {
+    if (ref.current) onChange(normalize(ref.current.innerHTML));
+  };
+
+  const exec = (command: string) => {
+    ref.current?.focus();
+    document.execCommand(command);
+    emitChange();
+  };
+
+  return (
+    <div className="border border-black/10 rounded-lg overflow-hidden focus-within:ring-2 focus-within:ring-primary/40">
+      <div className="flex items-center gap-1 px-2 py-1 bg-black/5 border-b border-black/10">
+        <button
+          type="button"
+          // mousedown에서 기본 동작을 막지 않으면 버튼을 누르는 순간 contentEditable의
+          // 선택 영역(텍스트 드래그 선택)이 풀려버려 execCommand가 아무 글자에도 안 먹는다.
+          onMouseDown={e => e.preventDefault()}
+          onClick={() => exec("bold")}
+          className="px-2.5 py-1 rounded text-xs font-bold hover:bg-black/10 transition-colors"
+          title="굵게"
+        >
+          B
+        </button>
+        <button
+          type="button"
+          onMouseDown={e => e.preventDefault()}
+          onClick={() => exec("insertUnorderedList")}
+          className="px-2.5 py-1 rounded text-xs hover:bg-black/10 transition-colors"
+          title="목록"
+        >
+          • 목록
+        </button>
+      </div>
+      <div
+        ref={ref}
+        contentEditable
+        suppressContentEditableWarning
+        onInput={emitChange}
+        onFocus={() => {
+          // Chrome류가 Enter를 <div>로 감싸는 기본 동작을 <p>로 바꿔 저장 형식과 맞춘다.
+          try { document.execCommand("defaultParagraphSeparator", false, "p"); } catch { /* 무시 */ }
+        }}
+        dangerouslySetInnerHTML={{ __html: initialHtml }}
+        data-placeholder={placeholder}
+        className={`px-3 py-2 text-sm leading-relaxed whitespace-pre-wrap focus:outline-none ${minHeightClass} [&_p]:mb-2 [&_p:last-child]:mb-0 [&_strong]:font-bold [&_ul]:list-disc [&_ul]:pl-5 [&_li]:mb-1 empty:before:content-[attr(data-placeholder)] empty:before:text-gray-400`}
+      />
+    </div>
+  );
 }
 
 function RichText({ html }: { html: string }) {
@@ -87,11 +168,7 @@ export function ProposalTemplate({
 
       <Section num="1" title="프로젝트 개요" evidence={evidence} evidenceKey="projectOverview">
         {editable ? (
-          <textarea
-            value={doc.projectOverview}
-            onChange={e => set("projectOverview", e.target.value)}
-            className={`${inputCls} h-24 resize-none whitespace-pre-wrap`}
-          />
+          <EditableRichText html={doc.projectOverview} onChange={html => set("projectOverview", html)} />
         ) : (
           <RichText html={doc.projectOverview} />
         )}
@@ -99,11 +176,7 @@ export function ProposalTemplate({
 
       <Section num="2" title="핵심 목표" evidence={evidence} evidenceKey="problemDefinition">
         {editable ? (
-          <textarea
-            value={doc.problemDefinition}
-            onChange={e => set("problemDefinition", e.target.value)}
-            className={`${inputCls} h-24 resize-none whitespace-pre-wrap`}
-          />
+          <EditableRichText html={doc.problemDefinition} onChange={html => set("problemDefinition", html)} />
         ) : (
           <RichText html={doc.problemDefinition} />
         )}
@@ -111,11 +184,10 @@ export function ProposalTemplate({
 
       <Section num="3" title="세부 목표 및 문제 정의" evidence={evidence} evidenceKey="projectGoals">
         {editable ? (
-          <textarea
-            value={doc.projectGoals}
-            onChange={e => set("projectGoals", e.target.value)}
+          <EditableRichText
+            html={doc.projectGoals}
+            onChange={html => set("projectGoals", html)}
             placeholder="세부 목표 및 문제 정의를 입력하세요."
-            className={`${inputCls} h-24 resize-none whitespace-pre-wrap`}
           />
         ) : (
           <RichText html={doc.projectGoals} />
@@ -124,11 +196,7 @@ export function ProposalTemplate({
 
       <Section num="4" title="대상 사용자" evidence={evidence} evidenceKey="target">
         {editable ? (
-          <textarea
-            value={doc.target}
-            onChange={e => set("target", e.target.value)}
-            className={`${inputCls} h-20 resize-none whitespace-pre-wrap`}
-          />
+          <EditableRichText html={doc.target} onChange={html => set("target", html)} minHeightClass="min-h-20" />
         ) : (
           <RichText html={doc.target} />
         )}
@@ -136,11 +204,11 @@ export function ProposalTemplate({
 
       <Section num="5" title="주요 기능" evidence={evidence} evidenceKey="features">
         {editable ? (
-          <textarea
-            value={doc.features}
-            onChange={e => set("features", e.target.value)}
+          <EditableRichText
+            html={doc.features}
+            onChange={html => set("features", html)}
             placeholder="기능명과 설명을 자유롭게 작성하세요 (줄바꿈으로 구분)"
-            className={`${inputCls} h-28 resize-none whitespace-pre-wrap`}
+            minHeightClass="min-h-28"
           />
         ) : (
           <RichText html={doc.features} />
@@ -149,11 +217,11 @@ export function ProposalTemplate({
 
       <Section num="6" title="기술 스택 및 제약사항" evidence={evidence} evidenceKey="techStackConstraints">
         {editable ? (
-          <textarea
-            value={doc.techStackConstraints}
-            onChange={e => set("techStackConstraints", e.target.value)}
+          <EditableRichText
+            html={doc.techStackConstraints}
+            onChange={html => set("techStackConstraints", html)}
             placeholder="기술 스택, 플랫폼, 연동 대상, 제약사항 등 (없으면 비워두세요)"
-            className={`${inputCls} h-20 resize-none whitespace-pre-wrap`}
+            minHeightClass="min-h-20"
           />
         ) : (
           <RichText html={doc.techStackConstraints} />
@@ -162,11 +230,10 @@ export function ProposalTemplate({
 
       <Section num="7" title="최종 결정사항" evidence={evidence} evidenceKey="finalDecisions">
         {editable ? (
-          <textarea
-            value={doc.finalDecisions}
-            onChange={e => set("finalDecisions", e.target.value)}
+          <EditableRichText
+            html={doc.finalDecisions}
+            onChange={html => set("finalDecisions", html)}
             placeholder="결정 사항을 자유롭게 작성하세요 (줄바꿈으로 구분)"
-            className={`${inputCls} h-24 resize-none whitespace-pre-wrap`}
           />
         ) : (
           <RichText html={doc.finalDecisions} />
