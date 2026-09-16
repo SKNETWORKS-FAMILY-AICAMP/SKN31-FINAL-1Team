@@ -314,7 +314,15 @@ class TaskStatusUpdateView(APIView):
                     {"error": "FORBIDDEN", "details": "담당자 재배정은 PM 권한이 필요합니다."},
                     status=status.HTTP_403_FORBIDDEN
                 )
-            
+            # 2026-09-16 (사용자 요청): 담당자가 배정을 승인했거나(TASK_APPROVED) 이미
+            # 착수한(IN_PROGRESS) 업무는 담당자를 바꿔치기할 수 없다 — TaskAssignmentSerializer
+            # 쪽과 동일한 제약을 이 엔드포인트에도 건다.
+            if task.status_code_id in (TaskStatusCode.APPROVED, TaskStatusCode.IN_PROGRESS, TaskStatusCode.COMPLETED):
+                return Response(
+                    {"error": "FORBIDDEN", "details": "승인·진행 중이거나 완료된 업무는 담당자를 변경할 수 없습니다."},
+                    status=status.HTTP_403_FORBIDDEN
+                )
+
             new_assignee = get_object_or_404(User, pk=new_assignee_id)
             
             # 기존 담당자 is_busy 해제 (해당 개발자가 수행 중인 다른 업무가 없는 경우)
