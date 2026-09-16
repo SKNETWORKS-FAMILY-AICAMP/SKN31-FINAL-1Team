@@ -605,8 +605,8 @@ class _AudioTranscriptionMixin:
             "내용을 새로 추가하거나 억지로 끼워 맞추지는 마라 — 애매하면 원문 그대로 둔다."
         )
         completion = client.chat.completions.create(
-            model="gpt-4o-mini",
-            temperature=0.2,
+            model="gpt-6-astra",
+            # temperature=0.2,
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": f"아래는 음성을 텍스트로 변환한 내용입니다.\n\n{raw_text}"},
