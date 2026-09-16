@@ -6,6 +6,7 @@
 
 from rest_framework import serializers
 from django.contrib.auth import get_user_model, authenticate
+from django.utils import timezone
 from users.models import UserSkill, UserCertification
 from common.models import CommonCode
 from drf_spectacular.utils import extend_schema_field
@@ -97,6 +98,24 @@ class UserDetailSerializer(serializers.ModelSerializer):
         # 뜻하는 내장 플래그라 이 API로 바꾸게 하면 안 된다 — role_code가 아직 기존 계정들에
         # 채워지지 않아서(시드 데이터 role_code=None) 프론트의 PM 판정 폴백으로만 읽기 전용 노출.
         read_only_fields = ['id', 'is_staff']
+
+    def update(self, instance, validated_data):
+        # 2026-09-16 (사용자 지적): 직원관리 목록의 빠른 상태 변경 드롭다운(members/page.tsx
+        # handleStatusChange)은 status_code만 보내고 resign_date는 안 건드린다 — "퇴사"
+        # 상태인데 퇴사일이 계속 비어있는 문제가 실제로 있었다(고시우 사례로 실측 확인).
+        # 어느 경로로 오든 항상 일관되게 맞도록, status_code가 RESIGNED로 "새로" 바뀌는데
+        # resign_date를 이 요청에서 명시적으로 같이 안 보냈으면 오늘 날짜로 자동 채운다
+        # (이미 명시적으로 보낸 값은 그대로 존중). 반대로 RESIGNED에서 다른 상태로
+        # 되돌아가면(복직 등) 남아있던 옛 퇴사일도 같이 지운다.
+        if 'status_code' in validated_data and 'resign_date' not in validated_data:
+            new_status = validated_data['status_code']
+            new_status_id = new_status.code_id if new_status else None
+            was_resigned = instance.status_code_id == 'RESIGNED'
+            if new_status_id == 'RESIGNED' and not was_resigned:
+                validated_data['resign_date'] = timezone.localdate()
+            elif new_status_id != 'RESIGNED' and was_resigned:
+                validated_data['resign_date'] = None
+        return super().update(instance, validated_data)
 
 
 # ===============================================================
