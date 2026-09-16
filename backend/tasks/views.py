@@ -18,6 +18,7 @@ from tasks.serializers import (
     TaskAssignmentSerializer,
     TaskAssignmentCreateSerializer,
     TaskStatusUpdateSerializer,
+    _is_resigned,
 )
 # services.py에서 구현되어 있는 AI 로직 함수 임포트
 from tasks.services import run_assignee_mapping, run_task_generation
@@ -317,7 +318,15 @@ class TaskStatusUpdateView(APIView):
             # 2026-09-16 (사용자 요청): 담당자가 배정을 승인했거나(TASK_APPROVED) 이미
             # 착수한(IN_PROGRESS) 업무는 담당자를 바꿔치기할 수 없다 — TaskAssignmentSerializer
             # 쪽과 동일한 제약을 이 엔드포인트에도 건다.
-            if task.status_code_id in (TaskStatusCode.APPROVED, TaskStatusCode.IN_PROGRESS, TaskStatusCode.COMPLETED):
+            # 2026-09-16 (잠금 예외): 현재 담당자가 이미 퇴사 처리됐으면, 이 잠금 때문에
+            # 그 업무가 영영 재배정 못 하고 붕 떠버린다 — 상태와 무관하게 허용. 퇴사 처리
+            # 경로가 두 가지라(목록 빠른 변경은 status_code만, 수정 모달은 resign_date도
+            # 같이 보냄 — 실측 확인) _is_resigned()가 둘 다 확인한다.
+            current_assignee_resigned = _is_resigned(task.assigned_user)
+            if (
+                task.status_code_id in (TaskStatusCode.APPROVED, TaskStatusCode.IN_PROGRESS, TaskStatusCode.COMPLETED)
+                and not current_assignee_resigned
+            ):
                 return Response(
                     {"error": "FORBIDDEN", "details": "승인·진행 중이거나 완료된 업무는 담당자를 변경할 수 없습니다."},
                     status=status.HTTP_403_FORBIDDEN

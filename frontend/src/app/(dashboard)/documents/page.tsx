@@ -129,6 +129,9 @@ type TaskAssignmentDto = {
   // — 확정 시점에 보존해둔 값이라 재배정해도 안 바뀐다.
   original_assigned_user: number | null;
   original_assigned_user_name: string | null;
+  // 2026-09-16 (사용자 요청 — 재배정 잠금 예외): 담당자가 퇴사 처리됐으면 승인/진행중/완료
+  // 상태여도 재배정 드롭박스를 열어준다(안 그러면 그 업무가 영영 재배정 못 하고 붕 뜸).
+  assigned_user_resigned: boolean;
   title: string;
   description: string | null;
   estimated_hours: number | null;
@@ -2511,8 +2514,11 @@ function TaskAssignmentList({
                         담당자만 바꿔치기하면 안 되므로 IN_PROGRESS/DONE 모두 잠금 대상에
                         추가한다. 확정 전 상태(PENDING_APPROVAL — 자동배정 등 다른 경로로
                         만들어진 업무)만 드롭박스로 담당자를 바꿀 수 있고, 그 뒤엔 읽기
-                        전용으로 보여준다. */}
-                    {isPM && !["TASK_APPROVED", "IN_PROGRESS", "DONE"].includes(t.status_info?.code_id ?? "") ? (
+                        전용으로 보여준다.
+                        2026-09-16 (잠금 예외): 담당자가 퇴사 처리됐으면 위 잠금 때문에
+                        그 업무를 영영 재배정 못 하고 방치하게 된다 — 퇴사한 담당자면
+                        상태와 무관하게 드롭박스를 열어준다. */}
+                    {isPM && (!["TASK_APPROVED", "IN_PROGRESS", "DONE"].includes(t.status_info?.code_id ?? "") || t.assigned_user_resigned) ? (
                       <div className="flex flex-col gap-1">
                       <div className="flex items-center gap-1">
                         <select
@@ -2575,6 +2581,11 @@ function TaskAssignmentList({
                             AI 추천 담당자: {t.original_assigned_user_name}
                           </p>
                         )}
+                      {t.assigned_user_resigned && ["TASK_APPROVED", "IN_PROGRESS", "DONE"].includes(t.status_info?.code_id ?? "") && (
+                        <p className="text-[11px] text-amber-500 pl-0.5">
+                          담당자가 퇴사 처리되어 재배정이 필요합니다
+                        </p>
+                      )}
                       </div>
                     ) : (
                       <div className="flex items-center gap-1.5">

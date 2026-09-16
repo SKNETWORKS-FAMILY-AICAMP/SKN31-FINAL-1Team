@@ -44,8 +44,9 @@ export function TaskDetailModal({
   const progressLocked = task.status_code === "PENDING_APPROVAL";
   // 2026-09-16: documents/page.tsx의 확정 업무 목록과 같은 이유 — 담당자가 배정을 승인했거나
   // (TASK_APPROVED) 이미 착수했거나(IN_PROGRESS) 완료(DONE)된 업무는 중간에 담당자만
-  // 바꿔치기하면 안 된다.
-  const reassignLocked = ["TASK_APPROVED", "IN_PROGRESS", "DONE"].includes(task.status_code);
+  // 바꿔치기하면 안 된다. 단, 현재 담당자가 퇴사 처리됐으면 그 업무가 영영 재배정 못 하고
+  // 방치되므로 상태와 무관하게 잠금을 풀어준다.
+  const reassignLocked = ["TASK_APPROVED", "IN_PROGRESS", "DONE"].includes(task.status_code) && !task.assigned_user_resigned;
 
   const handleSave = async () => {
     setIsLoading(true);
@@ -124,6 +125,7 @@ export function TaskDetailModal({
               {/* 재배정은 일정과 같은 이유로 PM 고유 권한 */}
               {!isPM && <span className="flex items-center gap-1 text-[11px] font-normal text-muted-foreground/70"><Lock className="w-3 h-3" /> 재배정은 PM만 할 수 있습니다</span>}
               {isPM && reassignLocked && <span className="flex items-center gap-1 text-[11px] font-normal text-muted-foreground/70"><Lock className="w-3 h-3" /> 승인/착수된 업무는 담당자를 바꿀 수 없습니다</span>}
+              {isPM && task.assigned_user_resigned && <span className="flex items-center gap-1 text-[11px] font-normal text-amber-500">담당자가 퇴사 처리되어 재배정이 필요합니다</span>}
             </label>
             <select
               value={assigneeId}
