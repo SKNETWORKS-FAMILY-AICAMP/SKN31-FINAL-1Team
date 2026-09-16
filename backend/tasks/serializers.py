@@ -17,6 +17,14 @@ class _CodeSimpleSerializer(serializers.Serializer):
     code_name = serializers.CharField(read_only=True)
 
 
+def _is_resigned(user) -> bool:
+    """직원관리 화면에 퇴사 처리 경로가 두 가지라(전체 수정 모달은 status_code+resign_date를
+    같이 보내지만, 목록의 빠른 상태 변경 드롭다운은 status_code만 보내고 resign_date는
+    안 건드린다 — 실측 확인, 2026-09-16), 둘 중 하나만 봐서는 놓칠 수 있다. 어느 경로로
+    퇴사 처리했든 잡히도록 둘 다 확인한다."""
+    return bool(user and (user.resign_date or user.status_code_id == 'RESIGNED'))
+
+
 class TaskAssignmentSerializer(serializers.ModelSerializer):
     """
     배정된 업무(TaskAssignment) 목록 및 상세 조회용 Serializer
@@ -28,6 +36,9 @@ class TaskAssignmentSerializer(serializers.ModelSerializer):
     # 알 수 없어졌다는 지적 — original_assigned_user(확정 시점에 보존해둔 값, 이후 안 바뀜)의
     # 이름을 같이 내려준다. 재배정된 적 없는 업무는 원래 담당자 = 현재 담당자와 같다.
     original_assigned_user_name = serializers.SerializerMethodField()
+    # 2026-09-16 (사용자 요청 — 재배정 잠금 예외): 프론트가 "승인/진행중/완료 상태여도
+    # 담당자가 퇴사했으면 재배정 드롭박스를 열어준다"는 판단을 하려면 이 값이 필요하다.
+    assigned_user_resigned = serializers.SerializerMethodField()
     req_code = serializers.CharField(source='req_item.req_code', read_only=True)
     req_name = serializers.CharField(source='req_item.req_name', read_only=True)
     project_name = serializers.CharField(source='project.name', read_only=True)
@@ -48,6 +59,9 @@ class TaskAssignmentSerializer(serializers.ModelSerializer):
     def get_original_assigned_user_name(self, obj):
         return self._display_name(obj.original_assigned_user)
 
+    def get_assigned_user_resigned(self, obj):
+        return _is_resigned(obj.assigned_user)
+
     def update(self, instance, validated_data):
         # 2026-09-16 (사용자 요청): 담당자가 배정을 승인했거나(TASK_APPROVED) 이미 착수한
         # (IN_PROGRESS) 업무는 중간에 담당자를 바꿔치기할 수 없다 — 프론트(documents/page.tsx,
@@ -55,10 +69,16 @@ class TaskAssignmentSerializer(serializers.ModelSerializer):
         # 막는다.
         if 'assigned_user' in validated_data:
             new_assignee = validated_data['assigned_user']
+            # 2026-09-16 (사용자 지적 — 잠금 예외): 담당자가 퇴사 처리(resign_date 있음)된
+            # 채로 업무가 승인/진행중/완료 상태에 묶여 있으면, 위 잠금 때문에 PM이 영영
+            # 재배정을 못 하고 그 업무가 붕 떠버린다. 현재 담당자가 이미 퇴사한 경우엔
+            # 상태와 무관하게 재배정을 허용한다.
+            current_assignee_resigned = _is_resigned(instance.assigned_user)
             if (
                 new_assignee is not None
                 and new_assignee != instance.assigned_user
                 and instance.status_code_id in (TaskStatusCode.APPROVED, TaskStatusCode.IN_PROGRESS, TaskStatusCode.COMPLETED)
+                and not current_assignee_resigned
             ):
                 raise serializers.ValidationError(
                     {"assigned_user": "승인·진행 중이거나 완료된 업무는 담당자를 변경할 수 없습니다."}
@@ -132,6 +152,7 @@ class TaskAssignmentSerializer(serializers.ModelSerializer):
             'assigned_user_name',
             'original_assigned_user',
             'original_assigned_user_name',
+            'assigned_user_resigned',
             'title',
             'description',
             'difficulty_reason',
