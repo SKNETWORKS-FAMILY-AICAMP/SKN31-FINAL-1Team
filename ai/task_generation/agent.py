@@ -192,8 +192,7 @@ def generate_tasks(
 ) -> List[TaskItem]:
     """
     project_period: {"start_date", "end_date", "workdays"} — 2026-09-11(팀 결정):
-    estimated_hours 산정 시 프로젝트 기간을 참고 신호로 준다. 없으면(manual_run,
-    graph.py 경로 등) 기존처럼 난이도만 보고 산정한다.
+    estimated_hours 산정 시 프로젝트 기간을 참고 신호로 준다. 없으면(manual_run 등) 기존처럼 난이도만 보고 산정한다.
     """
     system_prompt = build_system_prompt(
         requirement_doc, available_skills=available_skills, project_period=project_period

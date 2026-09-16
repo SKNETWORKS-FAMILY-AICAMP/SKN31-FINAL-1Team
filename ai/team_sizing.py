@@ -1,19 +1,10 @@
 """
 ai/team_sizing.py
 
-프로젝트 실제 팀 배정 "전"에, 업무 목록(A2-2 출력)만으로 필요 인원을 추정하는
-순수 계산 모듈. LLM을 쓰지 않고 사원 정보도 필요 없다 — assignee_mapping/
+프로젝트 실제 팀 배정 전 업무 목록(A2-2 출력)만으로 필요 인원을 추정하는
+순수 계산 모듈. assignee_mapping/
 assignee_recommend와는 완전히 독립적이며, task_generation 직후 아무 때나
 실행 가능하다.
-
-이 모듈이 별도로 존재하는 이유 (2026-09-01 팀 논의에서 결정):
-  - 입력이 다르다: 이건 tasks + 프로젝트 기간만 필요하고, assignee_mapping은
-    사원 개개인의 career_history_text가 필요하다.
-  - 의미 있는 실행 시점이 다르다: 이건 실제 팀이 정해지기 "전"에 PM이 팀 구성을
-    계획할 때 참고하는 값이고, assignee_mapping/assignee_recommend는 팀이
-    정해진 "후"에만 실행 가능하다. 한 노드로 묶으면 이 순서를 표현할 수 없다.
-  - 순수 계산이라 LLM 노드에 얹으면 실패 격리·테스트 용이성을 잃는다
-    ("코드는 결정, LLM은 서술만" 원칙 — assignee_recommend/rule_filter.py 참고).
 
 역할 라벨은 새로 이름을 짓지 않고 회사 실제 CommonCode 값을 그대로 쓴다
 (USER_JOB_ROLE 그룹, backend/datadump.json 참고: BACKEND/FRONTEND/FULLSTACK/
@@ -77,14 +68,10 @@ SKILL_ROLE_MAP: Dict[str, str] = {
 }
 UNMAPPED_ROLE = "미분류"
 
-# skill -> role 도출에서 제외하는 직무. PROJECT_MANAGER는 요구사항 스킬로 안 잡히고,
-# FULLSTACK은 "업무 종류"가 아니라 "사람 속성"이라 이 계산(업무->역할)의 대상이 아니다
-# (모듈 상단 주석 참고). QA_ENGINEER는 포함한다 — 도출 방식에서는 그 사람들이
-# 가진 테스트 스킬이 자연히 QA로 잡히기 때문(하드코딩으로는 못 하던 것).
+# skill -> role 도출에서 제외하는 직무
 _NON_COUNTED_ROLES = {"PROJECT_MANAGER", "FULLSTACK"}
 
-# 도출된 skill->role 분포에서 이 비중 미만인 역할은 버린다. 안 그러면 한 스킬이
-# 3~4개 역할에 걸쳐, 역할마다 headcount가 올림(ceil)돼 필요 인원이 크게 과대추정된다.
+# 도출된 skill->role 분포에서 이 비중 미만인 역할은 버린다
 _MIN_ROLE_WEIGHT = 0.15
 
 # cold start 씨앗: 인력 데이터가 없을 때만 쓴다. {skill: {role: 1.0}} 형태로 변환.
@@ -158,9 +145,7 @@ def role_hours(
     """업무 목록의 estimated_hours를 역할별로 분배한 합계(role -> hours).
 
     estimate_team_size()와 assignee_mapping.rule_filter.filter_candidates()의
-    용량 기반 후보 캡(2026-09-14)이 이 계산을 공유한다 — 두 곳이 각자 정의하면
-    어긋나기 쉽다(과거 FOCUS_HOURS_PER_DAY 이원화로 배정-일정 불일치가 났던
-    사고와 같은 패턴). 정의는 여기 한 곳에만 둔다.
+    용량 기반 후보 캡(2026-09-14)이 이 계산을 공유한다.
     """
     units = flatten_assignable_units(tasks)
     if skill_role_map is None:
@@ -217,8 +202,7 @@ def estimate_team_size(
 
 # project_scale.agent.assess_project_complexity()가 판단한 복잡도 등급(하/중/상)에
 # 곱할 버퍼 비율. 등급 선택은 LLM이 하지만, 등급->숫자 변환은 이 고정 매핑표와
-# apply_complexity_buffer()(코드)가 한다 — "코드가 결정, LLM은 서술만" 원칙
-# (task_generation의 difficulty->difficulty_code 변환과 동일한 패턴).
+# apply_complexity_buffer()(코드)가 한다.
 COMPLEXITY_BUFFER: Dict[str, float] = {"하": 0.0, "중": 0.15, "상": 0.30}
 
 
@@ -228,7 +212,7 @@ def apply_complexity_buffer(team_size_estimate: Dict[str, Any], complexity: str)
     COMPLEXITY_BUFFER의 비율을 곱해 올림 처리한 새 dict를 반환한다(원본은
     훼손하지 않음). total_headcount도 보정된 값 기준으로 다시 합산한다.
 
-    estimated_hours 자체는 손대지 않는다 — 그건 task_generation이 계산한
+    estimated_hours 자체는 손대지 않는다 .그건 task_generation이 계산한
     실측치라 복잡도 판단과 무관하게 그대로 둔다. 보정 대상은 어디까지나
     "team_sizing이 놓치는 정성적 리스크를 반영한 인원 여유분"인 headcount뿐이다.
     """
