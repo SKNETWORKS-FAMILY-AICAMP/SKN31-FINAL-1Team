@@ -50,6 +50,49 @@ logger = logging.getLogger(__name__)
 
 ALLOWED_TAGS = {"p", "ul", "li", "strong"}
 
+# 2026-09-16: 서술형 섹션(1·2·4번)의 원본이 완전히 비어 있는데도 LLM이
+# 다른 프로젝트 정보로 추정해 내용을 채운 경우 붙이는 표시입니다.
+# 3번 섹션의 AI_SUGGESTED_GOAL_SUFFIX와 같은 목적(list_builder.py 참고)
+# 이지만, 여긴 항목이 아니라 문단 전체이므로 문단 끝에 문장으로
+# 붙입니다. LLM이 스스로 "이건 추정입니다"라고 신고하게 하지 않고
+# _source_is_empty()로 코드가 판정한 사실에 따라 코드가 붙입니다 —
+# LLM 자기 신고를 믿지 않는다는 이 프로젝트의 원칙과 같습니다.
+AI_SUGGESTED_SECTION_NOTE = (
+    "이 내용은 회의록에 직접 나오지 않아 다른 확인된 내용을 바탕으로 "
+    "AI가 추정해 제안했습니다. PM 확인이 필요합니다."
+)
+
+
+def _mark_unverified_features(feats: list, structured: dict) -> None:
+    """
+    5번 주요 기능의 source_indices를 코드가 검증해 제자리에서 표시를 붙입니다.
+
+    2026-09-16: feature_sources_for_citation은 verified 여부와 무관하게
+    전부 넘깁니다(prompts.py 참고) — LLM이 어떤 기능 요구사항을 실제로
+    참고했는지는 알아야 묶어 쓸 수 있기 때문입니다. 대신 그 인용이
+    유효한지(검증된 항목만 인용했는지)는 LLM의 자기 신고가 아니라 여기서
+    코드가 판정합니다 — DetailedGoal.matched_goal_index와 같은 원리입니다.
+
+    인용 번호가 하나도 없거나, 범위를 벗어나거나, unverified 항목을
+    가리키면 그 기능은 "근거 확인 필요"로 표시합니다(list_builder의
+    UNVERIFIED_ITEM_SUFFIX 재사용 — 6·7번과 같은 의미: LLM이 실존하는
+    항목을 썼지만 그 항목의 원문 검증 자체가 실패했다는 뜻입니다).
+    """
+    status_by_index = {
+        item["index"]: item["evidence_status"]
+        for item in list_builder.build_feature_citation_sources(structured)
+    }
+
+    for feature in feats:
+        indices = feature.source_indices
+        all_verified = bool(indices) and all(
+            status_by_index.get(idx) == list_builder.VERIFIED for idx in indices
+        )
+        if not all_verified:
+            feature.description = (
+                feature.description + list_builder.UNVERIFIED_ITEM_SUFFIX
+            )
+
 
 def _call(system: str, messages: list[dict], response_model, context: str = ""):
     """노드②의 유일한 LLM 호출 지점. 호출 인자 조립은 build_chat_kwargs()가
@@ -198,6 +241,7 @@ def run(
         # result.features를 그대로 씁니다(schemas.py PlanSections.features).
         if spec["key"] == "features":
             feats = list(result.features)
+            _mark_unverified_features(feats, structured)
             content = render_features(feats)
             sections.append(PlanSection(
                 no=spec["no"], key=spec["key"], title=spec["title"],
@@ -216,6 +260,15 @@ def run(
         gen = by_key.get(spec["key"])
         content = gen.content_html if gen else ""
 
+        # 2026-09-16: 원본이 완전히 비어 있는데 LLM이 그래도 내용을 썼다면
+        # (다른 프로젝트 정보로 추정한 것) AI_SUGGESTED_SECTION_NOTE를
+        # 붙입니다. LLM이 스스로 "이건 추정이다"라고 밝히길 기대하지
+        # 않습니다 — _source_is_empty()가 이미 코드로 판정한 사실이므로
+        # 그 결과에 따라 코드가 표시를 붙입니다.
+        source_empty = _source_is_empty(structured, spec["source_fields"])
+        if source_empty and content.strip():
+            content = content + f"<p>{escape(AI_SUGGESTED_SECTION_NOTE)}</p>"
+
         sections.append(PlanSection(
             no=spec["no"],
             key=spec["key"],
@@ -228,7 +281,9 @@ def run(
             # 2026-09-07: gen.evidence(LLM이 스스로 인용한 근거, 원문 대조 안 됨)
             # 대신 노드①이 이미 검증해둔 원본 근거를 source_fields로 재수집합니다.
             # "근거 보기" 화면에서 verified/unverified를 신뢰성 있게 보여주려면
-            # LLM의 자기 인용이 아니라 코드가 대조한 값이어야 합니다.
+            # LLM의 자기 인용이 아니라 코드가 대조한 값이어야 합니다. 원본이
+            # 비어 AI가 추정만 한 경우 이 목록은 자연히 비게 됩니다 — 추정
+            # 내용을 뒷받침하는 검증된 원문이 없기 때문입니다.
             evidence=(
                 list_builder.collect_core_goal_evidence(
                     structured,
@@ -239,9 +294,11 @@ def run(
                     spec["source_fields"],
                 )
             ),
-            # 원본이 비었거나 LLM이 아무것도 못 쓴 경우
-            is_incomplete=_source_is_empty(structured, spec["source_fields"])
-            or not content.strip(),
+            # 2026-09-16: "원본이 비었으면 무조건 미완성"에서 "보여줄 내용이
+            # 없으면 미완성"으로 바꿨습니다. 원본이 없어도 AI가 추정 초안을
+            # 채웠으면 더 이상 미완성이 아닙니다 — 대신 AI_SUGGESTED_SECTION_NOTE
+            # 표시로 검토가 필요하다는 걸 알립니다.
+            is_incomplete=not content.strip(),
         ))
 
     sections.sort(key=lambda s: s.no)

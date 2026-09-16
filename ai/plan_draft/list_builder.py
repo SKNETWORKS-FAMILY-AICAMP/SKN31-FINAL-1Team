@@ -435,6 +435,45 @@ def collect_feature_evidence(
     )
 
 
+def build_feature_citation_sources(structured: dict) -> list[dict]:
+    """
+    5번 주요 기능 작성 재료를 번호 매겨 전부(verified+unverified) 반환합니다.
+
+    2026-09-16: 예전엔 verified 항목만 걸러 LLM에게 보여줬습니다
+    (prompts.py의 _verified_only). 그러면 노드①의 근거 검증이 한두
+    글자 오차로 실패한(경우 B) 진짜 기능 요구사항이 LLM한테 보여지지도
+    못하고 조용히 사라집니다 — 6·7번에서 이미 확인된 것과 같은 종류의
+    침묵 실패입니다.
+
+    이제 전부 번호를 매겨 넘기고, Feature.source_indices로 LLM이 어떤
+    번호를 참고했는지 답하게 합니다(prompts.py는 이 함수 결과에서
+    evidence_status를 지운 index+content만 프롬프트에 넣습니다 — LLM이
+    검증 상태를 보고 "안전한" 번호만 골라 인용하는 걸 막기 위해서입니다).
+    agent.py가 인용된 번호 중 unverified가 섞여 있으면 해당 기능
+    설명에 표시를 붙입니다(build_goals의 matched_goal_index와 같은
+    원리 — 코드가 판정, LLM은 후보만 제시).
+    """
+    requirements = structured.get("requirements") or {}
+    functional = [
+        item for item in (requirements.get("functional") or [])
+        if isinstance(item, dict)
+    ]
+
+    feature_decisions = [
+        d for d in (structured.get("decisions") or [])
+        if isinstance(d, dict) and d.get("category") == "feature"
+    ]
+
+    return [
+        {
+            "index": i,
+            "content": str(item.get("content", "")),
+            "evidence_status": _item_status(item),
+        }
+        for i, item in enumerate(functional + feature_decisions)
+    ]
+
+
 def decide_feature_groups(
     quote_groups: dict[str, set[str]],
 ) -> dict[str, str]:

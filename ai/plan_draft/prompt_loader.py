@@ -455,10 +455,15 @@ def _validate_plan_template(template: dict) -> None:
     )
 
     # Feature Pydantic 모델과 같은 필드인지 확인합니다.
+    #
+    # 2026-09-16: source_indices를 추가했습니다(스키마 docstring 참고)
+    # — LLM에게 어떤 근거 번호를 참고했는지 답하게 해서, 검증 안 된
+    # 항목이 조용히 사라지지 않고 표시가 붙게 합니다.
     expected_feature_item_fields = [
         "group",
         "title",
         "description",
+        "source_indices",
     ]
 
     if features_item_fields != expected_feature_item_fields:

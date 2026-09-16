@@ -18,6 +18,7 @@ YAML 읽기와 검증:
 
 import json
 
+from .list_builder import build_feature_citation_sources
 from .prompt_loader import (
     build_plan_fewshot_messages,
     build_plan_system_prompt,
@@ -78,21 +79,33 @@ def _build_generation_payload(
     2026-09-15: requirements.functional과 decisions[feature]를 이제
     같이 전달합니다 — 5번(주요 기능)을 LLM이 직접 묶어 쓰도록 바꿨기
     때문입니다(plan_draft/schemas.py PlanSections.features 참고).
-    verified 항목만 넘겨 원문에 없는 기능이 섞이지 않게 합니다.
 
     다만 이 필드는 features 작성에만 씁니다 — overview·problem·users
     작성 규칙(plan_generation.yaml)에서 여전히 이 필드를 근거로 쓰지
     말라고 명시합니다. 문제와 기능 사이의 인과관계를 서술형 섹션이
     임의로 만드는 걸 막기 위한 원래 우려는 그대로 유효합니다.
+
+    2026-09-16: verified만 걸러 넘기던 걸(_verified_only) 그만뒀습니다.
+    그러면 노드①의 근거 검증이 한두 글자 오차로 실패한 진짜 기능
+    요구사항이 LLM한테 보여지지도 못하고 조용히 사라집니다(6·7번에서
+    이미 확인된 것과 같은 침묵 실패). 이제 verified 여부와 무관하게
+    번호만 매겨(build_feature_citation_sources) 전부 넘기되, 검증
+    상태(evidence_status)는 프롬프트에서 지웁니다 — LLM이 "안전한"
+    번호만 골라 인용하는 걸 막기 위해서입니다. Feature.source_indices로
+    LLM이 어떤 번호를 참고했는지 답하면, agent.py가 그 번호들의 실제
+    검증 상태를 코드로 확인해 표시 여부를 결정합니다.
     """
     if not isinstance(structured, dict):
         raise TypeError(
             "structured는 딕셔너리여야 합니다."
         )
 
-    requirements = structured.get("requirements") or {}
-    decisions = structured.get("decisions") or []
     project = structured.get("project") or {}
+
+    feature_sources = [
+        {"index": item["index"], "content": item["content"]}
+        for item in build_feature_citation_sources(structured)
+    ]
 
     return {
         "project": project,
@@ -100,12 +113,7 @@ def _build_generation_payload(
             structured.get("users")
             or []
         ),
-        "functional_requirements": _verified_only(
-            requirements.get("functional")
-        ),
-        "feature_decisions": _verified_only(
-            [d for d in decisions if isinstance(d, dict) and d.get("category") == "feature"]
-        ),
+        "feature_sources_for_citation": feature_sources,
         # 2026-09-16: DetailedGoal.matched_goal_index가 참조할 번호 매긴
         # 목표 목록입니다. project.goals를 그대로 보여주면 LLM이 배열
         # 순서를 스스로 세야 해서 번호를 잘못 셀 위험이 있어, 코드가

@@ -5,6 +5,7 @@
 """
 
 from plan_draft import agent as plan_agent
+from plan_draft import list_builder
 from plan_draft.list_builder import (
     build_features,
     collect_feature_evidence,
@@ -16,7 +17,7 @@ from plan_draft.prompt_loader import (
 from plan_draft.prompts import (
     _build_generation_payload,
 )
-from plan_draft.schemas import PlanSections
+from plan_draft.schemas import Feature, PlanSections
 
 
 def _evidence(quote: str) -> dict:
@@ -38,15 +39,17 @@ def _functional(
     }
 
 
-def test_generation_payload_exposes_verified_functional_for_features_only():
+def test_generation_payload_exposes_numbered_feature_sources_including_unverified():
     """
-    2026-09-15: 5번(주요 기능)을 LLM이 직접 쓰도록 바뀌면서, payload에
-    verified functional_requirements·feature_decisions가 추가됩니다.
-    project·users만 노출하던 예전 계약은 더 이상 유효하지 않습니다.
+    2026-09-16: verified만 걸러 넘기던 걸 그만뒀습니다. unverified 항목도
+    번호가 매겨져 그대로 노출돼야 LLM이 source_indices로 인용할 수 있고,
+    agent.py가 그 인용을 검증해 표시를 붙일 수 있습니다(근거 검증 실패로
+    LLM 눈에 아예 안 보여 조용히 사라지는 걸 막기 위함). evidence_status는
+    프롬프트에 노출하지 않습니다 — LLM이 "안전한" 번호만 골라 인용하는
+    걸 막기 위해서입니다.
 
-    다만 안전장치는 그대로입니다 — 이 필드는 features 작성에만 쓰이고
-    overview·problem·users 작성 규칙은 여전히 이걸 보지 말라고
-    명시합니다(아래 프롬프트 테스트 참고).
+    tech 카테고리 결정은 여전히 빠집니다 — feature 카테고리만 기능
+    작성 재료입니다.
     """
     project = {
         "name": "리테일링크",
@@ -66,7 +69,7 @@ def test_generation_payload_exposes_verified_functional_for_features_only():
                         "바코드 등록",
                     ),
                     _functional(
-                        "미검증 기능은 제외한다.",
+                        "포함되어야 하는 미검증 기능.",
                         "미검증",
                         status="unverified",
                     ),
@@ -92,13 +95,20 @@ def test_generation_payload_exposes_verified_functional_for_features_only():
     assert payload["project"] == project
     assert payload["users"] == users
 
-    # verified 기능 요구사항만 남고, unverified는 빠집니다.
-    assert len(payload["functional_requirements"]) == 1
-    assert payload["functional_requirements"][0]["content"] == "바코드 등록을 제공한다."
+    sources = payload["feature_sources_for_citation"]
+    contents = [s["content"] for s in sources]
 
-    # feature 카테고리 결정만 남고, tech 결정은 빠집니다.
-    assert len(payload["feature_decisions"]) == 1
-    assert payload["feature_decisions"][0]["content"] == "바코드 방식을 확정한다."
+    # verified·unverified 구분 없이 전부 번호가 매겨져 노출됩니다.
+    assert "바코드 등록을 제공한다." in contents
+    assert "포함되어야 하는 미검증 기능." in contents
+    # feature 카테고리 결정만 포함되고, tech 결정은 빠집니다.
+    assert "바코드 방식을 확정한다." in contents
+    assert "백엔드는 Django를 사용한다." not in contents
+
+    # 프롬프트에는 검증 상태를 노출하지 않습니다.
+    for source in sources:
+        assert "evidence_status" not in source
+        assert set(source.keys()) == {"index", "content"}
 
 
 def test_plan_prompt_asks_llm_to_generate_features_with_no_cap():
@@ -463,3 +473,205 @@ def test_regenerate_section_rejects_code_built_features(
         raise AssertionError(
             "features 재생성이 차단되지 않았습니다."
         )
+
+
+# ─────────────────────────────────────────────────────────────
+# 2026-09-16 추가 — 서술형 섹션(1·2·4번) AI 추정 표시
+#
+# 원본이 완전히 비어 있는데 LLM이 다른 프로젝트 정보로 추정해 내용을
+# 채운 경우, agent.py가 _source_is_empty()로 판정한 사실에 따라
+# AI_SUGGESTED_SECTION_NOTE를 코드가 붙인다(LLM 자기 신고 아님).
+# ─────────────────────────────────────────────────────────────
+
+
+def _minimal_structured(**overrides) -> dict:
+    base = {
+        "project": {
+            "name": "테스트 프로젝트",
+            "background": "테스트 배경입니다.",
+            "problem": "",
+            "problem_items": [],
+            "goals": [],
+        },
+        "users": [],
+        "requirements": {
+            "functional": [],
+            "non_functional": [],
+            "data": [],
+            "technical": [],
+        },
+        "decisions": [],
+        "constraints": [],
+    }
+    base.update(overrides)
+    return base
+
+
+def _fake_sections_call(sections: list[dict]):
+    def fake_call(system, messages, response_model, context=""):
+        return PlanSections(sections=sections, goals=[])
+    return fake_call
+
+
+def test_원본이_비었는데_LLM이_추정해_채우면_AI_제안_표시가_붙는다(monkeypatch):
+    monkeypatch.setattr(
+        plan_agent,
+        "_call",
+        _fake_sections_call([
+            {"key": "overview", "content_html": "<p>개요</p>", "evidence": []},
+            {"key": "problem", "content_html": "<p>목표</p>", "evidence": []},
+            {
+                "key": "users",
+                "content_html": "<p>내부 데이터 분석 담당자일 것으로 추정된다.</p>",
+                "evidence": [],
+            },
+        ]),
+    )
+
+    plan = plan_agent.run(_minimal_structured(), proposal_id="p1")
+
+    users_section = next(s for s in plan.sections if s.key == "users")
+    assert plan_agent.AI_SUGGESTED_SECTION_NOTE in users_section.content_html
+    assert "내부 데이터 분석 담당자일 것으로 추정된다" in users_section.content_html
+    assert users_section.is_incomplete is False
+    assert users_section.evidence == []
+
+
+def test_원본이_비어있고_LLM도_빈칸으로_두면_표시_없이_미완성이다(monkeypatch):
+    monkeypatch.setattr(
+        plan_agent,
+        "_call",
+        _fake_sections_call([
+            {"key": "overview", "content_html": "<p>개요</p>", "evidence": []},
+            {"key": "problem", "content_html": "<p>목표</p>", "evidence": []},
+            {"key": "users", "content_html": "", "evidence": []},
+        ]),
+    )
+
+    plan = plan_agent.run(_minimal_structured(), proposal_id="p1")
+
+    users_section = next(s for s in plan.sections if s.key == "users")
+    assert users_section.content_html == ""
+    assert plan_agent.AI_SUGGESTED_SECTION_NOTE not in users_section.content_html
+    assert users_section.is_incomplete is True
+
+
+# ─────────────────────────────────────────────────────────────
+# 2026-09-16 추가 — 5번 주요 기능 source_indices 검증
+#
+# feature_sources_for_citation은 verified+unverified 전부 넘기고,
+# LLM이 source_indices로 인용한 번호가 실제로 검증됐는지는 agent.py의
+# _mark_unverified_features가 판정한다. LLM 자기 신고가 아니다.
+# ─────────────────────────────────────────────────────────────
+
+
+def _feature_structured() -> dict:
+    return {
+        "project": {"name": "t", "problem_items": [], "goals": []},
+        "users": [],
+        "requirements": {
+            "functional": [
+                _functional("검증된 기능 A", None, status="verified"),
+                _functional("미검증 기능 B", None, status="unverified"),
+            ],
+            "non_functional": [],
+            "data": [],
+            "technical": [],
+        },
+        "decisions": [],
+        "constraints": [],
+    }
+
+
+def test_검증된_번호만_인용하면_표시가_안_붙는다():
+    feats = [
+        {
+            "group": "mvp",
+            "title": "기능 A",
+            "description": "설명",
+            "source_indices": [0],
+        }
+    ]
+    feature_objs = [Feature(**f) for f in feats]
+
+    plan_agent._mark_unverified_features(feature_objs, _feature_structured())
+
+    assert feature_objs[0].description == "설명"
+
+
+def test_미검증_번호를_인용하면_표시가_붙는다():
+    feature_objs = [Feature(
+        group="mvp", title="기능 B", description="설명", source_indices=[1],
+    )]
+
+    plan_agent._mark_unverified_features(feature_objs, _feature_structured())
+
+    assert list_builder.UNVERIFIED_ITEM_SUFFIX in feature_objs[0].description
+
+
+def test_인용_번호가_없으면_표시가_붙는다():
+    """근거를 하나도 인용하지 않은 기능은 신뢰할 수 없으므로 표시를 붙인다."""
+    feature_objs = [Feature(
+        group="mvp", title="기능 C", description="설명", source_indices=[],
+    )]
+
+    plan_agent._mark_unverified_features(feature_objs, _feature_structured())
+
+    assert list_builder.UNVERIFIED_ITEM_SUFFIX in feature_objs[0].description
+
+
+def test_범위를_벗어난_번호는_표시가_붙는다():
+    """존재하지 않는 번호를 인용하면 fail-closed로 표시를 붙인다."""
+    feature_objs = [Feature(
+        group="mvp", title="기능 D", description="설명", source_indices=[99],
+    )]
+
+    plan_agent._mark_unverified_features(feature_objs, _feature_structured())
+
+    assert list_builder.UNVERIFIED_ITEM_SUFFIX in feature_objs[0].description
+
+
+def test_검증된_번호와_미검증_번호를_섞어_인용하면_표시가_붙는다():
+    """일부만 검증됐어도 전부 검증되지 않았으면 표시를 붙인다."""
+    feature_objs = [Feature(
+        group="mvp", title="기능 E", description="설명", source_indices=[0, 1],
+    )]
+
+    plan_agent._mark_unverified_features(feature_objs, _feature_structured())
+
+    assert list_builder.UNVERIFIED_ITEM_SUFFIX in feature_objs[0].description
+
+
+def test_원본이_있으면_표시가_안_붙는다(monkeypatch):
+    monkeypatch.setattr(
+        plan_agent,
+        "_call",
+        _fake_sections_call([
+            {"key": "overview", "content_html": "<p>개요</p>", "evidence": []},
+            {"key": "problem", "content_html": "<p>목표</p>", "evidence": []},
+            {
+                "key": "users",
+                "content_html": "<p>실제 사용자 설명</p>",
+                "evidence": [],
+            },
+        ]),
+    )
+
+    structured = _minimal_structured(
+        users=[
+            {
+                "type": "매장 직원",
+                "description": "재고를 확인한다.",
+                "needs": [],
+                "evidence": {"quote": "매장 직원은 재고를 확인합니다."},
+                "evidence_status": "verified",
+            }
+        ]
+    )
+
+    plan = plan_agent.run(structured, proposal_id="p1")
+
+    users_section = next(s for s in plan.sections if s.key == "users")
+    assert plan_agent.AI_SUGGESTED_SECTION_NOTE not in users_section.content_html
+    assert users_section.content_html == "<p>실제 사용자 설명</p>"
+    assert users_section.is_incomplete is False

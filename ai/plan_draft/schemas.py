@@ -144,6 +144,15 @@ class Feature(BaseModel):
     열거하면 그 문장이 여러 기능의 공통 근거가 됩니다. 공통 근거에
     들어간 기능이 mvp이고, 자기 근거만 가진 기능이 integration입니다.
     열거 문장이 없으면 판정 근거가 없으므로 전부 mvp로 둡니다.
+
+    2026-09-16: source_indices를 추가했습니다. 예전엔 verified 항목만
+    걸러 LLM에게 보여줬는데(prompts.py._verified_only), 그러면 근거
+    검증에 실패한 진짜 기능이 LLM 눈에 보이지도 않고 조용히 사라졌습니다
+    (6·7번에서 이미 확인된 것과 같은 침묵 실패). 이제 검증 여부와 무관하게
+    번호만 매겨 전부 보여주고(feature_sources_for_citation), LLM은 몇 번을
+    참고했는지만 답합니다. agent.py가 그 번호들의 실제 검증 상태를 코드로
+    확인해 unverified가 섞여 있으면 표시를 붙입니다 — DetailedGoal의
+    matched_goal_index와 같은 원리입니다.
     """
 
     group: Literal["mvp", "integration"] = Field(
@@ -172,13 +181,35 @@ class Feature(BaseModel):
         ),
     )
 
+    source_indices: list[int] = Field(
+        default_factory=list,
+        description=(
+            "이 기능을 작성할 때 참고한 feature_sources_for_citation의 "
+            "번호들. 여러 항목을 묶었으면 전부 나열합니다."
+        ),
+    )
+
 
 class NarrativeSection(BaseModel):
-    """LLM이 생성하는 서술형 섹션."""
+    """
+    LLM이 생성하는 서술형 섹션.
+
+    2026-09-16: "원본이 비어 있으면 무조건 빈 문자열"이었던 규칙을
+    완화했습니다. 원본이 전혀 없어도 프로젝트의 다른 확인된 내용으로
+    합리적으로 추정 가능하면 짧은 제안 초안을 씁니다(plan_generation.yaml
+    common_rules 참고). 이 문단이 실제 회의 근거로 채워졌는지 AI가
+    추정한 것인지는 LLM의 자기 신고가 아니라 agent.py가
+    _source_is_empty()로 판정해 표시를 붙입니다 — evidence_status를
+    LLM이 아니라 코드가 판정하는 것과 같은 이유입니다.
+    """
     key: str
     content_html: str = Field(
         ...,
-        description="원본이 비어 있으면 빈 문자열(''). 추론해서 채우지 말 것.",
+        description=(
+            "원본이 있으면 그 내용을 씁니다. 원본이 전혀 없으면 다른 확인된 "
+            "내용으로 합리적으로 추정되는 경우에만 짧게 제안하고, 그마저 "
+            "없으면 빈 문자열."
+        ),
     )
     evidence: list[Evidence] = Field(default_factory=list)
 

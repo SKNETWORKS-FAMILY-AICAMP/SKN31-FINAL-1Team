@@ -59,7 +59,17 @@ common_rules:
   - evidence의 quote는 입력 JSON의 quote를 그대로 복사합니다.
   - evidence 문장의 띄어쓰기, 문장부호 또는 표현을 수정하지 않습니다.
   - sections에는 overview, problem, users를 이 순서로 모두 출력합니다.
-  - 원본 정보가 없는 서술형 섹션도 key와 빈 content_html을 출력합니다.
+  - >-
+    2026-09-16: 이 섹션의 원본 정보가 전혀 없으면, project의 다른 확인된
+    내용(overview·problem·users 서로의 정보)으로 합리적으로 추정할 수 있는
+    경우에 한해 1~2문장의 짧은 제안 초안을 작성합니다. 이때 원본에 없는
+    구체적인 수치, 기간, 예산, 기술 스택 또는 담당자명은 만들지 않습니다 —
+    "이런 역할일 것으로 보인다", "~할 것으로 예상된다"처럼 추정임이
+    드러나는 표현을 씁니다. 추정할 다른 근거조차 없으면 빈 문자열을
+    출력합니다. 이 섹션이 실제로 회의에서 나온 내용인지 AI가 추정한
+    내용인지는 코드가 원본 존재 여부로 판정해 표시하므로, 이 문단
+    안에서 스스로 "AI가 추정함"이라고 밝히지 않습니다 — 자연스러운
+    문장으로만 씁니다.
   - goals는 sections 배열에 넣지 않습니다.
   - 문장은 평서형인 한다 체로 작성합니다.
   - 짧게 쓰기 위해 핵심 사실을 삭제하지 않습니다.
@@ -83,7 +93,9 @@ section_rules:
       - 기능 목록, 기술 스택, 일정과 확정되지 않은 기대 효과를 추가하지 않습니다.
       - 이름과 분야만 반복하는 내용 없는 문장을 작성하지 않습니다.
       - 하나의 문단으로 작성합니다.
-      - project.name과 project.background가 모두 비어 있으면 content_html을 빈 문자열로 출력합니다.
+      - >-
+        project.name과 project.background가 모두 비어 있으면 공통 규칙(원본이
+        전혀 없는 서술형 섹션 처리)을 따릅니다.
 
   problem:
     title: 핵심 목표
@@ -121,7 +133,9 @@ section_rules:
       - 이미 개발이 끝났거나 출시된 제품인 것처럼 쓰지 않습니다.
       - 하나의 문단으로 작성합니다.
       - 섹션 제목을 본문에 다시 쓰지 않습니다.
-      - 확인할 수 있는 문제나 목표가 없으면 content_html을 빈 문자열로 출력합니다.
+      - >-
+        확인할 수 있는 문제나 목표가 없으면 공통 규칙(원본이 전혀 없는
+        서술형 섹션 처리)을 따릅니다.
 
   users:
     title: 대상 사용자
@@ -135,7 +149,11 @@ section_rules:
       - needs는 해당 사용자에게 명시된 경우에만 작성합니다.
       - 요구한다, 원한다 같은 표현을 입력에 없는 사용자 의도로 만들지 않습니다.
       - requirements나 decisions의 내용을 사용자의 요구로 옮기지 않습니다.
-      - users가 비어 있으면 content_html을 빈 문자열로 출력합니다.
+      - >-
+        users가 비어 있으면 공통 규칙(원본이 전혀 없는 서술형 섹션 처리)을
+        따릅니다. project.background·problem에서 실제로 이 서비스를 쓸
+        것으로 보이는 역할이 드러나면 그 역할을 짧게 제안하고, 그렇지
+        않으면 빈 문자열로 둡니다.
 
 detailed_goal_rules:
   title: 세부 목표 및 문제 정의
@@ -228,23 +246,30 @@ detailed_goal_rules:
 # 묶었는데(list_builder.build_features), 태그가 일관되지 않으면 "기타 기능
 # 요구사항"이라는 뭉텅이로 쏟아지는 문제가 실측으로 확인됐습니다. 검증된
 # functional_requirements·feature_decisions를 여기서 직접 묶어 쓰게 합니다.
+#
+# 2026-09-16: feature_sources_for_citation으로 이름을 바꿨습니다. 예전엔
+# verified 항목만 걸러 보여줬는데, 근거 검증에 실패한 진짜 기능이 LLM
+# 눈에 보이지도 못하고 사라지는 문제가 있었습니다(evidence.py 유사도
+# 매칭이 완벽하지 않다는 걸 실측으로 확인). 이제 검증 여부와 무관하게
+# 번호만 매겨 전부 보여주고, source_indices로 어떤 번호를 참고했는지만
+# 답하게 합니다 — 검증은 코드(agent.py)가 그 번호들로 합니다.
 features_rules:
   title: 주요 기능
   output_field: features
   source_fields:
-    - functional_requirements
-    - feature_decisions
+    - feature_sources_for_citation
   item_fields:
     - group
     - title
     - description
+    - source_indices
   count:
     minimum: 0
     # 상한 없음. develop 브랜치가 여기 max_length=7을 뒀다가 기능이 많은
     # 회의록에서 일부가 통째로 빠지는 걸 실측으로 확인해 상한을 두지
     # 않기로 했습니다 — 회의에 있는 기능은 다 씁니다.
   rules:
-    - functional_requirements·feature_decisions에 있는 항목을 의미 단위로 묶습니다.
+    - feature_sources_for_citation에 있는 항목을 의미 단위로 묶습니다.
     - >-
       서로 다른 기능 영역(예: 데이터 수집, 필터링, 분류, 관리자 화면, 지표 산출 등)은
       각각 별도 항목으로 나눕니다. 한 항목에 서로 다른 기능을 욱여넣지 않습니다.
@@ -256,6 +281,17 @@ features_rules:
     - >-
       group은 판단하지 않고 항상 mvp로 둡니다(값은 하류 코드가 별도로 재판정합니다).
     - 입력이 비어 있으면 features를 빈 배열로 출력합니다.
+  source_indices_rules:
+    - >-
+      각 기능마다 feature_sources_for_citation에서 실제로 참고한 항목의
+      index 번호를 source_indices에 전부 나열합니다. 여러 항목을 묶어
+      하나의 기능으로 만들었으면 그 항목들의 번호를 모두 답합니다.
+    - >-
+      참고한 항목이 없는 기능은 만들지 않습니다 — 모든 기능은 최소 하나
+      이상의 index를 가져야 합니다.
+    - >-
+      description의 내용과 무관한 번호를 그럴듯하게 채우지 않습니다.
+      실제로 그 내용을 가져온 번호만 답합니다.
 
 glossary_rules:
   enabled_when: glossary_text가 비어 있지 않은 경우
