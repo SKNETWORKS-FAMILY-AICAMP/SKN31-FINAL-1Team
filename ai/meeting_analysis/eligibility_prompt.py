@@ -25,12 +25,6 @@ RULE_GROUPS = {
         "irrelevant",
         "needs_clarification",
     ),
-    "extraction_rules": (
-        "scope",
-        "source",
-        "context",
-        "rejection",
-    ),
 }
 
 
@@ -82,10 +76,6 @@ def build_system_prompt(template: dict) -> str:
     for key in RULE_GROUPS["decision_rules"]:
         rule = template["decision_rules"][key].strip()
         blocks.append(f"판정 기준: {key}\n{rule}")
-
-    for key in RULE_GROUPS["extraction_rules"]:
-        rule = template["extraction_rules"][key].strip()
-        blocks.append(rule)
 
     for key in ("glossary_rules", "input_rules", "response_rules"):
         blocks.append(template[key].strip())
