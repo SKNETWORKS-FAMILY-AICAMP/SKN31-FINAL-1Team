@@ -243,6 +243,12 @@ def run(
             feats = list(result.features)
             _mark_unverified_features(feats, structured)
             content = render_features(feats)
+            # 무료 진단(LLM 재호출 없음): 검증됐지만 어떤 기능의
+            # source_indices에도 인용되지 않은 기능 요구사항·결정이 있으면
+            # PM에게 확인을 요청합니다(list_builder.ORPHANED_ITEMS_NOTE_TEMPLATE
+            # 참고) — 노드①은 맞게 뽑았는데 노드②가 조용히 빠뜨렸을 수 있는
+            # 경우입니다.
+            orphaned = list_builder.find_orphaned_feature_sources(feats, structured)
             sections.append(PlanSection(
                 no=spec["no"], key=spec["key"], title=spec["title"],
                 section_type=spec["type"],
@@ -253,6 +259,7 @@ def run(
                 # LLM이 스스로 쓴 문장을 근거로 쓰지 않습니다. 노드①이
                 # 검증한 원문을 섹션 전체 단위로 붙입니다(3·6·7번과 동일).
                 evidence=list_builder.collect_feature_evidence(structured),
+                needs_input=list_builder.orphaned_items_note(orphaned),
                 is_incomplete=not feats,
             ))
             continue

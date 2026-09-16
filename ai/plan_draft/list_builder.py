@@ -474,6 +474,54 @@ def build_feature_citation_sources(structured: dict) -> list[dict]:
     ]
 
 
+# 2026-09-16: LLM 호출을 추가하지 않는(무료) 진단입니다.
+#
+# source_indices/matched_goal_index 인프라는 이미 "LLM이 어떤 번호를
+# 인용했는가"를 알고 있습니다. 검증된 항목인데 어떤 출력에서도 인용되지
+# 않은 게 있으면, 그건 노드①이 맞게 뽑았는데 노드②가 조용히 빠뜨린
+# 것일 수 있습니다 — 지금까지 고친 "검증 실패라 사라짐" 부류와는 다른,
+# "검증은 됐는데 아무도 인용을 안 해서 빠짐" 부류의 침묵 실패입니다.
+#
+# 항목 수가 늘었다고 품질이 좋아진 게 아니듯, 미인용이 있다고 무조건
+# 잘못된 것도 아닙니다(LLM이 여러 검증된 항목을 하나의 기능/목표로
+# 정당하게 묶었을 수 있습니다). 그래서 이 표시는 "PM이 원문과 대조해
+# 누락이 아닌지 확인하라"는 신호일 뿐, is_incomplete을 올리거나 항목을
+# 지어내 채우지 않습니다.
+ORPHANED_ITEMS_NOTE_TEMPLATE = (
+    "다음은 회의록에서 근거가 확인됐지만 위 내용에 인용되지 않았습니다. "
+    "누락이 아닌지 원문과 대조해 확인해 주세요: {items}"
+)
+
+
+def orphaned_items_note(contents: list[str]) -> str:
+    """미인용 검증 항목이 있으면 확인 문구를, 없으면 빈 문자열을 반환합니다."""
+    if not contents:
+        return ""
+    return ORPHANED_ITEMS_NOTE_TEMPLATE.format(items="; ".join(contents))
+
+
+def find_orphaned_feature_sources(
+    feats: list,
+    structured: dict,
+) -> list[str]:
+    """
+    검증됐지만 어떤 Feature.source_indices에도 인용되지 않은
+    functional_requirements·feature_decisions의 원문 내용을 반환합니다.
+    """
+    sources = build_feature_citation_sources(structured)
+    cited: set[int] = set()
+
+    for feature in feats:
+        for idx in getattr(feature, "source_indices", None) or []:
+            cited.add(idx)
+
+    return [
+        source["content"]
+        for source in sources
+        if source["evidence_status"] == VERIFIED and source["index"] not in cited
+    ]
+
+
 def decide_feature_groups(
     quote_groups: dict[str, set[str]],
 ) -> dict[str, str]:
@@ -954,6 +1002,7 @@ def build_goals(
 
     items_out: list[dict] = []
     seen: set[tuple[str, str]] = set()
+    cited_goal_indices: set[int] = set()
 
     for generated_goal in generated_goals or []:
         if hasattr(generated_goal, "model_dump"):
@@ -977,6 +1026,7 @@ def build_goals(
             # "회의 기반"이라고 표시할 내용은 실제로 회의 원문이어야 합니다.
             goal = str(verified_goals[matched_index].get("content", "")).strip() or goal
             is_ai_suggested = False
+            cited_goal_indices.add(matched_index)
         else:
             is_ai_suggested = True
 
@@ -1038,6 +1088,15 @@ def build_goals(
         ["project.problem_items", "project.goals"],
     )
 
+    # 무료 진단(LLM 재호출 없음): 검증됐지만 어떤 세부 목표에도 인용되지
+    # 않은 project.goals 원문이 있으면 PM에게 확인을 요청합니다
+    # (ORPHANED_ITEMS_NOTE_TEMPLATE 주석 참고).
+    orphaned = [
+        str(verified_goals[i].get("content", "")).strip()
+        for i in range(len(verified_goals))
+        if i not in cited_goal_indices
+    ]
+
     return PlanSection(
         no=3,
         key="goals",
@@ -1047,6 +1106,7 @@ def build_goals(
         items=items,
         source_fields=source_fields,
         evidence=evidence,
+        needs_input=orphaned_items_note(orphaned),
         is_incomplete=False,
     )
 

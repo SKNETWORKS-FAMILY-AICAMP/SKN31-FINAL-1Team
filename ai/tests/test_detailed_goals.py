@@ -329,3 +329,61 @@ def test_unverified_목표는_인덱스로_인용할_수_없다():
     # verified 목표가 하나도 없으므로 인덱스 0은 항상 무효 → AI 제안 처리.
     assert "검증 안 된 목표를 인용한 척" in section.content_html
     assert AI_SUGGESTED_GOAL_SUFFIX in section.content_html
+
+
+# ─────────────────────────────────────────────────────────────
+# 2026-09-16 추가 — 미인용 검증 목표 진단(무료, LLM 재호출 없음)
+#
+# matched_goal_index 인프라를 그대로 재사용해, 검증됐지만 어떤
+# 세부 목표에도 인용되지 않은 project.goals 원문이 있으면
+# needs_input에 확인 문구를 남긴다.
+# ─────────────────────────────────────────────────────────────
+
+
+def _structured_with_two_goals() -> dict:
+    return {
+        "project": {
+            "problem": "발주 시점 누락으로 품절이 발생한다",
+            "problem_items": [],
+            "goals": [
+                {
+                    "content": "발주 시점 누락과 품절을 줄인다",
+                    "evidence": {"quote": "발주 시점을 놓쳐 품절이 발생한다."},
+                    "evidence_status": "verified",
+                },
+                {
+                    "content": "인용되지 않는 두 번째 목표",
+                    "evidence": {"quote": "아무도 인용하지 않을 두 번째 목표 원문이다."},
+                    "evidence_status": "verified",
+                },
+            ],
+        },
+        "requirements": {"functional": []},
+        "decisions": [],
+    }
+
+
+def test_인용되지_않은_검증_목표는_needs_input에_표시된다():
+    structured = _structured_with_two_goals()
+    generated = [_detailed_goal(matched_goal_index=0)]
+
+    section = build_goals(structured, generated)
+
+    assert "인용되지 않는 두 번째 목표" in section.needs_input
+
+
+def test_모든_검증_목표가_인용되면_needs_input이_비어있다():
+    structured = _structured_with_two_goals()
+    generated = [
+        _detailed_goal(matched_goal_index=0),
+        _detailed_goal(
+            title="두 번째 목표 제목",
+            problem="두 번째 문제",
+            goal="인용되지 않는 두 번째 목표",
+            matched_goal_index=1,
+        ),
+    ]
+
+    section = build_goals(structured, generated)
+
+    assert section.needs_input == ""

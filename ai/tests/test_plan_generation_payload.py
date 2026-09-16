@@ -642,6 +642,59 @@ def test_검증된_번호와_미검증_번호를_섞어_인용하면_표시가_�
     assert list_builder.UNVERIFIED_ITEM_SUFFIX in feature_objs[0].description
 
 
+# ─────────────────────────────────────────────────────────────
+# 2026-09-16 추가 — 미인용 검증 기능 요구사항 진단(무료, LLM 재호출 없음)
+#
+# source_indices 인프라를 그대로 재사용해, 검증됐지만 어떤 Feature에도
+# 인용되지 않은 functional_requirements·feature_decisions가 있으면
+# PM에게 확인을 요청한다. 항목을 지어내 채우거나 지우지 않는다.
+# ─────────────────────────────────────────────────────────────
+
+
+def test_인용되지_않은_검증_항목은_orphan으로_잡힌다():
+    structured = _feature_structured()
+    structured["requirements"]["functional"].append(
+        _functional("검증됐지만 아무도 인용 안 한 기능 C", None, status="verified")
+    )
+
+    feature_objs = [Feature(
+        group="mvp", title="기능 A", description="설명", source_indices=[0],
+    )]
+
+    orphaned = list_builder.find_orphaned_feature_sources(feature_objs, structured)
+
+    assert orphaned == ["검증됐지만 아무도 인용 안 한 기능 C"]
+
+
+def test_모든_검증_항목이_인용되면_orphan이_없다():
+    structured = _feature_structured()
+    feature_objs = [Feature(
+        group="mvp", title="기능 A", description="설명", source_indices=[0],
+    )]
+
+    orphaned = list_builder.find_orphaned_feature_sources(feature_objs, structured)
+
+    assert orphaned == []
+
+
+def test_미검증_항목은_orphan으로_잡히지_않는다():
+    """orphan 진단은 verified 항목만 대상으로 한다 — unverified는 이미
+    UNVERIFIED_ITEM_SUFFIX로 별도 표시되므로 중복 신호를 만들지 않는다."""
+    structured = _feature_structured()
+    feature_objs = [Feature(
+        group="mvp", title="기능 A", description="설명", source_indices=[0],
+    )]
+
+    orphaned = list_builder.find_orphaned_feature_sources(feature_objs, structured)
+
+    assert "미검증 기능 B" not in orphaned
+
+
+def test_orphaned_items_note는_없으면_빈문자열이고_있으면_내용을_포함한다():
+    assert list_builder.orphaned_items_note([]) == ""
+    assert "항목 X" in list_builder.orphaned_items_note(["항목 X"])
+
+
 def test_원본이_있으면_표시가_안_붙는다(monkeypatch):
     monkeypatch.setattr(
         plan_agent,
