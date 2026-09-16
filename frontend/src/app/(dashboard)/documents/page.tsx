@@ -2502,12 +2502,13 @@ function TaskAssignmentList({
                         "확정된 이후에는 담당자 변경이 안 되도록" 해야 한다는 사용자 지적으로
                         수정(이전엔 APPROVED 상태에서도 재배정 드롭박스를 열어뒀었다).
                         2026-09-16: 담당자가 승인 후 진행률을 올려 IN_PROGRESS로 넘어간
-                        업무도 같은 이유로 잠가야 한다는 지적 — 이미 착수한 업무를 중간에
-                        담당자만 바꿔치기하면 안 되므로 IN_PROGRESS도 잠금 대상에 추가한다.
-                        확정 전 상태(PENDING_APPROVAL — 자동배정 등 다른 경로로 만들어진
-                        업무)만 드롭박스로 담당자를 바꿀 수 있고, 확정된 뒤엔 읽기 전용으로
-                        보여준다. */}
-                    {isPM && t.status_info?.code_id !== "TASK_APPROVED" && t.status_info?.code_id !== "IN_PROGRESS" ? (
+                        업무도 같은 이유로 잠가야 한다는 지적, 그리고 업무가 아예 완료(DONE)된
+                        경우도 마찬가지라는 지적 — 이미 착수했거나 끝난 업무를 중간에
+                        담당자만 바꿔치기하면 안 되므로 IN_PROGRESS/DONE 모두 잠금 대상에
+                        추가한다. 확정 전 상태(PENDING_APPROVAL — 자동배정 등 다른 경로로
+                        만들어진 업무)만 드롭박스로 담당자를 바꿀 수 있고, 그 뒤엔 읽기
+                        전용으로 보여준다. */}
+                    {isPM && !["TASK_APPROVED", "IN_PROGRESS", "DONE"].includes(t.status_info?.code_id ?? "") ? (
                       <div className="flex items-center gap-1">
                         <select
                           value={pendingReassign[t.id] ?? t.assigned_user}

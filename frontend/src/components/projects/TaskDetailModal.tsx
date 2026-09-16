@@ -43,8 +43,9 @@ export function TaskDetailModal({
   // PM 개별 승인 전(배분승인대기)에는 아직 실제로 착수한 업무가 아니므로 진행도를 매길 수 없다.
   const progressLocked = task.status_code === "PENDING_APPROVAL";
   // 2026-09-16: documents/page.tsx의 확정 업무 목록과 같은 이유 — 담당자가 배정을 승인했거나
-  // (TASK_APPROVED) 이미 착수한(IN_PROGRESS) 업무는 중간에 담당자만 바꿔치기하면 안 된다.
-  const reassignLocked = task.status_code === "TASK_APPROVED" || task.status_code === "IN_PROGRESS";
+  // (TASK_APPROVED) 이미 착수했거나(IN_PROGRESS) 완료(DONE)된 업무는 중간에 담당자만
+  // 바꿔치기하면 안 된다.
+  const reassignLocked = ["TASK_APPROVED", "IN_PROGRESS", "DONE"].includes(task.status_code);
 
   const handleSave = async () => {
     setIsLoading(true);
