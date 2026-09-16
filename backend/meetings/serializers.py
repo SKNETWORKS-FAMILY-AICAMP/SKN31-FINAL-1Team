@@ -12,7 +12,7 @@
 
 from rest_framework import serializers
 from drf_spectacular.utils import extend_schema_field
-from meetings.models import MeetingNote, SpecDocument
+from meetings.models import MeetingNote, SpecDocument, SpecValidationReport
 from common.models import CommonCode
 
 class CommonCodeSimpleSerializer(serializers.ModelSerializer):
@@ -38,6 +38,8 @@ class SpecDocumentSerializer(serializers.ModelSerializer):
         fields = [
             'id',             # source='pk' 매핑으로 안전하게 호출
             'spec_id',        # 실제 모델 PK 필드
+            'version',
+            'parent_spec',
             'meeting',
             'title',
             'overview',
@@ -61,7 +63,7 @@ class SpecDocumentSerializer(serializers.ModelSerializer):
             'created_at',
             'updated_at',
         ]
-        read_only_fields = ['id', 'spec_id', 'created_at', 'updated_at']
+        read_only_fields = ['id', 'spec_id', 'version', 'parent_spec', 'created_at', 'updated_at']
 
     def create(self, validated_data):
         # status_code를 안 보내고 만들면(직접 작성) 항상 초안(DRAFT)에서 시작해야, 아직
@@ -73,6 +75,23 @@ class SpecDocumentSerializer(serializers.ModelSerializer):
                 group_id='PROPOSAL_STATUS', code_id='PROPOSAL_DRAFT'
             ).first()
         return super().create(validated_data)
+
+
+class SpecValidationReportSerializer(serializers.ModelSerializer):
+    overall_score = serializers.SerializerMethodField()
+
+    class Meta:
+        model = SpecValidationReport
+        fields = [
+            'report_id', 'spec', 'scores', 'overall_score', 'summary', 'strengths',
+            'critical_issues', 'section_reviews', 'revised_document',
+            'applied_spec', 'created_at', 'applied_at',
+        ]
+        read_only_fields = fields
+
+    def get_overall_score(self, obj):
+        values = [v for v in (obj.scores or {}).values() if isinstance(v, (int, float))]
+        return round(sum(values) / len(values)) if values else 0
 
 
 class MeetingNoteSerializer(serializers.ModelSerializer):

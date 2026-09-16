@@ -11,6 +11,8 @@ from meetings.views import (
     SpecDocumentSubmitReviewView,
     SpecDocumentApproveView,
     SpecDocumentRejectView,
+    SpecDocumentValidateView,
+    SpecValidationReportApplyView,
     MeetingNoteParseFileView,
     MeetingNoteTranscribeAudioView,
     MeetingNoteCleanupTranscriptView,
@@ -33,4 +35,6 @@ urlpatterns = [
     path('specs/<int:pk>/submit-review/', SpecDocumentSubmitReviewView.as_view(), name='spec-document-submit-review'),
     path('specs/<int:pk>/approve/', SpecDocumentApproveView.as_view(), name='spec-document-approve'),
     path('specs/<int:pk>/reject/', SpecDocumentRejectView.as_view(), name='spec-document-reject'),
+    path('specs/<int:pk>/validate/', SpecDocumentValidateView.as_view(), name='spec-document-validate'),
+    path('spec-validation-reports/<int:report_id>/apply/', SpecValidationReportApplyView.as_view(), name='spec-validation-report-apply'),
 ]
