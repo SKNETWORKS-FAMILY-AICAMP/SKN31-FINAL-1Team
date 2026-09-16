@@ -94,6 +94,22 @@ class TaskAssignment(models.Model):
     difficulty_reason = models.TextField(null=True, blank=True, verbose_name="난이도 판단 근거")
     estimated_hours = models.FloatField(null=True, blank=True, verbose_name="예상 소요 시간")
     assignment_reason = models.TextField(null=True, blank=True, verbose_name="배정 근거")
+    # 2026-09-16 (사용자 지적): PM이 담당자를 재배정하면 assignment_reason을 "PM이 직접
+    # 재배정함" 안내로 덮어쓰는데, 그러면 원래 AI가 추천했던 담당자·근거가 사라져서
+    # 다시 그 사람으로 되돌려도 원래 근거를 복원할 방법이 없었다. 확정 시점(최초 1회)의
+    # AI 추천 담당자·근거를 여기 그대로 보존해두고, 재배정 로직에서 "원래 추천 담당자로
+    # 되돌아온 건지"를 판단해 근거를 복원할지/PM 재배정 안내로 바꿀지 결정한다.
+    original_assigned_user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='+',
+        verbose_name="AI 최초 추천 담당자(확정 시점, 이후 안 바뀜)",
+    )
+    original_assignment_reason = models.TextField(
+        null=True, blank=True,
+        verbose_name="AI 최초 배정 근거(확정 시점, 이후 안 바뀜)",
+    )
     assigned_workload = models.DecimalField(
         max_digits=5, decimal_places=2, null=True, blank=True,
         verbose_name="배정 시점 부하율",

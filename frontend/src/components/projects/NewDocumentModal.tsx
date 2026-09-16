@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import { X, Loader2, FileText, Users, CalendarIcon, FolderKanban, Paperclip } from "lucide-react";
 import { apiFetch } from "@/lib/api/client";
+import { formatTranscriptSentences } from "@/lib/transcript";
 import TagAutocomplete from "@/components/ui/TagAutocomplete";
 
 type ProjectOption = { id: number; name: string };
@@ -10,11 +11,7 @@ const NEW_PROJECT_VALUE = "__new__";
 
 // 2026-09-01: /api/meetings/notes/parse-file/ (.docx/.pdf/.txt/.hwp 지원 — .hwp는 hwp5txt
 // CLI를 서브프로세스로 호출) 로 파일을 올리면 텍스트를 추출해 "원본 내용" 칸을 채운다.
-// 2026-09-09: 음성 파일(.mp3/.mp4/.wav/.m4a/.webm 등)도 지원 — 처음엔 parse-file 하나로
-// (Whisper 받아쓰기 + GPT 정리) 한 번에 처리했는데, 그러면 프론트가 "지금 어느 단계인지,
-// 얼마나 남았는지" 전혀 알 수 없어 뭉뚱그린 스피너만 보여줄 수 있었다(사용자 요청 —
-// 진행률 게이지 표시). 그래서 transcribe-audio(받아쓰기)/cleanup-transcript(정리) 2단계
-// API로 나눠 각 단계가 끝날 때마다 진행률을 갱신한다.
+// gpt-transcribe 전사문은 표현을 수정하지 않고 문장 사이에 줄바꿈만 넣어 표시한다.
 const AUDIO_EXTENSIONS = [".mp3", ".mp4", ".mpeg", ".mpga", ".m4a", ".wav", ".webm"];
 const isAudioFile = (filename: string) => AUDIO_EXTENSIONS.some(ext => filename.toLowerCase().endsWith(ext));
 
@@ -25,14 +22,10 @@ const isAudioFile = (filename: string) => AUDIO_EXTENSIONS.some(ext => filename.
 const REQUIRED_FILENAME_PREFIX = "개발_";
 const hasRequiredPrefix = (filename: string) => filename.startsWith(REQUIRED_FILENAME_PREFIX);
 
-type AudioStage = "transcribing" | "cleaning" | null;
-// 각 단계 안에서는 실제 서버 진행률을 알 수 없어(요청-응답 1회짜리라 중간 이벤트가 없음)
-// 단계 시작/끝 지점만 확실한 값으로 잡고, 그 사이는 "곧 끝날 것 같은" 느낌만 주도록
-// 서서히 상한선까지 슬금슬금 채운다 — 0%에서 안 움직이는 스피너보다 진행 중이라는
-// 인상을 주는 게 목적이라 정확한 퍼센트일 필요는 없다.
+type AudioStage = "transcribing" | null;
+// 서버의 중간 진행 이벤트가 없어 응답 전까지 표시하는 진행률은 추정값이다.
 const STAGE_RANGE: Record<Exclude<AudioStage, null>, { from: number; to: number; label: string }> = {
-  transcribing: { from: 5, to: 55, label: "음성 처리 중 (대용량은 자동 분할되며 시간이 걸릴 수 있습니다)" },
-  cleaning: { from: 55, to: 95, label: "내용 정리 중" },
+  transcribing: { from: 5, to: 95, label: "음성 처리 중 (대용량은 자동 분할되며 시간이 걸릴 수 있습니다)" },
 };
 const SAMPLE_NOTES = [
   `[신규 쇼핑몰 프로젝트 킥오프 회의록]
@@ -163,10 +156,7 @@ export function NewDocumentModal({
     if (!title.trim()) setTitle(deriveTitleFromContent(sample));
   };
 
-  // 음성 변환은 단계 안에서 서버 진행률을 알 방법이 없다(요청 하나에 응답 하나뿐,
-  // 중간 이벤트 없음) — 그래서 단계 시작(from)/끝(to)만 확실한 값으로 잡고, 그 사이는
-  // 남은 거리의 일부씩 계속 좁혀가며(점근선처럼 to에 가까워지되 닿지는 않음) "진행 중"
-  // 이라는 인상을 준다. 실제로 응답이 오면 즉시 to로 스냅하고 다음 단계로 넘어간다.
+  // 요청 중에는 추정 진행률을 상한까지 올리고, 전사가 완료되면 100%로 표시한다.
   const runAudioStage = async <T,>(stage: Exclude<AudioStage, null>, task: () => Promise<T>): Promise<T> => {
     const range = STAGE_RANGE[stage];
     setAudioStage(stage);
@@ -179,7 +169,7 @@ export function NewDocumentModal({
     }, 350);
     try {
       const result = await task();
-      setAudioProgress(range.to);
+      setAudioProgress(100);
       return result;
     } finally {
       clearInterval(interval);
@@ -215,13 +205,7 @@ export function NewDocumentModal({
         const { transcript } = await runAudioStage("transcribing", () =>
           apiFetch<{ transcript: string }>("/api/meetings/notes/transcribe-audio/", { method: "POST", body: formData })
         );
-        const { content: cleaned } = await runAudioStage("cleaning", () =>
-          apiFetch<{ content: string }>("/api/meetings/notes/cleanup-transcript/", {
-            method: "POST",
-            body: JSON.stringify({ text: transcript }),
-          })
-        );
-        setContent(cleaned);
+        setContent(formatTranscriptSentences(transcript));
       } else {
         const formData = new FormData();
         formData.append("file", file);
@@ -403,7 +387,7 @@ export function NewDocumentModal({
                 <div className="mb-2">
                   <div className="flex justify-between items-center mb-1">
                     <span className="text-xs text-muted-foreground">
-                      {STAGE_RANGE[audioStage].label} — {audioStage === "transcribing" ? "1/2단계" : "2/2단계"}
+                      {STAGE_RANGE[audioStage].label}
                     </span>
                     <span className="text-xs font-semibold text-primary">{Math.round(audioProgress)}%</span>
                   </div>

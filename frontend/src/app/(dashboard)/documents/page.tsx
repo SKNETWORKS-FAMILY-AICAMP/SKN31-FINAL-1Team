@@ -125,6 +125,10 @@ type TaskAssignmentDto = {
   req_name: string;
   assigned_user: number;
   assigned_user_name: string;
+  // 2026-09-16 (사용자 요청): 재배정 후에도 "AI가 원래 누굴 추천했었는지" 알 수 있게
+  // — 확정 시점에 보존해둔 값이라 재배정해도 안 바뀐다.
+  original_assigned_user: number | null;
+  original_assigned_user_name: string | null;
   title: string;
   description: string | null;
   estimated_hours: number | null;
@@ -2509,6 +2513,7 @@ function TaskAssignmentList({
                         만들어진 업무)만 드롭박스로 담당자를 바꿀 수 있고, 그 뒤엔 읽기
                         전용으로 보여준다. */}
                     {isPM && !["TASK_APPROVED", "IN_PROGRESS", "DONE"].includes(t.status_info?.code_id ?? "") ? (
+                      <div className="flex flex-col gap-1">
                       <div className="flex items-center gap-1">
                         <select
                           value={pendingReassign[t.id] ?? t.assigned_user}
@@ -2559,6 +2564,16 @@ function TaskAssignmentList({
                               <X className="w-3.5 h-3.5" />
                             </button>
                           </>
+                        )}
+                      </div>
+                      {/* 2026-09-16 (사용자 요청): 재배정하면 원래 AI가 누굴 추천했었는지
+                          화면에서 알 수 없어진다는 지적 — 현재 선택(대기 중 선택 포함)이
+                          AI 원래 추천과 다를 때만 참고용으로 보여준다. */}
+                      {t.original_assigned_user_name &&
+                        (pendingReassign[t.id] ?? t.assigned_user) !== t.original_assigned_user && (
+                          <p className="text-[11px] text-muted-foreground pl-0.5">
+                            AI 추천 담당자: {t.original_assigned_user_name}
+                          </p>
                         )}
                       </div>
                     ) : (
