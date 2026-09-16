@@ -31,6 +31,18 @@ project·users는 이 청크 분할과 별개로 전체 원문 통짜 호출 하
 
 import re
 
+# 문장 경계를 잡는 데 쓰는 패턴. 정리된 회의록 기준으로 흔한
+# 종결 어미(-다/-요) 뒤 공백, 또는 마침표/물음표/느낌표 뒤 공백을 씁니다.
+#
+# 2026-09-16: 줄바꿈이 거의 없는 원본 STT 전사본이 들어오면
+# split_into_paragraphs가 문단을 한 줄바꿈 단위로도 나누지 못해
+# 회의록 전체가 "문단 하나"가 됩니다. 그 문단을 자르지 않고 그대로
+# 청크 하나로 두면(_split_long_paragraph를 만들기 전 동작) 청크
+# 분할의 원래 목적(모델이 한 호출에서 너무 많은 내용을 다루다 특정
+# 주제를 통째로 놓치는 문제)이 그대로 재현됩니다. 문장 경계에서
+# 강제로 나눠 이 경우에도 청크가 실제로 여러 개 생기게 합니다.
+_SENTENCE_BOUNDARY = re.compile(r"(?<=[.!?다요])\s+")
+
 # 청크 하나의 목표 최대 길이(자).
 #
 # gpt-4o 기준 실측 비교(6000자=3청크 vs 3000자=6청크)에서 3000자가
@@ -49,6 +61,40 @@ def split_into_paragraphs(text: str) -> list[str]:
     ]
 
 
+def _split_long_paragraph(paragraph: str, max_chars: int) -> list[str]:
+    """줄바꿈이 없어 max_chars를 넘는 문단 하나를 문장 단위로 강제 분할합니다.
+
+    문장 경계(_SENTENCE_BOUNDARY)를 우선 쓰고, 그마저 하나도 없으면
+    (문장부호와 종결 어미가 전혀 없는 극단적인 경우) 공백 단위로
+    나눕니다. 단어 중간은 자르지 않습니다 — 근거 인용이 단어를
+    반으로 쪼갠 채 남으면 원문 대조가 아예 불가능해지기 때문입니다.
+    """
+    pieces = [piece for piece in _SENTENCE_BOUNDARY.split(paragraph) if piece]
+
+    if len(pieces) <= 1:
+        pieces = [word for word in paragraph.split(" ") if word]
+
+    if len(pieces) <= 1:
+        return [paragraph]
+
+    chunks: list[str] = []
+    current: list[str] = []
+    current_len = 0
+
+    for piece in pieces:
+        if current and current_len + len(piece) + 1 > max_chars:
+            chunks.append(" ".join(current))
+            current, current_len = [], 0
+
+        current.append(piece)
+        current_len += len(piece) + 1
+
+    if current:
+        chunks.append(" ".join(current))
+
+    return chunks
+
+
 def chunk_meeting_text(
     text: str,
     max_chars: int = CHUNK_MAX_CHARS,
@@ -56,9 +102,12 @@ def chunk_meeting_text(
     """
     문단 경계를 지키며 회의록을 max_chars 이하 묶음으로 나눕니다.
 
-    문단 하나가 max_chars보다 길면(드묾) 그 문단 자체를 청크 하나로
-    둡니다. 문단 중간을 자르면 그 문단 안의 근거 인용이 청크 경계에
-    걸려 원문과 어긋날 수 있기 때문입니다.
+    문단 하나가 max_chars보다 길면(드묾) 문장 경계에서 추가로
+    나눕니다(_split_long_paragraph). 문장 경계도 없는 극단적인
+    경우에만 공백 단위로 나누고, 그마저 없으면 문단을 그대로 둡니다.
+    문단을 통째로 두지 않는 이유는 줄바꿈이 거의 없는 원본 STT
+    전사본이 들어오면 회의록 전체가 문단 하나가 되어, 청크 분할이
+    사실상 무력화되기 때문입니다(_SENTENCE_BOUNDARY 주석 참고).
 
     반환되는 청크는 원문 순서를 유지합니다. 회의 흐름이 뒤섞이면
     한 청크만 보고 판단하는 구조화 단계가 배경과 결정의 선후를
@@ -78,7 +127,7 @@ def chunk_meeting_text(
             if current:
                 chunks.append("\n\n".join(current))
                 current, current_len = [], 0
-            chunks.append(paragraph)
+            chunks.extend(_split_long_paragraph(paragraph, max_chars))
             continue
 
         if current and current_len + len(paragraph) + 2 > max_chars:
