@@ -12,11 +12,19 @@ from .views import (
     UserPasswordResetView,
     UserImpersonateView,
     UserStopImpersonateView,
+    MySkillListCreateView,
+    MySkillDetailView,
+    MyCertificationListCreateView,
+    MyCertificationDetailView,
 )
 
 urlpatterns = [
     path('me/', CurrentUserProfileView.as_view(), name='user-me'),
     path('me/change-password/', ChangePasswordView.as_view(), name='user-change-password'),
+    path('me/skills/', MySkillListCreateView.as_view(), name='my-skills'),
+    path('me/skills/<int:pk>/', MySkillDetailView.as_view(), name='my-skill-detail'),
+    path('me/certifications/', MyCertificationListCreateView.as_view(), name='my-certifications'),
+    path('me/certifications/<int:pk>/', MyCertificationDetailView.as_view(), name='my-certification-detail'),
     path('', UserListView.as_view(), name='user-list'),
     path('csrf/', CsrfCookieView.as_view(), name='csrf-cookie'),
     path('login/', LoginView.as_view(), name='login'),

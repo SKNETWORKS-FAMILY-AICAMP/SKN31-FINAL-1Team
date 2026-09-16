@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth";
-import { Loader2, KeyRound, User as UserIcon, Building, Sparkles, Phone, ArrowLeft, ArrowRight } from "lucide-react";
+import { Loader2, KeyRound, User as UserIcon, Building, Sparkles, Phone, ArrowLeft, ArrowRight, Wrench, Award, X } from "lucide-react";
 import { apiFetch } from "@/lib/api/client";
 import { cn } from "@/lib/utils";
 
@@ -29,6 +29,17 @@ export default function OnboardingPage() {
   // 그 패턴을 그대로 따른다).
   const [deptOptions, setDeptOptions] = useState<DeptOption[]>([]);
 
+  // 2026-09-16: 기술 스택/자격증 저장 API(/api/users/me/skills/, /api/users/me/certifications/)가
+  // 새로 생겨서 온보딩에도 다시 넣는다 — 이전엔 저장할 곳이 없어 아예 뺐었다(아래 handleSubmit
+  // 주석 참고). 이 화면은 "다음/이전"으로 넘나드는 마법사 형태라 다른 필드(부서/연락처)처럼
+  // 최종 제출 시점에만 실제로 저장한다 — 선택은 여기서 로컬 상태로만 들고 있는다.
+  const [skillOptions, setSkillOptions] = useState<DeptOption[]>([]);
+  const [certOptions, setCertOptions] = useState<DeptOption[]>([]);
+  const [selectedSkills, setSelectedSkills] = useState<DeptOption[]>([]);
+  const [selectedCerts, setSelectedCerts] = useState<DeptOption[]>([]);
+  const [pendingSkillCode, setPendingSkillCode] = useState("");
+  const [pendingCertCode, setPendingCertCode] = useState("");
+
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
@@ -36,7 +47,29 @@ export default function OnboardingPage() {
     apiFetch<DeptOption[]>("/api/common/codes/?group_code=USER_DEPARTMENT")
       .then(setDeptOptions)
       .catch(() => {}); // 부서는 선택 항목이라 조회 실패해도 온보딩 자체를 막지 않음
+    apiFetch<DeptOption[]>("/api/common/codes/?group_prefix=SKILL").then(setSkillOptions).catch(() => {});
+    apiFetch<DeptOption[]>("/api/common/codes/?group_prefix=CERTIFICATION").then(setCertOptions).catch(() => {});
   }, []);
+
+  const addSkill = () => {
+    if (!pendingSkillCode) return;
+    const opt = skillOptions.find(o => o.code_id === pendingSkillCode);
+    if (opt && !selectedSkills.some(s => s.code_id === opt.code_id)) {
+      setSelectedSkills(prev => [...prev, opt]);
+    }
+    setPendingSkillCode("");
+  };
+  const removeSkill = (codeId: string) => setSelectedSkills(prev => prev.filter(s => s.code_id !== codeId));
+
+  const addCert = () => {
+    if (!pendingCertCode) return;
+    const opt = certOptions.find(o => o.code_id === pendingCertCode);
+    if (opt && !selectedCerts.some(c => c.code_id === opt.code_id)) {
+      setSelectedCerts(prev => [...prev, opt]);
+    }
+    setPendingCertCode("");
+  };
+  const removeCert = (codeId: string) => setSelectedCerts(prev => prev.filter(c => c.code_id !== codeId));
 
   // Guard
   useEffect(() => {
@@ -75,6 +108,20 @@ export default function OnboardingPage() {
         phone,
         deptCode,
       });
+      // 2026-09-16: 기술 스택/자격증은 온보딩 성공 뒤 best-effort로 저장한다 —
+      // 전용 API가 완료 처리(is_onboarded)와 별개 엔드포인트라, 여기서 실패해도
+      // 온보딩 자체(비밀번호 변경, 이름/부서 등록)를 막지 않는다. 실패한 항목은
+      // 나중에 프로필 화면에서 다시 추가하면 된다.
+      await Promise.allSettled([
+        ...selectedSkills.map(s => apiFetch("/api/users/me/skills/", {
+          method: "POST",
+          body: JSON.stringify({ skill_code: s.code_id, proficiency_level: 3 }),
+        })),
+        ...selectedCerts.map(c => apiFetch("/api/users/me/certifications/", {
+          method: "POST",
+          body: JSON.stringify({ cert_code: c.code_id }),
+        })),
+      ]);
       router.push("/");
     } catch (err: any) {
       setError(err.message);
@@ -208,11 +255,77 @@ export default function OnboardingPage() {
                 />
               </div>
             </div>
-            {/* 기술 스택/자격증/프로젝트 경험 입력은 뺐다 — 백엔드에 이 값들을 저장할
-                API가 아직 없어서(User.skills/certifications는 UserDetailSerializer에서
-                읽기 전용), 여기서 입력받아도 조용히 버려지고 있었다(실제로 확인). 입력을
-                받는데 저장이 안 되는 것보다, 아예 안 받는 게 덜 혼란스럽다. 저장 API가
-                추가되면 그때 다시 넣으면 된다. */}
+            <div>
+              <label className="block text-sm font-medium mb-1 flex items-center gap-1.5"><Wrench className="w-3.5 h-3.5" /> 기술 스택 (선택)</label>
+              {selectedSkills.length > 0 && (
+                <div className="flex flex-wrap gap-1.5 mb-2">
+                  {selectedSkills.map(s => (
+                    <span key={s.code_id} className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-black/5 dark:bg-white/5 text-xs font-medium">
+                      {s.code_name}
+                      <button type="button" onClick={() => removeSkill(s.code_id)} className="text-muted-foreground hover:text-red-400" aria-label={`${s.code_name} 삭제`}>
+                        <X className="w-3 h-3" />
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              )}
+              <div className="flex gap-1.5">
+                <select
+                  value={pendingSkillCode}
+                  onChange={(e) => setPendingSkillCode(e.target.value)}
+                  className="flex-1 bg-black/5 dark:bg-white/5 border border-border rounded-xl py-2.5 px-3 focus:ring-2 focus:ring-primary/50 focus:outline-none text-sm appearance-none"
+                >
+                  <option value="">기술 스택 선택...</option>
+                  {skillOptions
+                    .filter(o => !selectedSkills.some(s => s.code_id === o.code_id))
+                    .map(o => <option key={o.code_id} value={o.code_id}>{o.code_name}</option>)}
+                </select>
+                <button
+                  type="button"
+                  onClick={addSkill}
+                  disabled={!pendingSkillCode}
+                  className="px-4 rounded-xl bg-primary/10 text-primary text-sm font-bold hover:bg-primary/20 disabled:opacity-50 transition-colors"
+                >
+                  추가
+                </button>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium mb-1 flex items-center gap-1.5"><Award className="w-3.5 h-3.5" /> 자격증 (선택)</label>
+              {selectedCerts.length > 0 && (
+                <div className="flex flex-wrap gap-1.5 mb-2">
+                  {selectedCerts.map(c => (
+                    <span key={c.code_id} className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-black/5 dark:bg-white/5 text-xs font-medium">
+                      {c.code_name}
+                      <button type="button" onClick={() => removeCert(c.code_id)} className="text-muted-foreground hover:text-red-400" aria-label={`${c.code_name} 삭제`}>
+                        <X className="w-3 h-3" />
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              )}
+              <div className="flex gap-1.5">
+                <select
+                  value={pendingCertCode}
+                  onChange={(e) => setPendingCertCode(e.target.value)}
+                  className="flex-1 bg-black/5 dark:bg-white/5 border border-border rounded-xl py-2.5 px-3 focus:ring-2 focus:ring-primary/50 focus:outline-none text-sm appearance-none"
+                >
+                  <option value="">자격증 선택...</option>
+                  {certOptions
+                    .filter(o => !selectedCerts.some(c => c.code_id === o.code_id))
+                    .map(o => <option key={o.code_id} value={o.code_id}>{o.code_name}</option>)}
+                </select>
+                <button
+                  type="button"
+                  onClick={addCert}
+                  disabled={!pendingCertCode}
+                  className="px-4 rounded-xl bg-primary/10 text-primary text-sm font-bold hover:bg-primary/20 disabled:opacity-50 transition-colors"
+                >
+                  추가
+                </button>
+              </div>
+            </div>
 
             <div className="pt-2 flex gap-3">
               <button

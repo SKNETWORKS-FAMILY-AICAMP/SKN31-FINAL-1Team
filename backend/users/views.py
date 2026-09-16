@@ -20,7 +20,10 @@ from users.serializers import (
     UserPasswordResetResponseSerializer,
     LoginRequestSerializer,
     LoginResponseSerializer,
+    UserSkillSerializer,
+    UserCertificationSerializer,
 )
+from users.models import UserSkill, UserCertification
 from users.permissions import IsAdminUserOnly
 from users.jwt_cookies import set_auth_cookies, clear_auth_cookies, REFRESH_COOKIE, REFRESH_COOKIE_PATH
 from users.sessions import (
@@ -225,6 +228,120 @@ class CurrentUserProfileView(APIView):
             serializer.save()
             return Response(serializer.data, status=status.HTTP_200_OK)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+# ==========================================
+# 2026-09-16: 본인 기술 스택/자격증 자기관리 API
+#
+# 지금까지 이 값들(UserSkill/UserCertification)을 추가·삭제하는 API 자체가
+# 없었다(UserDetailSerializer는 nested read_only로만 보여줌) — 프로필 화면·
+# 직원관리 화면·온보딩 화면 셋 다 "다른 화면에서 관리한다"고 서로 미루기만
+# 하고 실제로 저장되는 곳이 없었다(온보딩 화면 주석에 이 사실이 남아있음,
+# 실제 확인 결과). 본인이 프로필에서 직접 관리하도록 이 엔드포인트를 새로 만든다.
+# ==========================================
+
+class MySkillListCreateView(generics.ListCreateAPIView):
+    """
+    본인 기술 스택 목록 조회/추가 API
+    GET/POST /api/users/me/skills/
+    """
+    serializer_class = UserSkillSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    @extend_schema(tags=['0단계 - 사용자 관리'], summary='본인 기술 스택 목록 조회')
+    def get(self, request, *args, **kwargs):
+        return super().get(request, *args, **kwargs)
+
+    @extend_schema(
+        tags=['0단계 - 사용자 관리'],
+        summary='본인 기술 스택 추가',
+        description='skill_code(공통코드 SKILL_* 그룹의 code_id)와 proficiency_level(1~5, 생략 시 1)을 받아 추가합니다.',
+    )
+    def post(self, request, *args, **kwargs):
+        return super().post(request, *args, **kwargs)
+
+    def get_queryset(self):
+        return self.request.user.skills.select_related('skill_code').all()
+
+    def perform_create(self, serializer):
+        # 같은 스킬을 중복으로 추가하면 화면에 똑같은 태그가 두 번 뜨는 것보다,
+        # 숙련도만 업데이트하는 게 자연스럽다 — DB에 unique 제약이 없어 그대로 두면
+        # 조용히 중복 행이 쌓인다.
+        skill_code = serializer.validated_data.get('skill_code')
+        existing = self.request.user.skills.filter(skill_code=skill_code).first()
+        if existing:
+            existing.proficiency_level = serializer.validated_data.get('proficiency_level', existing.proficiency_level)
+            existing.save(update_fields=['proficiency_level'])
+            serializer.instance = existing
+        else:
+            serializer.save(user=self.request.user)
+
+
+class MySkillDetailView(generics.DestroyAPIView):
+    """
+    본인 기술 스택 삭제 API
+    DELETE /api/users/me/skills/<skill_id>/
+    조회 대상을 본인 것으로만 한정해서, 남의 skill_id를 넣어도 404로 처리한다(권한 우회 방지).
+    """
+    serializer_class = UserSkillSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    @extend_schema(tags=['0단계 - 사용자 관리'], summary='본인 기술 스택 삭제', responses={204: None})
+    def delete(self, request, *args, **kwargs):
+        return super().delete(request, *args, **kwargs)
+
+    def get_queryset(self):
+        return self.request.user.skills.all()
+
+
+class MyCertificationListCreateView(generics.ListCreateAPIView):
+    """
+    본인 자격증 목록 조회/추가 API
+    GET/POST /api/users/me/certifications/
+    """
+    serializer_class = UserCertificationSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    @extend_schema(tags=['0단계 - 사용자 관리'], summary='본인 자격증 목록 조회')
+    def get(self, request, *args, **kwargs):
+        return super().get(request, *args, **kwargs)
+
+    @extend_schema(
+        tags=['0단계 - 사용자 관리'],
+        summary='본인 자격증 추가',
+        description='cert_code(공통코드 CERTIFICATION_* 그룹의 code_id)와 acquired_date(선택)를 받아 추가합니다.',
+    )
+    def post(self, request, *args, **kwargs):
+        return super().post(request, *args, **kwargs)
+
+    def get_queryset(self):
+        return self.request.user.certifications.select_related('cert_code').all()
+
+    def perform_create(self, serializer):
+        cert_code = serializer.validated_data.get('cert_code')
+        existing = self.request.user.certifications.filter(cert_code=cert_code).first()
+        if existing:
+            existing.acquired_date = serializer.validated_data.get('acquired_date', existing.acquired_date)
+            existing.save(update_fields=['acquired_date'])
+            serializer.instance = existing
+        else:
+            serializer.save(user=self.request.user)
+
+
+class MyCertificationDetailView(generics.DestroyAPIView):
+    """
+    본인 자격증 삭제 API
+    DELETE /api/users/me/certifications/<cert_id>/
+    """
+    serializer_class = UserCertificationSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    @extend_schema(tags=['0단계 - 사용자 관리'], summary='본인 자격증 삭제', responses={204: None})
+    def delete(self, request, *args, **kwargs):
+        return super().delete(request, *args, **kwargs)
+
+    def get_queryset(self):
+        return self.request.user.certifications.all()
 
 
 class ChangePasswordView(APIView):
