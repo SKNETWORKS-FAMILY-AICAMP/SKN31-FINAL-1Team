@@ -42,6 +42,9 @@ export function TaskDetailModal({
   const overdue = isTaskOverdue({ wbsEnd: task.end_date, status: task.status_code });
   // PM 개별 승인 전(배분승인대기)에는 아직 실제로 착수한 업무가 아니므로 진행도를 매길 수 없다.
   const progressLocked = task.status_code === "PENDING_APPROVAL";
+  // 2026-09-16: documents/page.tsx의 확정 업무 목록과 같은 이유 — 담당자가 배정을 승인했거나
+  // (TASK_APPROVED) 이미 착수한(IN_PROGRESS) 업무는 중간에 담당자만 바꿔치기하면 안 된다.
+  const reassignLocked = task.status_code === "TASK_APPROVED" || task.status_code === "IN_PROGRESS";
 
   const handleSave = async () => {
     setIsLoading(true);
@@ -119,11 +122,12 @@ export function TaskDetailModal({
               담당자
               {/* 재배정은 일정과 같은 이유로 PM 고유 권한 */}
               {!isPM && <span className="flex items-center gap-1 text-[11px] font-normal text-muted-foreground/70"><Lock className="w-3 h-3" /> 재배정은 PM만 할 수 있습니다</span>}
+              {isPM && reassignLocked && <span className="flex items-center gap-1 text-[11px] font-normal text-muted-foreground/70"><Lock className="w-3 h-3" /> 승인/착수된 업무는 담당자를 바꿀 수 없습니다</span>}
             </label>
             <select
               value={assigneeId}
               onChange={(e) => setAssigneeId(e.target.value)}
-              disabled={!isPM}
+              disabled={!isPM || reassignLocked}
               className="w-full bg-black/5 dark:bg-white/5 border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 disabled:opacity-60"
             >
               <option value="">담당자 없음</option>

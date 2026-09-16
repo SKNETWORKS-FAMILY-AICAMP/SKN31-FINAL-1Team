@@ -38,6 +38,21 @@ class TaskAssignmentSerializer(serializers.ModelSerializer):
         return full_name or u.username
 
     def update(self, instance, validated_data):
+        # 2026-09-16 (사용자 요청): 담당자가 배정을 승인했거나(TASK_APPROVED) 이미 착수한
+        # (IN_PROGRESS) 업무는 중간에 담당자를 바꿔치기할 수 없다 — 프론트(documents/page.tsx,
+        # TaskDetailModal.tsx)에서 드롭박스를 잠갔지만, API를 직접 호출해 우회하는 것도
+        # 막는다.
+        if 'assigned_user' in validated_data:
+            new_assignee = validated_data['assigned_user']
+            if (
+                new_assignee is not None
+                and new_assignee != instance.assigned_user
+                and instance.status_code_id in (TaskStatusCode.APPROVED, TaskStatusCode.IN_PROGRESS)
+            ):
+                raise serializers.ValidationError(
+                    {"assigned_user": "승인되었거나 진행 중인 업무는 담당자를 변경할 수 없습니다."}
+                )
+
         # 2026-09-16 (사용자 요청): 진행률과 상태(승인됨 ↔ 진행 중)를 양방향으로 맞춘다.
         #   - 진행률을 1% 이상으로 올리면 "승인됨" → "진행 중"으로 자동 전환 (착수 신호)
         #   - 진행률을 다시 0%로 내리면 "진행 중" → "승인됨"으로 자동 되돌림 (착수 취소 신호)
