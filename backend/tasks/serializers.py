@@ -47,15 +47,17 @@ class TaskAssignmentSerializer(serializers.ModelSerializer):
             if (
                 new_assignee is not None
                 and new_assignee != instance.assigned_user
-                and instance.status_code_id in (TaskStatusCode.APPROVED, TaskStatusCode.IN_PROGRESS)
+                and instance.status_code_id in (TaskStatusCode.APPROVED, TaskStatusCode.IN_PROGRESS, TaskStatusCode.COMPLETED)
             ):
                 raise serializers.ValidationError(
-                    {"assigned_user": "승인되었거나 진행 중인 업무는 담당자를 변경할 수 없습니다."}
+                    {"assigned_user": "승인·진행 중이거나 완료된 업무는 담당자를 변경할 수 없습니다."}
                 )
 
-        # 2026-09-16 (사용자 요청): 진행률과 상태(승인됨 ↔ 진행 중)를 양방향으로 맞춘다.
-        #   - 진행률을 1% 이상으로 올리면 "승인됨" → "진행 중"으로 자동 전환 (착수 신호)
-        #   - 진행률을 다시 0%로 내리면 "진행 중" → "승인됨"으로 자동 되돌림 (착수 취소 신호)
+        # 2026-09-16 (사용자 요청): 진행률과 상태(승인됨 ↔ 진행 중 ↔ 완료)를 양방향으로 맞춘다.
+        #   - 진행률을 1% 이상으로 올리면 "승인됨" → "진행 중" (착수 신호)
+        #   - 진행률을 다시 0%로 내리면 "진행 중" → "승인됨" (착수 취소 신호)
+        #   - 진행률이 100%가 되면 "진행 중" → "완료" (완료 신호, is_busy 해제도 같이 처리)
+        #   - 완료 후 100% 밑으로 다시 내리면 "완료" → "진행 중" (재오픈, is_busy 다시 걸어줌)
         # 이 요청(TaskDetailModal의 일반 PATCH)에서 status_code를 명시적으로 같이
         # 보낸 경우엔 그 값을 그대로 존중하고 자동 전환하지 않는다.
         new_progress = validated_data.get('progress', instance.progress)
@@ -64,6 +66,27 @@ class TaskAssignmentSerializer(serializers.ModelSerializer):
                 instance.status_code_id = TaskStatusCode.IN_PROGRESS
             elif instance.status_code_id == TaskStatusCode.IN_PROGRESS and new_progress <= 0:
                 instance.status_code_id = TaskStatusCode.APPROVED
+
+            # 위에서 방금 IN_PROGRESS로 바뀐 경우(승인됨 0% -> 100%로 한 번에 올린 경우)도
+            # 여기서 이어서 완료 처리되도록, elif로 안 묶고 별도 if로 다시 검사한다.
+            if instance.status_code_id == TaskStatusCode.IN_PROGRESS and new_progress >= 100:
+                instance.status_code_id = TaskStatusCode.COMPLETED
+                assigned_dev = instance.assigned_user
+                if assigned_dev:
+                    # TaskStatusUpdateView.patch()의 COMPLETED 처리와 동일한 규칙 —
+                    # 다른 미완료 업무가 없을 때만 담당자의 is_busy를 해제한다.
+                    other_open_tasks = TaskAssignment.objects.filter(
+                        assigned_user=assigned_dev
+                    ).exclude(pk=instance.pk).exclude(status_code_id=TaskStatusCode.COMPLETED)
+                    if not other_open_tasks.exists():
+                        assigned_dev.is_busy = False
+                        assigned_dev.save(update_fields=['is_busy'])
+            elif instance.status_code_id == TaskStatusCode.COMPLETED and new_progress < 100:
+                instance.status_code_id = TaskStatusCode.IN_PROGRESS
+                assigned_dev = instance.assigned_user
+                if assigned_dev and not assigned_dev.is_busy:
+                    assigned_dev.is_busy = True
+                    assigned_dev.save(update_fields=['is_busy'])
         return super().update(instance, validated_data)
 
     class Meta:

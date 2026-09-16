@@ -317,9 +317,9 @@ class TaskStatusUpdateView(APIView):
             # 2026-09-16 (사용자 요청): 담당자가 배정을 승인했거나(TASK_APPROVED) 이미
             # 착수한(IN_PROGRESS) 업무는 담당자를 바꿔치기할 수 없다 — TaskAssignmentSerializer
             # 쪽과 동일한 제약을 이 엔드포인트에도 건다.
-            if task.status_code_id in (TaskStatusCode.APPROVED, TaskStatusCode.IN_PROGRESS):
+            if task.status_code_id in (TaskStatusCode.APPROVED, TaskStatusCode.IN_PROGRESS, TaskStatusCode.COMPLETED):
                 return Response(
-                    {"error": "FORBIDDEN", "details": "승인되었거나 진행 중인 업무는 담당자를 변경할 수 없습니다."},
+                    {"error": "FORBIDDEN", "details": "승인·진행 중이거나 완료된 업무는 담당자를 변경할 수 없습니다."},
                     status=status.HTTP_403_FORBIDDEN
                 )
 
