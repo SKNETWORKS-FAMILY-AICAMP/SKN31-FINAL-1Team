@@ -23,7 +23,7 @@ from tasks.serializers import (
 from tasks.services import run_assignee_mapping, run_task_generation
 from requirements.models import RequirementItem
 from projects.models import PipelineHistory, Project
-from notifications.services import notify_user
+from notifications.services import notify_user, notify_all_pms
 
 User = get_user_model()
 
@@ -272,8 +272,10 @@ class TaskStatusUpdateView(APIView):
         description=(
             '배정된 업무의 진행 상태(`status_code`) 및 담당자(`assigned_user_id`)를 변경합니다.\n'
             '- **담당자 변경**: PM만 수행할 수 있습니다.\n'
-            '- **상태 변경**: PM 또는 해당 업무의 담당자 본인(`assigned_user`)만 수행할 수 있습니다.\n'
-            '- 상태가 `COMPLETED`로 변경되면 담당 개발자의 `is_busy` 상태가 `False`로 해제됩니다.'
+            '- **배분 승인(`TASK_APPROVED`)/반려(`CANCELLED`)**: 해당 업무의 담당자 본인만 수행할 수 있습니다'
+            '(PM이 배정한 업무를 받아들일지 정하는 것이라 PM도 예외 없음).\n'
+            '- **그 외 상태 변경**(`IN_PROGRESS`, `DONE` 등): PM 또는 해당 업무의 담당자 본인(`assigned_user`)만 수행할 수 있습니다.\n'
+            '- 상태가 `DONE`으로 변경되면 담당 개발자의 `is_busy` 상태가 `False`로 해제됩니다.'
         ),
         parameters=[
             OpenApiParameter(
@@ -343,14 +345,16 @@ class TaskStatusUpdateView(APIView):
                 )
 
             # ── 상태별 세부 권한 분기 ────────────────────────────────────
-            # 2026-09-15: APPROVED가 다시 COMPLETED(DONE)와 별개 code_id(TASK_APPROVED)를
-            # 갖게 되면서(프론트가 "승인됨"/"완료"를 별개 칸반 단계로 이미 쓰고 있어서
-            # 되돌림) 값만으로 "PM 승인"과 "담당자 완료 처리"를 다시 구분할 수 있다 —
-            # A. 배분 승인(APPROVED)/반려(REJECTED)는 PM만 가능.
+            # 2026-09-16 (사용자 지적으로 재수정): 배분 승인/반려는 "PM이 검토하는 것"이
+            # 아니라 "PM이 배정한 업무를 담당자 본인이 맡을지 말지 정하는 것"이다 —
+            # 기획서/요구사항정의서 승인(PM이 문서 품질·방향을 검토)과는 성격이 다르다.
+            # A. 배분 승인(APPROVED)/반려(REJECTED)는 담당자 본인만 가능 — PM도 예외 없음
+            #    (담당자 재배정은 여전히 위 1번 블록에서 PM 전용으로 남아있다 — "누구에게
+            #    맡길지"는 PM 권한, "그 배정을 받아들일지"는 담당자 권한으로 분리).
             if new_status in [TaskStatusCode.APPROVED, TaskStatusCode.REJECTED]:
-                if not is_pm:
+                if task.assigned_user_id != user.id:
                     return Response(
-                        {"error": "FORBIDDEN", "details": "업무 배분 승인 및 반려는 PM 권한이 필요합니다."},
+                        {"error": "FORBIDDEN", "details": "업무 배정 수락 및 반려는 담당자 본인만 할 수 있습니다."},
                         status=status.HTTP_403_FORBIDDEN
                     )
             # B. 기타 상태 변경(IN_PROGRESS, COMPLETED 등)은 PM 또는 담당자 본인만 가능
@@ -387,12 +391,14 @@ class TaskStatusUpdateView(APIView):
                         assigned_dev.save()
 
             # 알림 발송
+            # 2026-09-16: 배분 승인/반려는 이제 담당자 본인이 하는 액션이라, 담당자에게
+            # "네가 방금 한 일"을 알리는 건 의미가 없다 — 대신 PM에게 결과를 알린다.
             if new_status == TaskStatusCode.APPROVED and task.assigned_user:
-                notify_user(task.assigned_user, f"'{task.title}' 업무가 승인되었습니다.", type='success', link='/tasks')
+                notify_all_pms(f"{task.assigned_user.username}님이 '{task.title}' 업무 배정을 수락했습니다.", type='success', link='/approvals')
             elif new_status == TaskStatusCode.COMPLETED and task.assigned_user:
                 notify_user(task.assigned_user, f"'{task.title}' 업무가 완료되었습니다.", type='success', link='/tasks')
             elif new_status == TaskStatusCode.REJECTED and task.assigned_user:
-                notify_user(task.assigned_user, f"'{task.title}' 업무가 반려되었습니다: {task.reject_reason}", type='error', link='/tasks')
+                notify_all_pms(f"{task.assigned_user.username}님이 '{task.title}' 업무 배정을 반려했습니다: {task.reject_reason}", type='error', link='/approvals')
 
             # 파이프라인 히스토리 기록 (실제 상태가 변경된 경우)
             if task.project_id and new_status != old_status:
