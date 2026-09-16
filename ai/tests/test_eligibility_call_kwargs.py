@@ -286,9 +286,23 @@ def test_context_does_not_duplicate_overlapping_neighbours():
     ]
 
 
-def test_context_is_on_by_default():
-    """기본값이 0이면 실제 회의록에서 맥락이 끊깁니다."""
-    assert select_paragraphs(NUMBERED, [3]) == ["나", "다", "라"]
+def test_context_확장은_기본으로_꺼져있다():
+    """
+    2026-09-16: CONTEXT_PARAGRAPHS를 1에서 0으로 낮췄습니다.
+
+    코드가 선택 문단의 앞뒤를 무조건 끌어오면(예전 기본값 1), 선택되지
+    않은 이웃이 다른 주제(회식·워크샵 공지 등)여도 같이 끌려옵니다.
+    실측(eligibility.py CONTEXT_PARAGRAPHS 주석 참고, 29,769자 실제
+    회의록에 잡담을 넣고 6회 반복)으로 재현했습니다 — 모델은 잡담
+    문단을 한 번도 직접 고르지 않았는데 6번 중 3번 새어 들어갔습니다.
+
+    "이어지는 문맥인가"는 코드가 원문 대조처럼 검증할 수 있는 사실이
+    아니라 의미 판단이라, 이제 PARAGRAPH_SYSTEM_PROMPT의 지시로 모델이
+    직접 판단하고 필요하면 그 번호를 스스로 결과에 포함합니다. 같은
+    실측에서 프롬프트 수정 후 6/6 누출 없음, 실제 개발 논의 인접
+    문단(133~136, 147~150)도 모델이 코드 보정 없이 전부 선택했습니다.
+    """
+    assert select_paragraphs(NUMBERED, [3]) == ["다"]
 
 
 def test_irrelevant_meeting_stops_after_first_call():
