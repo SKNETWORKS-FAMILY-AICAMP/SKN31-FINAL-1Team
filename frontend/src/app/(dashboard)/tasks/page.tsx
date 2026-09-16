@@ -147,7 +147,15 @@ export default function TasksPage() {
       if (newStatus === "PENDING_APPROVAL") setToast({ message: "재승인 요청했습니다. 배분승인대기 상태로 되돌렸습니다.", variant: "success" });
     },
     onError: () => setToast({ message: "상태 변경에 실패했습니다.", variant: "error" }),
-    onSettled: () => setProcessingId(null),
+    // 2026-09-16: setQueryData로 즉시 반영해도, 백그라운드 refetchInterval(30초)이나 창
+    // 포커스 재조회가 이 뮤테이션과 타이밍이 겹치면 방금 반영한 값을 오래된 응답이 다시
+    // 덮어써버리는 경합이 있었다(사용자 리포트 — 재승인 요청 눌러도 "취소됨"이 그대로 남고
+    // F5를 눌러야만 반영됨). 상태 변경이 끝나면 항상 서버에서 한 번 더 확실하게 다시
+    // 가져오게 해서, 어떤 타이밍이든 최신값으로 정리되게 한다.
+    onSettled: () => {
+      setProcessingId(null);
+      queryClient.invalidateQueries({ queryKey: ["tasks"] });
+    },
   });
   const handleStatusChange = (taskId: number, newStatus: string) =>
     statusMutation.mutate({ taskId, newStatus });
