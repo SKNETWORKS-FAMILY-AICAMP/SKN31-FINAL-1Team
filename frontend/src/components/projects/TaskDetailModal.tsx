@@ -37,6 +37,7 @@ export function TaskDetailModal({
   const [dueDate, setDueDate] = useState(toDateInput(task.end_date));
 
   const [isLoading, setIsLoading] = useState(false);
+  const [isReopening, setIsReopening] = useState(false);
   const [errorToast, setErrorToast] = useState<string | null>(null);
   const overdue = isTaskOverdue({ wbsEnd: task.end_date, status: task.status_code });
   // PM 개별 승인 전(배분승인대기)에는 아직 실제로 착수한 업무가 아니므로 진행도를 매길 수 없다.
@@ -66,6 +67,26 @@ export function TaskDetailModal({
       setErrorToast(err.message || "저장 중 오류가 발생했습니다.");
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  // 2026-09-16: CANCELLED(반려)된 업무를 되돌릴 화면 경로가 없었다(사용자 리포트) —
+  // 목록 화면의 "재승인 요청" 버튼과 같은 동작. 여기는 상세 모달이라 전용 상태변경
+  // 엔드포인트(/status/)를 직접 호출한다(handleSave가 쓰는 일반 PATCH는 status_code를
+  // 안 보낸다). 배분승인대기로 되돌려 PM이 승인/반려를 다시 판단하게 한다.
+  const handleReopen = async () => {
+    setIsReopening(true);
+    try {
+      const updated = await apiFetch<any>(`/api/tasks/assignments/${task.id}/status/`, {
+        method: "PATCH",
+        body: JSON.stringify({ status_code: "PENDING_APPROVAL" }),
+      });
+      onUpdated?.(updated.task ?? updated);
+      onClose();
+    } catch (err: any) {
+      setErrorToast(err.message || "재승인 요청 중 오류가 발생했습니다.");
+    } finally {
+      setIsReopening(false);
     }
   };
 
@@ -170,9 +191,22 @@ export function TaskDetailModal({
             </div>
           </div>
 
-          {task.status_code === "CANCELLED" && task.reject_reason && (
-            <div className="p-3 rounded-lg bg-red-500/10 text-red-400 text-sm">
-              반려 사유: {task.reject_reason}
+          {task.status_code === "CANCELLED" && (
+            <div className="p-3 rounded-lg bg-red-500/10 text-red-400 text-sm space-y-2">
+              {task.reject_reason && <div>반려 사유: {task.reject_reason}</div>}
+              {/* 2026-09-16: "재승인 요청"은 PM이 스스로에게 요청하는 게 아니라, 반려당한
+                  담당자 본인이 "다시 검토해주세요"라고 PM에게 요청하는 액션이다 —
+                  담당자 본인 전용으로 둔다(PM은 여기선 안 보임, 반려는 여전히 PM 권한). */}
+              {String(task.assigned_user) === String(user?.id) && (
+                <button
+                  onClick={handleReopen}
+                  disabled={isReopening}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-sky-500/10 text-sky-500 hover:bg-sky-500/20 transition-colors disabled:opacity-50"
+                >
+                  {isReopening ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null}
+                  재승인 요청 (배분승인대기로 되돌리기)
+                </button>
+              )}
             </div>
           )}
 

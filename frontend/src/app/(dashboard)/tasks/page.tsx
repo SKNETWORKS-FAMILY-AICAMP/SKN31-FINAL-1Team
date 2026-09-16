@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo } from "react";
 import { useAuth } from "@/lib/auth";
-import { FolderKanban, Search, LayoutGrid, Loader2, ChevronLeft, ChevronRight, ClipboardList, AlertTriangle, CheckCircle2, XCircle, X, MessageSquare } from "lucide-react";
+import { FolderKanban, Search, LayoutGrid, Loader2, ChevronLeft, ChevronRight, ClipboardList, AlertTriangle, CheckCircle2, XCircle, X, MessageSquare, RotateCcw } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useSearchParams } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -140,6 +140,11 @@ export default function TasksPage() {
         setRejectTarget(null);
         setRejectReason("");
       }
+      // 2026-09-16: 반려(CANCELLED)된 업무를 되돌리는 화면 경로가 없었다(사용자 리포트) —
+      // 반려 사유를 clear하는 것도 백엔드(TaskStatusUpdateView)가 new_status != old_status일 때
+      // 자동으로 해준다(reject_reason=None), 여기선 배분승인대기로 되돌려 PM이 다시 검토하게만
+      // 하면 된다. 재배정(담당자 변경)이 필요하면 상세 모달에서 별도로 하면 됨.
+      if (newStatus === "PENDING_APPROVAL") setToast({ message: "재승인 요청했습니다. 배분승인대기 상태로 되돌렸습니다.", variant: "success" });
     },
     onError: () => setToast({ message: "상태 변경에 실패했습니다.", variant: "error" }),
     onSettled: () => setProcessingId(null),
@@ -151,6 +156,9 @@ export default function TasksPage() {
     if (!rejectTarget || !rejectReason.trim()) return;
     statusMutation.mutate({ taskId: rejectTarget.id, newStatus: "CANCELLED", rejectReason: rejectReason.trim() });
   };
+  // 반려(CANCELLED)된 업무를 PM이 다시 검토 대상으로 되돌린다 — 승인/반려 이전 상태인
+  // PENDING_APPROVAL로 되돌려서 위 승인/반려 버튼이 다시 뜨게 한다(같은 화면, 같은 흐름 재사용).
+  const handleReopen = (taskId: number) => statusMutation.mutate({ taskId, newStatus: "PENDING_APPROVAL" });
 
   const filteredTasks = useMemo(() => {
     let filtered = tasks;
@@ -322,7 +330,14 @@ export default function TasksPage() {
                                 여기서도 발견/승인이 가능해야 한다(팀 결정 — 칸반/승인함만으론 발견성이
                                 떨어진다는 지적). PM에게는 승인/반려 버튼을, 일반유저에게는 대기 배지를
                                 보여준다. CANCELLED(반려/취소)는 반려 사유 입력으로만 바뀌어야 하므로
-                                드롭다운으로는 못 바꾸게 막는다. */}
+                                드롭다운으로는 못 바꾸게 막는다.
+                                2026-09-16: CANCELLED로 한 번 반려되면 되돌릴 화면 경로가 아예
+                                없었다(사용자 리포트 — 담당자 계정으로 보니 "취소됨"만 뜨고 재승인
+                                받을 방법이 없음). 반려도 PM 권한이니(TaskStatusUpdateView 참고),
+                                되돌리는 것도 PM 권한으로 뒀었는데, "재승인 요청"은 PM이 스스로에게
+                                다시 봐달라고 요청하는 게 아니라 반려당한 담당자 본인이 "다시
+                                검토해주세요"라고 요청하는 액션이라는 지적으로 담당자 본인 전용으로
+                                수정했다 — PM은 배지만 본다(반려는 여전히 PM 권한 그대로). */}
                             {task.status_code === "PENDING_APPROVAL" ? (
                               isPM ? (
                                 <div className="flex items-center gap-1.5">
@@ -347,9 +362,25 @@ export default function TasksPage() {
                                 </span>
                               )
                             ) : task.status_code === "CANCELLED" ? (
-                              <span className={cn("inline-block text-xs font-bold px-2.5 py-1.5 rounded-lg", statusInfo.bg, statusInfo.color)}>
-                                {statusLabel}
-                              </span>
+                              String(task.assigned_user) === String(user?.id) ? (
+                                <div className="flex items-center gap-1.5">
+                                  <span className={cn("inline-block text-xs font-bold px-2.5 py-1.5 rounded-lg", statusInfo.bg, statusInfo.color)}>
+                                    {statusLabel}
+                                  </span>
+                                  <button
+                                    onClick={() => handleReopen(task.id)}
+                                    disabled={processingId === task.id}
+                                    title="배분승인대기 상태로 되돌려 PM에게 다시 검토를 요청합니다"
+                                    className="inline-flex items-center gap-1 px-2 py-1.5 rounded-lg text-xs font-bold bg-sky-500/10 text-sky-500 hover:bg-sky-500/20 transition-colors disabled:opacity-50"
+                                  >
+                                    <RotateCcw className="w-3.5 h-3.5" /> 재승인 요청
+                                  </button>
+                                </div>
+                              ) : (
+                                <span className={cn("inline-block text-xs font-bold px-2.5 py-1.5 rounded-lg", statusInfo.bg, statusInfo.color)}>
+                                  {statusLabel}
+                                </span>
+                              )
                             ) : (
                               <select
                                 value={task.status_code}
