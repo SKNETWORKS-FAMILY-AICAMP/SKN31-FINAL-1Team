@@ -86,6 +86,7 @@ from shared.retry_config import (
 )
 
 from .chunking import chunk_meeting_text
+from .coverage_check import check_coverage
 from .eligibility import (
     MeetingEligibilityError,
     assess_meeting,
@@ -508,6 +509,29 @@ def run(
     # ── [3] 교차 규칙 검증 ───────────────────────────────────
     _stage("정합성 검사 중…")
     validation_notes = cross_rules.check(data)
+
+    # ── [4] 커버리지 보완 진단 — 회의록 길이·청크 개수와 무관하게 1회 ──
+    # 추출 결과가 실행마다 달라지는 문제(recall variance)를 프롬프트로는
+    # 완전히 없앨 수 없어, 놓친 게 있을 수 있다는 신호만 추가로 남긴다.
+    # 실패해도 이 결과에 영향을 주지 않는다(coverage_check.check_coverage
+    # 참고).
+    _stage("커버리지 확인 중…")
+    coverage_gaps = check_coverage(
+        client=get_client(MODEL),
+        relevant_text=relevant_text,
+        data=data,
+        model=MODEL,
+        max_retries=MAX_RETRIES,
+        temperature=TEMPERATURE,
+        max_tokens=MAX_TOKENS,
+    )
+    validation_notes = validation_notes + [
+        (
+            "커버리지 확인 필요 — 다음 원문 내용이 추출 결과에 "
+            f"반영되지 않았을 수 있습니다: {gap}"
+        )
+        for gap in coverage_gaps
+    ]
     data["validation_notes"] = validation_notes
 
     logger.info(
