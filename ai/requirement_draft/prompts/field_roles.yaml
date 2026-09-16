@@ -1,0 +1,58 @@
+# ============================================================================
+# field_roles.yaml
+# [기획서] 각 필드가 FR/NFR 생성에서 어떤 역할을 하는지 정의 — A2-1
+# ============================================================================
+#
+# [role 값의 의미]
+# FR_PRIMARY            : 기능요구사항의 주된 근거. 이 필드에서 FR을 직접 도출한다.
+# NFR_PRIMARY           : 비기능요구사항의 주된 근거.
+# FR_REFERENCE_ONLY     : FR을 구체적으로 서술하는 데 참고만 하고, 그 자체로
+#                         새 FR을 만들어내는 근거로는 쓰지 않는다.
+# NARRATIVE_CONTEXT_ONLY: 핵심 목표/세부 목표 서술 참고용. 확정 요구로 바꾸지
+#                         않고, 미정 사항은 note에 보존한다.
+# TAG_GATED             : 태그(예: [기능]/[기술]/[범위])에 따라 근거 사용 여부가
+#                         갈린다. tag_rules를 함께 확인한다.
+#
+# 이 표는 role 값을 바꾸는 것만으로 필드별 취급 방침을 조정할 수 있게 하기
+# 위한 것이다(2026-09-15 구조화 — 예: user_scenarios를 FR_REFERENCE_ONLY에서
+# 다른 role로 바꾸는 식의 후속 정책 변경을 프롬프트 프로즈 재작성 없이
+# 반영하기 위함). "requirements 배열 하나만 보고 나머지 필드를 무시하지
+# 마라"는 원칙은 constraints에 별도로 명시되어 있으며 이 표와 함께 적용된다.
+# ============================================================================
+
+fields:
+  - field: "key_features"
+    role: "FR_PRIMARY"
+
+  - field: "target_users"
+    role: "FR_PRIMARY"
+
+  - field: "user_scenarios"
+    role: "FR_REFERENCE_ONLY"
+    note: "FR을 구체적으로 서술하는 데 참고. 그 자체로 새 FR을 만들지 않는다."
+
+  - field: "tech_stack"
+    role: "NFR_PRIMARY"
+
+  - field: "background"
+    role: "NFR_PRIMARY"
+
+  - field: "problem_definition"
+    role: "NARRATIVE_CONTEXT_ONLY"
+    note: "핵심 목표 서술 참고. 확정 요구의 근거로 직접 쓰지 않는다."
+
+  - field: "goal"
+    role: "NARRATIVE_CONTEXT_ONLY"
+    note: "세부 목표 및 문제 정의 참고. goal의 추가 확인 사항을 확정 요구로
+      바꾸지 말고 해당 항목 note에 미정으로 보존한다."
+
+  - field: "final_decisions"
+    role: "TAG_GATED"
+    tag_rules:
+      - tag: "[기능]"
+        usable_as: "FR 근거"
+      - tag: "[기술]"
+        usable_as: "NFR 근거"
+      - tag: "[범위]"
+        usable_as: "금지"
+        detail: "제외/이관/다음 단계로 미뤄진 항목은 절대 요구사항으로 만들지 않는다"

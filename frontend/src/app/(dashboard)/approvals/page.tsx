@@ -60,7 +60,7 @@ export default function ApprovalsPage() {
     try {
       await apiFetch(`/api/tasks/assignments/${taskId}/status/`, {
         method: "PATCH",
-        body: JSON.stringify({ status_code: "APPROVED" }),
+        body: JSON.stringify({ status_code: "TASK_APPROVED" }),
       });
       setTasks(prev => prev.filter(t => t.id !== taskId));
     } catch (e: any) {
@@ -76,7 +76,7 @@ export default function ApprovalsPage() {
     try {
       await apiFetch(`/api/tasks/assignments/${rejectModal.id}/status/`, {
         method: "PATCH",
-        body: JSON.stringify({ status_code: "REJECTED", reject_reason: rejectReason }),
+        body: JSON.stringify({ status_code: "CANCELLED", reject_reason: rejectReason }),
       });
       setTasks(prev => prev.filter(t => t.id !== rejectModal.id));
       setRejectModal(null);
@@ -107,7 +107,7 @@ export default function ApprovalsPage() {
         </h1>
         <p className="text-muted-foreground mt-1">
           {isPM
-            ? "팀원에게 배정하려는 업무를 승인하거나 반려하세요. (업무관리 칸반의 배분승인대기 칼럼과 동일한 요청 목록입니다)"
+            ? "팀원에게 배정하려는 업무를 승인하거나 반려하세요. (업무관리 칸반의 \"승인 대기\" 칼럼과 동일한 요청 목록입니다)"
             : "내가 요청한 업무 배정의 처리 상태를 확인하세요."}
         </p>
       </div>

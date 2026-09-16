@@ -15,12 +15,15 @@ import { apiFetch } from "@/lib/api/client";
 // 2026-09-01: Django TaskAssignment의 실제 상태값에 맞게 재배선했다. heyzzabi2 시절엔
 // 대기(미배정)->배분승인대기->진행중->완료 4단계였는데, Django에서는 업무가 자동배정
 // (auto-assign) 시점에 이미 담당자가 정해진 채로 "승인대기"에서 시작한다 — 미배정
-// 대기(BACKLOG) 개념 자체가 없다. 대신 반려(REJECTED)가 별도 종결 상태로 존재한다.
+// 대기(BACKLOG) 개념 자체가 없다. 대신 반려가 별도 종결 상태로 존재한다.
+// 2026-09-15: id는 실제 common_code.code_id(TASK_STATUS)와 일치해야 한다 — "COMPLETED"/
+// "REJECTED"는 한 번도 TASK_STATUS에 존재한 적 없는 값이라(REQSPEC_STATUS/PROJECT_STATUS가
+// 선점) 실제 값(DONE/CANCELLED)으로 맞춘다(backend/tasks/models.py TaskStatusCode 참고).
 const COLUMNS = [
   { id: "PENDING_APPROVAL", title: "승인 대기", color: "bg-orange-500/20" },
   { id: "IN_PROGRESS", title: "진행 중", color: "bg-primary/20" },
-  { id: "COMPLETED", title: "완료", color: "bg-emerald-500/20" },
-  { id: "REJECTED", title: "반려됨", color: "bg-red-500/20" },
+  { id: "DONE", title: "완료", color: "bg-emerald-500/20" },
+  { id: "CANCELLED", title: "반려됨", color: "bg-red-500/20" },
 ];
 
 function AssigneeBadge({ task, members, onAssign, readOnly }: { task: any; members: any[]; onAssign: (taskId: number, userId: string) => void; readOnly?: boolean }) {
@@ -75,7 +78,7 @@ function SortableTask({ task, members, onAssign, onClick, isPM, onApprove, onRej
   // 칸반 카드를 드래그해 상태를 바꾸는 것도 "내 업무" 아니면 PM만 — 예전엔 아무 카드나 아무나 옮길 수 있었다.
   const canManage = isPM || String(task.assigned_user) === String(currentUserId);
   // 승인대기/반려 상태는 드래그로 옮길 수 없다 — 승인/반려 버튼으로만 상태가 바뀐다.
-  const draggable = canManage && task.status_code !== "PENDING_APPROVAL" && task.status_code !== "REJECTED";
+  const draggable = canManage && task.status_code !== "PENDING_APPROVAL" && task.status_code !== "CANCELLED";
   const {
     attributes,
     listeners,
@@ -121,7 +124,7 @@ function SortableTask({ task, members, onAssign, onClick, isPM, onApprove, onRej
       <h4 className="font-medium text-sm leading-tight mb-1">{task.title}</h4>
       <p className="text-[11px] text-muted-foreground mb-3">{task.req_code} {task.req_name}</p>
 
-      {task.status_code === "REJECTED" && task.reject_reason && (
+      {task.status_code === "CANCELLED" && task.reject_reason && (
         <p className="text-[11px] text-red-400 mb-3 line-clamp-2">반려됨: {task.reject_reason}</p>
       )}
 
@@ -170,7 +173,11 @@ function KanbanColumn({ column, tasks, members, onAssign, onCardClick, isPM, onA
         </div>
       </div>
 
-      <div ref={setNodeRef} className="flex-1 p-3 space-y-3 min-h-[200px]">
+      {/* 2026-09-15: 위 주석(칸마다 스크롤바 vs 페이지 전체 스크롤)의 절충안 — 카드가
+          6장 정도(약 820px)까지는 그대로 다 보이고, 그보다 많아지면 이 컬럼만
+          스크롤되게 한다(사용자 요청). max-h를 넘기기 전까지는 기존과 동일하게
+          내용 높이만큼만 차지해서, 카드가 적은 칸이 불필요하게 커지지 않는다. */}
+      <div ref={setNodeRef} className="flex-1 p-3 space-y-3 min-h-[200px] max-h-[820px] overflow-y-auto">
         <SortableContext items={tasks.map((t: any) => t.id)} strategy={verticalListSortingStrategy}>
           {tasks.map((task: any) => (
             <SortableTask
@@ -266,7 +273,7 @@ export function KanbanBoard({ initialTasks, members = [], onTaskChange }: { proj
     // useSortable의 disabled로 이미 막지만, 한 번 더 확인 — 남의 업무는 PM이 아니면 옮길 수 없다
     if (!isPM && String(draggedTask.assigned_user) !== String(user?.id)) return;
     // 승인대기/반려로는 드래그로 못 들어간다 — 승인/반려 버튼 또는 서버 로직으로만 전이된다
-    if (overColumnId === "PENDING_APPROVAL" || overColumnId === "REJECTED") return;
+    if (overColumnId === "PENDING_APPROVAL" || overColumnId === "CANCELLED") return;
 
     commitStatusChange(activeId, overColumnId);
   };
@@ -276,10 +283,10 @@ export function KanbanBoard({ initialTasks, members = [], onTaskChange }: { proj
     try {
       await apiFetch(`/api/tasks/assignments/${task.id}/status/`, {
         method: "PATCH",
-        body: JSON.stringify({ status_code: "APPROVED" }),
+        body: JSON.stringify({ status_code: "TASK_APPROVED" }),
       });
-      setTasks((prev) => prev.map((t) => t.id === task.id ? { ...t, status_code: "APPROVED", reject_reason: null } : t));
-      onTaskChange?.(task.id, { status_code: "APPROVED", reject_reason: null });
+      setTasks((prev) => prev.map((t) => t.id === task.id ? { ...t, status_code: "TASK_APPROVED", reject_reason: null } : t));
+      onTaskChange?.(task.id, { status_code: "TASK_APPROVED", reject_reason: null });
       setToastMessage("업무가 승인되었습니다");
     } catch (e: any) {
       setErrorToast(e.message || "승인에 실패했습니다.");
@@ -294,10 +301,10 @@ export function KanbanBoard({ initialTasks, members = [], onTaskChange }: { proj
     try {
       await apiFetch(`/api/tasks/assignments/${rejectTarget.id}/status/`, {
         method: "PATCH",
-        body: JSON.stringify({ status_code: "REJECTED", reject_reason: rejectReason }),
+        body: JSON.stringify({ status_code: "CANCELLED", reject_reason: rejectReason }),
       });
-      setTasks((prev) => prev.map((t) => t.id === rejectTarget.id ? { ...t, status_code: "REJECTED", reject_reason: rejectReason } : t));
-      onTaskChange?.(rejectTarget.id, { status_code: "REJECTED", reject_reason: rejectReason });
+      setTasks((prev) => prev.map((t) => t.id === rejectTarget.id ? { ...t, status_code: "CANCELLED", reject_reason: rejectReason } : t));
+      onTaskChange?.(rejectTarget.id, { status_code: "CANCELLED", reject_reason: rejectReason });
       setRejectTarget(null);
       setRejectReason("");
       setToastMessage("업무가 반려되었습니다");
@@ -311,11 +318,11 @@ export function KanbanBoard({ initialTasks, members = [], onTaskChange }: { proj
   // 부모가 새 initialTasks를 내려주면(다른 화면에서 갱신된 목록을 다시 조회) 내부 상태도 맞춘다
   useEffect(() => { setTasks(initialTasks) }, [initialTasks]);
 
-  // 승인됨(APPROVED)은 화면에 별도 컬럼을 안 두고 "진행 중" 칸에 같이 보여준다 — 승인만 되고
-  // 아직 진행 상태로 안 옮겨진 업무가 승인대기 칸에도 진행 칸에도 안 보여 사라진 것처럼 보이는
-  // 문제를 피하기 위함(담당자가 드래그로 직접 진행 중으로 옮기기 전까지의 과도 상태).
+  // 승인됨(TASK_APPROVED)은 화면에 별도 컬럼을 안 두고 "진행 중" 칸에 같이 보여준다 — 승인만
+  // 되고 아직 진행 상태로 안 옮겨진 업무가 승인대기 칸에도 진행 칸에도 안 보여 사라진 것처럼
+  // 보이는 문제를 피하기 위함(담당자가 드래그로 직접 진행 중으로 옮기기 전까지의 과도 상태).
   const columnTasks = (columnId: string) =>
-    tasks.filter((t) => columnId === "IN_PROGRESS" ? (t.status_code === "IN_PROGRESS" || t.status_code === "APPROVED") : t.status_code === columnId);
+    tasks.filter((t) => columnId === "IN_PROGRESS" ? (t.status_code === "IN_PROGRESS" || t.status_code === "TASK_APPROVED") : t.status_code === columnId);
 
   return (
     <>
@@ -323,9 +330,10 @@ export function KanbanBoard({ initialTasks, members = [], onTaskChange }: { proj
       <Toast message={errorToast} variant="error" onDismiss={() => setErrorToast(null)} />
       <DndContext sensors={sensors} collisionDetection={closestCorners} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
         {/* 컬럼 4개가 가로 스크롤 없이 화면 폭에 맞춰 균등하게 나뉘도록 grid로 배치 — 완료 컬럼까지 한 화면에 다 보이게.
-            높이를 여기서 가두지 않는다 — 예전엔 부모가 h-[70vh]로 고정하고 각 컬럼이 그 안에서 따로
-            스크롤됐는데(칸마다 스크롤바), 그러면 카드가 많은 칸은 잘려 보이고 스크롤도 4번 따로 해야 했다.
-            내용 높이만큼 자연스럽게 늘어나게 하고, 스크롤은 페이지 전체(오른쪽 하나)에 맡긴다. */}
+            여기서 전체 높이를 가두진 않는다 — 카드 6장 정도까지는 컬럼이 내용 높이만큼 자연스럽게
+            늘어나고, 그보다 많아지면 KanbanColumn 안쪽(max-h-[820px] + overflow-y-auto)에서
+            그 컬럼만 스크롤된다(2026-09-15, 사용자 요청 — 첨부파일 등으로 카드가 6개 넘게
+            쌓이는 칸이 생기면서 페이지 전체 스크롤만으로는 다른 칸을 보기 번거로워짐). */}
         <div className="w-full pb-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 items-start">
             <SortableContext items={COLUMNS.map((c) => c.id)}>

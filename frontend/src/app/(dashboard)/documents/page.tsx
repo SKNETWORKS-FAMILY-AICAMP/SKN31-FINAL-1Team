@@ -17,6 +17,12 @@ import { exportReqSpecExcel } from "@/lib/exportReqSpecExcel";
 import { exportReqSpecPptx } from "@/lib/exportReqSpecPptx";
 import type { ProposalDoc, ReqSpecDoc } from "@/lib/documentTemplates";
 import { Toast } from "@/components/ui/Toast";
+import { AgGridReact } from "ag-grid-react";
+import { AllCommunityModule, ModuleRegistry, themeQuartz, type ColDef, type ColGroupDef } from "ag-grid-community";
+
+// 2026-09-15: "업무 일정 보기" 간트를 실제 스프레드시트 UI(AG Grid)로 렌더링한다.
+// 모듈 등록은 파일당 한 번만 하면 되므로 컴포넌트 바깥(모듈 스코프)에서 실행한다.
+ModuleRegistry.registerModules([AllCommunityModule]);
 import {
   bareStatus, stepDone, stageOf,
   PIPELINE_STEPS, PIPELINE_TAB_LABEL,
@@ -527,7 +533,7 @@ export default function DocumentsPage() {
     const seq = ++specGenSeqRef.current;
     setBusy(`${note.id}-generate`);
     setSpecGenStartedAt(Date.now());
-    setSpecGenStage("회의록 분석 중…");
+    setSpecGenStage("회의록 구조화 중…");
     const stop = () => {
       setBusy(null);
       setSpecGenStartedAt(null);
@@ -702,10 +708,27 @@ export default function DocumentsPage() {
   };
 
   // ── 요구사항 정의서 관련 핸들러 ────────────────────────────────
+  // 2026-09-15: 요구사항정의서 생성/재생성도 업무 배분·기획서 생성과 같은
+  // 백그라운드 job + 폴링 구조로 바꿨다 — LLM 호출(1회 + baseline 누락 시
+  // 재시도)이라 동기로 두면 오래 걸릴 수 있다. "생성"(handleCreateReqDef)과
+  // "재생성"(handleExtractItems) 모두 같은 종류의 작업이라 진행 상태 state를
+  // 공유한다(동시에 둘 다 눌릴 일은 없음 — busy가 하나뿐이라 버튼 자체가 막힘).
+  const reqExtractSeqRef = useRef(0);
+  const [reqExtractStage, setReqExtractStage] = useState("");
+  const [reqExtractStartedAt, setReqExtractStartedAt] = useState<number | null>(null);
+
   const handleCreateReqDef = async (note: NoteDto, spec: SpecDto) => {
+    const seq = ++reqExtractSeqRef.current;
     setBusy(`${spec.id}-create-reqdef`);
+    setReqExtractStartedAt(Date.now());
+    setReqExtractStage("요구사항 초안 생성 중…");
+    const stop = () => {
+      setBusy(null);
+      setReqExtractStartedAt(null);
+      setReqExtractStage("");
+    };
     try {
-      await apiFetch("/api/requirements/", {
+      const started = await apiFetch<{ status: string; job_id?: string }>("/api/requirements/", {
         method: "POST",
         body: JSON.stringify({
           spec: spec.id,
@@ -714,29 +737,113 @@ export default function DocumentsPage() {
           version: "v1.0",
         }),
       });
-      const allReqDefs = await apiFetch<ReqDefDto[]>("/api/requirements/");
-      setReqDefs(allReqDefs);
-      setToastMessage("요구사항 정의서가 생성되었습니다");
+      if (started.status !== "started" || !started.job_id) {
+        setErrorToast("요구사항 정의서 생성에 실패했습니다.");
+        stop();
+        return;
+      }
+
+      const poll = async (): Promise<void> => {
+        if (reqExtractSeqRef.current !== seq) return;
+        let job: { status: string; stage?: string; message?: string };
+        try {
+          job = await apiFetch<{ status: string; stage?: string; message?: string }>(
+            `/api/requirements/extraction-jobs/${started.job_id}/`
+          );
+        } catch (err: any) {
+          if (reqExtractSeqRef.current !== seq) return;
+          setErrorToast(err.message || "요구사항 정의서 생성 진행 상태를 확인하지 못했습니다.");
+          stop();
+          return;
+        }
+        if (reqExtractSeqRef.current !== seq) return;
+
+        if (job.status === "PENDING" || job.status === "RUNNING") {
+          if (job.stage) setReqExtractStage(job.stage);
+          setTimeout(poll, 1500);
+          return;
+        }
+        if (job.status === "ERROR") {
+          setErrorToast(job.message || "요구사항 정의서 생성에 실패했습니다.");
+          stop();
+          return;
+        }
+
+        // SUCCESS
+        const allReqDefs = await apiFetch<ReqDefDto[]>("/api/requirements/");
+        setReqDefs(allReqDefs);
+        setToastMessage("요구사항 정의서가 생성되었습니다");
+        stop();
+      };
+      await poll();
     } catch (err: any) {
+      if (reqExtractSeqRef.current !== seq) return;
       setErrorToast(err.message || "요구사항 정의서 생성에 실패했습니다.");
-    } finally {
-      setBusy(null);
+      stop();
     }
   };
 
   const handleExtractItems = async (specId: number, reqDefId: number) => {
+    const seq = ++reqExtractSeqRef.current;
     setBusy(`reqdef-${reqDefId}-extract`);
-    try {
-      const updatedReqDef = await apiFetch<ReqDefDto>(`/api/requirements/${specId}/extract/`, {
-        method: "POST",
-      });
-      setReqDefs(prev => prev.map(r => r.id === reqDefId ? updatedReqDef : r));
-      const itemCount = updatedReqDef.items?.length || 0;
-      setToastMessage(`요구사항정의서가 재생성되었습니다 (${itemCount}건)`);
-    } catch (err: any) {
-      setErrorToast(err.message || "요구사항정의서 재생성에 실패했습니다.");
-    } finally {
+    setReqExtractStartedAt(Date.now());
+    setReqExtractStage("요구사항 초안 생성 중…");
+    const stop = () => {
       setBusy(null);
+      setReqExtractStartedAt(null);
+      setReqExtractStage("");
+    };
+    try {
+      const started = await apiFetch<{ status: string; job_id?: string }>(
+        `/api/requirements/${specId}/extract/`,
+        { method: "POST" }
+      );
+      if (started.status !== "started" || !started.job_id) {
+        setErrorToast("요구사항정의서 재생성에 실패했습니다.");
+        stop();
+        return;
+      }
+
+      const poll = async (): Promise<void> => {
+        if (reqExtractSeqRef.current !== seq) return;
+        let job: { status: string; stage?: string; result?: ReqDefDto; message?: string };
+        try {
+          job = await apiFetch<{ status: string; stage?: string; result?: ReqDefDto; message?: string }>(
+            `/api/requirements/extraction-jobs/${started.job_id}/`
+          );
+        } catch (err: any) {
+          if (reqExtractSeqRef.current !== seq) return;
+          setErrorToast(err.message || "요구사항정의서 재생성 진행 상태를 확인하지 못했습니다.");
+          stop();
+          return;
+        }
+        if (reqExtractSeqRef.current !== seq) return;
+
+        if (job.status === "PENDING" || job.status === "RUNNING") {
+          if (job.stage) setReqExtractStage(job.stage);
+          setTimeout(poll, 1500);
+          return;
+        }
+        if (job.status === "ERROR") {
+          setErrorToast(job.message || "요구사항정의서 재생성에 실패했습니다.");
+          stop();
+          return;
+        }
+
+        // SUCCESS
+        const updatedReqDef = job.result;
+        if (updatedReqDef) {
+          setReqDefs(prev => prev.map(r => r.id === reqDefId ? updatedReqDef : r));
+          const itemCount = updatedReqDef.items?.length || 0;
+          setToastMessage(`요구사항정의서가 재생성되었습니다 (${itemCount}건)`);
+        }
+        stop();
+      };
+      await poll();
+    } catch (err: any) {
+      if (reqExtractSeqRef.current !== seq) return;
+      setErrorToast(err.message || "요구사항정의서 재생성에 실패했습니다.");
+      stop();
     }
   };
 
@@ -1273,6 +1380,8 @@ export default function DocumentsPage() {
               onReject={(spec) => setRejectTarget({ kind: "spec", specId: spec.id })}
               onCreateReqDef={(spec) => handleCreateReqDef(selectedNote, spec)}
               onExtractItems={handleExtractItems}
+              reqExtractStage={reqExtractStage}
+              reqExtractStartedAt={reqExtractStartedAt}
               onAddItem={handleAddItem}
               onUpdateItem={handleUpdateItem}
               onDeleteItem={handleDeleteItem}
@@ -1389,21 +1498,33 @@ const TASK_GEN_STAGES: { label: string; match: (s: string) => boolean }[] = [
       s.includes("담당자 배정") || s.startsWith("총 ") || s.includes("사유 작성") ||
       s.includes("배정 가능한 담당자가 없어"),
   },
+  // 2026-09-15: "계획 요약 작성 중…" 단계가 이 목록에 없어서, 해당 단계에 들어가면
+  // currentStageIndex가 매칭되는 단계를 못 찾고 0(업무 생성)으로 되돌아가 보이던
+  // 문제 수정 — 마지막 단계로 추가한다.
+  { label: "계획 요약", match: (s) => s.includes("계획 요약") },
 ];
 
 // 단계 라벨을 대략의 진행률(%)로도 매핑한다 — 정확한 값은 아니지만(파이프라인
 // 각 단계가 실제로 몇 %인지는 알 수 없음), 아래 "남은 시간"을 "지금까지 걸린
 // 시간 ÷ 진행률"로 역산하는 데 쓴다. "(3/8건)"처럼 실제 분모/분자가 찍히는
 // 단계는 그 비율을 그대로 반영한다.
-function taskGenStageProgressPercent(stage: string): number {
+function taskGenStageProgressPercent(stage: string, _elapsedSec: number): number {
+  // 2026-09-15: "담당자 배정 추천 중…"(이 단계 진입 시 맨 처음 뜨는 문구)이
+  // 아래 어느 조건에도 안 걸려서 항상 5%로 떨어지던 문제 수정 — 이 단계는
+  // 실제로 전체 파이프라인의 절반을 넘긴 지점(50%대)인데 5%로 되돌아가
+  // 보이면서 "남은 시간"도 같이 크게 튀었다. 또한 마지막 단계인 "계획 요약
+  // 작성 중…"도 매칭되는 게 없어 5%로 떨어졌던 것도 같이 고친다.
+  if (stage.includes("계획 요약")) return 97;
   const ratioMatch = stage.match(/\((\d+)\/(\d+)\D*\)/);
   if (ratioMatch) {
     const done = Number(ratioMatch[1]);
     const total = Number(ratioMatch[2]) || 1;
-    return Math.min(96, 65 + Math.round((done / total) * 30));
+    return Math.min(96, 60 + Math.round((done / total) * 35));
   }
   if (stage.includes("배정 가능한 담당자가 없어")) return 70;
   if (stage.startsWith("총 ") && stage.includes("배정")) return 60;
+  if (stage.includes("사유 작성")) return 62;
+  if (stage.includes("담당자 배정")) return 55;
   if (stage.includes("담당자 정보 분석")) return 50;
   if (stage.includes("업무 패키지 분할")) return 38;
   if (stage.includes("프로젝트 규모 판단")) return 25;
@@ -1412,17 +1533,42 @@ function taskGenStageProgressPercent(stage: string): number {
 }
 
 // 2026-09-15: "기획서 생성"(회의록 분석 → 기획서 초안 생성)도 업무 배분과 같은
-// 백그라운드 job + 폴링 구조로 바꿨다 — 다만 실제 LLM 호출은 2번뿐이라 단계도 2개.
-// 노드①(회의록 분석)이 실측 ~100초로 대부분의 시간을 차지해, 노드②로 넘어가기
-// 전까지는 %가 낮게 머물러 있는 게 정상이다.
+// 백그라운드 job + 폴링 구조로 바꿨다. 처음엔 "회의록 분석 중…" / "기획서 초안
+// 생성 중…" 2단계로만 뭉뚱그렸는데, 업무 배분만큼 세세하게 보여달라는 요청으로
+// 노드 내부 단계(ai/meeting_analysis/node.py, ai/plan_draft/agent.py)까지
+// on_stage로 보고하도록 넓혔다 — 실제 LLM 호출은 여전히 2번뿐이지만(노드①
+// 구조화, 노드② 초안작성) 그 사이 코드 단계(근거검증/정합성검사/목록조립/병합)도
+// 각자 라벨을 보고해 진행 중임을 더 자주 보여준다.
 const SPEC_GEN_STAGES: { label: string; match: (s: string) => boolean }[] = [
-  { label: "회의록 분석", match: (s) => s.includes("회의록 분석") },
-  { label: "기획서 초안 생성", match: (s) => s.includes("기획서 초안 생성") },
+  { label: "구조화", match: (s) => s.includes("구조화") },
+  { label: "근거 검증", match: (s) => s.includes("근거자료 검증") },
+  { label: "정합성 검사", match: (s) => s.includes("정합성 검사") },
+  { label: "초안 작성", match: (s) => s.includes("초안 작성") },
+  { label: "섹션 조립", match: (s) => s.includes("목록형 섹션 조립") },
+  { label: "병합", match: (s) => s.includes("섹션 병합") },
 ];
 
-function specGenStageProgressPercent(stage: string): number {
-  if (stage.includes("기획서 초안 생성")) return 70;
-  if (stage.includes("회의록 분석")) return 10;
+// 2026-09-15: 단계당 고정 %였던 이전 버전은 그 단계 안에서 시간이 아무리 지나도
+// %가 안 올라가서 "1분 넘게 지났는데 10%"처럼 보이고, 그 %로 역산하는 "남은
+// 시간"도 같이 터무니없이 커지는 문제가 있었다(사용자 보고, 실측: 경과 1:28인데
+// 남은 시간 13:12로 표시됨) — 느린 두 단계(구조화 실측 ~100초, 초안작성 추정
+// ~25초)는 경과 시간에 비례해 그 안에서도 %가 계속 올라가게 하고, 나머지
+// 코드뿐인 빠른 단계는 그냥 고정 % 하나씩만 준다(어차피 순식간에 지나간다).
+const SPEC_GEN_STAGE1_SEC = 100; // 구조화(LLM)
+const SPEC_GEN_STAGE2_SEC = 25; // 초안 작성(LLM)
+
+function specGenStageProgressPercent(stage: string, elapsedSec: number): number {
+  if (stage.includes("구조화")) {
+    return Math.min(68, 5 + Math.round((elapsedSec / SPEC_GEN_STAGE1_SEC) * 63));
+  }
+  if (stage.includes("근거자료 검증")) return 72;
+  if (stage.includes("정합성 검사")) return 76;
+  if (stage.includes("초안 작성")) {
+    const t = Math.max(0, elapsedSec - SPEC_GEN_STAGE1_SEC);
+    return Math.min(90, 78 + Math.round((t / SPEC_GEN_STAGE2_SEC) * 12));
+  }
+  if (stage.includes("목록형 섹션 조립")) return 92;
+  if (stage.includes("섹션 병합")) return 95;
   return 5;
 }
 
@@ -1500,15 +1646,16 @@ function StageTracker({ stages, current }: { stages: string[]; current: number }
 // 시간이 전체 진행률의 몇 %인지"로 총 예상시간을 역산해 남은 시간을 추정한다 —
 // 대략적인 값이라는 걸 명확히 하려고 "약"을 붙인다.
 function ProgressTimeline({
-  stages, stage, pct, startedAt,
+  stages, stage, pctFn, startedAt,
 }: {
   stages: { label: string; match: (s: string) => boolean }[];
   stage: string;
-  pct: number;
+  pctFn: (stage: string, elapsedSec: number) => number;
   startedAt: number | null;
 }) {
   const current = currentStageIndex(stages, stage);
   const elapsedSec = useElapsedSeconds(startedAt);
+  const pct = pctFn(stage, elapsedSec);
   const estimatedTotalSec = pct > 5 ? elapsedSec / (pct / 100) : null;
   const remainingSec = estimatedTotalSec != null ? Math.max(0, estimatedTotalSec - elapsedSec) : null;
 
@@ -1531,17 +1678,49 @@ function ProgressTimeline({
 }
 
 function TaskGenProgressBar({ stage, startedAt }: { stage: string; startedAt: number | null }) {
-  return <ProgressTimeline stages={TASK_GEN_STAGES} stage={stage} pct={taskGenStageProgressPercent(stage)} startedAt={startedAt} />;
+  return <ProgressTimeline stages={TASK_GEN_STAGES} stage={stage} pctFn={taskGenStageProgressPercent} startedAt={startedAt} />;
 }
 
 function SpecGenProgressBar({ stage, startedAt }: { stage: string; startedAt: number | null }) {
-  return <ProgressTimeline stages={SPEC_GEN_STAGES} stage={stage} pct={specGenStageProgressPercent(stage)} startedAt={startedAt} />;
+  return <ProgressTimeline stages={SPEC_GEN_STAGES} stage={stage} pctFn={specGenStageProgressPercent} startedAt={startedAt} />;
+}
+
+// 2026-09-15: 요구사항정의서 생성/재생성(ai/requirement_draft/agent.py)도 업무
+// 배분·기획서 생성과 같은 세세한 진행 표시를 추가한다 — LLM 호출은 1회가
+// 기본이고, baseline NFR 카테고리가 누락되면 최대 MAX_RETRIES회까지 추가로
+// 재시도한다(횟수가 매번 다를 수 있어 고정 단계 수로 못 박지 않는다).
+const REQ_EXTRACT_STAGES: { label: string; match: (s: string) => boolean }[] = [
+  { label: "초안 생성", match: (s) => s.includes("초안 생성") },
+  { label: "누락 보완", match: (s) => s.includes("누락 카테고리 보완") },
+  { label: "최종 검증", match: (s) => s.includes("최종 검증") },
+  { label: "저장", match: (s) => s.includes("저장") },
+];
+
+const REQ_EXTRACT_STAGE1_SEC = 40; // "초안 생성"(LLM) 추정 소요시간
+
+function reqExtractStageProgressPercent(stage: string, elapsedSec: number): number {
+  const ratioMatch = stage.match(/\((\d+)\/(\d+)\)/);
+  if (ratioMatch) {
+    const done = Number(ratioMatch[1]);
+    const total = Number(ratioMatch[2]) || 1;
+    return Math.min(90, 70 + Math.round((done / total) * 20));
+  }
+  if (stage.includes("최종 검증")) return 92;
+  if (stage.includes("저장")) return 96;
+  if (stage.includes("초안 생성")) {
+    return Math.min(65, 5 + Math.round((elapsedSec / REQ_EXTRACT_STAGE1_SEC) * 60));
+  }
+  return 5;
+}
+
+function ReqExtractProgressBar({ stage, startedAt }: { stage: string; startedAt: number | null }) {
+  return <ProgressTimeline stages={REQ_EXTRACT_STAGES} stage={stage} pctFn={reqExtractStageProgressPercent} startedAt={startedAt} />;
 }
 
 function NoteDetail({
   note, spec, reqDef, activeTab, isPM, currentUserId, busy,
   onGenerateSpec, specGenStartedAt, specGenStage, onSaveNoteContent, onSaveSpec, onSavePeriod, onSubmitReview, onApprove, onReject,
-  onCreateReqDef, onExtractItems, onAddItem, onUpdateItem, onDeleteItem, onReqDefStatusChange,
+  onCreateReqDef, onExtractItems, reqExtractStage, reqExtractStartedAt, onAddItem, onUpdateItem, onDeleteItem, onReqDefStatusChange,
   onGenerateTasks, taskAssignments, onRejectReqDef,
   taskDrafts, setTaskDrafts, scheduleSummary, packageSplits, planReview, planBriefing, generatingTasks, generatingStage, generatingStartedAt, confirmingTasks, onConfirmTasks, onCancelTaskDrafts,
   members, reassigningTaskId, onReassignTask,
@@ -1558,6 +1737,8 @@ function NoteDetail({
   onReject: (spec: SpecDto) => void;
   onCreateReqDef: (spec: SpecDto) => void;
   onExtractItems: (specId: number, reqDefId: number) => void;
+  reqExtractStage: string;
+  reqExtractStartedAt: number | null;
   onAddItem: (reqDefId: number, item: { req_code: string; req_name: string; description: string; order: number; priority_code: string | null }) => void;
   onUpdateItem: (reqDefId: number, itemId: number, patch: { req_name: string; description: string; priority_code?: string | null }) => void;
   onDeleteItem: (reqDefId: number, itemId: number) => void;
@@ -1931,6 +2112,8 @@ function NoteDetail({
             busy={busy}
             onCreate={() => onCreateReqDef(spec!)}
             onExtract={onExtractItems}
+            reqExtractStage={reqExtractStage}
+            reqExtractStartedAt={reqExtractStartedAt}
             onAddItem={onAddItem}
             onUpdateItem={onUpdateItem}
             onDeleteItem={onDeleteItem}
@@ -2320,7 +2503,7 @@ function TaskAssignmentList({
                         수정(이전엔 APPROVED 상태에서도 재배정 드롭박스를 열어뒀었다). 확정
                         전 상태(PENDING_APPROVAL — 자동배정 등 다른 경로로 만들어진 업무)만
                         드롭박스로 담당자를 바꿀 수 있고, 확정된 뒤엔 읽기 전용으로 보여준다. */}
-                    {isPM && t.status_info?.code_id !== "APPROVED" ? (
+                    {isPM && t.status_info?.code_id !== "TASK_APPROVED" ? (
                       <div className="flex items-center gap-1">
                         <select
                           value={pendingReassign[t.id] ?? t.assigned_user}
@@ -2389,19 +2572,17 @@ function TaskAssignmentList({
                     ) : "-"}
                   </td>
                   <td className="px-4 py-3">
-                    {/* 이 화면에서 확정된 업무는 APPROVED로 바로 시작한다(PM 본인이 확정하는
-                        액션이라 "확정 = 이미 승인됨" — 위 담당자 드롭박스 조건 주석 참고).
-                        PENDING_APPROVAL은 다른 배정 경로(자동배정 등)로 만들어진 업무에만
-                        남아있을 수 있어 그 경우에 대비해 문구만 유지한다. */}
+                    {/* 2026-09-16: 프론트가 "배분완료" 같은 문구를 따로 지어내면 실제 DB
+                        code_name("배분승인대기")과 어긋나는 사고가 났다(팀 지적) — 화면엔
+                        항상 서버가 준 code_name을 그대로 보여준다. 배분 확정 직후 상태는
+                        PENDING_APPROVAL("배분승인대기")이고, PM이 개별 승인하면(projects/[id]
+                        페이지, 칸반보드) TASK_APPROVED("승인됨")로 바뀐다. */}
                     <span className={cn(
                       "inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold",
-                      t.status_info?.code_id === "APPROVED" ? "bg-emerald-500/10 text-emerald-500" : "bg-orange-500/10 text-orange-500"
+                      (t.status_info?.code_id === "DONE" || t.status_info?.code_id === "TASK_APPROVED")
+                        ? "bg-emerald-500/10 text-emerald-500" : "bg-orange-500/10 text-orange-500"
                     )}>
-                      {t.status_info?.code_id === "PENDING_APPROVAL"
-                        ? "배분완료 · PM 승인 대기"
-                        : t.status_info?.code_id === "APPROVED"
-                        ? "배분 확정됨"
-                        : t.status_info?.code_name ?? "미지정"}
+                      {t.status_info?.code_name ?? "미지정"}
                     </span>
                   </td>
                 </tr>
@@ -2503,35 +2684,11 @@ function HeadcountSummary({ assigneeIds, members }: { assigneeIds: (number | nul
   );
 }
 
-// 담당자별로 업무 막대를 타임라인 위에 배치하는 가벼운 간트 차트(heyzzabi2 GanttChart를
-// 그대로 이식, 필드명만 이 파일의 GanttItem에 맞춤). 하루=한 칸인 날짜 그리드라 기간이
-// 짧아도(며칠) 눈금이 중복되지 않는다.
+// 2026-09-15: "업무 일정 보기"를 자유 위치 막대 대신 실제 스프레드시트 UI(AG Grid)로
+// 바꿨다 — 엑셀 다운로드(exportGanttExcel)와 같은 모양(담당자·날짜별 칸)을 화면에서도
+// 그대로 보이게 하자는 요청. 열은 작업명 | 담당자 | 날짜 1일당 1칸이고, 업무 하나당
+// 한 행(담당자 셀 병합은 하지 않음 — 같은 담당자라도 각 업무를 바로 구분할 수 있게).
 function GanttChart({ items }: { items: GanttItem[] }) {
-  // 2026-09-11: 접기/펼치기 토글은 버튼이 잘 안 보인다는 피드백으로 없앴다 — 항상
-  // 실제 날짜 간격 그대로(하루=52px) 그리고, 넘치는 부분은 가로 스크롤로 이동한다.
-  // 스크롤바 자체가 안 보인다는 지적도 있었는데, Windows/Chrome은 기본적으로 마우스를
-  // 올려야만 스크롤바가 나타나는 오버레이 방식이라 "스크롤이 안 된다"는 오해를 사기
-  // 쉽다(요구사항정의서 미리보기 박스에서 같은 이유로 .doc-scroll을 쓴 전례 참고,
-  // globals.css) — 여기도 .doc-scroll을 적용해 스크롤바를 항상 보이게 한다.
-  // 2026-09-11: 마우스 휠을 무조건 가로 스크롤로 바꿨더니, 담당자가 많아 세로로
-  // 길어진 경우 휠을 굴려도 계속 옆으로만 이동하고 아래쪽 행으로는 못 내려가는
-  // 문제가 생겼다(팀원 리포트: "휠로 우측으로 가려니까 하단으로는 못 가는게
-  // 가장 큰 문제"). 이제는 "업무 일정 보기" 모달 안에서 보여주므로 가로
-  // 스크롤바가 맨 아래 멀리 있는 문제 자체가 없다 — 휠 가로채기는 없애고
-  // 일반 휠(세로)/Shift+휠(가로, 브라우저 표준 관례)만 지원한다.
-  const scrollRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    const el = scrollRef.current;
-    if (!el) return;
-    const onWheel = (e: WheelEvent) => {
-      if (!e.shiftKey) return; // Shift 없이는 페이지/모달의 세로 스크롤에 맡긴다
-      if (el.scrollWidth <= el.clientWidth) return;
-      e.preventDefault();
-      el.scrollLeft += e.deltaY;
-    };
-    el.addEventListener("wheel", onWheel, { passive: false });
-    return () => el.removeEventListener("wheel", onWheel);
-  }, []);
   if (items.length === 0) return null;
 
   const toLocalMidnight = (iso: string) => {
@@ -2548,18 +2705,19 @@ function GanttChart({ items }: { items: GanttItem[] }) {
   const dayCount = Math.max(1, Math.round((rangeEndMs - rangeStartMs) / DAY_MS) + 1);
   const days = Array.from({ length: dayCount }, (_, i) => new Date(rangeStartMs + i * DAY_MS));
   const dayIndexOf = (iso: string) => Math.min(dayCount - 1, Math.max(0, Math.round((toLocalMidnight(iso) - rangeStartMs) / DAY_MS)));
-  const fmtDate = (d: Date) => d.toLocaleDateString("ko-KR", { month: "short", day: "numeric" });
+  // 36px짜리 좁은 날짜 칸에 "9/15"를 다 넣으면 잘려 보인다 — 일(day) 숫자만
+  // 표시하고, 전체 날짜는 헤더 툴팁으로 확인하게 한다.
+  const fmtHeader = (d: Date) => `${d.getDate()}`;
+  const fmtFullDate = (d: Date) => `${d.getMonth() + 1}/${d.getDate()}`;
   const todayIndex = Math.round((toLocalMidnight(new Date().toISOString()) - rangeStartMs) / DAY_MS);
 
+  // 담당자별로 묶어 첫 시작일 순으로 정렬 — 셀 병합은 안 해도 같은 담당자 업무가
+  // 이어서 보이도록 순서만 유지한다(엑셀 다운로드와 동일한 정렬 규칙).
   const byAssignee = new Map<string, GanttItem[]>();
   items.forEach(i => {
     if (!byAssignee.has(i.assigneeName)) byAssignee.set(i.assigneeName, []);
     byAssignee.get(i.assigneeName)!.push(i);
   });
-
-  // 2026-09-11: 담당자별로 묶고, 그룹 안에서는 시작일 오름차순으로 정렬한다
-  // (입력 순서 = 배정 순서라 그대로 두면 날짜순이 아니었다). 그룹 자체도 그
-  // 담당자의 첫 시작일 기준으로 정렬해 위에서 아래로 시간 순으로 읽히게 한다.
   const groups = Array.from(byAssignee.entries())
     .map(([name, personItems]) => {
       const sorted = [...personItems].sort((a, b) => toLocalMidnight(a.start) - toLocalMidnight(b.start));
@@ -2567,82 +2725,105 @@ function GanttChart({ items }: { items: GanttItem[] }) {
     })
     .sort((a, b) => a.firstStart - b.firstStart);
 
-  const rows: { label: string | null; item: GanttItem }[] = [];
-  groups.forEach(({ name, items: personItems }) => {
-    personItems.forEach((item, idx) => rows.push({ label: idx === 0 ? name : null, item }));
+  type Row = { title: string; assigneeName: string; startIdx: number; endIdx: number };
+  const rowData: Row[] = groups.flatMap(({ items: personItems }) =>
+    personItems.map(item => ({
+      title: item.title,
+      assigneeName: item.assigneeName,
+      startIdx: dayIndexOf(item.start),
+      endIdx: dayIndexOf(item.end),
+    }))
+  );
+
+  const BAR_COLOR = "#4f46e5";
+
+  // 2026-09-15: 업무 배정 자체는(백엔드 scheduler.py) 평일만 계산하는데, 화면의
+  // 막대는 시작~종료일 사이 달력일을 통째로 칠해서 주말도 진행 중인 것처럼
+  // 보였다 — 주말은 막대 색을 칠하지 않고(실제로 일이 없는 날), 날짜 숫자만
+  // 빨간 글씨로 구분해서 보여준다.
+  const dayColumns: ColDef<Row>[] = days.map((d, i) => {
+    const isWeekend = d.getDay() === 0 || d.getDay() === 6;
+    return {
+      headerName: fmtHeader(d),
+      headerTooltip: fmtFullDate(d),
+      colId: `day_${i}`,
+      // 2026-09-15: 34px에 패딩만 줄여서는 "15"/"23" 같은 두 자리 날짜가 여전히
+      // 잘려 보였다(헤더 셀 안쪽에 정렬/리사이즈용 wrapper가 더 있어서 padding:0
+      // 만으로는 부족) — 칸을 40px로 넓히고 그 wrapper까지 함께 덮어써서
+      // 실제로 두 자리가 다 보이게 한다.
+      width: 40,
+      resizable: false,
+      sortable: false,
+      suppressMovable: true,
+      // 매달 1일은 경계를 굵게 표시해 월이 바뀌는 지점을 알 수 있게 한다.
+      headerClass: cn(
+        "ag-header-cell-day",
+        isWeekend && "ag-header-cell-weekend",
+        i === todayIndex && "ag-header-cell-today",
+        d.getDate() === 1 && "ag-header-cell-month-start"
+      ),
+      // 2026-09-15: 막대가 없는 빈 날짜 칸은 구분선이 없어 어느 날짜인지 눈으로
+      // 따라가기 어렵다는 요청 — 칸마다 세로선을 그어 색칠 여부와 무관하게
+      // 매 날짜 경계가 보이게 한다.
+      cellClass: "ag-cell-day-col",
+      cellStyle: (params: { data?: Row }) => {
+        if (isWeekend) return undefined; // 주말은 절대 막대 색을 칠하지 않는다.
+        return params.data && params.data.startIdx <= i && i <= params.data.endIdx
+          ? { backgroundColor: BAR_COLOR }
+          : undefined;
+      },
+    };
   });
 
-  const dayGridStyle = { gridTemplateColumns: `repeat(${dayCount}, minmax(52px, 1fr))` };
-  const dayColClass = (i: number) =>
-    cn(
-      "border-l border-dashed",
-      i === todayIndex ? "border-primary/40" : "border-border",
-      i === dayCount - 1 && "border-r border-border"
-    );
+  // 날짜 칸 위에 월(月) 그룹 헤더를 한 줄 더 얹는다 — 같은 달인 날짜끼리 하나의
+  // 그룹으로 묶어 AG Grid의 2단 헤더로 표시한다.
+  const dayGroups: ColGroupDef<Row>[] = [];
+  days.forEach((d, i) => {
+    const label = `${d.getMonth() + 1}월`;
+    const last = dayGroups[dayGroups.length - 1];
+    if (last && last.headerName === label) {
+      (last.children as ColDef<Row>[]).push(dayColumns[i]);
+    } else {
+      dayGroups.push({ headerName: label, children: [dayColumns[i]] });
+    }
+  });
 
-  // max-w-full + min-w-0: 부모가 flex/grid일 때 자식은 콘텐츠 실제 너비만큼 부모를
-  // 밀어 늘리려는 기본 성질이 있어서(min-width: auto), overflow-x-auto를 줘도 스크롤이
-  // 아니라 그냥 옆으로 계속 넓어지기만 하는 문제가 있었다(팀원 리포트: 펼쳤을 때 하단
-  // 스크롤이 안 생김). 이 두 클래스로 "부모 너비를 절대 넘지 않는다"를 강제해야
-  // overflow-x-auto가 실제로 스크롤로 동작한다.
-  // 담당자 이름 칸(96px)은 sticky left-0으로 고정한다 — 오른쪽으로 한참 스크롤해도
-  // "이게 누구 일정인지"를 계속 볼 수 있게(팀원 요청). bg-background로 배경을 채워야
-  // 뒤에서 막대가 스크롤돼 지나갈 때 이름 위로 겹쳐 보이지 않는다.
-  // 2026-09-11: 이름 칸에 경계선이 없어 스크롤 중 "붕 뜬 느낌"이라는 피드백 —
-  // border-r로 타임라인과의 경계를 분명히 하고, h-full + items-center로 세로
-  // 중앙 정렬해 옆 막대 행과 눈높이가 맞도록 고정한다.
-  const stickyNameCls = "sticky left-0 z-10 bg-background border-r border-border pr-2 h-full flex items-center";
+  const columnDefs: (ColDef<Row> | ColGroupDef<Row>)[] = [
+    { headerName: "작업명", field: "title", pinned: "left", width: 220, cellClass: "text-xs font-semibold" },
+    { headerName: "담당자", field: "assigneeName", pinned: "left", width: 110, cellClass: "text-xs" },
+    ...dayGroups,
+  ];
+
   return (
-    <div ref={scrollRef} className="doc-scroll border border-border rounded-xl p-4 overflow-x-auto max-w-full min-w-0">
-      <div style={{ minWidth: `${96 + dayCount * 52}px` }}>
-        <div className="grid gap-y-2" style={{ gridTemplateColumns: `96px 1fr` }}>
-          <div className={stickyNameCls} />
-          <div className="flex items-center gap-2 pb-1.5 w-full">
-            <span className="text-[11px] font-semibold text-muted-foreground shrink-0">{fmtDate(days[0])}</span>
-            <span className="flex-1 border-t border-dashed border-border relative h-0">
-              <span className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 bg-background px-2 text-[11px] font-bold text-muted-foreground">
-                ···
-              </span>
-            </span>
-            <span className="text-[11px] font-semibold text-muted-foreground shrink-0">{fmtDate(days[dayCount - 1])}</span>
-          </div>
-
-          {rows.map(({ label, item }) => {
-            const s = dayIndexOf(item.start);
-            const e = dayIndexOf(item.end);
-            const left = (s / dayCount) * 100;
-            const width = ((e - s + 1) / dayCount) * 100;
-            const narrow = width < 14;
-            return (
-              <Fragment key={item.id}>
-                <p className={cn("text-xs font-bold text-muted-foreground gap-1 truncate", stickyNameCls)}>
-                  {label && (<><UserIcon className="w-3 h-3 shrink-0" /><span className="truncate">{label}</span></>)}
-                </p>
-                <div className="relative h-6">
-                  <div className="absolute inset-0 grid" style={dayGridStyle}>
-                    {days.map((_, i) => <div key={i} className={dayColClass(i)} />)}
-                  </div>
-                  <div
-                    title={`${item.title} · ${fmtDate(days[s])} ~ ${fmtDate(days[e])}`}
-                    className="absolute top-0 h-full rounded-md flex items-center px-2 bg-primary/80 hover:bg-primary transition-colors overflow-hidden"
-                    style={{ left: `${left}%`, width: `${width}%` }}
-                  >
-                    {!narrow && <span className="text-[10px] font-semibold text-primary-foreground truncate">{item.title}</span>}
-                  </div>
-                  {narrow && (
-                    <span
-                      className="absolute top-1/2 -translate-y-1/2 text-[10px] font-medium text-foreground whitespace-nowrap pointer-events-none"
-                      style={{ left: `calc(${left}% + ${width}% + 6px)` }}
-                    >
-                      {item.title}
-                    </span>
-                  )}
-                </div>
-              </Fragment>
-            );
-          })}
-        </div>
-      </div>
+    // 2026-09-15: domLayout="autoHeight"로 두면 AG Grid가 세로 스크롤을 포기하고
+    // 행 수만큼 계속 늘어나 버려서(가로 스크롤만 되고 세로는 바깥 모달에 맡기는
+    // 구조), 행이 많으면 모달 밖으로 잘려 보이는 문제가 있었다 — h-full + 기본
+    // domLayout(normal)으로 바꿔 AG Grid 자신이 가로·세로 스크롤을 전부 갖게 한다.
+    <div className="h-full">
+      <style>{`
+        /* AG Grid 기본 헤더 셀(.ag-header-cell)이 좌우 16px씩 패딩을 갖고 있어서
+           40px짜리 좁은 날짜 칸은 실제 글자 공간이 8px밖에 안 남아 "15" 같은
+           두 자리가 통째로 잘렸다 — 진짜 원인은 이 바깥쪽 패딩이었다. */
+        .ag-header-cell-day { padding: 0 !important; }
+        .ag-header-cell-day .ag-header-cell-comp-wrapper,
+        .ag-header-cell-day .ag-header-cell-label { padding: 0 !important; margin: 0 !important; justify-content: center !important; }
+        .ag-header-cell-day .ag-header-cell-text { font-size: 11px; }
+        .ag-header-cell-today { background-color: #dce7ff !important; }
+        .ag-header-cell-month-start { border-left: 2px solid #94a3b8 !important; }
+        .ag-header-cell-weekend .ag-header-cell-text { color: #dc2626; }
+        /* 막대가 없는 빈 날짜 칸도 세로 구분선이 보이도록 — 색칠 여부와 무관하게
+           모든 날짜 칸에 적용된다. */
+        .ag-cell-day-col { border-right: 1px solid #e2e8f0; }
+      `}</style>
+      <AgGridReact<Row>
+        theme={themeQuartz}
+        columnDefs={columnDefs}
+        rowData={rowData}
+        headerHeight={28}
+        groupHeaderHeight={22}
+        rowHeight={28}
+        suppressCellFocus
+      />
     </div>
   );
 }
@@ -2678,7 +2859,9 @@ function GanttSection({ items, title }: { items: GanttItem[]; title: string }) {
       {open && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm" onClick={() => setOpen(false)}>
           <div
-            className="bg-background rounded-2xl shadow-2xl w-full max-w-6xl border border-border flex flex-col max-h-[90vh] overflow-hidden"
+            // 2026-09-15: "더 크게 해달라"는 요청 — max-w-6xl(72rem)에서
+            // 뷰포트의 96%까지 쓰도록 넓혔다. 세로도 90vh 그대로 최대한 확보.
+            className="bg-background rounded-2xl shadow-2xl w-full max-w-[96vw] h-[90vh] border border-border flex flex-col overflow-hidden"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex justify-between items-center p-5 border-b border-border shrink-0">
@@ -2703,11 +2886,12 @@ function GanttSection({ items, title }: { items: GanttItem[]; title: string }) {
                 </button>
               </div>
             </div>
-            {/* min-h-0: flex 자식은 기본 min-height:auto라 overflow-y-auto를 줘도
-                내용이 넘치는 만큼 부모(max-h-90vh)를 그냥 뚫고 나가 버린다(가로
-                스크롤에서 겪은 min-w-0와 같은 문제의 세로 버전) — 이거 없으면
-                담당자가 많을 때 아래쪽 행이 스크롤 없이 그냥 잘려서 안 보인다. */}
-            <div className="p-5 overflow-y-auto flex-1 min-h-0">
+            {/* min-h-0: flex 자식은 기본 min-height:auto라 h-full을 줘도 내용이
+                넘치는 만큼 부모를 그냥 뚫고 나가 버린다 — 이거 없으면 AG Grid가
+                자기 높이를 못 정하고 계속 늘어난다. 세로/가로 스크롤은 이제
+                AG Grid 자신이 담당하므로(GanttChart 참고) 여기서는 overflow를
+                주지 않는다(주면 스크롤이 두 군데로 겹쳐서 조작이 헷갈린다). */}
+            <div className="p-5 flex-1 min-h-0">
               <GanttChart items={items} />
             </div>
           </div>
@@ -2718,7 +2902,7 @@ function GanttSection({ items, title }: { items: GanttItem[]; title: string }) {
 }
 
 function RequirementSection({
-  spec, reqDef, isPM, canGenerate, busy, onCreate, onExtract, onAddItem, onUpdateItem, onDeleteItem, onStatusChange,
+  spec, reqDef, isPM, canGenerate, busy, onCreate, onExtract, reqExtractStage, reqExtractStartedAt, onAddItem, onUpdateItem, onDeleteItem, onStatusChange,
   onGenerateTasks, generatingTasks, generatingStage, generatingStartedAt, onRejectClick, tasksAlreadyAssigned,
 }: {
   spec: SpecDto; reqDef: ReqDefDto | null; isPM: boolean;
@@ -2729,6 +2913,8 @@ function RequirementSection({
   busy: string | null;
   onCreate: () => void;
   onExtract: (specId: number, reqDefId: number) => void;
+  reqExtractStage: string;
+  reqExtractStartedAt: number | null;
   onAddItem: (reqDefId: number, item: { req_code: string; req_name: string; description: string; order: number; priority_code: string | null }) => void;
   onUpdateItem: (reqDefId: number, itemId: number, patch: { req_name: string; description: string; priority_code?: string | null }) => void;
   onDeleteItem: (reqDefId: number, itemId: number) => void;
@@ -2815,14 +3001,17 @@ function RequirementSection({
       <div className="border-t border-border pt-5 mt-2">
         <h3 className="font-bold text-sm mb-2">요구사항 정의서</h3>
         {canGenerate && !isPM ? (
-          <button
-            onClick={onCreate}
-            disabled={creating}
-            className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-bold hover:bg-primary/90 disabled:opacity-50"
-          >
-            {creating ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileText className="w-4 h-4" />}
-            요구사항 정의서 생성
-          </button>
+          <div className="flex items-center gap-3">
+            {creating && <ReqExtractProgressBar stage={reqExtractStage} startedAt={reqExtractStartedAt} />}
+            <button
+              onClick={onCreate}
+              disabled={creating}
+              className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-bold hover:bg-primary/90 disabled:opacity-50 whitespace-nowrap"
+            >
+              {creating ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileText className="w-4 h-4" />}
+              {creating ? (reqExtractStage || "생성 중…") : "요구사항 정의서 생성"}
+            </button>
+          </div>
         ) : (
           <p className="text-sm text-muted-foreground">
             {!canGenerate ? "다른 사용자가 시작한 회의록입니다. 작성자 본인만 생성할 수 있습니다." : "아직 요구사항 정의서가 생성되지 않았습니다."}
@@ -3347,32 +3536,35 @@ function RequirementSection({
             "요구사항정의서 다운로드 버튼도 기획서와 통일"). 요구사항정의서는 표라서
             PDF 대신 엑셀(원본 양식과 같은 컬럼)로, PPTX는 표 슬라이드로 내보낸다.
             상태와 무관하게 항상 노출(초안 단계에서도 팀 공유용으로 뽑아볼 수 있어야 함). */}
-        <div className="flex justify-end items-center gap-3 pt-2">
-          <div className="flex items-center gap-2 mr-auto">
-            <button onClick={handleReqSpecExcel} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 text-xs font-semibold transition-colors">
+        <div className="flex flex-wrap justify-end items-center gap-3 pt-2">
+          <div className="flex items-center gap-2 mr-auto shrink-0">
+            <button onClick={handleReqSpecExcel} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 text-xs font-semibold transition-colors whitespace-nowrap">
               <FileSpreadsheet className="w-3.5 h-3.5" /> Excel 다운로드
             </button>
-            <button onClick={handleReqSpecPptx} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 text-xs font-semibold transition-colors">
+            <button onClick={handleReqSpecPptx} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 text-xs font-semibold transition-colors whitespace-nowrap">
               <Download className="w-3.5 h-3.5" /> PPTX 다운로드
             </button>
           </div>
           {!isPM && canGenerate && !tasksAlreadyAssigned && (reqStatus === "DRAFT" || reqStatus === "REJECTED" || reqStatus === null) && (
-            <button
-              onClick={() => {
-                if (busy !== null) return;
-                if (window.confirm("요구사항정의서를 다시 생성하면 현재 항목(직접 추가·수정한 내용 포함)이 AI 결과로 교체됩니다. 계속하시겠습니까?")) {
-                  setEditingItemId(null);
-                  setAddFormAt(null);
-                  setBottomAddOpen(false);
-                  onExtract(spec.id, reqDef.id);
-                }
-              }}
-              disabled={busy !== null}
-              className="flex items-center gap-2 px-3 py-2 rounded-lg bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 text-xs font-semibold transition-colors disabled:opacity-50"
-            >
-              {extracting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RotateCcw className="w-3.5 h-3.5" />}
-              {extracting ? "재생성 중…" : "재생성"}
-            </button>
+            <>
+              {extracting && <ReqExtractProgressBar stage={reqExtractStage} startedAt={reqExtractStartedAt} />}
+              <button
+                onClick={() => {
+                  if (busy !== null) return;
+                  if (window.confirm("요구사항정의서를 다시 생성하면 현재 항목(직접 추가·수정한 내용 포함)이 AI 결과로 교체됩니다. 계속하시겠습니까?")) {
+                    setEditingItemId(null);
+                    setAddFormAt(null);
+                    setBottomAddOpen(false);
+                    onExtract(spec.id, reqDef.id);
+                  }
+                }}
+                disabled={busy !== null}
+                className="flex items-center gap-2 px-3 py-2 rounded-lg bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 text-xs font-semibold transition-colors disabled:opacity-50 whitespace-nowrap"
+              >
+                {extracting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RotateCcw className="w-3.5 h-3.5" />}
+                {extracting ? (reqExtractStage || "재생성 중…") : "재생성"}
+              </button>
+            </>
           )}
           {/* 검토요청은 하단 우측 — 기획서 탭과 동일한 위치(승인/반려는 상단, 검토요청/
               직접수정 성격의 액션은 하단). reqStatus===null은 REQSPEC_STATUS 도입 전

@@ -328,12 +328,18 @@ def run(
     meeting_text: str,
     meeting_id: str,
     glossary_text: str = "",
+    on_stage=None,
 ) -> NodeResult:
     """
     회의록의 개발 관련성을 판별하고 관련 내용만 구조화합니다.
 
     glossary_text는 선택값입니다.
     용어집이 없거나 빈 문자열이어도 정상적으로 실행됩니다.
+
+    on_stage: 있으면 각 내부 단계 시작 시 사람이 읽을 라벨(str)로 호출합니다
+    (선택, develop 2026-09-15 — "회의록 분석 중…" 하나로 뭉뚱그려져 있어
+    실측 ~100초 동안 진행 상황이 안 바뀌어 보인다는 요청으로 내부 단계별로
+    세분화했습니다).
 
     관련성 판별(assess_meeting)은 MODEL(기본 gpt-4o)로 충분해 그대로 두고,
     실제 구조화 추출만 STRONG_MODEL(기본 gpt-5)을 씁니다 — 긴 회의록에서
@@ -344,12 +350,18 @@ def run(
     분할+병합으로 전환합니다(위 모듈 docstring, _extract_structured 참고).
     """
 
+    def _stage(label: str) -> None:
+        if on_stage:
+            on_stage(label)
+
     try:
         if not meeting_text.strip():
             raise MeetingEligibilityError(
                 "회의록 내용이 비어 있습니다. 회의 내용을 입력해 주세요.",
                 cause_code="MEETING_NEEDS_CLARIFICATION",
             )
+
+        _stage("회의록 구조화 중…")
 
         eligibility, relevant_text = assess_meeting(
             client=get_client(MODEL),
@@ -456,11 +468,15 @@ def run(
         **structured_fields,
     ).model_dump(mode="json")
 
+    # ── [2] Evidence 검증 — 표시만, 삭제 안 함 ───────────────
+    _stage("근거자료 검증 중…")
     evidence_report = verify_and_mark(
         data,
         relevant_text,
     )
 
+    # ── [3] 교차 규칙 검증 ───────────────────────────────────
+    _stage("정합성 검사 중…")
     validation_notes = cross_rules.check(data)
     data["validation_notes"] = validation_notes
 

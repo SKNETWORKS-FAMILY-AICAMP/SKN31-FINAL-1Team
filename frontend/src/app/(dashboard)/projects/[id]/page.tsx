@@ -27,13 +27,19 @@ type Task = {
 };
 type Project = { id: string; name: string; description: string | null };
 
-// Django TaskAssignment.Status 실제 값 — 예전 BACKLOG/DONE은 없고 REJECTED가 추가됐다.
+// 2026-09-15: id는 실제 common_code.code_id(TASK_STATUS 그룹)와 정확히 일치해야
+// PATCH 요청이 통과한다(backend/tasks/models.py TaskStatusCode 참고) — 예전엔
+// "APPROVED"/"COMPLETED"/"REJECTED"를 그대로 썼는데, 그 문자열들은 common_code
+// 테이블에서 전부 다른 그룹(REQSPEC_STATUS/PROJECT_STATUS)이 선점하고 있어
+// TASK_STATUS엔 존재한 적이 없었다 — 이 드롭다운으로 상태를 바꾸면 항상 400
+// (INVALID_STATUS)이 났을 것이다. 실제 TASK_STATUS 값(TASK_APPROVED/DONE/
+// CANCELLED)으로 맞춘다.
 const STATUSES = [
   { id: "PENDING_APPROVAL", label: "승인 대기", icon: ShieldAlert, color: "text-orange-400" },
-  { id: "APPROVED", label: "승인됨", icon: CheckCircle2, color: "text-sky-400" },
+  { id: "TASK_APPROVED", label: "승인됨", icon: CheckCircle2, color: "text-sky-400" },
   { id: "IN_PROGRESS", label: "진행 중", icon: PlayCircle, color: "text-amber-400" },
-  { id: "COMPLETED", label: "완료", icon: CheckCircle2, color: "text-emerald-400" },
-  { id: "REJECTED", label: "반려됨", icon: XCircle, color: "text-red-400" },
+  { id: "DONE", label: "완료", icon: CheckCircle2, color: "text-emerald-400" },
+  { id: "CANCELLED", label: "반려됨", icon: XCircle, color: "text-red-400" },
 ];
 
 export default function ProjectPage({ params }: { params: Promise<{ id: string }> }) {
@@ -178,7 +184,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
     (t.assigned_user_name || "").toLowerCase().includes(search.toLowerCase())
   );
 
-  const doneTasks = tasks.filter(t => t.status_code === "COMPLETED").length;
+  const doneTasks = tasks.filter(t => t.status_code === "DONE").length;
   const totalTasks = tasks.length;
   const progressPct = totalTasks > 0 ? Math.round((doneTasks / totalTasks) * 100) : 0;
 
@@ -281,14 +287,16 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                     const statusMeta = STATUSES.find(s => s.id === task.status_code);
                     const SIcon = statusMeta?.icon || Clock;
                     // 승인대기/반려는 칸반의 승인·반려 버튼으로만 바뀐다 — 여기 드롭다운으로는 못 바꾼다.
-                    const statusLocked = task.status_code === "PENDING_APPROVAL" || task.status_code === "REJECTED" || !canEditTask(task);
+                    const statusLocked = task.status_code === "PENDING_APPROVAL" || task.status_code === "CANCELLED" || !canEditTask(task);
                     return (
                       <tr key={task.id} className="hover:bg-black/5 dark:hover:bg-white/5 transition-colors group">
                         <td className="px-4 py-3 font-medium min-w-[200px]">{task.title}</td>
                         <td className="px-4 py-3">
                           {statusLocked ? (
                             <span className={cn("inline-flex items-center gap-1 text-xs font-semibold px-2 py-1 rounded border", statusMeta?.color, "border-orange-400/30")}>
-                              <SIcon className="w-3.5 h-3.5" /> {statusMeta?.label}
+                              {/* 2026-09-16: 화면 문구는 항상 서버 code_name 그대로 — STATUSES.label은
+                                  색상/아이콘 매칭용일 뿐 표시 문구의 소스가 아니다. */}
+                              <SIcon className="w-3.5 h-3.5" /> {task.status_info?.code_name ?? statusMeta?.label}
                             </span>
                           ) : (
                             <select
@@ -300,7 +308,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                                 statusMeta?.color
                               )}
                             >
-                              {STATUSES.filter(s => s.id === "APPROVED" || s.id === "IN_PROGRESS" || s.id === "COMPLETED").map(s => <option key={s.id} value={s.id} className="text-foreground">{s.label}</option>)}
+                              {STATUSES.filter(s => s.id === "TASK_APPROVED" || s.id === "IN_PROGRESS" || s.id === "DONE").map(s => <option key={s.id} value={s.id} className="text-foreground">{s.label}</option>)}
                             </select>
                           )}
                         </td>

@@ -97,11 +97,19 @@ def verify_source_consistency(doc: RequirementDocument) -> List[str]:
 
 
 @traceable(name="requirement_draft.generate_requirements")
-def generate_requirements(plan: PlanDocument, plan_id: str | None = None) -> RequirementDocumentOutput:
+def generate_requirements(plan: PlanDocument, plan_id: str | None = None, on_stage=None) -> RequirementDocumentOutput:
+    # on_stage: 있으면 각 내부 단계 시작 시 사람이 읽을 라벨(str)로 호출한다(선택,
+    # 2026-09-15 — 업무 배분/기획서 생성과 같은 진행 표시를 요구사항정의서
+    # 생성에도 추가하기 위해 도입).
+    def _stage(label: str) -> None:
+        if on_stage:
+            on_stage(label)
+
     messages = build_messages(plan)
     system_prompt = messages[0]["content"]
     user_message = messages[1]["content"]
 
+    _stage("요구사항 초안 생성 중…")
     doc: RequirementDocument = create_structured(
         system_prompt=system_prompt,
         user_message=user_message,
@@ -125,6 +133,7 @@ def generate_requirements(plan: PlanDocument, plan_id: str | None = None) -> Req
         logger.warning(
             "baseline 카테고리 누락(재시도 %d/%d): %s", attempt + 1, MAX_RETRIES, ", ".join(missing)
         )
+        _stage(f"누락 카테고리 보완 중… ({attempt + 1}/{MAX_RETRIES})")
         retry_message = (
             f"{user_message}\n\n"
             f"방금 생성한 결과에 다음 비기능요구사항 카테고리가 하나도 없다: {missing}. "
@@ -148,6 +157,7 @@ def generate_requirements(plan: PlanDocument, plan_id: str | None = None) -> Req
         # 그 중복을 걸러내기 전에 먼저 재번호를 매겨 통과하게 한다.
         all_items = dedupe_requirement_ids(all_items + list(retry_doc.requirements))
 
+    _stage("최종 검증 중…")
     remaining = verify_baseline_coverage(RequirementDocument(requirements=all_items))
     if remaining:
         logger.error("재시도 소진 — baseline 카테고리 여전히 누락: %s", ", ".join(remaining))

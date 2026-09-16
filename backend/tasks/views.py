@@ -83,13 +83,24 @@ class TaskAssignmentListCreateView(generics.ListCreateAPIView):
     # -> meeting -> project로 이어지는 체인을 타고 내려가서 필터링한다.
     def get_queryset(self):
         qs = TaskAssignment.objects.select_related(
-            'req_item', 
-            'assigned_user', 
+            'req_item',
+            'assigned_user',
             'status_code'
         ).all()
         project_id = self.request.query_params.get('project')
         assignee_id = self.request.query_params.get('assigneeId')
         status_param = self.request.query_params.get('status')
+        # 2026-09-16: BACKLOG(AI 배분 직후 자동저장된 초안, 아직 아무도 검토 전)는
+        # PM 확인 전까지 아무한테도 안 보여야 한다 — 예전엔 PM만 예외로 뒀었는데,
+        # 실제로 PM이 초안을 검토/수정하는 화면(documents/page.tsx)은 이 목록 API를
+        # 다시 불러오지 않고 generate_task_suggestions()가 그 자리에서 반환한 값을
+        # 그대로 쓴다. 즉 이 엔드포인트로 BACKLOG를 보여줄 실사용처가 없어 — PM이
+        # "업무관리"를 열면 검토 안 된 AI 초안이 실제 배정 목록에 섞여 보이기만 했다.
+        # ?status=BACKLOG를 명시적으로 요청한 PM에게만 예외로 허용한다(향후 필요해질
+        # 진단/확인 용도 대비 — 지금은 이걸 쓰는 화면이 없다).
+        is_pm = getattr(self.request.user, 'is_staff', False) or self.request.user.groups.filter(name='PM').exists()
+        if not (is_pm and status_param == TaskStatusCode.BACKLOG):
+            qs = qs.exclude(status_code_id=TaskStatusCode.BACKLOG)
         if project_id:
             qs = qs.filter(req_item__req_def__spec__meeting__project_id=project_id)
         if assignee_id:
@@ -162,9 +173,16 @@ class TaskAssignmentDetailView(generics.RetrieveUpdateDestroyAPIView):
     배정 업무 상세 조회 / 수정 / 삭제 API
     GET/PUT/PATCH/DELETE /api/tasks/assignments/{id}/
     """
-    queryset = TaskAssignment.objects.select_related('req_item', 'assigned_user', 'status_code').all()
     serializer_class = TaskAssignmentSerializer
     permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        # 2026-09-16: id를 직접 안다고 해도 BACKLOG(초안)는 상세 조회/수정/삭제로
+        # 못 보게 막는다 — 목록 API와 동일하게 PM도 예외 없이 막는다(TaskAssignmentListCreateView
+        # 참고: PM이 초안을 검토/수정하는 화면은 이 REST 엔드포인트를 아예 안 쓴다).
+        return TaskAssignment.objects.select_related(
+            'req_item', 'assigned_user', 'status_code'
+        ).exclude(status_code_id=TaskStatusCode.BACKLOG)
 
 
 class AutoTaskAssignView(APIView):
@@ -324,15 +342,17 @@ class TaskStatusUpdateView(APIView):
                     status=status.HTTP_400_BAD_REQUEST
                 )
 
-            # ── [추가/수정] 상태별 세부 권한 분기 ────────────────────────────
-            # A. 배분 승인(APPROVED) / 반려(REJECTED)는 PM만 가능
+            # ── 상태별 세부 권한 분기 ────────────────────────────────────
+            # 2026-09-15: APPROVED가 다시 COMPLETED(DONE)와 별개 code_id(TASK_APPROVED)를
+            # 갖게 되면서(프론트가 "승인됨"/"완료"를 별개 칸반 단계로 이미 쓰고 있어서
+            # 되돌림) 값만으로 "PM 승인"과 "담당자 완료 처리"를 다시 구분할 수 있다 —
+            # A. 배분 승인(APPROVED)/반려(REJECTED)는 PM만 가능.
             if new_status in [TaskStatusCode.APPROVED, TaskStatusCode.REJECTED]:
                 if not is_pm:
                     return Response(
                         {"error": "FORBIDDEN", "details": "업무 배분 승인 및 반려는 PM 권한이 필요합니다."},
                         status=status.HTTP_403_FORBIDDEN
                     )
-
             # B. 기타 상태 변경(IN_PROGRESS, COMPLETED 등)은 PM 또는 담당자 본인만 가능
             else:
                 if not is_pm and task.assigned_user_id != user.id:
@@ -369,6 +389,8 @@ class TaskStatusUpdateView(APIView):
             # 알림 발송
             if new_status == TaskStatusCode.APPROVED and task.assigned_user:
                 notify_user(task.assigned_user, f"'{task.title}' 업무가 승인되었습니다.", type='success', link='/tasks')
+            elif new_status == TaskStatusCode.COMPLETED and task.assigned_user:
+                notify_user(task.assigned_user, f"'{task.title}' 업무가 완료되었습니다.", type='success', link='/tasks')
             elif new_status == TaskStatusCode.REJECTED and task.assigned_user:
                 notify_user(task.assigned_user, f"'{task.title}' 업무가 반려되었습니다: {task.reject_reason}", type='error', link='/tasks')
 

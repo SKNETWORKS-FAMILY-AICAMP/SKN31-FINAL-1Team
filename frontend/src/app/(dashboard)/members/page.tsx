@@ -410,16 +410,16 @@ export default function MembersPage() {
 
       {/* Table */}
       <div className="glass rounded-xl border border-border overflow-hidden">
-        <div className="overflow-x-auto">
+        <div className="overflow-x-auto overflow-y-auto max-h-[560px]">
           <table className="w-full text-left text-sm">
-            <thead className="bg-black/10 dark:bg-white/5 text-muted-foreground">
+            <thead className="bg-black/10 dark:bg-white/5 text-muted-foreground sticky top-0 z-10 backdrop-blur">
               <tr>
-                <th className="px-6 py-4 font-semibold">직원</th>
+                <th className="px-6 py-4 font-semibold whitespace-nowrap">직원</th>
                 <th className="px-6 py-4 font-semibold whitespace-nowrap">부서 / 직급 /<br />직무</th>
                 <th className="px-6 py-4 font-semibold">보유 기술 / 자격증</th>
                 <th className="px-6 py-4 font-semibold whitespace-nowrap">입사일 /<br />퇴사일</th>
-                <th className="px-6 py-4 font-semibold">역할</th>
-                <th className="px-6 py-4 font-semibold">상태</th>
+                <th className="px-6 py-4 font-semibold whitespace-nowrap">역할</th>
+                <th className="px-6 py-4 font-semibold whitespace-nowrap">상태</th>
                 {isPM && <th className="px-6 py-4 font-semibold text-center">설정</th>}
               </tr>
             </thead>
@@ -432,7 +432,7 @@ export default function MembersPage() {
                 filtered.map(member => (
                   <tr key={member.id} className="hover:bg-black/5 dark:hover:bg-white/5 transition-colors">
                     {/* Name + Email */}
-                    <td className="px-6 py-4">
+                    <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex items-center gap-3">
                         <div className="w-9 h-9 rounded-full bg-primary/20 text-primary flex items-center justify-center font-bold text-sm shrink-0">
                           {member.name.charAt(0)}

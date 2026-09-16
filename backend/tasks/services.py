@@ -8,7 +8,7 @@ from django.db.models import Sum
 
 from meetings.models import SpecDocument
 from requirements.models import RequirementDefinition, RequirementItem
-from tasks.models import TaskAssignment
+from tasks.models import TaskAssignment, TaskStatusCode
 
 from task_generation.agent import generate_tasks
 from team_sizing import apply_complexity_buffer, build_skill_role_map, estimate_team_size
@@ -186,9 +186,13 @@ def generate_task_suggestions(spec_id: int, on_stage=None) -> dict:
     """
     요구사항정의서 승인 후 PM이 누르는 "업무 배분 실행" — 실제 AI 파이프라인
     (task_generation -> assignee_mapping -> assignee_recommend)을 순서대로
-    호출하지만, 여기서는 TaskAssignment를 DB에 저장하지 않고 PM이 검토/수정할
-    수 있는 미리보기(suggestions) 목록만 반환한다. 실제 저장은 PM이 "확정" 버튼을
-    눌러 confirm_task_assignments()를 호출할 때 이루어진다(2단계 확정 플로우).
+    호출해 PM이 검토/수정할 수 있는 미리보기(suggestions) 목록을 반환한다.
+
+    2026-09-15: 반환과 별개로, 생성 직후 결과를 TaskAssignment에 BACKLOG(초안)
+    상태로 바로 저장한다(임시저장) — PM이 확정 전 이탈해도 안 날아간다. 다만
+    이건 어디까지나 "안전하게 보관"이지 최종본이 아니다 — PM이 "확정" 버튼을
+    눌러 confirm_task_assignments()를 호출하면 이 BACKLOG 행을 지우고 최종
+    (편집 반영) 내용으로 PENDING_APPROVAL을 다시 만든다(2단계 확정 플로우).
 
     on_stage: 있으면 각 단계 시작 시 사람이 읽을 라벨(str)로 호출한다(선택).
     이 파이프라인이 순차 LLM 호출 여러 개(업무 생성→복잡도 판단→패키지 분할→
@@ -424,6 +428,23 @@ def generate_task_suggestions(spec_id: int, on_stage=None) -> dict:
         "project_end_date": str(end_date),
     }
 
+    # 2026-09-15 (임시저장): PM이 검토·확정하기 전 브라우저를 닫거나 며칠 뒤에
+    # 돌아와도 이 결과가 안 날아가게, 생성 직후 바로 BACKLOG(초안, "검토 전")
+    # 상태로 저장한다. PENDING_APPROVAL(배분승인대기)과는 다른 상태라 — 담당자
+    # 개인 업무 목록/대시보드(tasks/views.py, dashboard/views.py)에서 BACKLOG는
+    # 제외하므로, PM이 확정하기 전까지 담당자 본인에게도 노출되지 않는다.
+    # 같은 요구사항정의서로 재생성하면 이전 BACKLOG 초안만 지우고 새로 쓴다
+    # (이미 확정된 PENDING_APPROVAL+ 행은 안 건드림). LLM 파이프라인은 이미
+    # 끝났으니, 저장 자체가 실패해도 미리보기 응답은 그대로 돌려준다.
+    try:
+        with transaction.atomic():
+            TaskAssignment.objects.filter(
+                req_item__req_def=req_def, status_code_id=TaskStatusCode.BACKLOG,
+            ).delete()
+            _persist_assignments(req_def, suggestions, TaskStatusCode.BACKLOG)
+    except Exception:
+        logger.exception("업무 배분 초안 저장 실패 (spec_id=%s) — 미리보기는 그대로 반환", spec_id)
+
     _stage("계획 요약 작성 중…")
     # 2026-09-11 (Phase 4): 검토 요약(결정적) + LLM 브리핑. 브리핑은 실패해도 계속.
     plan_review = _build_plan_review(suggestions)
@@ -458,6 +479,55 @@ def generate_task_suggestions(spec_id: int, on_stage=None) -> dict:
     }
 
 
+def _persist_assignments(req_def: RequirementDefinition, items: list, status_code_id: str) -> int:
+    """assignee_id가 있는 항목만 TaskAssignment로 저장한다. 반환값은 저장된 건수.
+
+    2026-09-15: generate_task_suggestions(초안 자동저장, status=BACKLOG)와
+    confirm_task_assignments(확정, status=PENDING_APPROVAL) 둘 다 이 함수를 쓴다 —
+    TaskAssignment 생성 로직을 한 곳에만 둔다. items는 suggestions(생성 직후,
+    suggested_start_date/suggested_end_date 필드)와 assignments(확정 요청,
+    프론트가 start_date/end_date로 보냄) 두 모양을 다 받는다.
+    """
+    created_count = 0
+    for item in items:
+        if item.get("assignee_id") is None:
+            continue
+
+        req_item = req_def.items.filter(req_code=item["source_req_id"]).first()
+        if not req_item:
+            logger.warning(
+                "업무 배정 저장: req_code=%s 매칭 실패로 건너뜀 (req_def_id=%s, status=%s)",
+                item.get("source_req_id"), req_def.id, status_code_id,
+            )
+            continue
+
+        # 2026-09-11 (Phase 4): 프론트가 schedule_reason을 실어 보내면 배정
+        # 근거에 함께 저장한다(없으면 무시 — 별도 컬럼은 두지 않음).
+        reason_text = " / ".join(filter(None, [
+            item.get("tech_fit"), item.get("workload_fit"), item.get("experience_fit"),
+            item.get("schedule_reason"),
+        ]))
+
+        TaskAssignment.objects.create(
+            task_no=f"RD{req_def.id}-{item['unit_id']}",
+            req_item=req_item,
+            assigned_user_id=int(item["assignee_id"]),
+            project=req_def.project,
+            title=item["title"],
+            description=item["description"],
+            difficulty_reason=item.get("difficulty_reason"),
+            estimated_hours=item["estimated_hours"],
+            assignment_reason=reason_text,
+            epic_no=item.get("epic_no", ""),
+            epic_title=item.get("epic_title", ""),
+            start_date=item.get("start_date") or item.get("suggested_start_date") or None,
+            end_date=item.get("end_date") or item.get("suggested_end_date") or None,
+            status_code_id=status_code_id,
+        )
+        created_count += 1
+    return created_count
+
+
 def confirm_task_assignments(req_def_id: int, assignments: list) -> dict:
     """
     PM이 generate_task_suggestions() 결과를 검토/수정한 뒤 "확정"을 눌렀을 때
@@ -473,7 +543,7 @@ def confirm_task_assignments(req_def_id: int, assignments: list) -> dict:
     # 5단계 Business Validation: 요구사항정의서 승인(APPROVED) 상태 검증
     if req_def.status_code_id != 'APPROVED':
         return {
-            "status": "error", 
+            "status": "error",
             "message": f"요구사항 정의서가 승인(APPROVED) 상태여야 업무를 확정할 수 있습니다. (현재 상태: {req_def.status_code_id})"
         }
 
@@ -482,47 +552,12 @@ def confirm_task_assignments(req_def_id: int, assignments: list) -> dict:
 
     try:
         with transaction.atomic():
+            # 2026-09-15: 여기 있던 행은 대부분 generate_task_suggestions()가 이미
+            # BACKLOG(초안)로 저장해둔 것들이다 — PM이 확정을 누르면 그 초안을 전부
+            # 지우고 최종(편집 반영) 내용으로 PENDING_APPROVAL 다시 만든다. 프론트가
+            # 다른 unit_id 조합을 보낼 수도 있어(재생성) delete+recreate를 유지한다.
             TaskAssignment.objects.filter(req_item__req_def=req_def).delete()
-
-            created_count = 0
-            skipped_no_match = []
-            for item in assignments:
-                if item.get("assignee_id") is None:
-                    continue
-
-                req_item = req_def.items.filter(req_code=item["source_req_id"]).first()
-                if not req_item:
-                    skipped_no_match.append(item.get("source_req_id"))
-                    logger.warning(
-                        "업무 배정 확정: req_code=%s 매칭 실패로 건너뜀 (req_def_id=%s)",
-                        item.get("source_req_id"), req_def_id,
-                    )
-                    continue
-
-                # 2026-09-11 (Phase 4): 프론트가 schedule_reason을 실어 보내면 배정
-                # 근거에 함께 저장한다(없으면 무시 — 별도 컬럼은 두지 않음).
-                reason_text = " / ".join(filter(None, [
-                    item.get("tech_fit"), item.get("workload_fit"), item.get("experience_fit"),
-                    item.get("schedule_reason"),
-                ]))
-
-                TaskAssignment.objects.create(
-                    task_no=f"RD{req_def.id}-{item['unit_id']}",
-                    req_item=req_item,
-                    assigned_user_id=int(item["assignee_id"]),
-                    project=req_def.project,
-                    title=item["title"],
-                    description=item["description"],
-                    difficulty_reason=item.get("difficulty_reason"),
-                    estimated_hours=item["estimated_hours"],
-                    assignment_reason=reason_text,
-                    epic_no=item.get("epic_no", ""),
-                    epic_title=item.get("epic_title", ""),
-                    start_date=item.get("start_date") or None,
-                    end_date=item.get("end_date") or None,
-                    status_code_id='APPROVED',
-                )
-                created_count += 1
+            created_count = _persist_assignments(req_def, assignments, TaskStatusCode.PENDING_APPROVAL)
     except RequirementDefinition.DoesNotExist:
         return {"status": "error", "message": "요구사항 정의서를 찾을 수 없습니다."}
     except Exception as e:

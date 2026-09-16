@@ -15,7 +15,7 @@ from drf_spectacular.utils import (
     OpenApiResponse,
 )
 
-from requirements.models import RequirementDefinition, RequirementItem
+from requirements.models import RequirementDefinition, RequirementItem, RequirementExtractionJob
 from requirements.serializers import (
     RequirementDefinitionSerializer,
     RequirementDefinitionCreateSerializer,
@@ -43,11 +43,43 @@ def get_target_author(req_def):
     return None
 
 
-def process_ai_requirement_extraction(spec_document, user):
+def _parse_feature_lines(raw_features) -> list:
+    """SpecDocument.key_features(TextField, 줄바꿈으로 구분된 자유 텍스트)를
+    기능 항목별 줄로 분리한다.
+
+    이전 코드는 `isinstance(raw_features, list)`를 조건으로 걸었는데,
+    key_features는 실제로는 항상 str(TextField)라 이 조건이 절대 참이 될 수
+    없었다 — 그래서 매번 else 분기(제목/개요 하나짜리 제네릭 요구사항)로만
+    빠져, AI가 기능별로 요구사항을 쪼갤 근거 자체가 사라지고 있었다.
+    meetings/services.py가 최초 생성 시 "• 제목: 설명" 줄 형식으로 채우지만,
+    이후 PM이 ProposalTemplate 화면에서 자유 텍스트로 고칠 수 있으므로
+    불릿 기호나 콜론 유무를 강제하지 않고 줄 단위로만 분리한다.
     """
-    SpecDocument 기반으로 AI 에이전트를 실행하고 
+    if isinstance(raw_features, list):
+        return [str(f).strip() for f in raw_features if str(f).strip()]
+    if not raw_features:
+        return []
+    lines = []
+    for raw_line in str(raw_features).splitlines():
+        line = raw_line.strip().lstrip("•-*").strip()
+        if not line or "회의에서 논의되지 않았습니다" in line:
+            continue
+        lines.append(line)
+    return lines
+
+
+def process_ai_requirement_extraction(spec_document, user, on_stage=None):
+    """
+    SpecDocument 기반으로 AI 에이전트를 실행하고
     RequirementDefinition 및 하위 RequirementItem들을 생성/저장하는 공통 헬퍼 함수
+
+    on_stage: 있으면 각 단계 시작 시 사람이 읽을 라벨(str)로 호출한다(선택,
+    2026-09-15 — 업무 배분/기획서 생성과 같은 진행 표시를 위해 도입).
     """
+    def _stage(label: str) -> None:
+        if on_stage:
+            on_stage(label)
+
     spec_id = spec_document.spec_id
 
     # 1. SpecDocument DB 객체 -> PlanDocument Pydantic 스키마 변환 데이터 구성
@@ -57,16 +89,21 @@ def process_ai_requirement_extraction(spec_document, user):
     else:
         goal_str = str(raw_goals) if raw_goals else "요구사항 분석 및 기획서 도출"
 
-    raw_features = getattr(spec_document, "key_features", [])
-    if raw_features and isinstance(raw_features, list):
-        requirements_input = [
-            {
+    feature_lines = _parse_feature_lines(getattr(spec_document, "key_features", None))
+    if feature_lines:
+        requirements_input = []
+        for i, line in enumerate(feature_lines):
+            sep = ":" if ":" in line else ("：" if "：" in line else None)
+            if sep:
+                title, _, desc = line.partition(sep)
+                title, desc = title.strip(), desc.strip()
+            else:
+                title, desc = line, line
+            requirements_input.append({
                 "id": f"REQ-{i+1:02d}",
-                "title": str(feat),
-                "description": str(feat)
-            }
-            for i, feat in enumerate(raw_features)
-        ]
+                "title": title or line,
+                "description": desc or line,
+            })
     else:
         requirements_input = [
             {
@@ -103,13 +140,15 @@ def process_ai_requirement_extraction(spec_document, user):
     try:
         ai_output = generate_requirements(
             plan=plan_input,
-            plan_id=str(spec_document.spec_id)
+            plan_id=str(spec_document.spec_id),
+            on_stage=on_stage,
         )
     except Exception as e:
         logger.exception(f"AI 요구사항 추출 실패 (spec_id: {spec_id}): {e}")
         raise RuntimeError(f"AI 요구사항 추출 중 오류가 발생했습니다: {str(e)}")
 
     # 4. DB 저장 및 기존 요구사항 정의서 연동 (트랜잭션)
+    _stage("저장 중…")
     with transaction.atomic():
         draft_status = CommonCode.objects.filter(
             group_id='REQSPEC_STATUS',
@@ -212,13 +251,16 @@ def process_ai_requirement_extraction(spec_document, user):
     ),
     post=extend_schema(
         tags=['2단계 - 요구사항 정의서'],
-        summary='요구사항 정의서 생성 (AI 세부항목 자동 추출 포함)',
-        description='기획서 ID(`spec`)를 전달받아 요구사항 정의서 생성과 동시에 AI 에이전트가 세부 항목(RequirementItem)을 자동 추출 및 저장합니다.',
+        summary='요구사항 정의서 생성 (AI 세부항목 자동 추출) — 백그라운드 작업 시작',
+        description=(
+            '기획서 ID(`spec`)를 전달받아 백그라운드로 AI 세부 항목(RequirementItem) 자동 추출을 '
+            '시작한다. 이 호출은 즉시 job_id만 반환하고, 실제 결과는 '
+            'GET /api/requirements/extraction-jobs/{job_id}/ 를 폴링해서 받는다.'
+        ),
         request=RequirementDefinitionCreateSerializer,
         responses={
-            201: RequirementDefinitionSerializer,
+            202: OpenApiResponse(description='작업 시작됨 (job_id)'),
             400: OpenApiResponse(description="잘못된 파라미터 또는 기획서 데이터"),
-            500: OpenApiResponse(description="AI 생성 또는 저장 오류")
         }
     )
 )
@@ -240,7 +282,7 @@ class RequirementDefinitionListCreateView(generics.ListCreateAPIView):
 
     def create(self, request, *args, **kwargs):
         spec_id = request.data.get('spec') or request.data.get('spec_id')
-        
+
         if not spec_id:
             return Response(
                 {"error": "REQUIRED_FIELD_MISSING", "details": "기획서 ID(spec)는 필수입니다."},
@@ -249,36 +291,15 @@ class RequirementDefinitionListCreateView(generics.ListCreateAPIView):
 
         spec_document = get_object_or_404(SpecDocument, spec_id=spec_id)
 
-        try:
-            req_def = process_ai_requirement_extraction(spec_document, request.user)
-
-            # 파이프라인 이력 로그 생성 — "요구사항정의서 생성" 버튼(AI 호출) 시점.
-            # 확정 시점의 REQ_DEFINED와 구분되는 별도 step_type이라 히스토리
-            # "에이전트" 탭에 실제 AI 실행으로 잡힌다(사람이 누른 확정과 혼동 방지).
-            if req_def.project_id:
-                PipelineHistory.objects.create(
-                    project=req_def.project,
-                    spec=spec_document,
-                    requirement=req_def,
-                    step_type='REQ_AI_GENERATED',
-                    title=f"요구사항정의서 생성: {req_def.title}",
-                    description=f"실행자: {request.user.username} 사원",
-                    actor=request.user,
-                )
-
-            serializer = RequirementDefinitionSerializer(req_def)
-            return Response(serializer.data, status=status.HTTP_201_CREATED)
-
-        except ValueError as ve:
-            return Response(
-                {"error": "INVALID_SPEC_STRUCTURE", "details": str(ve)},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        except Exception as e:
-            return Response(
-                {"error": "AI_GENERATION_FAILED", "details": str(e)},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
+        # 2026-09-15: AI 요구사항 추출이 LLM 호출(1회 + baseline 누락 시 최대
+        # MAX_RETRIES회 재시도)이라 동기로 두면 오래 걸릴 수 있어(업무 배분/
+        # 기획서 생성과 같은 이유), 백그라운드 실행 + 진행 단계 폴링으로 바꾼다.
+        # PipelineHistory 로그(REQ_AI_GENERATED)는 워커(log_history=True)에서 남긴다.
+        job = RequirementExtractionJob.objects.create(spec=spec_document, created_by=request.user)
+        threading.Thread(
+            target=_run_requirement_extraction_job, args=(job.id, request.user.id, True), daemon=True
+        ).start()
+        return Response({"status": "started", "job_id": str(job.id)}, status=status.HTTP_202_ACCEPTED)
 
 
 @extend_schema_view(
@@ -481,26 +502,109 @@ class RequirementExtractView(APIView):
 
     @extend_schema(
         tags=['2단계 - 요구사항 정의서'],
-        summary='기획서 기반 AI 요구사항 재추출',
+        summary='기획서 기반 AI 요구사항 재추출 — 백그라운드 작업 시작',
         parameters=[
             OpenApiParameter(name='spec_id', type=OpenApiTypes.INT, location=OpenApiParameter.PATH, description='AI 세부 항목을 재추출할 기획서 ID')
         ],
         responses={
-            201: RequirementDefinitionSerializer,
+            202: OpenApiResponse(description='작업 시작됨 (job_id)'),
             400: OpenApiResponse(description="잘못된 기획서 구조"),
-            500: OpenApiResponse(description="AI 추출 처리 실패")
         }
     )
     def post(self, request, spec_id):
         spec_document = get_object_or_404(SpecDocument, spec_id=spec_id)
-        try:
-            req_def = process_ai_requirement_extraction(spec_document, request.user)
-            serializer = RequirementDefinitionSerializer(req_def)
-            return Response(serializer.data, status=status.HTTP_201_CREATED)
-        except ValueError as ve:
-            return Response({"error": "INVALID_SPEC_STRUCTURE", "details": str(ve)}, status=status.HTTP_400_BAD_REQUEST)
-        except Exception as e:
-            return Response({"error": "AI_GENERATION_FAILED", "details": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        # 재추출은 이미 있는 요구사항정의서를 다시 뽑는 것이라(REQ_AI_GENERATED
+        # 로그는 최초 생성 시점에만 남긴다는 기존 규칙과 동일하게) 히스토리를
+        # 남기지 않는다 — log_history=False.
+        job = RequirementExtractionJob.objects.create(spec=spec_document, created_by=request.user)
+        threading.Thread(
+            target=_run_requirement_extraction_job, args=(job.id, request.user.id, False), daemon=True
+        ).start()
+        return Response({"status": "started", "job_id": str(job.id)}, status=status.HTTP_202_ACCEPTED)
+
+
+def _run_requirement_extraction_job(job_id, actor_user_id, log_history: bool):
+    """
+    RequirementDefinitionListCreateView.create / RequirementExtractView.post가
+    스레드로 띄우는 실제 작업 — _run_generate_tasks_job/_run_analyze_job과 동일한
+    패턴(2026-09-15). log_history는 호출부에 따라 다르다: 최초 생성(create)만
+    PipelineHistory에 REQ_AI_GENERATED를 남기고, 재추출(extract)은 남기지 않는다
+    (기존 동기 코드의 동작을 그대로 유지).
+    """
+    from django.db import close_old_connections
+    from django.contrib.auth import get_user_model
+
+    close_old_connections()
+    try:
+        RequirementExtractionJob.objects.filter(pk=job_id).update(
+            status=RequirementExtractionJob.STATUS_RUNNING, updated_at=timezone.now()
+        )
+
+        def on_stage(label):
+            RequirementExtractionJob.objects.filter(pk=job_id).update(
+                stage=label[:100], updated_at=timezone.now()
+            )
+
+        job = RequirementExtractionJob.objects.select_related('spec').get(pk=job_id)
+        actor = get_user_model().objects.filter(pk=actor_user_id).first()
+        req_def = process_ai_requirement_extraction(job.spec, actor, on_stage=on_stage)
+    except ValueError as ve:
+        RequirementExtractionJob.objects.filter(pk=job_id).update(
+            status=RequirementExtractionJob.STATUS_ERROR, error_message=str(ve), updated_at=timezone.now()
+        )
+        close_old_connections()
+        return
+    except Exception as e:
+        logger.exception("요구사항정의서 생성 작업 실패 (job_id=%s)", job_id)
+        RequirementExtractionJob.objects.filter(pk=job_id).update(
+            status=RequirementExtractionJob.STATUS_ERROR, error_message=str(e), updated_at=timezone.now()
+        )
+        close_old_connections()
+        return
+
+    # 파이프라인 이력 로그 생성 — "요구사항정의서 생성" 버튼(AI 호출) 시점.
+    # 확정 시점의 REQ_DEFINED와 구분되는 별도 step_type이라 히스토리
+    # "에이전트" 탭에 실제 AI 실행으로 잡힌다(사람이 누른 확정과 혼동 방지).
+    if log_history and req_def.project_id:
+        PipelineHistory.objects.create(
+            project=req_def.project,
+            spec=job.spec,
+            requirement=req_def,
+            step_type='REQ_AI_GENERATED',
+            title=f"요구사항정의서 생성: {req_def.title}",
+            description=f"실행자: {actor.username if actor else '알 수 없음'} 사원",
+            actor=actor,
+        )
+
+    RequirementExtractionJob.objects.filter(pk=job_id).update(
+        status=RequirementExtractionJob.STATUS_SUCCESS,
+        result=RequirementDefinitionSerializer(req_def).data,
+        stage="완료",
+        updated_at=timezone.now(),
+    )
+    close_old_connections()
+
+
+class RequirementExtractionJobStatusView(APIView):
+    """요구사항정의서 생성 작업 진행 상태 조회(폴링) — GET /api/requirements/extraction-jobs/{job_id}/"""
+    permission_classes = [permissions.IsAuthenticated]
+
+    @extend_schema(
+        tags=['2단계 - 요구사항 정의서'],
+        summary='요구사항정의서 생성 작업 진행 상태 조회(폴링)',
+        parameters=[
+            OpenApiParameter(name='job_id', type=OpenApiTypes.STR, location=OpenApiParameter.PATH, description='RequirementDefinitionListCreateView/RequirementExtractView가 반환한 job_id')
+        ],
+        responses={200: OpenApiResponse(description='작업 상태(진행 중/완료/실패)')}
+    )
+    def get(self, request, job_id):
+        job = get_object_or_404(RequirementExtractionJob, pk=job_id)
+        payload = {"status": job.status, "stage": job.stage}
+        if job.status == RequirementExtractionJob.STATUS_SUCCESS:
+            payload["result"] = job.result
+        elif job.status == RequirementExtractionJob.STATUS_ERROR:
+            payload["message"] = job.error_message
+        return Response(payload)
 
 
 def _run_generate_tasks_job(job_id, actor_user_id):

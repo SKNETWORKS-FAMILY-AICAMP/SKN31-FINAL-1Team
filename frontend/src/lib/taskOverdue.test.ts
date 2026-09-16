@@ -10,7 +10,7 @@ describe("isTaskOverdue", () => {
     expect(isTaskOverdue({ wbsEnd: null, status: "IN_PROGRESS" })).toBe(false);
   });
 
-  it.each(["DONE", "CANCELLED", "COMPLETED", "REJECTED"])(
+  it.each(["DONE", "CANCELLED"])(
     "returns false for finished status %s even if the due date has passed",
     (status) => {
       expect(isTaskOverdue({ wbsEnd: "2020-01-01", status })).toBe(false);

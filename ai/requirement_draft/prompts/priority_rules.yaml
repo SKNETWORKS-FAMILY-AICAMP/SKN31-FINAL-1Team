@@ -1,0 +1,51 @@
+# ============================================================================
+# priority_rules.yaml
+# 요구사항 우선순위(priority) 판단 규칙 — A2-1(요구사항정의서 초안 생성)
+# ============================================================================
+#
+# [사용법 — prompt_builder.py가 지켜야 할 규칙]
+# 1. functional_rules는 순서대로 확인해 먼저 해당하는 조건의 priority를 쓴다.
+# 2. non_functional_rules는 category_2(NFR 표준 카테고리명)로 매칭한다 —
+#    nfr_checklist.yaml의 name_kr과 반드시 같은 문자열을 쓸 것.
+# 3. condition이 참/거짓 두 갈래인 규칙(성능 효율성, AI 특화)은
+#    priority_if_true/priority_if_false로 표현한다.
+# 4. 어느 규칙에도 확신 있게 해당하지 않으면 fallback을 따른다:
+#    priority=null, review_status="검토대기". 억지로 값을 채우지 않는다.
+# ============================================================================
+
+functional_rules:
+  - id: "core_flow"
+    condition: "메인 기능의 핵심 흐름과 직결되어, 없으면 서비스가 성립하지 않는다"
+    priority: "High"
+  - id: "differentiator"
+    condition: "메인 기능은 아니지만 프로젝트의 차별점으로 드러나는 기능이다"
+    priority: "Medium"
+  - id: "nice_to_have"
+    condition: "있으면 좋지만 없어도 핵심 시나리오가 끝까지 동작한다"
+    priority: "Low"
+
+non_functional_rules:
+  - id: "always_high"
+    categories: ["보안성", "신뢰성"]
+    condition: "항상 (예외 없음)"
+    priority: "High"
+  - id: "performance_conditional"
+    categories: ["성능 효율성"]
+    condition: "측정 가능한 성능 기준(수치)이 명시되어 있는가"
+    priority_if_true: "High"
+    priority_if_false: "Medium"
+  - id: "ai_conditional"
+    categories: ["AI 기능 및 연동 특화"]
+    condition: "AI 결과가 사람의 확인 없이 바로 반영되거나 중요한 의사결정(배정·승인 등)에 쓰이는가"
+    priority_if_true: "High"
+    priority_if_false: "Medium (참고용·보조 정보로만 쓰이는 경우)"
+  - id: "default_medium"
+    categories: ["호환성", "사용성", "유지보수성", "이식성"]
+    condition: "항상"
+    priority: "Medium"
+
+fallback:
+  condition: "위 규칙 중 어느 것에도 확신 있게 해당하지 않음"
+  priority: null
+  review_status: "검토대기"
+  note: "억지로 값을 채우지 않는다"

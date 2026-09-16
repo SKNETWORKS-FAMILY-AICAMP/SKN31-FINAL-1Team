@@ -12,6 +12,8 @@ from users.permissions import IsPMUser
 from tasks.models import TaskAssignment, TaskStatusCode
 from projects.models import Project
 from common.models import CommonCode
+from meetings.models import SpecDocument
+from requirements.models import RequirementDefinition
 
 # 5단계에서 작성한 Serializer 임포트
 from dashboard.serializers import (
@@ -37,11 +39,15 @@ class DashboardOverviewView(APIView):
         user = request.user
         is_pm = user.is_staff  # 백엔드 단일 기준(is_staff) 적용
 
+        # 2026-09-15: BACKLOG(AI 배분 직후 자동저장된 초안, PM 확정 전)는 PM 화면
+        # 포함 대시보드 집계에서 전부 제외한다 — 확정 전 수치는 "진짜" 업무량이
+        # 아니고, PM이 검토/수정 중인 화면은 generate_task_suggestions()가 반환한
+        # suggestions로 따로 보여주는 게 맞다(대시보드는 그 화면이 아님).
         if is_pm:
-            task_qs = TaskAssignment.objects.all()
+            task_qs = TaskAssignment.objects.exclude(status_code_id=TaskStatusCode.BACKLOG)
             project_qs = Project.objects.all()
         else:
-            task_qs = TaskAssignment.objects.filter(assigned_user=user)
+            task_qs = TaskAssignment.objects.filter(assigned_user=user).exclude(status_code_id=TaskStatusCode.BACKLOG)
             project_qs = Project.objects.filter(task_assignments__assigned_user=user).distinct()
 
         # 1. 요약 정보 (summary)
@@ -80,7 +86,8 @@ class DashboardOverviewView(APIView):
         # 늘어나는 문제가 있었다(2026-09-14 확인) — 업무량 상위 TOP_N명만
         # 보여주도록 슬라이스를 추가한다. PM이 "전체 기준"으로 보는 건 그대로
         # 유지하고(회사 전체 집계), 화면에 그릴 막대 개수만 제한한다.
-        WORKLOAD_TOP_N = 10
+        # 2026-09-15: 직원 수가 많아지면 막대/라벨이 겹친다는 요청으로 7명으로 축소.
+        WORKLOAD_TOP_N = 7
         workload = []
         if is_pm:
             workload_data = (
@@ -179,6 +186,11 @@ class DashboardAnalyticsView(APIView):
             })
 
         # 2. 팀원별 기여도 (teamContribution)
+        # 2026-09-15: 업무를 한 번이라도 배정받은 적 있으면(완료/진행중 건수가 0이어도)
+        # 무조건 막대가 하나 생겨서, 인원이 늘수록 의미 없는 빈 막대가 계속 늘어나는
+        # 문제가 있었다 — workload 차트의 TOP_N 패턴과 동일하게, 기여(done+inProgress)가
+        # 있는 사람만 남기고 기여도 상위 TOP_N명만 보여준다.
+        CONTRIBUTION_TOP_N = 10
         team_data = (
             TaskAssignment.objects.filter(assigned_user__isnull=False)
             .values('assigned_user__id', 'assigned_user__username', 'assigned_user__first_name', 'assigned_user__last_name')
@@ -186,6 +198,8 @@ class DashboardAnalyticsView(APIView):
                 done=Count('id', filter=Q(status_code__code_id=TaskStatusCode.COMPLETED)),
                 inProgress=Count('id', filter=Q(status_code__code_id=TaskStatusCode.IN_PROGRESS))
             )
+            .filter(Q(done__gt=0) | Q(inProgress__gt=0))
+            .order_by('-done', '-inProgress')[:CONTRIBUTION_TOP_N]
         )
         team_contribution = []
         for t in team_data:
@@ -212,26 +226,28 @@ class DashboardAnalyticsView(APIView):
             average_process_time = 0.0
 
         # 4. 승인 통과율 (approvalPassRate)
-        approved_count = TaskAssignment.objects.filter(
-            status_code__code_id__in=[
-                TaskStatusCode.APPROVED,
-                TaskStatusCode.IN_PROGRESS,
-                TaskStatusCode.COMPLETED
-            ]
-        ).count()
-        rejected_count = TaskAssignment.objects.filter(
-            status_code__code_id=TaskStatusCode.REJECTED
-        ).count()
+        # 2026-09-15: 지금까지는 TaskAssignment(개별 업무) 기준으로만 집계해서
+        # "승인 8건·반려 0건"처럼 뭉뚱그려 보였고, 정작 승인/반려가 실제로 일어나는
+        # 기획서·요구사항정의서 단계별로는 몇 건인지 알 수 없었다(사용자 요청 —
+        # "대체 몇 건을 승인했고 몇 건을 반려했는지 전혀 모르겠다"). 문서 종류별로
+        # 나눠서 집계한다(develop에서 병합된 TaskAssignment 기준 approved_count/
+        # rejected_count는 이 방식으로 대체되어 더 안 쓴다).
+        proposal_approved = SpecDocument.objects.filter(status_code__code_id='PROPOSAL_APPROVED').count()
+        proposal_rejected = SpecDocument.objects.filter(status_code__code_id='PROPOSAL_REJECTED').count()
+        requirement_approved = RequirementDefinition.objects.filter(status_code__code_id='APPROVED').count()
+        requirement_rejected = RequirementDefinition.objects.filter(status_code__code_id='REJECTED').count()
 
         approval_pass_rate = {
-            "approved": approved_count,
-            "rejected": rejected_count
+            "proposal": {"approved": proposal_approved, "rejected": proposal_rejected},
+            "requirement": {"approved": requirement_approved, "rejected": requirement_rejected},
         }
 
         # 5. 프로젝트 번다운 (projectBurndown)
         project_burndown = []
         projects = Project.objects.all()
         for proj in projects:
+            # 2026-09-15: APPROVED가 COMPLETED(DONE)와 다시 별개 값이 됐으니(팀 결정)
+            # "승인됐지만 아직 안 끝난" 업무도 남은 업무에 다시 포함한다.
             remaining_count = TaskAssignment.objects.filter(
                 project=proj,
                 status_code__code_id__in=[

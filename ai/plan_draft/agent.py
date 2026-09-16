@@ -27,7 +27,7 @@ except ImportError:  # 구버전 instructor 호환
     from instructor.exceptions import InstructorRetryException
 
 from shared.errors import NodeGenerationError
-from shared.llm_client import build_chat_kwargs, get_client
+from shared.llm_client import build_chat_kwargs, get_client, traceable
 from shared.retry_config import MAX_RETRIES, MAX_TOKENS, MODEL, TEMPERATURE
 
 from . import list_builder
@@ -144,12 +144,21 @@ def _source_is_empty(structured: dict, source_fields: list[str]) -> bool:
     return True
 
 
+@traceable(name="plan_draft.run")
 def run(
     structured: dict,
     proposal_id: str,
     glossary_text: str = "",
+    on_stage=None,
 ) -> PlanDocument:
+    # on_stage: 있으면 각 내부 단계 시작 시 사람이 읽을 라벨(str)로 호출한다(선택,
+    # develop 2026-09-15 — "기획서 초안 생성 중…" 하나로 뭉뚱그려져 있던 걸 세분화).
+    def _stage(label: str) -> None:
+        if on_stage:
+            on_stage(label)
+
     # [1] 서술형 섹션과 세부 목표를 생성합니다.
+    _stage("기획서 초안 작성 중…")
     result: PlanSections = _call(
         build_system_prompt(glossary_text),
         build_messages(structured, glossary_text),
@@ -160,14 +169,17 @@ def run(
     by_key = {s.key: s for s in result.sections}
 
     # ── [2] 목록형 3개 조립 ──────────────────────────────────
+    _stage("목록형 섹션 조립 중…")
     list_sections = {
-    section.key: section
-    for section in list_builder.build_all(
-        structured,
-        generated_goals=result.goals,)
+        section.key: section
+        for section in list_builder.build_all(
+            structured,
+            generated_goals=result.goals,
+        )
     }
 
     # ── [3] 병합 + [4] is_incomplete 판정 ────────────────────
+    _stage("섹션 병합 및 근거 매칭 중…")
     sections: list[PlanSection] = []
     for spec in SECTION_SPEC:
         if spec["type"] == SectionType.LIST:
