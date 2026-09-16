@@ -518,6 +518,12 @@ def _persist_assignments(req_def: RequirementDefinition, items: list, status_cod
             difficulty_reason=item.get("difficulty_reason"),
             estimated_hours=item["estimated_hours"],
             assignment_reason=reason_text,
+            # 2026-09-16: 확정(저장) 시점의 담당자·근거를 "AI 원래 추천"으로 그대로 보존해둔다
+            # — PM이 나중에 다른 사람으로 재배정했다가 다시 이 사람으로 되돌리면, 재배정
+            # API(tasks/serializers.py, tasks/views.py)가 이 값과 비교해 원래 근거를
+            # 복원할지 판단한다.
+            original_assigned_user_id=int(item["assignee_id"]),
+            original_assignment_reason=reason_text,
             epic_no=item.get("epic_no", ""),
             epic_title=item.get("epic_title", ""),
             start_date=item.get("start_date") or item.get("suggested_start_date") or None,

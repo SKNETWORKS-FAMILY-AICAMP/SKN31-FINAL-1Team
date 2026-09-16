@@ -136,6 +136,11 @@ export function TaskDetailModal({
                 <option key={m.id} value={m.id}>{m.name}</option>
               ))}
             </select>
+            {/* 2026-09-16 (사용자 요청): 재배정하면 원래 AI가 누굴 추천했었는지 화면에서
+                알 수 없어진다는 지적 — 현재 선택이 AI 원래 추천과 다를 때만 참고용으로 보여준다. */}
+            {task.original_assigned_user_name && String(task.original_assigned_user) !== assigneeId && (
+              <p className="text-[11px] text-muted-foreground">AI 추천 담당자: {task.original_assigned_user_name}</p>
+            )}
           </div>
 
           <div className="space-y-3">
