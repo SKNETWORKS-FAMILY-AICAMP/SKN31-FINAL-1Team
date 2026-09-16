@@ -340,6 +340,17 @@ class TaskStatusUpdateView(APIView):
             new_assignee.is_busy = True
             new_assignee.save()
 
+            # 2026-09-16 (사용자 지적): assignment_reason은 AI가 원래 추천했던 담당자를
+            # 기준으로 판단한 근거라, PM이 다른 사람으로 재배정하면 새 담당자한테 안 맞는
+            # 말이 된다 — TaskAssignmentSerializer.update()와 동일하게 정직한 안내 문구로
+            # 대체한다(재계산은 하지 않음 — 비용·일관성 문제로 이전에 보류 결정). 다만 원래
+            # (AI 최초 추천) 담당자로 다시 되돌리는 경우엔 지워졌던 원래 근거를 복원한다.
+            if task.original_assigned_user_id is not None and new_assignee.pk == task.original_assigned_user_id:
+                task.assignment_reason = task.original_assignment_reason
+            else:
+                note = "PM이 직접 재배정한 담당자입니다 (AI 추천 근거 아님)"
+                task.assignment_reason = f"{note} / {note} / {note}"
+
             notify_user(new_assignee, f"'{task.title}' 업무의 새로운 담당자로 지정되었습니다.", type='info', link='/tasks')
 
         # ------------------------------------------------------------------
