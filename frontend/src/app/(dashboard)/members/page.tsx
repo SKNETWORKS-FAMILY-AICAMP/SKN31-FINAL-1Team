@@ -889,21 +889,30 @@ export default function MembersPage() {
                     <label className="text-sm font-semibold mb-1.5 block text-muted-foreground">계정 상태</label>
                     <select
                       value={editModal.status}
-                      onChange={e => setEditModal({ ...editModal, status: e.target.value as EmployeeStatus })}
+                      onChange={e => {
+                        const status = e.target.value as EmployeeStatus;
+                        // 퇴사 상태가 아니게 되면 입력란이 사라져 더 이상 고칠 수 없으니,
+                        // 이전에 남아있던 퇴사일 값도 같이 지워서 저장 시 남지 않게 한다.
+                        setEditModal({ ...editModal, status, resignDate: status === "RESIGNED" ? editModal.resignDate : "" });
+                      }}
                       className="w-full px-4 py-2.5 bg-black/5 dark:bg-white/5 border border-border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 appearance-none"
                     >
                       {statusOptions.map(s => <option key={s.code_id} value={s.code_id}>{STATUS_META[s.code_id]?.label ?? s.code_name}</option>)}
                     </select>
                   </div>
-                  <div>
-                    <label className="text-sm font-semibold mb-1.5 block text-muted-foreground">퇴사일</label>
-                    <input
-                      type="date"
-                      value={editModal.resignDate}
-                      onChange={e => setEditModal({ ...editModal, resignDate: e.target.value })}
-                      className="w-full px-4 py-2.5 bg-black/5 dark:bg-white/5 border border-border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
-                    />
-                  </div>
+                  {/* 퇴사 처리된 직원이 아니면 퇴사일 자체가 의미 없는 값이라 입력란을
+                      아예 숨긴다(사용자 요청) — 재직 중인데 퇴사일이 보이면 혼란을 준다. */}
+                  {editModal.status === "RESIGNED" && (
+                    <div>
+                      <label className="text-sm font-semibold mb-1.5 block text-muted-foreground">퇴사일</label>
+                      <input
+                        type="date"
+                        value={editModal.resignDate}
+                        onChange={e => setEditModal({ ...editModal, resignDate: e.target.value })}
+                        className="w-full px-4 py-2.5 bg-black/5 dark:bg-white/5 border border-border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
+                      />
+                    </div>
+                  )}
                 </div>
               </div>
 

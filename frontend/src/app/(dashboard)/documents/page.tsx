@@ -2830,7 +2830,7 @@ function GanttChart({ items }: { items: GanttItem[] }) {
     // 행 수만큼 계속 늘어나 버려서(가로 스크롤만 되고 세로는 바깥 모달에 맡기는
     // 구조), 행이 많으면 모달 밖으로 잘려 보이는 문제가 있었다 — h-full + 기본
     // domLayout(normal)으로 바꿔 AG Grid 자신이 가로·세로 스크롤을 전부 갖게 한다.
-    <div className="h-full">
+    <div className="h-full gantt-scroll-area">
       <style>{`
         /* AG Grid 기본 헤더 셀(.ag-header-cell)이 좌우 16px씩 패딩을 갖고 있어서
            40px짜리 좁은 날짜 칸은 실제 글자 공간이 8px밖에 안 남아 "15" 같은
@@ -2845,6 +2845,28 @@ function GanttChart({ items }: { items: GanttItem[] }) {
         /* 막대가 없는 빈 날짜 칸도 세로 구분선이 보이도록 — 색칠 여부와 무관하게
            모든 날짜 칸에 적용된다. */
         .ag-cell-day-col { border-right: 1px solid #e2e8f0; }
+        /* 전역 CSS가 모든 스크롤바를 지워서(globals.css) 실제로는 되는 가로/세로
+           스크롤이 안 보였다(사용자 보고) — 이 그리드 안쪽만 다시 보이게 한다.
+           2026-09-16: 헤더 위에 별도 보조 스크롤바를 추가했다가, 그 wrapper가
+           AG Grid의 height:100% 연쇄를 끊어서 세로 스크롤이 아예 깨지는(하단이
+           잘린 채 휠로도 안 내려가는) 회귀가 생겨 되돌렸다 — 원래처럼 이 div
+           바로 아래 AG Grid 하나만 두고, 스크롤바는 그리드 자체 것만 보이게 한다. */
+        .gantt-scroll-area .ag-body-horizontal-scroll-viewport,
+        .gantt-scroll-area .ag-body-vertical-scroll-viewport {
+          scrollbar-width: thin !important;
+          -ms-overflow-style: auto !important;
+        }
+        .gantt-scroll-area .ag-body-horizontal-scroll-viewport::-webkit-scrollbar,
+        .gantt-scroll-area .ag-body-vertical-scroll-viewport::-webkit-scrollbar {
+          display: block !important;
+          width: 10px;
+          height: 10px;
+        }
+        .gantt-scroll-area .ag-body-horizontal-scroll-viewport::-webkit-scrollbar-thumb,
+        .gantt-scroll-area .ag-body-vertical-scroll-viewport::-webkit-scrollbar-thumb {
+          background: rgba(0, 0, 0, 0.25);
+          border-radius: 6px;
+        }
       `}</style>
       <AgGridReact<Row>
         theme={themeQuartz}
@@ -2854,6 +2876,25 @@ function GanttChart({ items }: { items: GanttItem[] }) {
         groupHeaderHeight={22}
         rowHeight={28}
         suppressCellFocus
+        // 2026-09-16: 이 prop을 생략해도 AG Grid 문서상 기본값은 "normal"이지만,
+        // 실제로 행이 많을 때(44건+) 세로 스크롤이 전혀 동작하지 않고 그리드가
+        // 내용 높이만큼 계속 늘어나 모달 밖으로 잘리는 문제가 재현됐다(사용자
+        // 보고) — AG Grid 내부 CSS(.ag-root-wrapper.ag-layout-normal{height:100%})가
+        // domLayout에 대응하는 클래스에 의존하는데, prop을 명시하지 않으면 이
+        // 클래스가 붙지 않을 수 있어 보인다. 명시적으로 지정해 확실히 한다.
+        domLayout="normal"
+        // 2026-09-16: 전역 CSS가 스크롤바를 전부 숨겨서(globals.css) AG Grid가
+        // 내부적으로 "네이티브 스크롤바 두께 = 0"으로 측정해, 스크롤 영역
+        // 계산에 그 공간을 아예 반영하지 않고 있었다 — 위 <style>에서 스크롤바를
+        // 다시 보이게 만들자, 그 실제 두께(10px)만큼 맨 아래 행/맨 오른쪽 열이
+        // 항상(끝까지 스크롤해도) 가려 잘려 보이는 문제가 생겼다(사용자 보고,
+        // alwaysShow* 옵션만으로는 해결 안 됨 — 그건 "숨기지 마라"용이지
+        // "계산에 반영해라"용이 아니다). scrollbarWidth로 실제 두께를 직접
+        // 알려주면 AG Grid가 그만큼을 스크롤 가능 영역 계산에 넣어서, 끝까지
+        // 스크롤했을 때 마지막 행/열이 스크롤바에 가리지 않고 온전히 보인다.
+        alwaysShowVerticalScroll
+        alwaysShowHorizontalScroll
+        scrollbarWidth={10}
       />
     </div>
   );
@@ -2888,11 +2929,14 @@ function GanttSection({ items, title }: { items: GanttItem[]; title: string }) {
         업무 일정 보기
       </button>
       {open && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm" onClick={() => setOpen(false)}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-2 backdrop-blur-sm" onClick={() => setOpen(false)}>
           <div
             // 2026-09-15: "더 크게 해달라"는 요청 — max-w-6xl(72rem)에서
-            // 뷰포트의 96%까지 쓰도록 넓혔다. 세로도 90vh 그대로 최대한 확보.
-            className="bg-background rounded-2xl shadow-2xl w-full max-w-[96vw] h-[90vh] border border-border flex flex-col overflow-hidden"
+            // 뷰포트의 96%까지 쓰도록 넓혔다. 2026-09-16: 마지막 행이 스크롤을
+            // 끝까지 내려도 half-row 정도 잘려 보이는 AG Grid 스크롤 계산
+            // 문제(원인 특정 전)의 실질적 영향을 줄이기 위해, 스크롤 자체가
+            // 덜 필요하도록 뷰포트를 거의 꽉 채우게 더 키운다.
+            className="bg-background rounded-2xl shadow-2xl w-full max-w-[99vw] h-[97vh] border border-border flex flex-col overflow-hidden"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex justify-between items-center p-5 border-b border-border shrink-0">
