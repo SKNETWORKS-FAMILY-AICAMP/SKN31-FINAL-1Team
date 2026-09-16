@@ -15,14 +15,8 @@ a2_3_assignee_recommend/rule_filter.py
 task.estimated_hours를 assignee_id 기준으로 합산한 "현재 부하"(get_current_workload,
 agent.py 참고)를 실행 시점에 SQL로 조회해서 쓴다.
 
-상한선 계산 — "1일 8시간 · 주 5일 근무 = 주 40시간"을 전제로, 프로젝트 기간 안의
-실제 평일(월~금) 수를 세어 시간으로 환산한다(calculate_max_hours_per_assignee).
-달력 일수를 그냥 7로 나누는 평균 근사는 쓰지 않는다 — 예를 들어 월~금 5일짜리
-프로젝트를 "달력일수÷7×40"으로 계산하면 40시간이 아니라 약 28.6시간이 나와,
-시작/종료 요일에 따라 오차가 크다. 평일을 직접 세면 이 오차가 없다.
-project.start_date/end_date는 이미 있는 컬럼이라 이 계산 자체엔 DB 조회가
-필요 없고, 두 날짜 값만 받으면 된다. 공휴일은 반영하지 않는다(별도 공휴일
-데이터가 필요해 지금 범위 밖 — 필요해지면 팀과 상의).
+상한선 계산 — "1일 8시간 · 주 5일 근무 = 주 40시간"을 전제로 (별도 공휴일
+데이터가 필요해 지금 범위 밖, 필요해지면 팀과 상의).
 """
 
 import math
@@ -62,11 +56,7 @@ def _match_skills(
     required 원본 표기를 그대로 키로 두는 이유는 근거 문장(skill_match)에 LLM이
     쓴 표현을 그대로 노출하기 위해서다. 여러 member 스킬이 한 required에 매칭되면
     가장 높은 숙련도를 취한다. member_levels가 없거나 특정 스킬 레벨이 없으면
-    3(중간)으로 본다 — 2026-09-11 (Phase 3).
-
-    한계: "pytest"처럼 member_skills(DB 스킬 코드 목록) 자체에 대응 값이 아예
-    없는 어휘는 정규화로도 못 잡는다 — DB 스킬 코드 추가나 프롬프트 단의 허용
-    어휘 목록 주입이 필요한 별개 사안이다.
+    3(중간)으로 본다. 2026-09-11 (Phase 3).
     """
     member_levels = member_levels or {}
     # norm -> 그 스킬의 숙련도(같은 norm에 여러 원본이면 최댓값)
@@ -182,9 +172,9 @@ def flatten_assignable_units(tasks: List[Dict[str, Any]]) -> List[Dict[str, Any]
     """Task/Subtask 목록에서 실제로 배정 가능한 최소 단위만 뽑아낸다.
 
     2026-09-11 (Phase 2): Task 단위로 표현된 의존성(dependency_task_ids)을 unit
-    단위(depends_on)로 편다 — Task B가 Task A에 의존하면 B에서 나온 모든 unit은
+    단위(depends_on)로 편다. Task B가 Task A에 의존하면 B에서 나온 모든 unit은
     A에서 나온 모든 unit이 끝나야 시작할 수 있다. risk_buffer_factor / feature_area
-    는 Task 값을 그대로 상속한다(Subtask는 별도로 갖지 않음).
+    는 Task 값을 그대로 상속한다(Subtask는 별도로 갖지 않음)
     """
     units_by_task: Dict[str, List[str]] = {}
     for task in tasks:
@@ -243,23 +233,16 @@ def sort_units_by_priority(
 ) -> List[Dict[str, Any]]:
     """
     우선순위(요구사항 priority 상속) 순으로 정렬한다. 같은 우선순위 안에서는
-    요구사항(source_req_id) 총 estimated_hours 내림차순 — 규모가 큰 요구사항을
-    먼저 배정해, 이후 작은 요구사항이 자투리 가용시간에도 들어갈 여지를 남기는
+    요구사항(source_req_id) 총 estimated_hours 내림차순 : 규모가 큰 요구사항을
+    먼저 배정해 이후 작은 요구사항이 자투리 가용시간에도 들어갈 여지를 남기는
     그리디 휴리스틱이다. priority가 없는(검토대기) 요구사항에서 파생된 업무는
     맨 뒤로 보낸다.
 
-    2026-09-09 수정: 예전엔 "업무 개별" estimated_hours로 정렬해서, 같은
-    요구사항 안에서도 시간이 큰 업무가 작은 업무보다 먼저 오는 경우가 있었다
-    (예: "반응형 UI 구현"(7h)이 "반응형 UI 설계"(6h)보다 먼저 배정 순서에 놓여,
-    설계보다 구현이 먼저 배정되는 모순이 생김). task_generation은 few-shot대로
-    한 요구사항 안에서 설계→개발→테스트 순으로 업무를 만드는데, 개별 시간
-    기준 정렬이 이 순서를 깨트린 것. 이제는 "묶음 총합"으로만 큰 것부터
-    앞에 두고, 같은 묶음 안에서는 안정 정렬(sorted()는 stable)로 원래
-    생성 순서(=설계→개발→테스트)를 그대로 보존한다.
+    task_generation은 few-shot대로 한 요구사항 안에서 설계→개발→테스트 순으로 업무를
+    만드는데, 개별 시간 기준으로 정렬하면 이 순서가 깨진다. 이제는 "묶음 총합"으로만 큰 것부터
+    앞에 두고, 같은 묶음 안에서는 안정 정렬로 원래 생성 순서(=설계→개발→테스트)를 그대로 보존한다.
 
-    2026-09-11 (Phase 2 item 7): 클러스터 단위가 "요구사항"에서 "WorkPackage"로
-    바뀌었다. unit에 package_id가 있으면 그걸로, 없으면 예전처럼 source_req_id로
-    묶는다(=동작 동일). 같은 package의 unit을 인접시켜, schedule_assignments와
+    2026-09-11 (Phase 2 item 7):  package의 unit을 인접시켜, schedule_assignments와
     일정 스케줄러가 자연히 "한 기능을 한 사람이 이어서" 처리하게 만든다.
     package 우선순위는 묶음 내 unit 중 가장 높은 요구사항 priority를 쓴다.
     """
@@ -297,7 +280,7 @@ def _fit_score(
 ) -> float:
     """
     가용시간은 schedule_assignments()의 상한 컷오프("배정 가능/불가능")에서 이미
-    한 번 걸러지지만, 그것만으로는 부족하다 — 통과한 후보들 사이에서 순위를
+    한 번 걸러지지만, 통과한 후보들 사이에서 순위를
     스킬·경험·자격증만으로 매기면, 여유가 얼마나 남았는지와 무관하게 항상 같은
     사람이 이겨서 그 사람에게 계속 몰릴 수 있다. 이건 애초에 이 알고리즘을 만든
     목적("여러 명에게 고르게 분배")과 어긋난다. 그래서 남는 여유(remaining_ratio)도
@@ -476,7 +459,7 @@ def schedule_assignments(
                 "employee_id": best_id,
                 "score": best_score,
                 "skill_match": skill_text,
-                # 2026-09-11: 시간과 함께 평일 환산치도 보여준다 — 실제 게이트는
+                # 2026-09-11: 시간과 함께 평일 환산치도 보여준다. 실제 게이트는
                 # 평일 기준이라, 시간만 보면 "왜 이 사람이 제외됐는지" PM이 이해하기 어렵다.
                 "workload": (
                     f"이번 배정 포함 현재 부하 {workload[best_id]:.1f}시간 · "
