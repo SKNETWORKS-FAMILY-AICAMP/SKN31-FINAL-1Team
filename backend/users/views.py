@@ -378,8 +378,9 @@ class UserManageView(generics.RetrieveUpdateDestroyAPIView):
         description='실제로는 하드 삭제가 아니라 비활성화 처리합니다. TaskAssignment.assigned_user가 '
                     'on_delete=CASCADE라 진짜로 삭제하면 그 직원이 배정받았던 업무 기록이 전부 함께 '
                     '지워지기 때문입니다 — 대신 is_active=False로 바꾸고 status_code를 RESIGNED로, '
-                    'resign_date를 오늘 날짜로 채웁니다. 목록 조회(GET /api/users/)는 is_active=True만 '
-                    '보여주므로 화면에서는 즉시 사라집니다.',
+                    'resign_date가 비어있으면 오늘 날짜로 채웁니다(이미 있으면 그대로 둠 — 이미 퇴사 '
+                    '처리된 계정을 삭제해도 원래 퇴사일이 덮어써지지 않습니다). 목록 조회(GET /api/users/)는 '
+                    'is_active=True만 보여주므로 화면에서는 즉시 사라집니다.',
         responses={204: None}
     )
     def delete(self, request, *args, **kwargs):
@@ -387,7 +388,11 @@ class UserManageView(generics.RetrieveUpdateDestroyAPIView):
 
     def perform_destroy(self, instance):
         instance.is_active = False
-        instance.resign_date = timezone.localdate()
+        # 2026-09-16 (사용자 지적): 이미 퇴사 처리(resign_date 있음)된 계정에 "삭제"를
+        # 또 누르면, 원래 정확히 기록돼 있던 퇴사일이 삭제 누른 "오늘 날짜"로 조용히
+        # 덮어써지는 버그가 있었다 — 퇴사일이 아직 없을 때만 오늘 날짜로 채운다.
+        if not instance.resign_date:
+            instance.resign_date = timezone.localdate()
         resigned_code = CommonCode.objects.filter(
             group__group_code='USER_STATUS', code_id='RESIGNED'
         ).first()
