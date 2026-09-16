@@ -355,7 +355,12 @@ def test_결정사항이_없으면_비어있음():
     assert s.items == []
 
 
-def test_unverified_항목은_코드_조립_섹션에서_제외된다():
+def test_unverified_항목은_지워지지_않고_표시만_붙는다():
+    """
+    2026-09-16: unverified라고 항목을 지우면, 내용은 맞게 뽑혔는데
+    인용문 한 글자 오차로 결정사항이 조용히 사라지는 사례가 실측으로
+    확인됐습니다. 이제 지우지 않고 '(근거 확인 필요)' 표시만 붙입니다.
+    """
     s = build_tech_scope(
         _structured(
             requirements={
@@ -375,8 +380,9 @@ def test_unverified_항목은_코드_조립_섹션에서_제외된다():
         )
     )
 
-    assert s.items == []
-    assert s.is_incomplete is True
+    assert s.items == ["근거 없는 응답 시간 기준 (근거 확인 필요)"]
+    assert s.is_incomplete is False
+    assert "확인" in s.needs_input
 
     decisions = build_decisions(
         _structured(
@@ -391,8 +397,10 @@ def test_unverified_항목은_코드_조립_섹션에서_제외된다():
         )
     )
 
-    assert decisions.items == []
-    assert decisions.is_incomplete is True
+    assert decisions.items == [
+        "[기능] 근거 없는 기능을 제공한다 (근거 확인 필요)"
+    ]
+    assert "확인" in decisions.needs_input
 
 
 # ─────────────────────────────────────────────────────────────

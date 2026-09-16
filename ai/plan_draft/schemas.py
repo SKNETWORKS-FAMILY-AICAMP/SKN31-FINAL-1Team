@@ -196,7 +196,18 @@ class NarrativeSection(BaseModel):
     )
 
 class DetailedGoal(BaseModel):
-    """기획서의 세부 목표 및 문제 정의 항목."""
+    """
+    기획서의 세부 목표 및 문제 정의 항목.
+
+    2026-09-15: problem_evidence·goal_evidence 필드를 없앴습니다.
+    예전엔 이 필드에 담긴 quote가 노드①의 검증된 quote와 문자 그대로
+    일치해야만(list_builder.build_goals) 항목이 채택됐는데, LLM이 문제와
+    목표를 자기 말로 정리하면서 quote를 조금만 바꿔도 탈락해 항목이 거의
+    안 남았습니다. 이제 이 섹션의 근거는 project.problem_items·
+    project.goals의 검증된 quote를 통째로(항목별 매칭 없이) 보여줍니다
+    (list_builder.build_goals, collect_source_evidence 참고) — 6·7번과
+    같은 방식입니다.
+    """
 
     title: str = Field(
         ...,
@@ -217,31 +228,48 @@ class DetailedGoal(BaseModel):
         description="해당 문제를 개선하기 위한 목표를 한 문장으로 작성",
     )
 
-    problem_evidence: list[Evidence] = Field(
-        ...,
-        min_length=1,
-        description="문제 작성에 사용한 구조화 JSON의 원문 근거",
-    )
-
-    goal_evidence: list[Evidence] = Field(
-        ...,
-        min_length=1,
-        description="목표 작성에 사용한 구조화 JSON의 원문 근거",
-    )
-
 
 class PlanSections(BaseModel):
     """LLM 응답 형태. Instructor의 response_model로 씁니다."""
 
     sections: list[NarrativeSection] = Field(..., min_length=1)
 
+    # 2026-09-15: max_length=4였던 것을 없앴습니다.
+    #
+    # 문제-목표를 원문 quote 완전 일치로만 짝짓던 예전 방식(list_builder.
+    # build_goals)이 회의록에 실제로 있는 문제·목표를 대부분 걸러내
+    # 항목이 1개만 남는 경우가 잦았습니다(develop 브랜치와 비교 실측:
+    # 우리 3번 345자 vs develop 1503자). 이제 문제-목표 연결은 LLM이
+    # 직접 판단하고, 개수 제한 없이 회의에 실제로 있는 만큼 씁니다.
     goals: list[DetailedGoal] = Field(
-    default_factory=list,
-    max_length=4,
-    description=(
-        "세부 목표 및 문제 정의 항목. "
-        "각 항목은 제목, 문제, 목표와 각각의 원문 근거를 포함합니다. "
-        "근거가 부족하면 빈 배열로 출력합니다."),
+        default_factory=list,
+        description=(
+            "세부 목표 및 문제 정의 항목. project.problem_items·project.goals에 "
+            "있는 문제와 목표를 빠짐없이 정리합니다. 개수 제한은 없지만 "
+            "입력에 없는 문제·목표를 만들지 않습니다."
+        ),
+    )
+
+    # 2026-09-15 추가: 5번 주요 기능도 LLM이 직접 씁니다.
+    #
+    # 예전엔 노드①이 각 요구사항에 붙인 feature_name 태그를 기준으로
+    # 코드가 기계적으로 묶었습니다(list_builder.build_features). 태그가
+    # 청크마다 일관되지 않거나 없으면 "기타 기능 요구사항"이라는 뭉텅이로
+    # 전부 쏟아져 들어가는 문제가 실측으로 확인됐습니다. 검증된 기능
+    # 요구사항·결정사항을 LLM에게 통째로 보여주고 직접 묶어 쓰게 하는 게
+    # 더 안정적이었습니다(develop 브랜치 비교 실측).
+    #
+    # develop은 이 필드에 max_length=7을 걸어뒀는데, 그 캡 때문에 기능이
+    # 많은 회의록(예: 9~10개 기능 영역)에서 일부가 통째로 빠지는 것도
+    # 실측으로 확인했습니다. 그래서 여기는 상한을 두지 않습니다 — 회의에
+    # 실제로 있는 기능은 다 씁니다.
+    features: list[Feature] = Field(
+        default_factory=list,
+        description=(
+            "주요 기능. 검증된 requirements.functional과 decisions[feature]를 "
+            "의미 단위로 묶어서 작성합니다. 회의에 있는 기능은 개수 제한 없이 "
+            "전부 포함합니다. 입력에 없는 기능을 만들지 않습니다."
+        ),
     )
 
 

@@ -25,6 +25,7 @@ evidence 매칭 실패에는 두 가지 원인이 있습니다.
   "근거를 다시 찾아봐"라고 시키면 모델은 더 그럴듯한 인용을 만들어냅니다.
 """
 
+import difflib
 import re
 from dataclasses import dataclass, field
 
@@ -50,6 +51,16 @@ _PUNCT = r"[.,!?~·…\"'\u201c\u201d\u2018\u2019()\[\]{}:;\-]"
 
 VERIFIED = "verified"
 UNVERIFIED = "unverified"
+
+# 2차 매칭(유사도) 통과 기준. normalize()로 공백·문장부호를 지운 뒤
+# 비교합니다. 2026-09-16: 실측(실제 회의록 재실행)에서 노드 1이 원문
+# "깔끔하게"를 근거 quote에 "깔끗하게"로 한 글자 잘못 옮겨 적어, 내용은
+# 맞게 뽑았는데도 이 결정 하나가 unverified로 빠지고 하류(plan_draft)에서
+# 조용히 사라지는 사례를 확인했습니다. 이런 한두 글자 오차(경우 B)까지
+# 구제하되, 완전히 다른 문장(경우 A, 진짜 할루시네이션)은 걸러야 하므로
+# 임계값을 보수적으로 높게 잡았습니다. 오탐(지어낸 내용이 통과)이
+# 보이면 올리고, 미탐(멀쩡한 인용이 계속 unverified)이 보이면 내리세요.
+_SIMILARITY_THRESHOLD = 0.92
 
 
 def normalize(text: str) -> str:
@@ -90,6 +101,35 @@ class EvidenceReport:
         return self.verified_count / self.checked
 
 
+def _fuzzy_verified(quote: str, source: str) -> bool:
+    """
+    quote가 source 어딘가와 근사 일치하는지 봅니다. 둘 다 normalize()를
+    거친 문자열이어야 합니다.
+
+    source 전체와 quote를 통째로 비교하면(O(n*m)) 회의록 길이에서 느려질
+    뿐 아니라, source 여기저기 흩어진 글자들이 우연히 겹쳐 실제로는
+    존재하지 않는 내용을 통과시킬 위험도 있습니다. 대신 먼저 최장 공통
+    부분열로 source에서 quote와 제일 겹치는 위치를 찾고, 그 주변
+    (quote 길이만큼)만 잘라내 그 구간과만 유사도를 비교합니다 — 실제로
+    한 곳에 뭉쳐 있는 인용만 통과시키기 위해서입니다.
+    """
+    if not quote:
+        return False
+
+    matcher = difflib.SequenceMatcher(None, source, quote, autojunk=False)
+    match = matcher.find_longest_match(0, len(source), 0, len(quote))
+
+    if match.size == 0:
+        return False
+
+    window_start = max(0, match.a - match.b)
+    window_end = min(len(source), window_start + len(quote) + 10)
+    window = source[window_start:window_end]
+
+    ratio = difflib.SequenceMatcher(None, window, quote, autojunk=False).ratio()
+    return ratio >= _SIMILARITY_THRESHOLD
+
+
 def _get(data: dict, path: str):
     """'requirements.functional' 같은 점 경로로 값을 꺼냅니다."""
     cur = data
@@ -118,17 +158,17 @@ def verify_and_mark(data: dict, meeting_raw_text: str) -> EvidenceReport:
         report.checked += 1
 
         # 1차: 정규화 후 부분 문자열 매칭
-        if quote and normalize(quote) in source:
+        normalized_quote = normalize(quote)
+        if quote and normalized_quote in source:
             item[status_key] = VERIFIED
             return
 
-        # 2차: 유사도 매칭 (미도입)
-        # 어미·조사가 바뀐 인용(경우 B)을 구제하기 위한 안전장치입니다.
-        # 알고리즘과 임계값 모두 미확정이므로 일단 끕니다.
-        # 1차만으로 몇 %가 걸러지는지 실측한 뒤 도입 여부를 정하세요.
-        # if similarity(quote, meeting_raw_text) >= THRESHOLD:
-        #     item[status_key] = VERIFIED
-        #     return
+        # 2차: 유사도 매칭
+        # 어미·조사가 바뀌거나 한두 글자를 잘못 옮겨 적은 인용(경우 B)을
+        # 구제합니다. _fuzzy_verified 참고.
+        if quote and _fuzzy_verified(normalized_quote, source):
+            item[status_key] = VERIFIED
+            return
 
         item[status_key] = UNVERIFIED
         report.unverified.append(

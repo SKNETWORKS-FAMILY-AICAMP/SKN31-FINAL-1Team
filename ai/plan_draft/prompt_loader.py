@@ -176,9 +176,9 @@ def _validate_plan_template(template: dict) -> None:
         "plan_generation.metadata",
     )
 
-    if version != "2.3":
+    if version != "2.4":
         raise PromptTemplateError(
-            "plan_generation.yaml 버전은 2.3이어야 합니다."
+            "plan_generation.yaml 버전은 2.4여야 합니다."
         )
 
     _require_text(
@@ -203,12 +203,13 @@ def _validate_plan_template(template: dict) -> None:
     expected_root_fields = [
         "sections",
         "goals",
+        "features",
     ]
 
     if root_fields != expected_root_fields:
         raise PromptTemplateError(
             "output_contract.root_fields는 "
-            "sections, goals 순서여야 합니다."
+            "sections, goals, features 순서여야 합니다."
         )
 
     # LLM이 sections 배열에 생성할 서술형 섹션을 검증합니다.
@@ -344,12 +345,14 @@ def _validate_plan_template(template: dict) -> None:
     )
 
     # DetailedGoal Pydantic 모델과 같은 필드인지 확인합니다.
+    #
+    # 2026-09-15: problem_evidence·goal_evidence를 DetailedGoal에서
+    # 없앴습니다(스키마 docstring 참고) — 3번 근거는 이제 섹션 전체
+    # 단위로 코드가 붙입니다.
     expected_item_fields = [
         "title",
         "problem",
         "goal",
-        "problem_evidence",
-        "goal_evidence",
     ]
 
     if item_fields != expected_item_fields:
@@ -411,6 +414,64 @@ def _validate_plan_template(template: dict) -> None:
         detailed_goal_rules,
         "evidence_rules",
         detailed_goal_source,
+    )
+
+    # 2026-09-15 추가: 5번 주요 기능 작성 규칙을 검증합니다.
+    features_rules = _require_mapping(
+        template,
+        "features_rules",
+        "plan_generation",
+    )
+
+    features_source = "plan_generation.features_rules"
+
+    _require_text(
+        features_rules,
+        "title",
+        features_source,
+    )
+
+    _require_text(
+        features_rules,
+        "output_field",
+        features_source,
+    )
+
+    _require_list(
+        features_rules,
+        "source_fields",
+        features_source,
+    )
+
+    features_item_fields = _require_list(
+        features_rules,
+        "item_fields",
+        features_source,
+    )
+
+    # Feature Pydantic 모델과 같은 필드인지 확인합니다.
+    expected_feature_item_fields = [
+        "group",
+        "title",
+        "description",
+    ]
+
+    if features_item_fields != expected_feature_item_fields:
+        raise PromptTemplateError(
+            "features_rules.item_fields가 "
+            "Feature 스키마와 일치하지 않습니다."
+        )
+
+    _require_mapping(
+        features_rules,
+        "count",
+        features_source,
+    )
+
+    _require_list(
+        features_rules,
+        "rules",
+        features_source,
     )
 
     # 용어집 규칙을 검증합니다.
@@ -673,6 +734,10 @@ def build_plan_system_prompt(
         _render_section(
             "세부 목표 및 문제 정의 작성 규칙",
             template["detailed_goal_rules"],
+        ),
+        _render_section(
+            "주요 기능 작성 규칙",
+            template["features_rules"],
         ),
     ]
 

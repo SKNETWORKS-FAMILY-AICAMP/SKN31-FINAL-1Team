@@ -177,15 +177,15 @@ def run(
         # ── 5번 주요 기능은 features 배열로 별도 처리 ───────
         # 프론트가 항목 단위로 편집·삭제하므로 HTML 덩어리로 두면
         # 항목 하나만 고칠 수 없습니다.
+        #
+        # 2026-09-15: 노드①의 feature_name 태그로 코드가 기계적으로
+        # 묶던 방식(list_builder.build_features)을 버렸습니다. 태그가
+        # 청크마다 일관되지 않으면 "기타 기능 요구사항"에 항목이 뭉텅이로
+        # 쏟아지는 문제가 실측으로 확인됐습니다. 이제 LLM이 검증된
+        # functional_requirements·feature_decisions를 직접 묶어 쓴
+        # result.features를 그대로 씁니다(schemas.py PlanSections.features).
         if spec["key"] == "features":
-            feats = list_builder.build_features(
-                structured
-            )
-            # 읽기 모드용 HTML도 함께 만듭니다.
-            # 편집은 features를, 표시는 content_html을 씁니다.
-            #
-            # 2026-09-14: 확정 기능과 별도 연동이 함께 있으면
-            # 소제목으로 나눠 보여줍니다(feature_renderer 참고).
+            feats = list(result.features)
             content = render_features(feats)
             sections.append(PlanSection(
                 no=spec["no"], key=spec["key"], title=spec["title"],
@@ -194,14 +194,8 @@ def run(
                 features=feats,
                 items=[f.title for f in feats],
                 source_fields=spec["source_fields"],
-                # 기능 요구사항과 기능 결정사항에는 같은 기능이 표현만 다르게
-                # 중복될 수 있습니다.
-                #
-                # 주요 기능 섹션에서는 requirements.functional의 근거를 우선
-                # 사용하고, 기능 요구사항이 없을 때만 decisions[feature]를
-                # 예비 근거로 사용합니다.
-                #
-                # 결정사항의 근거는 7번 최종 결정사항에서 별도로 표시됩니다.
+                # LLM이 스스로 쓴 문장을 근거로 쓰지 않습니다. 노드①이
+                # 검증한 원문을 섹션 전체 단위로 붙입니다(3·6·7번과 동일).
                 evidence=list_builder.collect_feature_evidence(structured),
                 is_incomplete=not feats,
             ))

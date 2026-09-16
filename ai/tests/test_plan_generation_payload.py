@@ -38,7 +38,16 @@ def _functional(
     }
 
 
-def test_generation_payload_only_exposes_narrative_sources():
+def test_generation_payload_exposes_verified_functional_for_features_only():
+    """
+    2026-09-15: 5번(주요 기능)을 LLM이 직접 쓰도록 바뀌면서, payload에
+    verified functional_requirements·feature_decisions가 추가됩니다.
+    project·users만 노출하던 예전 계약은 더 이상 유효하지 않습니다.
+
+    다만 안전장치는 그대로입니다 — 이 필드는 features 작성에만 쓰이고
+    overview·problem·users 작성 규칙은 여전히 이걸 보지 말라고
+    명시합니다(아래 프롬프트 테스트 참고).
+    """
     project = {
         "name": "리테일링크",
         "problem_items": [],
@@ -55,36 +64,68 @@ def test_generation_payload_only_exposes_narrative_sources():
                     _functional(
                         "바코드 등록을 제공한다.",
                         "바코드 등록",
-                    )
+                    ),
+                    _functional(
+                        "미검증 기능은 제외한다.",
+                        "미검증",
+                        status="unverified",
+                    ),
                 ]
             },
             "decisions": [
                 {
                     "category": "feature",
                     "content": "바코드 방식을 확정한다.",
-                }
+                    "evidence": _evidence("바코드 방식을 확정한다."),
+                    "evidence_status": "verified",
+                },
+                {
+                    "category": "tech",
+                    "content": "백엔드는 Django를 사용한다.",
+                    "evidence": _evidence("백엔드는 Django를 사용한다."),
+                    "evidence_status": "verified",
+                },
             ],
         }
     )
 
-    assert payload == {
-        "project": project,
-        "users": users,
-    }
+    assert payload["project"] == project
+    assert payload["users"] == users
+
+    # verified 기능 요구사항만 남고, unverified는 빠집니다.
+    assert len(payload["functional_requirements"]) == 1
+    assert payload["functional_requirements"][0]["content"] == "바코드 등록을 제공한다."
+
+    # feature 카테고리 결정만 남고, tech 결정은 빠집니다.
+    assert len(payload["feature_decisions"]) == 1
+    assert payload["feature_decisions"][0]["content"] == "바코드 방식을 확정한다."
 
 
-def test_plan_prompt_does_not_ask_llm_to_generate_features():
+def test_plan_prompt_asks_llm_to_generate_features_with_no_cap():
+    """
+    5번(주요 기능)을 LLM이 직접 쓰도록 바뀐 걸 검증합니다.
+
+    functional_requirements·feature_decisions는 features 작성에만 쓰이고
+    overview·problem·users 서술에는 쓰이지 않는다는 안전장치도 함께
+    확인합니다(문제-기능 인과관계를 임의로 만들지 못하게 하려는 원래
+    취지는 그대로 유지됩니다).
+    """
     template = load_plan_template()
     prompt = build_plan_system_prompt()
 
-    assert template["metadata"]["version"] == "2.3"
+    assert template["metadata"]["version"] == "2.4"
     assert template["output_contract"]["root_fields"] == [
         "sections",
         "goals",
+        "features",
     ]
-    assert "feature_rules" not in template
-    assert "주요 기능 작성 규칙" not in prompt
+    assert "features_rules" in template
+    assert "주요 기능 작성 규칙" in prompt
     assert "requirements.functional과 decisions는 목표 작성에 사용하지 않습니다" in prompt
+    assert (
+        "overview·problem·users를 쓸 때는 이 두 필드를 보지 않습니다"
+        in prompt
+    )
 
 
 

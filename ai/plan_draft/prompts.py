@@ -49,6 +49,16 @@ def build_system_prompt(
     )
 
 
+def _verified_only(items) -> list:
+    """evidence_status가 verified인 항목만 남깁니다."""
+    return [
+        item
+        for item in (items or [])
+        if isinstance(item, dict)
+        and item.get("evidence_status") == "verified"
+    ]
+
+
 def _build_generation_payload(
     structured: dict,
 ) -> dict:
@@ -60,19 +70,28 @@ def _build_generation_payload(
         핵심 목표
         대상 사용자
         세부 목표 및 문제 정의
+        주요 기능
 
-    주요 기능, 기술 및 제약사항과 최종 결정사항은 list_builder.py에서
-    검증된 구조화 데이터를 사용해 코드로 조립합니다.
+    기술 및 제약사항과 최종 결정사항은 list_builder.py에서 검증된
+    구조화 데이터를 사용해 코드로 조립합니다(그대로 유지).
 
-    기능 요구사항과 결정사항을 서술형 LLM에 전달하지 않습니다.
-    문제와 기능 사이의 관계가 구조화되어 있지 않은 상태에서 두 목록을
-    함께 전달하면, 모델이 그럴듯한 인과관계를 임의로 만들 수 있기 때문입니다.
-    세부 목표는 project.problem_items와 project.goals만 사용합니다.
+    2026-09-15: requirements.functional과 decisions[feature]를 이제
+    같이 전달합니다 — 5번(주요 기능)을 LLM이 직접 묶어 쓰도록 바꿨기
+    때문입니다(plan_draft/schemas.py PlanSections.features 참고).
+    verified 항목만 넘겨 원문에 없는 기능이 섞이지 않게 합니다.
+
+    다만 이 필드는 features 작성에만 씁니다 — overview·problem·users
+    작성 규칙(plan_generation.yaml)에서 여전히 이 필드를 근거로 쓰지
+    말라고 명시합니다. 문제와 기능 사이의 인과관계를 서술형 섹션이
+    임의로 만드는 걸 막기 위한 원래 우려는 그대로 유효합니다.
     """
     if not isinstance(structured, dict):
         raise TypeError(
             "structured는 딕셔너리여야 합니다."
         )
+
+    requirements = structured.get("requirements") or {}
+    decisions = structured.get("decisions") or []
 
     return {
         "project": (
@@ -82,6 +101,12 @@ def _build_generation_payload(
         "users": (
             structured.get("users")
             or []
+        ),
+        "functional_requirements": _verified_only(
+            requirements.get("functional")
+        ),
+        "feature_decisions": _verified_only(
+            [d for d in decisions if isinstance(d, dict) and d.get("category") == "feature"]
         ),
     }
 
