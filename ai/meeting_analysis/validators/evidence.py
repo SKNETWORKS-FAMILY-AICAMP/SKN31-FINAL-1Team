@@ -62,6 +62,26 @@ UNVERIFIED = "unverified"
 # 보이면 올리고, 미탐(멀쩡한 인용이 계속 unverified)이 보이면 내리세요.
 _SIMILARITY_THRESHOLD = 0.92
 
+# 2026-09-16: 유사도만으로는 부정어 하나 차이를 못 잡습니다. 실측(Codex
+# 재현)에서 "외부 서버에 전송하지 않는다"의 "하지 않"만 지운 "전송한다"가
+# 문장이 길수록(70자 이상) 편집거리 비중이 작아져 ratio 0.96까지 나와
+# verified로 통과했습니다 — 뜻이 반대인데 근거로 인정되는 심각한 오탐입니다.
+#
+# 완벽한 해법은 의미 이해(LLM 재확인)뿐인데, 그건 이 모듈이 절대 LLM을
+# 부르지 않는다는 원칙(모듈 docstring 참고)에 어긋납니다. 대신 한국어
+# 부정 표현 중 다른 단어에 잘 안 섞이는 것들(있다/없다의 "없", "-지
+# 않다"의 "않", "못하다"의 "못")의 등장 횟수가 quote와 source 구간에서
+# 다르면, ratio가 아무리 높아도 무조건 거부합니다. "안"과 "아니"는
+# "제안", "방안"처럼 무관한 단어에 흔히 섞여 있어 오탐이 너무 많을
+# 것으로 보여 제외했습니다 — 이 셋만으로는 모든 부정 표현을 못 잡지만
+# (예: "안 한다"), 실측된 사례는 잡습니다.
+_NEGATION_MARKERS = ("않", "없", "못")
+
+
+def _negation_signature(text: str) -> tuple[int, ...]:
+    """부정 표현 등장 횟수를 센 서명. 다르면 의미가 반대일 가능성이 큽니다."""
+    return tuple(text.count(marker) for marker in _NEGATION_MARKERS)
+
 
 def normalize(text: str) -> str:
     """
@@ -125,6 +145,9 @@ def _fuzzy_verified(quote: str, source: str) -> bool:
     window_start = max(0, match.a - match.b)
     window_end = min(len(source), window_start + len(quote) + 10)
     window = source[window_start:window_end]
+
+    if _negation_signature(window) != _negation_signature(quote):
+        return False
 
     ratio = difflib.SequenceMatcher(None, window, quote, autojunk=False).ratio()
     return ratio >= _SIMILARITY_THRESHOLD

@@ -92,12 +92,10 @@ def _build_generation_payload(
 
     requirements = structured.get("requirements") or {}
     decisions = structured.get("decisions") or []
+    project = structured.get("project") or {}
 
     return {
-        "project": (
-            structured.get("project")
-            or {}
-        ),
+        "project": project,
         "users": (
             structured.get("users")
             or []
@@ -108,6 +106,16 @@ def _build_generation_payload(
         "feature_decisions": _verified_only(
             [d for d in decisions if isinstance(d, dict) and d.get("category") == "feature"]
         ),
+        # 2026-09-16: DetailedGoal.matched_goal_index가 참조할 번호 매긴
+        # 목표 목록입니다. project.goals를 그대로 보여주면 LLM이 배열
+        # 순서를 스스로 세야 해서 번호를 잘못 셀 위험이 있어, 코드가
+        # 직접 번호를 매겨 넘깁니다. verified 근거가 있는 목표만
+        # 인용 대상으로 노출합니다 — 검증 안 된 목표를 인용하게 하면
+        # "회의 기반"이라는 라벨의 신뢰가 애초에 성립하지 않습니다.
+        "goals_for_citation": [
+            {"index": i, "content": g.get("content", "")}
+            for i, g in enumerate(_verified_only(project.get("goals")))
+        ],
     }
 
 

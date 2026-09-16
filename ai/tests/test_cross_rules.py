@@ -47,6 +47,45 @@ def test_추출해놓고_미논의라고_적으면_해당_문구를_제거한다
     assert "requirements.non_functional" in notes[0]
 
 
+def test_비기능_요구사항_거짓_주장은_기능_쪽으로_오분류되지_않는다():
+    """
+    2026-09-16: "기능 요구사항"이 "비기능 요구사항"의 부분 문자열이라,
+    "성능"류 키워드 없이 "비기능 요구사항"만 언급하면 코드가 엉뚱하게
+    (비어있는) requirements.functional을 확인하고 "모순 없음"으로
+    잘못 판단해 거짓 unresolved 문구가 안 지워지던 버그의 회귀 테스트.
+    """
+    data = {
+        "requirements": {
+            "functional": [],
+            "non_functional": [_req("응답 3초 이내")],
+        },
+        "unresolved": ["비기능 요구사항이 논의되지 않았습니다."],
+    }
+
+    notes = check_unresolved_consistency(data)
+
+    assert data["unresolved"] == []
+    assert len(notes) == 1
+    assert "requirements.non_functional" in notes[0]
+
+
+def test_순수_기능_요구사항_모순은_여전히_잡힌다():
+    """"비"가 안 붙은 순수 "기능 요구사항" 모순은 그대로 잡혀야 한다."""
+    data = {
+        "requirements": {
+            "functional": [_req("바코드 입출고 등록")],
+            "non_functional": [],
+        },
+        "unresolved": ["기능 요구사항이 논의되지 않았습니다."],
+    }
+
+    notes = check_unresolved_consistency(data)
+
+    assert data["unresolved"] == []
+    assert len(notes) == 1
+    assert "requirements.functional" in notes[0]
+
+
 def test_실제로_비어_있으면_미논의_문구를_보존한다():
     """
     정당한 미논의까지 지우면 안 된다.
@@ -75,6 +114,24 @@ def test_영역_키워드가_없는_문구는_건드리지_않는다():
     notes = check_unresolved_consistency(data)
 
     assert len(data["unresolved"]) == 1
+    assert notes == []
+
+
+def test_영역_키워드만_겹치고_미논의_주장이_없으면_보존한다():
+    """
+    2026-09-16: 영역 키워드(예: "데이터")만 겹치면 무조건 모순으로 보던
+    버그의 회귀 테스트. "데이터 보관 기간은 다음 회의에서 결정한다"는
+    "데이터 요구사항 자체가 안 나왔다"는 주장이 아니라 세부 사항을
+    미루는 정당한 미결정 사항이므로 지워지면 안 된다.
+    """
+    data = {
+        "requirements": {"data": [_req("수집한 원본은 오브젝트 스토리지에 저장한다")]},
+        "unresolved": ["데이터 보관 기간은 다음 회의에서 결정한다."],
+    }
+
+    notes = check_unresolved_consistency(data)
+
+    assert data["unresolved"] == ["데이터 보관 기간은 다음 회의에서 결정한다."]
     assert notes == []
 
 

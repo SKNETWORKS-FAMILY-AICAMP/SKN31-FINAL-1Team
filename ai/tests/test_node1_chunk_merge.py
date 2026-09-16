@@ -76,6 +76,18 @@ def test_is_duplicate_서로_다른_사실은_중복이_아니다():
     assert not node._is_duplicate(a, [b])
 
 
+def test_is_duplicate_주체가_바뀌면_중복이_아니다():
+    """
+    2026-09-16: Codex가 재현한 사례의 회귀 테스트. "관리자는 회의록을
+    삭제할 수 있다"와 "참여자는 회의록을 삭제할 수 있다"는 ratio가
+    0.85로 높지만 권한 범위가 다른 별개 요구사항이라 병합하면 안 된다.
+    """
+    a = node._dedupe_key("관리자는 회의록을 삭제할 수 있다")
+    b = node._dedupe_key("참여자는 회의록을 삭제할 수 있다")
+
+    assert not node._is_duplicate(a, [b])
+
+
 def test_merge_extractions_유사_표현_결정사항을_하나로_합친다():
     result = _extraction(
         [

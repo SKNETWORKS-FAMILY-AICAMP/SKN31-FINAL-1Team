@@ -349,10 +349,15 @@ def _validate_plan_template(template: dict) -> None:
     # 2026-09-15: problem_evidence·goal_evidence를 DetailedGoal에서
     # 없앴습니다(스키마 docstring 참고) — 3번 근거는 이제 섹션 전체
     # 단위로 코드가 붙입니다.
+    #
+    # 2026-09-16: matched_goal_index를 추가했습니다(스키마 docstring 참고)
+    # — LLM에게 목표 문장을 옮겨 적게 하는 대신 goals_for_citation의
+    # 번호만 답하게 해서, 맞으면 코드가 원문으로 치환합니다.
     expected_item_fields = [
         "title",
         "problem",
         "goal",
+        "matched_goal_index",
     ]
 
     if item_fields != expected_item_fields:

@@ -118,6 +118,13 @@ UNVERIFIED_ITEMS_NOTE = (
     "노드①이 뽑아낸 것이니, 원문과 직접 대조해 확정해 주세요."
 )
 
+# 2026-09-16: (근거 확인 필요)와 뜻이 다릅니다. 그건 "원문 대조는
+# 했는데 검증에 실패했다"는 뜻이고, 이건 "애초에 회의에 없어서
+# AI가 문맥으로 보완했다"는 뜻입니다(build_goals의
+# matched_goal_index 처리 참고). 두 개념을 같은 문구로 섞으면 PM이
+# "이게 왜 확인이 필요한지" 원인을 구분할 수 없습니다.
+AI_SUGGESTED_GOAL_SUFFIX = " (AI 제안 · PM 확인 필요)"
+
 
 def _mark_if_unverified(text: str, item: dict) -> tuple[str, bool]:
     """미확인 항목이면 표시를 붙입니다. (문장, 미확인 여부)를 반환합니다."""
@@ -872,12 +879,39 @@ def build_goals(
     project.problem_items·project.goals의 검증된 원문을 붙입니다
     (6·7번과 같은 방식). LLM이 project.problem_items에 없는 문제를
     지어내는 것은 프롬프트 규칙이 막습니다.
+
+    2026-09-16: project.problem_items·project.goals가 둘 다 verified
+    항목 없이 완전히 비어 있으면, generated_goals에 뭐가 들어있든 무시하고
+    바로 폴백으로 보냅니다. 실측(Codex 재현)에서 이 경우에도 LLM이 낸
+    title/problem/goal을 그대로 받아들여 is_incomplete=False, evidence=[]로
+    처리한 사례를 확인했습니다 — 근거가 0건인데 "완료된 섹션"으로
+    보이는 건 이 섹션의 신뢰 전제(화면의 근거자료는 노드①이 검증한
+    원문이다) 자체를 깨는 것이라 프롬프트 규칙만으로는 못 막습니다.
+
+    2026-09-16: matched_goal_index로 목표 문장의 출처를 code가 검증합니다.
+    LLM에게 목표 문장을 옮겨 적게 하는 대신 project.goals 번호만 답하게
+    하고(prompts.py goals_for_citation, plan_generation.yaml
+    matched_goal_index_rules), 번호가 실제로 유효하면(0 <= idx <
+    검증된 목표 개수) 화면에 보여줄 목표 문장 자체를 그 목표의 원문으로
+    코드가 덮어씁니다 — LLM이 옮겨 적다 생기는 오차 위험이 이 경로에는
+    없습니다. 번호가 없거나 범위를 벗어나면 LLM이 쓴 문장을 그대로 쓰되
+    AI_SUGGESTED_GOAL_SUFFIX 표시를 붙여 "이건 회의에 없던 걸 AI가
+    문맥으로 보완한 것"임을 PM이 알 수 있게 합니다.
     """
     source_fields = [
         "project.problem",
         "project.problem_items",
         "project.goals",
     ]
+
+    project = structured.get("project") or {}
+    verified_goals = _verified_items(project.get("goals") or [])
+    has_verified_source = bool(
+        _verified_items(project.get("problem_items") or [])
+    ) or bool(verified_goals)
+
+    if not has_verified_source:
+        return _build_goals_problem_only(structured, source_fields)
 
     items_out: list[dict] = []
     seen: set[tuple[str, str]] = set()
@@ -898,13 +932,27 @@ def build_goals(
         if not title or not problem or not goal:
             continue
 
+        matched_index = goal_data.get("matched_goal_index")
+        if isinstance(matched_index, int) and 0 <= matched_index < len(verified_goals):
+            # 번호가 유효하면 LLM이 쓴 문장을 버리고 원문으로 교체합니다 —
+            # "회의 기반"이라고 표시할 내용은 실제로 회의 원문이어야 합니다.
+            goal = str(verified_goals[matched_index].get("content", "")).strip() or goal
+            is_ai_suggested = False
+        else:
+            is_ai_suggested = True
+
         key = (_norm(problem), _norm(goal))
 
         if key in seen:
             continue
 
         seen.add(key)
-        items_out.append({"title": title, "problem": problem, "goal": goal})
+        items_out.append({
+            "title": title,
+            "problem": problem,
+            "goal": goal,
+            "is_ai_suggested": is_ai_suggested,
+        })
 
     # LLM이 항목을 하나도 못 냈으면(모델 변동성) 검증된 문제만이라도 보여줍니다.
     if not items_out:
@@ -922,6 +970,7 @@ def build_goals(
                 "<p>",
                 "<strong>목표:</strong> ",
                 f"{escape(item['goal'])}",
+                AI_SUGGESTED_GOAL_SUFFIX if item["is_ai_suggested"] else "",
                 "</p>",
                 "</li>",
             ]
@@ -936,7 +985,9 @@ def build_goals(
             [
                 item["title"],
                 f"문제: {item['problem']}",
-                f"목표: {item['goal']}",
+                "목표: "
+                + item["goal"]
+                + (AI_SUGGESTED_GOAL_SUFFIX if item["is_ai_suggested"] else ""),
             ]
         )
         for item in items_out

@@ -23,6 +23,7 @@ project.problem_items·project.goals를 보고 직접 title/problem/goal을
 """
 
 from plan_draft.list_builder import (
+    AI_SUGGESTED_GOAL_SUFFIX,
     GOALS_NOT_DISCUSSED_NOTE,
     build_goals,
 )
@@ -34,9 +35,15 @@ def _detailed_goal(
     title: str = "발주 시점 누락 및 품절 방지",
     problem: str = "수기 관리로 발주 시점을 놓쳐 품절이 발생한다.",
     goal: str = "재고 임계치 알림으로 발주 누락과 품절을 줄인다.",
+    matched_goal_index: int | None = None,
 ) -> DetailedGoal:
     """테스트용 DetailedGoal을 만듭니다."""
-    return DetailedGoal(title=title, problem=problem, goal=goal)
+    return DetailedGoal(
+        title=title,
+        problem=problem,
+        goal=goal,
+        matched_goal_index=matched_goal_index,
+    )
 
 
 def _structured(
@@ -220,3 +227,105 @@ def test_fallback_when_no_problem_items_returns_empty_section():
     assert section.items == []
     assert section.content_html == ""
     assert section.is_incomplete is True
+
+
+def test_원본이_완전히_비어있으면_LLM_생성_항목도_거부한다():
+    """
+    2026-09-16: Codex가 재현한 사례의 회귀 테스트. project.problem_items·
+    goals가 둘 다 verified 없이 완전히 비어 있으면, LLM이 title/problem/
+    goal을 멀쩡하게 채워 냈어도 받아들이면 안 된다 — 근거가 0건인데
+    is_incomplete=False로 "완료"처럼 보이는 건 이 섹션의 신뢰 전제를
+    깬다.
+    """
+    structured = {
+        "project": {"problem": "", "problem_items": [], "goals": []},
+        "requirements": {"functional": []},
+        "decisions": [],
+    }
+    generated = [_detailed_goal(
+        title="임의 생성 목표",
+        problem="임의로 만든 문제",
+        goal="임의로 만든 목표",
+    )]
+
+    section = build_goals(structured, generated)
+
+    assert section.items == []
+    assert section.evidence == []
+    assert section.is_incomplete is True
+
+
+# ─────────────────────────────────────────────────────────────
+# 2026-09-16 추가 — matched_goal_index (index-citation)
+#
+# LLM에게 목표 문장을 자기 말로 옮겨 적게 하는 대신, project.goals의
+# 번호만 답하게 하고 코드가 유효성을 검증한다. 유효하면 화면에 보여줄
+# 목표 문장 자체를 검증된 원문으로 교체하고, 무효/미제공이면 LLM이 쓴
+# 문장을 AI_SUGGESTED_GOAL_SUFFIX 표시와 함께 그대로 쓴다.
+# ─────────────────────────────────────────────────────────────
+
+
+def test_유효한_인덱스면_목표_문장을_원문으로_교체한다():
+    """LLM이 뭐라고 쓰든, 인덱스가 유효하면 project.goals 원문이 채택된다."""
+    structured = _structured()
+    generated = [_detailed_goal(
+        goal="LLM이 다르게 옮겨 적은 문장",
+        matched_goal_index=0,
+    )]
+
+    section = build_goals(structured, generated)
+
+    assert "발주 시점 누락과 품절을 줄인다" in section.content_html
+    assert "LLM이 다르게 옮겨 적은 문장" not in section.content_html
+    assert AI_SUGGESTED_GOAL_SUFFIX not in section.content_html
+
+
+def test_인덱스가_없으면_AI_제안_표시가_붙는다():
+    """matched_goal_index가 없으면(None) LLM 문장을 쓰되 표시를 붙인다."""
+    structured = _structured()
+    generated = [_detailed_goal(
+        goal="회의에 없던 문맥 보완 목표",
+        matched_goal_index=None,
+    )]
+
+    section = build_goals(structured, generated)
+
+    assert "회의에 없던 문맥 보완 목표" in section.content_html
+    assert AI_SUGGESTED_GOAL_SUFFIX in section.content_html
+
+
+def test_범위를_벗어난_인덱스는_AI_제안으로_처리한다():
+    """
+    인덱스가 project.goals 범위를 벗어나면(예: 음수, 목록 길이 이상)
+    검증 실패로 보고 AI 제안 취급한다(fail-closed) — 있지도 않은
+    번호를 유효하다고 믿으면 안 된다.
+    """
+    structured = _structured()
+    generated = [_detailed_goal(
+        goal="엉뚱한 번호를 인용한 목표",
+        matched_goal_index=5,
+    )]
+
+    section = build_goals(structured, generated)
+
+    assert "엉뚱한 번호를 인용한 목표" in section.content_html
+    assert AI_SUGGESTED_GOAL_SUFFIX in section.content_html
+
+
+def test_unverified_목표는_인덱스로_인용할_수_없다():
+    """
+    goals_for_citation은 verified 목표만 번호를 매긴다. project.goals에
+    unverified 항목이 섞여 있으면 verified 항목만 세어 인덱스가
+    매겨지므로, unverified 목표는 애초에 인용 대상이 아니다.
+    """
+    structured = _structured(goal_status="unverified")
+    generated = [_detailed_goal(
+        goal="검증 안 된 목표를 인용한 척",
+        matched_goal_index=0,
+    )]
+
+    section = build_goals(structured, generated)
+
+    # verified 목표가 하나도 없으므로 인덱스 0은 항상 무효 → AI 제안 처리.
+    assert "검증 안 된 목표를 인용한 척" in section.content_html
+    assert AI_SUGGESTED_GOAL_SUFFIX in section.content_html

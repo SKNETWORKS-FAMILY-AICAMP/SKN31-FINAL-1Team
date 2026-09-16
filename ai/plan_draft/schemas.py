@@ -207,6 +207,16 @@ class DetailedGoal(BaseModel):
     project.goals의 검증된 quote를 통째로(항목별 매칭 없이) 보여줍니다
     (list_builder.build_goals, collect_source_evidence 참고) — 6·7번과
     같은 방식입니다.
+
+    2026-09-16: matched_goal_index를 추가했습니다. goal 필드는 여전히
+    LLM이 자기 말로 씁니다 — "이 문제와 project.goals의 몇 번이 대응하는가"는
+    문장 인용보다 훨씬 간단하고 검증하기 쉬운 객관식 판단이라, LLM에게
+    번호만 답하게 하고 실제 채택 여부와 근거 연결은 코드가 결정합니다
+    (list_builder.build_goals 참고). 번호가 유효하면 화면에 표시되는
+    goal 문장 자체를 project.goals의 원문으로 코드가 덮어씁니다 — LLM이
+    옮겨 적다 생기는 오차(예: "깔끔"→"깔끗") 위험이 이 경로에는 없습니다.
+    번호가 없거나 범위를 벗어나면 이 goal 필드 값을 그대로 쓰되 "AI 제안"으로
+    표시합니다.
     """
 
     title: str = Field(
@@ -226,6 +236,14 @@ class DetailedGoal(BaseModel):
         ...,
         min_length=1,
         description="해당 문제를 개선하기 위한 목표를 한 문장으로 작성",
+    )
+
+    matched_goal_index: Optional[int] = Field(
+        default=None,
+        description=(
+            "이 문제와 직접 대응하는 목표가 goals_for_citation 목록에 있으면 "
+            "그 index 번호. 없으면 null."
+        ),
     )
 
 

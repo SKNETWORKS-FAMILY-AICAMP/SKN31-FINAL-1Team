@@ -128,6 +128,24 @@ REQUIREMENT_CATEGORIES = (
 # 안 잡힘)이 보이면 내리세요.
 _SIMILARITY_THRESHOLD = 0.82
 
+# 2026-09-16: 유사도만으로는 문장 앞머리의 행위자(주체)가 바뀐 경우를 못
+# 잡습니다. 실측(Codex 재현)에서 "관리자는 회의록을 삭제할 수 있다"와
+# "참여자는 회의록을 삭제할 수 있다"가 ratio 0.857로 같은 항목 취급되어
+# 하나가 삭제됐습니다 — 둘은 권한 범위가 다른 별개 요구사항인데도요.
+#
+# 처음엔 "조사(는/은/이/가) 앞까지를 주어로 본다"는 방식을 시도했는데,
+# "적재하는"처럼 서술어 어미에도 같은 글자가 흔히 섞여 있어 문장 앞부분이
+# 아니라 훨씬 뒤에서 걸려 오히려 정상 케이스(예: "네."만 붙은 필러 접두)
+# 까지 별개로 오판했습니다. 대신 "한쪽이 다른 쪽의 완전한 뒷부분인가"로
+# 판정합니다 — "네. 스토리지랑..."은 "스토리지랑..."의 앞에 짧은 필러만
+# 붙은 것이라 뒷부분이 통째로 일치하지만, "관리자는..."과 "참여자는..."은
+# 길이가 같은데 앞부분 내용 자체가 달라 뒷부분(는~있다)만 부분적으로
+# 겹칠 뿐 한쪽이 다른 쪽을 통째로 포함하지 않습니다.
+def _same_leading_subject(a: str, b: str) -> bool:
+    """짧은 쪽이 긴 쪽의 완전한 접미사인지(=짧은 접두어 차이뿐인지) 봅니다."""
+    shorter, longer = (a, b) if len(a) <= len(b) else (b, a)
+    return longer.endswith(shorter)
+
 
 def _dedupe_key(*parts: str) -> str:
     """중복 판정용 정규화 키. 지정한 필드들을 이어 붙여 비교합니다."""
@@ -143,16 +161,28 @@ def _is_duplicate(key: str, seen_keys: list[str]) -> bool:
     "~에 저장한다" vs "~에 적재한다") 실측으로 확인됐습니다. 정확
     일치만 보면 이런 경우가 중복 제거를 통과하지 못하고 그대로
     쌓입니다.
+
+    단, 정확 일치가 아닌 유사도 판정은 앞머리 주어가 같을 때만
+    인정합니다(_same_leading_subject 참고) — 주어만 다르고 나머지 문장이
+    비슷한 경우까지 중복으로 묶으면 안 되기 때문입니다.
     """
     if not key:
         return False
 
-    return any(
-        key == existing
-        or difflib.SequenceMatcher(None, key, existing).ratio()
-        >= _SIMILARITY_THRESHOLD
-        for existing in seen_keys
-    )
+    for existing in seen_keys:
+        if key == existing:
+            return True
+
+        if not _same_leading_subject(key, existing):
+            continue
+
+        if (
+            difflib.SequenceMatcher(None, key, existing).ratio()
+            >= _SIMILARITY_THRESHOLD
+        ):
+            return True
+
+    return False
 
 
 def _merge_unique(existing: list[dict], new_items, key_fields) -> None:

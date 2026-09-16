@@ -82,3 +82,27 @@ def test_원문에_아예_없는_주제도_unverified():
     verify_and_mark(data, source)
 
     assert data["decisions"][0]["evidence_status"] == UNVERIFIED
+
+
+def test_부정어가_빠진_인용은_verified로_통과하면_안된다():
+    """
+    2026-09-16: Codex가 재현한 사례의 회귀 테스트. 긴 문장에서 "하지
+    않는다"의 부정어만 빼면 문장 길이 대비 편집거리 비중이 작아져
+    ratio가 임계값을 넘는데, 뜻은 정반대다. 이런 부정어 뒤집힘은
+    유사도가 아무리 높아도 verified로 통과시키면 안 된다.
+    """
+    source = (
+        "이번 프로젝트에서 수집하는 모든 개인정보와 회의록 원문 데이터는 "
+        "사내 정책에 따라 암호화되어 저장되며 어떠한 경우에도 외부 서버에 "
+        "전송하지 않는다는 원칙을 반드시 지켜야 합니다."
+    )
+    quote = (
+        "이번 프로젝트에서 수집하는 모든 개인정보와 회의록 원문 데이터는 "
+        "사내 정책에 따라 암호화되어 저장되며 어떠한 경우에도 외부 서버에 "
+        "전송한다는 원칙을 반드시 지켜야 합니다."
+    )
+
+    data = _structured(quote)
+    verify_and_mark(data, source)
+
+    assert data["decisions"][0]["evidence_status"] == UNVERIFIED

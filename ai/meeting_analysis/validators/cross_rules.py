@@ -13,6 +13,8 @@ Pydantic이 못 잡는 '필드 간' 정합성을 검사합니다.
 
 """
 
+import re
+
 from .evidence import normalize
 
 REQ_CATEGORIES = ["functional", "non_functional", "data", "technical"]
@@ -31,7 +33,9 @@ MAX_ITEMS_PER_CATEGORY = 20
 # 모델이 "비기능 요구사항이 논의되지 않았습니다."라고 썼는데
 # non_functiona에 항목이 있으면 모순입니다.
 AREA_KEYWORDS = {
-    "requirements.non_functional": ["성능", "응답 속도", "동시 접속"],
+    # "비기능"을 직접 넣어 아래 functional 키워드와의 충돌(다음 주석 참고)
+    # 없이도 non_functional을 먼저 확실하게 잡습니다.
+    "requirements.non_functional": ["성능", "응답 속도", "동시 접속", "비기능"],
     "requirements.technical": ["기술 스택", "기술스택", "기술 요구"],
     "requirements.data": ["데이터"],
     "requirements.functional": ["기능 요구사항"],
@@ -40,6 +44,36 @@ AREA_KEYWORDS = {
     "constraints": ["제약"],
 }
 
+# 2026-09-16: "기능 요구사항"은 "비기능 요구사항"의 부분 문자열이라
+# 단순 in 검사로는 "비기능 요구사항이 논의되지 않았습니다"도 걸려버립니다.
+# 실측(Codex 재현)에서 이 오매칭 때문에 진짜 모순(비기능 요구사항은
+# 이미 추출돼 있는데 안 됐다고 거짓 주장)이 엉뚱하게 비어있는 functional
+# 쪽을 확인하게 되어 안 걸러진 사례를 확인했습니다. "비"로 시작하지
+# 않을 때만 매치되게 합니다 — non_functional에 위 "비기능" 키워드를
+# 추가한 것과 별개로, 한 문장에 "기능 요구사항"과 "비기능 요구사항"이
+# 둘 다 나오는 경우까지 정확히 구분하기 위한 이중 안전장치입니다.
+_FUNCTIONAL_KEYWORD_PATTERN = re.compile(r"(?<!비)기능\s*요구사항")
+
+# 2026-09-16: 영역 키워드만 겹치면 모순으로 보는 게 너무 헐거웠습니다.
+# 실측(Codex 재현)에서 "데이터 보관 기간은 다음 회의에서 결정한다"가
+# "데이터" 한 단어만 겹쳐서, requirements.data에 아무 항목이나 있으면
+# 무조건 제거됐습니다. 이건 "데이터 요구사항 자체가 안 나왔다"는 주장이
+# 아니라 "보관 기간이라는 세부 사항을 다음으로 미룬다"는, 전혀 다른
+# 정당한 미결정 사항입니다.
+#
+# 이제 영역 키워드에 더해 "실제로 논의되지 않았다"는 취지의 표현이
+# 함께 있어야만 모순으로 봅니다. 둘 다 있어야 "그 영역 자체가 통째로
+# 빠졌다"는 모델의 주장으로 해석합니다.
+NOT_DISCUSSED_PHRASES = [
+    "논의되지 않았",
+    "확인되지 않았",
+    "언급되지 않았",
+    "다뤄지지 않았",
+    "정해지지 않았",
+    "결정되지 않았",
+    "나오지 않았",
+]
+
 
 def _get_items(data: dict, path: str) -> list:
     """'requirements.non_functional' 또는 'scenarios' 경로로 배열을 꺼냅니다."""
@@ -47,6 +81,13 @@ def _get_items(data: dict, path: str) -> list:
         base, sub = path.split(".", 1)
         return (data.get(base) or {}).get(sub) or []
     return data.get(path) or []
+
+
+def _keyword_matches(path: str, u: str) -> bool:
+    """u가 path 영역을 가리키는 키워드를 담고 있는지 봅니다."""
+    if path == "requirements.functional":
+        return bool(_FUNCTIONAL_KEYWORD_PATTERN.search(u))
+    return any(k in u for k in AREA_KEYWORDS[path])
  
  
 def check_unresolved_consistency(data: dict) -> list[str]:
@@ -73,9 +114,13 @@ def check_unresolved_consistency(data: dict) -> list[str]:
  
     for u in data.get("unresolved", []):
         contradiction = None
- 
-        for path, keywords in AREA_KEYWORDS.items():
-            if not any(k in u for k in keywords):
+
+        if not any(phrase in u for phrase in NOT_DISCUSSED_PHRASES):
+            kept.append(u)
+            continue
+
+        for path in AREA_KEYWORDS:
+            if not _keyword_matches(path, u):
                 continue
             items = _get_items(data, path)
             if items:

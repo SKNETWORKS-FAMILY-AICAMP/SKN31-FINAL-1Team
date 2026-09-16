@@ -146,10 +146,12 @@ detailed_goal_rules:
     - project.problem_evidence_status
     - project.problem_items
     - project.goals
+    - goals_for_citation
   item_fields:
     - title
     - problem
     - goal
+    - matched_goal_index
   count:
     minimum: 0
     # 2026-09-15: 상한 4를 없앴습니다. 문제-목표를 quote 완전 일치로만
@@ -186,6 +188,7 @@ detailed_goal_rules:
   goal_rules:
     preferred_sources:
       - project.goals
+      - goals_for_citation
     rules:
       - 해당 문제에 직접 대응하는 project.goals의 목표 상태를 한 문장으로 작성합니다.
       - requirements.functional과 decisions는 목표 작성에 사용하지 않습니다.
@@ -193,6 +196,25 @@ detailed_goal_rules:
       - 입력의 목표가 기능명이 아니라 상태 변화라면 그 상태 변화를 그대로 보존합니다.
       - 입력에 없는 성과, 기대 효과, 기술, 일정 또는 담당자를 추가하지 않습니다.
       - 문장은 평서형인 한다 체로 작성합니다.
+    matched_goal_index_rules:
+      - >-
+        goals_for_citation은 project.goals 중 검증된 목표만 번호를 매겨
+        보여주는 목록입니다. 이 문제와 직접 대응하는 항목이 있으면
+        matched_goal_index에 그 index 번호를 답합니다.
+      - >-
+        직접 대응하는 항목이 없으면 matched_goal_index는 null로 둡니다.
+        이때도 goal 필드는 비우지 말고, 그 문제가 해소된 상태를
+        problem_items의 내용만으로 서술합니다.
+      - goals_for_citation이 빈 배열이면 matched_goal_index는 항상 null입니다.
+      - >-
+        matched_goal_index를 답했다면 goal 문장은 그 번호가 가리키는
+        content와 같은 의미여야 합니다 — 번호와 무관한 문장을 쓰고
+        번호만 그럴듯하게 채우지 않습니다.
+      - >-
+        여러 문제가 같은 목표 하나에 대응할 수 있습니다. 이때 같은
+        index를 여러 항목에서 반복 인용해도 됩니다 — 다만 실제로 그
+        목표가 해당 문제들 모두를 가리킬 때만 그렇게 하고, 그럴듯해
+        보인다는 이유로 아무 목표나 여러 문제에 끌어다 붙이지 않습니다.
   evidence_rules:
     - >-
       이 항목(title/problem/goal)에는 자체 근거 필드가 없습니다. 화면에 보여줄
