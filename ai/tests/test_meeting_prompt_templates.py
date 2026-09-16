@@ -50,7 +50,7 @@ def _base_meeting_text(additional_text: str = "") -> str:
 
 def test_extraction_template_has_expected_version():
     template = load_extraction_template()
-    assert template["metadata"]["version"] == "2.6"
+    assert template["metadata"]["version"] == "2.7"
 
 def test_extraction_template_has_scenario_rules():
     """시나리오는 스키마에 있는데 규칙이 없어 가짜 흐름이 생기던 문제."""
@@ -362,16 +362,33 @@ def test_extraction_template_tells_when_rationale_must_be_filled():
 
 
 def test_extraction_template_excludes_meeting_purpose_from_goals():
-    """
-    회의 목적을 프로젝트 목표로 뽑으면 3번 세부 목표가 통째로 빕니다.
-
-    목표의 근거가 회의 목적 문장이 되면 problem_items의 근거와 짝이
-    맞지 않아 노드 2가 문제-목표 쌍을 하나도 만들지 못합니다.
-    """
+    """회의 목적("기능 범위를 확정한다" 같은 문장)을 프로젝트 목표로 뽑지 않습니다."""
     prompt = build_extraction_system_prompt()
 
     assert "회의 목적을 프로젝트 목표로 작성하지 않습니다" in prompt
-    assert "문제와 목표가 같은 원문을 근거로 삼으면" in prompt
+
+
+def test_extraction_template_forbids_inverting_problem_into_goal():
+    """
+    2026-09-16: "문제가 있으면 그걸 뒤집어서 목표로 만들고, 문제의
+    evidence를 목표의 evidence로 재사용하라"던 예전 규칙의 회귀 테스트.
+
+    이 규칙 때문에 노드①이 회의에서 실제로 언급되지 않은 목표를
+    만들어내면서도, 근거는 문제 문장을 그대로 복사해서 근거 검증을
+    통과시켰다 — "존재하는 인용문"과 "그 주장을 실제로 뒷받침하는
+    인용문"이 다르다는 걸 이 검증 방식으로는 구분할 수 없었다.
+
+    이제 그런 목표는 만들지 않고, project.problem_items 개수와
+    project.goals 개수가 같아야 한다는 전제도 없앴다.
+    """
+    prompt = build_extraction_system_prompt()
+
+    assert "대응하는 목표를 만들어내지 않습니다" in prompt
+    assert "project.problem_items의 evidence를 project.goals의 evidence로" in prompt
+    assert "재사용하지 않습니다" in prompt
+    # 예전 규칙 문구가 되살아나지 않았는지 확인합니다.
+    assert "각 문제에 대응하는" not in prompt
+    assert "그 문제가 해소된 상태를 목표로 쓰고" not in prompt
 
 
 def test_extraction_template_captures_implementation_technology():
