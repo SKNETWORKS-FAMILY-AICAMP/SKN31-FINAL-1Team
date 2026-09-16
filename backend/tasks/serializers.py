@@ -8,7 +8,7 @@
 ###############################################################
 
 from rest_framework import serializers
-from tasks.models import TaskAssignment
+from tasks.models import TaskAssignment, TaskStatusCode
 
 
 class _CodeSimpleSerializer(serializers.Serializer):
@@ -36,6 +36,20 @@ class TaskAssignmentSerializer(serializers.ModelSerializer):
         u = obj.assigned_user
         full_name = f"{u.last_name}{u.first_name}".strip()
         return full_name or u.username
+
+    def update(self, instance, validated_data):
+        # 2026-09-16 (사용자 요청): 진행률과 상태(승인됨 ↔ 진행 중)를 양방향으로 맞춘다.
+        #   - 진행률을 1% 이상으로 올리면 "승인됨" → "진행 중"으로 자동 전환 (착수 신호)
+        #   - 진행률을 다시 0%로 내리면 "진행 중" → "승인됨"으로 자동 되돌림 (착수 취소 신호)
+        # 이 요청(TaskDetailModal의 일반 PATCH)에서 status_code를 명시적으로 같이
+        # 보낸 경우엔 그 값을 그대로 존중하고 자동 전환하지 않는다.
+        new_progress = validated_data.get('progress', instance.progress)
+        if 'status_code' not in validated_data and new_progress is not None:
+            if instance.status_code_id == TaskStatusCode.APPROVED and new_progress >= 1:
+                instance.status_code_id = TaskStatusCode.IN_PROGRESS
+            elif instance.status_code_id == TaskStatusCode.IN_PROGRESS and new_progress <= 0:
+                instance.status_code_id = TaskStatusCode.APPROVED
+        return super().update(instance, validated_data)
 
     class Meta:
         model = TaskAssignment
