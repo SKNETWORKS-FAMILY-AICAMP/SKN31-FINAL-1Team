@@ -294,7 +294,9 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                         <td className="px-4 py-3">
                           {statusLocked ? (
                             <span className={cn("inline-flex items-center gap-1 text-xs font-semibold px-2 py-1 rounded border", statusMeta?.color, "border-orange-400/30")}>
-                              <SIcon className="w-3.5 h-3.5" /> {statusMeta?.label}
+                              {/* 2026-09-16: 화면 문구는 항상 서버 code_name 그대로 — STATUSES.label은
+                                  색상/아이콘 매칭용일 뿐 표시 문구의 소스가 아니다. */}
+                              <SIcon className="w-3.5 h-3.5" /> {task.status_info?.code_name ?? statusMeta?.label}
                             </span>
                           ) : (
                             <select

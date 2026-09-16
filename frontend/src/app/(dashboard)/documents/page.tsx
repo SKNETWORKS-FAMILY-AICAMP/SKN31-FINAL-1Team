@@ -2572,20 +2572,17 @@ function TaskAssignmentList({
                     ) : "-"}
                   </td>
                   <td className="px-4 py-3">
-                    {/* 2026-09-15: 백엔드 TaskStatusCode 정리로 이 화면에서 확정된 업무는
-                        이제 PENDING_APPROVAL로 저장된다(팀 결정 — 배분 확정 시점의 상태는
-                        PENDING_APPROVAL). PM이 확정 버튼을 누른 시점에 "PM 승인 대기"라는
-                        별도 개념은 없으므로 문구는 "배분완료"만 보여준다. TASK_APPROVED("승인됨")
-                        /DONE("완료")은 나중에 개별 승인·완료 액션(projects/[id] 페이지,
-                        칸반보드)으로만 바뀌므로 여기선 code_name을 그대로 쓴다. */}
+                    {/* 2026-09-16: 프론트가 "배분완료" 같은 문구를 따로 지어내면 실제 DB
+                        code_name("배분승인대기")과 어긋나는 사고가 났다(팀 지적) — 화면엔
+                        항상 서버가 준 code_name을 그대로 보여준다. 배분 확정 직후 상태는
+                        PENDING_APPROVAL("배분승인대기")이고, PM이 개별 승인하면(projects/[id]
+                        페이지, 칸반보드) TASK_APPROVED("승인됨")로 바뀐다. */}
                     <span className={cn(
                       "inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold",
                       (t.status_info?.code_id === "DONE" || t.status_info?.code_id === "TASK_APPROVED")
                         ? "bg-emerald-500/10 text-emerald-500" : "bg-orange-500/10 text-orange-500"
                     )}>
-                      {t.status_info?.code_id === "PENDING_APPROVAL"
-                        ? "배분완료"
-                        : t.status_info?.code_name ?? "미지정"}
+                      {t.status_info?.code_name ?? "미지정"}
                     </span>
                   </td>
                 </tr>

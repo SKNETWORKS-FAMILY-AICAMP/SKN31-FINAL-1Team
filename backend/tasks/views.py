@@ -87,15 +87,20 @@ class TaskAssignmentListCreateView(generics.ListCreateAPIView):
             'assigned_user',
             'status_code'
         ).all()
-        # 2026-09-15: BACKLOG(AI 배분 직후 자동저장된 초안, 아직 아무도 검토 전)는
-        # PM이 "확정"하기 전까지 PM 외에는 안 보여야 한다(팀 요구사항) — 여기가
-        # 칸반보드/업무 목록이 실제로 쓰는 엔드포인트라 이 필터가 핵심이다.
-        is_pm = getattr(self.request.user, 'is_staff', False) or self.request.user.groups.filter(name='PM').exists()
-        if not is_pm:
-            qs = qs.exclude(status_code_id=TaskStatusCode.BACKLOG)
         project_id = self.request.query_params.get('project')
         assignee_id = self.request.query_params.get('assigneeId')
         status_param = self.request.query_params.get('status')
+        # 2026-09-16: BACKLOG(AI 배분 직후 자동저장된 초안, 아직 아무도 검토 전)는
+        # PM 확인 전까지 아무한테도 안 보여야 한다 — 예전엔 PM만 예외로 뒀었는데,
+        # 실제로 PM이 초안을 검토/수정하는 화면(documents/page.tsx)은 이 목록 API를
+        # 다시 불러오지 않고 generate_task_suggestions()가 그 자리에서 반환한 값을
+        # 그대로 쓴다. 즉 이 엔드포인트로 BACKLOG를 보여줄 실사용처가 없어 — PM이
+        # "업무관리"를 열면 검토 안 된 AI 초안이 실제 배정 목록에 섞여 보이기만 했다.
+        # ?status=BACKLOG를 명시적으로 요청한 PM에게만 예외로 허용한다(향후 필요해질
+        # 진단/확인 용도 대비 — 지금은 이걸 쓰는 화면이 없다).
+        is_pm = getattr(self.request.user, 'is_staff', False) or self.request.user.groups.filter(name='PM').exists()
+        if not (is_pm and status_param == TaskStatusCode.BACKLOG):
+            qs = qs.exclude(status_code_id=TaskStatusCode.BACKLOG)
         if project_id:
             qs = qs.filter(req_item__req_def__spec__meeting__project_id=project_id)
         if assignee_id:
@@ -172,13 +177,12 @@ class TaskAssignmentDetailView(generics.RetrieveUpdateDestroyAPIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
-        # 2026-09-15: id를 직접 안다고 해도 PM이 확정 전인 BACKLOG(초안)를 PM 외
-        # 누군가 상세 조회/수정/삭제로 들여다보지 못하게 목록 API와 동일 규칙을 쓴다.
-        qs = TaskAssignment.objects.select_related('req_item', 'assigned_user', 'status_code').all()
-        is_pm = getattr(self.request.user, 'is_staff', False) or self.request.user.groups.filter(name='PM').exists()
-        if not is_pm:
-            qs = qs.exclude(status_code_id=TaskStatusCode.BACKLOG)
-        return qs
+        # 2026-09-16: id를 직접 안다고 해도 BACKLOG(초안)는 상세 조회/수정/삭제로
+        # 못 보게 막는다 — 목록 API와 동일하게 PM도 예외 없이 막는다(TaskAssignmentListCreateView
+        # 참고: PM이 초안을 검토/수정하는 화면은 이 REST 엔드포인트를 아예 안 쓴다).
+        return TaskAssignment.objects.select_related(
+            'req_item', 'assigned_user', 'status_code'
+        ).exclude(status_code_id=TaskStatusCode.BACKLOG)
 
 
 class AutoTaskAssignView(APIView):

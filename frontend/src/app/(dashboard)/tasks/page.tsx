@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo } from "react";
 import { useAuth } from "@/lib/auth";
-import { FolderKanban, Search, LayoutGrid, Loader2, ChevronLeft, ChevronRight, ClipboardList, AlertTriangle } from "lucide-react";
+import { FolderKanban, Search, LayoutGrid, Loader2, ChevronLeft, ChevronRight, ClipboardList, AlertTriangle, CheckCircle2, XCircle, X, MessageSquare } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useSearchParams } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -32,16 +32,16 @@ type Task = {
 
 type Member = { id: string; name: string; email: string; role: string };
 
-// 2026-09-15: id는 실제 common_code.code_id(TASK_STATUS)와 일치해야 PATCH가 통과한다
-// (backend/tasks/models.py TaskStatusCode 참고) — "APPROVED"/"COMPLETED"/"REJECTED"는
-// TASK_STATUS에 존재한 적 없는 값(REQSPEC_STATUS/PROJECT_STATUS가 선점)이라 실제 값
-// (TASK_APPROVED/DONE/CANCELLED)으로 맞춘다.
+// 2026-09-16: id는 실제 common_code.code_id(TASK_STATUS)와 일치해야 PATCH가 통과한다
+// (backend/tasks/models.py TaskStatusCode 참고). label은 색상/드롭다운 옵션 문구
+// 용으로만 쓰고, 화면에 "지금 이 업무의 상태"를 보여줄 땐 이 label이 아니라 항상
+// task.status_info.code_name(서버 값 그대로)을 쓴다.
 const STATUSES = [
   { id: "PENDING_APPROVAL", label: "배분승인대기", color: "text-orange-500", bg: "bg-orange-500/10" },
   { id: "TASK_APPROVED", label: "승인됨", color: "text-sky-500", bg: "bg-sky-500/10" },
   { id: "IN_PROGRESS", label: "진행 중", color: "text-amber-500", bg: "bg-amber-500/10" },
   { id: "DONE", label: "완료", color: "text-emerald-500", bg: "bg-emerald-500/10" },
-  { id: "CANCELLED", label: "반려됨", color: "text-red-500", bg: "bg-red-500/10" },
+  { id: "CANCELLED", label: "취소됨", color: "text-red-500", bg: "bg-red-500/10" },
 ];
 
 export default function TasksPage() {
@@ -64,9 +64,14 @@ export default function TasksPage() {
   const [page, setPage] = useState(1);
   const PAGE_SIZE = 10;
 
-  // 리스트/WBS 뷰 행을 눌러도 아무 반응이 없었다 — 칸반 카드와 동일하게 상세 모달을 연다.
+
   const [selectedTaskForDetail, setSelectedTaskForDetail] = useState<Task | null>(null);
   const [toast, setToast] = useState<{ message: string; variant: "success" | "error" } | null>(null);
+  // 2026-09-16: "업무관리" 목록(LIST)에도 승인/반려를 직접 할 수 있어야 한다(팀 결정 —
+  // 승인 대기 업무가 여기 안 보이면 볼 수 있는 곳이 칸반/승인함뿐이라 발견성이 떨어짐).
+  // 반려는 사유 입력이 필요해 칸반보드와 동일한 모달 패턴을 그대로 가져온다.
+  const [rejectTarget, setRejectTarget] = useState<{ id: number; title: string } | null>(null);
+  const [rejectReason, setRejectReason] = useState("");
 
   // TanStack Query 도입 전에는 화면에 들어올 때마다 useEffect로 다시 fetch하고 로딩 스피너부터
   // 띄웠다 — 다른 화면 갔다가 돌아올 때마다 매번 깜빡였다. staleTime(30초) 안에서는 캐시를
@@ -119,22 +124,33 @@ export default function TasksPage() {
   }, [isPM]);
 
   const statusMutation = useMutation({
-    mutationFn: ({ taskId, newStatus }: { taskId: number; newStatus: string }) =>
+    mutationFn: ({ taskId, newStatus, rejectReason: reason }: { taskId: number; newStatus: string; rejectReason?: string }) =>
       apiFetch(`/api/tasks/assignments/${taskId}/status/`, {
         method: "PATCH",
-        body: JSON.stringify({ status_code: newStatus }),
+        body: JSON.stringify(reason ? { status_code: newStatus, reject_reason: reason } : { status_code: newStatus }),
       }),
     onMutate: ({ taskId }) => setProcessingId(taskId),
     onSuccess: (_data, { taskId, newStatus }) => {
       queryClient.setQueryData<Task[]>(["tasks"], (prev) =>
         prev?.map(t => t.id === taskId ? { ...t, status_code: newStatus } : t)
       );
+      if (newStatus === "TASK_APPROVED") setToast({ message: "업무를 승인했습니다.", variant: "success" });
+      if (newStatus === "CANCELLED") {
+        setToast({ message: "업무를 반려했습니다.", variant: "success" });
+        setRejectTarget(null);
+        setRejectReason("");
+      }
     },
     onError: () => setToast({ message: "상태 변경에 실패했습니다.", variant: "error" }),
     onSettled: () => setProcessingId(null),
   });
   const handleStatusChange = (taskId: number, newStatus: string) =>
     statusMutation.mutate({ taskId, newStatus });
+  const handleApprove = (taskId: number) => statusMutation.mutate({ taskId, newStatus: "TASK_APPROVED" });
+  const handleReject = () => {
+    if (!rejectTarget || !rejectReason.trim()) return;
+    statusMutation.mutate({ taskId: rejectTarget.id, newStatus: "CANCELLED", rejectReason: rejectReason.trim() });
+  };
 
   const filteredTasks = useMemo(() => {
     let filtered = tasks;
@@ -286,6 +302,10 @@ export default function TasksPage() {
                   ) : (
                     pagedTasks.map(task => {
                       const statusInfo = STATUSES.find(s => s.id === task.status_code) || STATUSES[0];
+                      // 2026-09-16: 화면에 보이는 상태 문구는 항상 서버가 준 code_name 그대로
+                      // 쓴다(status_info가 진짜 데이터 소스) — STATUSES.label은 색상/드롭다운
+                      // 옵션 문구용일 뿐, 프론트가 별도로 지어낸 문구를 표시하지 않는다.
+                      const statusLabel = task.status_info?.code_name ?? statusInfo.label;
                       const overdue = isTaskOverdue({ wbsEnd: task.end_date, status: task.status_code });
                       return (
                         <tr
@@ -298,9 +318,37 @@ export default function TasksPage() {
                             {task.description && <div className="text-xs text-muted-foreground line-clamp-1 max-w-md">{task.description}</div>}
                           </td>
                           <td className="px-6 py-4" onClick={e => e.stopPropagation()}>
+                            {/* 2026-09-16: PENDING_APPROVAL(배분승인대기)은 PM 개별 승인 전이라
+                                여기서도 발견/승인이 가능해야 한다(팀 결정 — 칸반/승인함만으론 발견성이
+                                떨어진다는 지적). PM에게는 승인/반려 버튼을, 일반유저에게는 대기 배지를
+                                보여준다. CANCELLED(반려/취소)는 반려 사유 입력으로만 바뀌어야 하므로
+                                드롭다운으로는 못 바꾸게 막는다. */}
                             {task.status_code === "PENDING_APPROVAL" ? (
+                              isPM ? (
+                                <div className="flex items-center gap-1.5">
+                                  <button
+                                    onClick={() => handleApprove(task.id)}
+                                    disabled={processingId === task.id}
+                                    className="inline-flex items-center gap-1 px-2 py-1.5 rounded-lg text-xs font-bold bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500/20 transition-colors disabled:opacity-50"
+                                  >
+                                    <CheckCircle2 className="w-3.5 h-3.5" /> 승인
+                                  </button>
+                                  <button
+                                    onClick={() => { setRejectTarget({ id: task.id, title: task.title }); setRejectReason(""); }}
+                                    disabled={processingId === task.id}
+                                    className="inline-flex items-center gap-1 px-2 py-1.5 rounded-lg text-xs font-bold bg-red-500/10 text-red-500 hover:bg-red-500/20 transition-colors disabled:opacity-50"
+                                  >
+                                    <XCircle className="w-3.5 h-3.5" /> 반려
+                                  </button>
+                                </div>
+                              ) : (
+                                <span className={cn("inline-block text-xs font-bold px-2.5 py-1.5 rounded-lg", statusInfo.bg, statusInfo.color)}>
+                                  {statusLabel}
+                                </span>
+                              )
+                            ) : task.status_code === "CANCELLED" ? (
                               <span className={cn("inline-block text-xs font-bold px-2.5 py-1.5 rounded-lg", statusInfo.bg, statusInfo.color)}>
-                                {statusInfo.label} · PM 승인 대기
+                                {statusLabel}
                               </span>
                             ) : (
                               <select
@@ -368,6 +416,36 @@ export default function TasksPage() {
         />
       )}
       <Toast message={toast?.message ?? null} variant={toast?.variant} onDismiss={() => setToast(null)} />
+
+      {/* 반려 사유 입력 모달 — KanbanBoard.tsx의 반려 모달과 동일한 패턴 */}
+      {rejectTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setRejectTarget(null)}>
+          <div className="bg-card rounded-2xl border border-border shadow-xl w-full max-w-sm p-6 space-y-4" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between">
+              <h3 className="font-bold flex items-center gap-2"><MessageSquare className="w-4 h-4 text-red-500" /> 업무 반려</h3>
+              <button onClick={() => setRejectTarget(null)} className="text-muted-foreground hover:text-foreground"><X className="w-4 h-4" /></button>
+            </div>
+            <p className="text-sm text-muted-foreground">"{rejectTarget.title}" 업무를 반려합니다. 사유를 입력해주세요.</p>
+            <textarea
+              value={rejectReason}
+              onChange={e => setRejectReason(e.target.value)}
+              placeholder="반려 사유를 입력하세요"
+              rows={3}
+              className="w-full px-3 py-2 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 resize-none"
+            />
+            <div className="flex justify-end gap-2">
+              <button onClick={() => setRejectTarget(null)} className="px-4 py-2 rounded-xl text-sm font-bold text-muted-foreground hover:bg-black/5 dark:hover:bg-white/5 transition-colors">취소</button>
+              <button
+                onClick={handleReject}
+                disabled={!rejectReason.trim() || processingId === rejectTarget.id}
+                className="px-4 py-2 rounded-xl text-sm font-bold bg-red-500 text-white hover:bg-red-600 transition-colors disabled:opacity-50"
+              >
+                반려하기
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -450,7 +528,7 @@ function WbsBoardView({ tasks, onRowClick }: { tasks: Task[]; onRowClick: (task:
                     <td className="px-6 py-4 text-[13px]">{task.assigned_user_name ? task.assigned_user_name : <span className="text-muted-foreground">미배정</span>}</td>
                     <td className="px-6 py-4">
                       <span className={cn("inline-block text-xs font-bold px-2.5 py-1.5 rounded-lg", statusInfo.bg, statusInfo.color)}>
-                        {statusInfo.label}
+                        {task.status_info?.code_name ?? statusInfo.label}
                       </span>
                     </td>
                     <td className="px-6 py-4">
