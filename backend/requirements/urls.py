@@ -11,6 +11,7 @@ from requirements.views import (
     RequirementGenerateTasksView,
     RequirementGenerateTasksJobStatusView,
     RequirementConfirmTasksView,
+    RequirementTaskDraftView,
     RequirementItemViewSet,
     RequirementItemDetailView,
     RequirementDefinitionValidateView,
@@ -33,6 +34,7 @@ urlpatterns = [
     path('<int:spec_id>/generate-tasks/', RequirementGenerateTasksView.as_view(), name='requirement-generate-tasks'),
     path('generate-tasks-jobs/<uuid:job_id>/', RequirementGenerateTasksJobStatusView.as_view(), name='requirement-generate-tasks-job-status'),
     path('<int:spec_id>/confirm-tasks/', RequirementConfirmTasksView.as_view(), name='requirement-confirm-tasks'),
+    path('<int:spec_id>/task-draft/', RequirementTaskDraftView.as_view(), name='requirement-task-draft'),
     path('items/', RequirementItemViewSet.as_view(), name='requirement-item-list'),
     path('items/<int:pk>/', RequirementItemDetailView.as_view(), name='item-detail'),  # PATCH, DELETE 지원
 ]

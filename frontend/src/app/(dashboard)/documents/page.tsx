@@ -519,6 +519,43 @@ export default function DocumentsPage() {
     setTaskDrafts(null);
     setTaskDraftsReqDefId(null);
   }, [selectedNoteId]);
+  // 2026-09-17: 위 리셋 직후 서버에 "아직 확정 안 된 BACKLOG 초안이 있는지" 물어봐서
+  // 있으면 그대로 복원한다 — 새로고침하거나 문서를 다시 열어도 미리보기가 안 날아가게
+  // 하기 위함(taskDrafts는 순수 React state라 원래는 새로고침하면 사라졌었다).
+  // taskAssignment 탭으로 직접 옮겨준다 — 옮기지 않으면 stageOf가 기본으로 고르는
+  // 탭(hasDraftFor 반영 전엔 reqSpec)에 머물러 있어, 탭 잠금은 풀렸어도(아래 stepper
+  // 참고) 사용자가 초안이 복원된 걸 못 보고 "사라졌다"고 오인하는 문제가 실제로
+  // 있었다. 실패해도 에러 토스트로 방해하지 않는다 — "업무 배분 실행"을 다시 누르면
+  // 되므로 조용히 무시.
+  useEffect(() => {
+    if (!isPM || !selectedNote) return;
+    const noteId = selectedNote.id;
+    const spec = selectedNote.spec_documents[0] ?? null;
+    if (!spec) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await apiFetch<{ has_draft: boolean; result?: GenerateTasksResult }>(
+          `/api/requirements/${spec.id}/task-draft/`
+        );
+        if (cancelled || selectedNoteId !== noteId) return;
+        if (res.has_draft && res.result) {
+          setTaskDrafts((res.result.suggestions ?? []).map(suggestionToDraft));
+          setTaskDraftsReqDefId(res.result.req_def_id ?? null);
+          setScheduleSummary(res.result.schedule_summary ?? null);
+          setPackageSplits(res.result.package_splits ?? []);
+          setPlanReview(res.result.plan_review ?? null);
+          setPlanBriefing(res.result.plan_briefing ?? null);
+          setActiveTab("taskAssignment");
+          setToastMessage("저장된 업무 배분 초안을 불러왔습니다. 검토 후 확정해주세요.");
+        }
+      } catch {
+        // 조용히 무시 — 위 주석 참고
+      }
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedNoteId]);
   // 업무배분 탭을 열었을 때 이미 배분된 업무가 있으면 보여준다(재배분 직후뿐 아니라
   // 문서를 다시 열었을 때도). 2026-09-11: 예전엔 selectedNote.project로 매번 "선택된
   // 노트의 프로젝트"만 좁혀서 가져왔는데, 문서 목록 카드마다 표시하는 미니 파이프라인도
@@ -540,6 +577,11 @@ export default function DocumentsPage() {
     const itemIds = new Set(reqDef.items.map(i => i.id));
     return taskAssignments.some(t => itemIds.has(t.req_item));
   };
+  // 2026-09-17: BACKLOG 초안(미확정)이 있으면 taskAssignment 탭에 "도달"은 가능해야
+  // 한다(완료는 아니지만) — stageOf에 넘겨서 새로고침 후에도 탭이 안 잠기게 한다.
+  // taskDrafts는 위 복원 effect가 채워주므로, 지금 보고 있는 reqDef와 맞는지만 확인한다.
+  const hasDraftFor = (reqDef: ReqDefDto | null) =>
+    !!reqDef && taskDraftsReqDefId === reqDef.id && !!taskDrafts && taskDrafts.length > 0;
 
   // 문서를 고르면(직접 클릭이든, 등록 직후 자동이든) 항상 "그 문서가 지금 있는 단계"를
   // 첫 화면으로 보여준다 — heyzzabi2와 동일한 동작.
@@ -547,7 +589,7 @@ export default function DocumentsPage() {
     setSelectedNoteId(note.id);
     const spec = note.spec_documents[0] ?? null;
     const reqDef = reqDefFor(spec);
-    setActiveTab(stageOf(spec, reqDef, hasConfirmedTasksFor(reqDef)));
+    setActiveTab(stageOf(spec, reqDef, hasConfirmedTasksFor(reqDef), hasDraftFor(reqDef)));
   };
   // 지금 보던 탭이 승인/확정으로 "방금" 완료 처리됐을 때만(=상태가 실제로 바뀐 순간)
   // 자동으로 다음 단계로 넘어간다. done이 항상 클릭 가능해진 뒤로(위 stepper 참고)
@@ -1295,7 +1337,10 @@ export default function DocumentsPage() {
       <div className="flex items-center print:hidden">
         {(() => {
           const hasConfirmedTasks = hasConfirmedTasksFor(activeReqDef);
-          const currentStage = stageOf(activeSpec, activeReqDef, hasConfirmedTasks);
+          // 2026-09-17: 미확정 BACKLOG 초안만 있어도 taskAssignment 탭은 잠기면 안 된다
+          // (locked 판정이 currentStageIndex 기준이라, stageOf가 hasDraft를 몰라 "reqSpec"에
+          // 머물면 탭 자체가 잠겨 복원된 초안을 볼 방법이 없어짐 — 실제 재현된 버그).
+          const currentStage = stageOf(activeSpec, activeReqDef, hasConfirmedTasks, hasDraftFor(activeReqDef));
           const currentStageIndex = PIPELINE_STEPS.indexOf(currentStage);
           return PIPELINE_STEPS.map((step, i) => {
             const done = stepDone(activeSpec, step, activeReqDef, hasConfirmedTasks);

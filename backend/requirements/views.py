@@ -58,6 +58,69 @@ def get_target_author(req_def):
     return None
 
 
+def _build_fallback_draft_result(req_def):
+    """
+    2026-09-17: RequirementTaskDraftView의 최후 수단 — TaskGenerationJob.result가
+    없을 때(아주 오래된 데이터 등)만 쓴다. BACKLOG로 저장된 TaskAssignment 컬럼만으로
+    최소한의 미리보기를 재구성한다. 적합도 서술(tech_fit/workload_fit/experience_fit
+    개별 값)·팀 규모 추정·일정 브리핑 등은 애초에 TaskAssignment에 저장되는 컬럼이
+    아니라서 복원할 방법이 없다 — assignment_reason(합쳐진 근거 문자열) 전체를
+    tech_fit 한 자리에 몰아넣는 정도가 할 수 있는 최선이다.
+    """
+    from tasks.models import TaskAssignment, TaskStatusCode
+
+    rows = TaskAssignment.objects.filter(
+        req_item__req_def=req_def, status_code_id=TaskStatusCode.BACKLOG,
+    ).select_related('req_item', 'assigned_user')
+    prefix = f"RD{req_def.id}-"
+
+    def _strip_prefix(value):
+        return value[len(prefix):] if value and value.startswith(prefix) else value
+
+    suggestions = []
+    for r in rows:
+        assignee_name = None
+        if r.assigned_user:
+            full_name = f"{r.assigned_user.last_name}{r.assigned_user.first_name}".strip()
+            assignee_name = full_name or r.assigned_user.username
+        suggestions.append({
+            "unit_id": _strip_prefix(r.task_no),
+            "source_req_id": r.req_item.req_code if r.req_item else "",
+            "title": r.title,
+            "description": r.description or "",
+            "estimated_hours": r.estimated_hours,
+            "difficulty_reason": r.difficulty_reason,
+            "epic_no": r.epic_no,
+            "epic_title": r.epic_title,
+            "assignee_id": r.assigned_user_id,
+            "assignee_name": assignee_name,
+            "score": None,
+            "tech_fit": r.assignment_reason,
+            "workload_fit": None,
+            "experience_fit": None,
+            "review_required": False,
+            "hold_explanation": None,
+            "suggested_start_date": str(r.start_date) if r.start_date else None,
+            "suggested_end_date": str(r.end_date) if r.end_date else None,
+            "feature_area": None,
+            "schedule_reason": None,
+            "parent_task_id": _strip_prefix(r.parent_task),
+        })
+
+    return {
+        "status": "success",
+        "req_def_id": req_def.id,
+        "suggestions": suggestions,
+        "team_size_estimate": None,
+        "complexity_assessment": None,
+        "schedule_summary": None,
+        "work_packages": [],
+        "package_splits": [],
+        "plan_review": {"held_units": [], "over_period_units": [], "needs_attention": False},
+        "plan_briefing": {"risks": [], "checkpoints": []},
+    }
+
+
 def _parse_feature_lines(raw_features) -> list:
     """SpecDocument.key_features(TextField, 줄바꿈으로 구분된 자유 텍스트)를
     기능 항목별 줄로 분리한다.
@@ -714,9 +777,12 @@ def _run_generate_tasks_job(job_id, actor_user_id):
         close_old_connections()
         return
 
-    # 파이프라인 이력 로그 생성 — "업무 배분 AI 추천" 버튼 시점. 이 단계는 아직
-    # TaskAssignment를 저장하지 않는 미리보기라(확정은 RequirementConfirmTasksView가
-    # TASK_ASSIGNED로 별도 로그) 여기서 남기지 않으면 에이전트 탭에서 이 실행 자체가 보이지 않는다.
+    # 파이프라인 이력 로그 생성 — "업무 배분 AI 추천" 버튼 시점. 2026-09-15부터
+    # generate_task_suggestions() 안에서 이 결과를 TaskAssignment(BACKLOG, 초안)로
+    # 바로 저장하지만, 그건 어디까지나 "PM 확정 전 안전 보관"이지 확정이 아니다 —
+    # PM이 "배분 확정"을 눌러야 RequirementConfirmTasksView가 PENDING_APPROVAL로
+    # 전환하며 TASK_ASSIGNED로 별도 로그를 남긴다. 여기서 남기지 않으면 에이전트
+    # 탭에서 "AI 추천이 실행됐다"는 이 시점 자체가 보이지 않는다.
     if result.get("status") == "success" and result.get("req_def_id"):
         req_def = RequirementDefinition.objects.filter(pk=result["req_def_id"]).select_related('spec').first()
         if req_def and req_def.project_id:
@@ -818,6 +884,55 @@ class RequirementConfirmTasksView(APIView):
         result = confirm_task_assignments(request.data.get("req_def_id"), request.data.get("assignments") or [])
         http_status = status.HTTP_200_OK if result.get("status") == "success" else status.HTTP_400_BAD_REQUEST
         return Response(result, status=http_status)
+
+
+class RequirementTaskDraftView(APIView):
+    """
+    2026-09-17: 새로고침 대비 — "업무 배분 실행" 미리보기(documents/page.tsx의
+    taskDrafts)는 순수 React state라 새로고침하면 사라진다. 그런데 그 결과는 이미
+    두 곳에 남아있다:
+      1) TaskAssignment(BACKLOG) — 제목/담당자/일정/Epic 등 뼈대만
+      2) TaskGenerationJob.result — 생성 당시 generate_task_suggestions()가 반환한
+         전체 값 그대로(적합도 서술·팀 규모 추정·일정 브리핑 등 포함)
+    BACKLOG가 아직 남아있다는 건 PM이 아직 확정하지 않았다는 뜻이므로, 그때만 가장
+    최근 성공한 TaskGenerationJob.result를 그대로 돌려줘 화면을 원래대로 복원한다.
+    이미 확정됐거나(BACKLOG가 confirm 시점에 삭제됨) 애초에 생성한 적이 없으면
+    has_draft=False — 이 경우 프론트는 기존처럼 빈 화면/실제 배정 목록을 보여준다.
+    """
+    permission_classes = [permissions.IsAuthenticated, IsPMUser]
+
+    @extend_schema(
+        tags=['3단계 - 업무 배정'],
+        summary='저장된 업무 배분 초안(BACKLOG) 복원',
+        description='아직 확정하지 않은 BACKLOG 초안이 있으면 생성 당시의 전체 결과를 그대로 돌려준다(새로고침 복원용).',
+        parameters=[
+            OpenApiParameter(name='spec_id', type=OpenApiTypes.INT, location=OpenApiParameter.PATH, description='기획서 ID')
+        ],
+        responses={200: OpenApiResponse(description='has_draft + (있으면) generate_task_suggestions와 동일한 모양의 result')}
+    )
+    def get(self, request, spec_id):
+        from tasks.models import TaskAssignment, TaskGenerationJob, TaskStatusCode
+
+        req_def = RequirementDefinition.objects.filter(spec_id=spec_id).order_by('-id').first()
+        if not req_def:
+            return Response({"has_draft": False})
+
+        has_backlog = TaskAssignment.objects.filter(
+            req_item__req_def=req_def, status_code_id=TaskStatusCode.BACKLOG,
+        ).exists()
+        if not has_backlog:
+            return Response({"has_draft": False})
+
+        job = (
+            TaskGenerationJob.objects
+            .filter(spec_id=spec_id, status=TaskGenerationJob.STATUS_SUCCESS)
+            .order_by('-created_at')
+            .first()
+        )
+        if job and job.result and job.result.get("req_def_id") == req_def.id:
+            return Response({"has_draft": True, "result": job.result})
+
+        return Response({"has_draft": True, "result": _build_fallback_draft_result(req_def)})
 
 
 LOCKED_REQDEF_STATUSES = ('APPROVED', 'PENDING_REVIEW')
