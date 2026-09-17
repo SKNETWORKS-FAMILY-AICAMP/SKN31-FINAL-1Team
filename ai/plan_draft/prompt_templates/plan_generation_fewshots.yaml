@@ -1,11 +1,24 @@
 metadata:
   name: plan_generation_fewshots
-  version: "2.2"
+  version: "2.3"
   purpose: 구체성을 보존하고 임의의 기능 인과관계를 만들지 않는 기획서 작성 예시
+  # 2026-09-17: 2.2 → 2.3. 실제 입출력 계약과 어긋나 있던 부분을 고쳤습니다.
+  #   - output.goals가 09-15에 삭제된 problem_evidence/goal_evidence를 계속
+  #     들고 있었습니다. DetailedGoal에 extra="forbid"를 추가했으므로 옛
+  #     형식은 이제 퓨샷 검증(_validate_example) 단계에서 바로 실패합니다.
+  #   - input에 실제 페이로드(prompts.py._build_generation_payload)가 주는
+  #     feature_sources_for_citation·goals_for_citation·
+  #     problem_sources_for_citation이 전혀 없었습니다. LLM이 실제로 받는
+  #     입력 모양과 다른 예시로 학습시키고 있었던 셈입니다.
+  #   - output에 features 예시가 하나도 없어 source_indices 사용법을
+  #     보여주지 못했습니다. 기능-결정 연결(같은 quote로 이어진 tech/scope
+  #     결정 후보)과 제외 방향 보존, 연결어 사용 예시를 추가했습니다.
 
 examples:
   - id: preserve_specific_context_without_feature_inference
-    description: 조사 수치와 사용자 조건을 보존하고 문제와 목표만 직접 연결하는 경우
+    description: >-
+      조사 수치와 사용자 조건을 보존하고, 문제와 목표만 직접 연결하며,
+      같은 quote로 이어진 기능·결정을 연결어로 자연스럽게 묶어 쓰는 경우
     input:
       project:
         name: 동네서점 재고 관리 서비스
@@ -57,6 +70,31 @@ examples:
           evidence:
             quote: 매장 직원은 도서 입출고 등록과 재고 수량 확인을 담당합니다.
           evidence_status: verified
+      # 아래 세 목록은 prompts.py._build_generation_payload가 실제로 만드는
+      # 번호 매긴 인용 대상입니다. index는 이 배열 순서 그대로입니다.
+      feature_sources_for_citation:
+        - index: 0
+          content: 재고 수량을 실시간으로 확인할 수 있는 화면을 제공한다.
+        - index: 1
+          content: 발주 수량을 재고와 최근 판매량 기준으로 계산해 추천한다.
+        - index: 2
+          content: 재고 수량 확인 화면은 모바일에서도 사용할 수 있게 만든다.
+        - index: 3
+          content: 자동 발주는 이번 범위에서 제외한다.
+      problem_sources_for_citation:
+        - index: 0
+          content: 재고 확인이 늦어 인기 도서가 주 평균 3회 품절된다.
+        - index: 1
+          content: 담당자의 경험에 의존한 발주로 과재고와 폐기 손실이 발생한다.
+        - index: 2
+          content: 점주가 자리를 비우면 직원이 재고 수량을 확인하지 못한다.
+      goals_for_citation:
+        - index: 0
+          content: 재고 확인 누락으로 발생하는 품절 횟수를 줄인다.
+        - index: 1
+          content: 경험에 의존한 발주로 생기는 과재고와 폐기 손실을 줄인다.
+        - index: 2
+          content: 점주가 자리를 비운 시간에도 직원이 재고 수량을 확인할 수 있게 한다.
     output:
       sections:
         - key: overview
@@ -79,24 +117,29 @@ examples:
         - title: 인기 도서 품절 감소
           problem: 재고 확인이 늦어 인기 도서가 주 평균 3회 품절된다.
           goal: 재고 확인 누락으로 발생하는 품절 횟수를 줄인다.
-          problem_evidence:
-            - quote: 재고 확인이 늦어 인기 도서가 주 평균 3회 품절되고 있습니다.
-          goal_evidence:
-            - quote: 재고 확인 누락으로 발생하는 품절 횟수를 줄이는 것이 첫 번째 목표입니다.
+          matched_problem_index: 0
+          matched_goal_index: 0
         - title: 과재고와 폐기 손실 감소
           problem: 담당자의 경험에 의존한 발주로 과재고와 폐기 손실이 발생한다.
           goal: 경험에 의존한 발주로 생기는 과재고와 폐기 손실을 줄인다.
-          problem_evidence:
-            - quote: 담당자의 경험에 의존해 발주하면서 과재고가 쌓이고 훼손 도서를 폐기하고 있습니다.
-          goal_evidence:
-            - quote: 경험에 의존한 발주로 생기는 과재고와 폐기 손실을 줄여야 합니다.
+          matched_problem_index: 1
+          matched_goal_index: 1
         - title: 점주 부재 시 재고 확인
           problem: 점주가 자리를 비우면 직원이 재고 수량을 확인하지 못한다.
           goal: 점주가 자리를 비운 시간에도 직원이 재고 수량을 확인할 수 있게 한다.
-          problem_evidence:
-            - quote: 점주가 자리를 비운 시간에는 직원이 재고 수량을 확인하지 못합니다.
-          goal_evidence:
-            - quote: 점주가 자리를 비운 시간에는 직원이 재고 수량을 확인하지 못합니다.
+          matched_problem_index: 2
+          matched_goal_index: 2
+      # 같은 quote로 이어진 기능(index 1)과 범위 결정(index 3)을 "-되"로
+      # 자연스럽게 묶고, 제외 방향(자동 발주 제외)을 그대로 보존한 예시입니다.
+      features:
+        - group: mvp
+          title: 재고 수량 확인
+          description: 재고 수량을 실시간으로 확인할 수 있는 화면을 제공하며, 모바일에서도 사용할 수 있게 만든다.
+          source_indices: [0, 2]
+        - group: mvp
+          title: 발주 수량 추천
+          description: 발주 수량을 재고와 최근 판매량 기준으로 계산해 추천하되, 자동 발주는 이번 범위에서 제외한다.
+          source_indices: [1, 3]
 
 glossary_examples:
   - id: use_glossary_without_expanding_scope
@@ -131,6 +174,15 @@ glossary_examples:
           evidence:
             quote: 고객 문의 담당자는 접수된 문의를 확인하고 처리합니다.
           evidence_status: verified
+      # 이 예시는 requirements/decisions가 없어 세 인용 목록 중
+      # feature_sources_for_citation만 빈 배열입니다.
+      feature_sources_for_citation: []
+      problem_sources_for_citation:
+        - index: 0
+          content: 긴급 티켓과 일반 문의가 구분되지 않아 확인이 늦어진다.
+      goals_for_citation:
+        - index: 0
+          content: 긴급 티켓의 확인 지연을 줄인다.
     output:
       sections:
         - key: overview
@@ -152,7 +204,5 @@ glossary_examples:
         - title: 긴급 티켓 확인 지연 감소
           problem: 긴급 티켓과 일반 문의가 구분되지 않아 확인이 늦어진다.
           goal: 긴급 티켓의 확인 지연을 줄인다.
-          problem_evidence:
-            - quote: 긴급 티켓과 일반 문의가 같은 목록에 있어 확인이 늦어지고 있습니다.
-          goal_evidence:
-            - quote: 긴급 티켓의 확인 지연을 줄이는 것이 목표입니다.
+          matched_problem_index: 0
+          matched_goal_index: 0

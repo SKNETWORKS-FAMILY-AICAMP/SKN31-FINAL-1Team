@@ -7,7 +7,6 @@
 from plan_draft import agent as plan_agent
 from plan_draft import list_builder
 from plan_draft.list_builder import (
-    build_features,
     collect_feature_evidence,
 )
 from plan_draft.prompt_loader import (
@@ -123,7 +122,7 @@ def test_plan_prompt_asks_llm_to_generate_features_with_no_cap():
     template = load_plan_template()
     prompt = build_plan_system_prompt()
 
-    assert template["metadata"]["version"] == "2.4"
+    assert template["metadata"]["version"] == "2.5"
     assert template["output_contract"]["root_fields"] == [
         "sections",
         "goals",
@@ -176,193 +175,152 @@ def test_common_rules_preserve_scope_qualifiers():
     assert "한정 표현을 넓히지 않습니다" in prompt
     assert "완전히 지원하는 것처럼 쓰지 않습니다" in prompt
 
-def test_build_features_groups_verified_contents():
-    barcode_quote = (
-        "바코드 스캔은 BarcodeDetector 방식으로 구현하고 "
-        "iOS에서는 ZXing 폴백을 사용한다."
-    )
-    order_quote = (
-        "최근 4주 평균 판매량 기반 추천 수량 계산으로 대체한다."
-    )
-    pos_quote = (
-        "POS 연동은 A사 API 1곳만 MVP에 포함하고 "
-        "나머지는 2차 개발로 이관한다."
-    )
 
+def test_common_rules_preserve_past_tense_for_completed_facts():
+    """
+    한다 체 통일 규칙이 이미 완료된 조사·구현까지 현재형으로 바꾸지
+    않는다는 예외를 명시하는지 확인합니다(가독성 개선 작업 회귀 테스트).
+    """
+    prompt = build_plan_system_prompt()
+    assert "과거 사실 그대로 보존합니다" in prompt
+    assert "일괄 치환하지 않습니다" in prompt
+
+
+def test_common_rules_preserve_ambiguous_terms():
+    """오탈자로 보이는 용어를 추측 교정하지 않고 표기 확인 필요를 남깁니다."""
+    prompt = build_plan_system_prompt()
+    assert "추측해서 교정하지 않습니다" in prompt
+    assert "표기 확인 필요" in prompt
+
+
+def test_common_rules_require_consistent_bullet_structure():
+    """같은 목록 안에서 문장 구조·어미를 통일하라는 규칙이 있는지 확인합니다."""
+    prompt = build_plan_system_prompt()
+    assert "문장 구조와 종결 어미를 통일합니다" in prompt
+
+
+def test_features_rules_preserve_exclusion_direction():
+    """제외·보류로 확정된 범위 결정을 기능 제공처럼 쓰지 않는다는 규칙."""
+    prompt = build_plan_system_prompt()
+    assert "매출 예측 제외" in prompt
+    assert "제외·보류 조건은" in prompt
+
+
+def test_features_rules_use_connectors_not_flat_list():
+    """기능 설명이 사실 나열이 아니라 연결어로 이어지도록 요구합니다."""
+    prompt = build_plan_system_prompt()
+    assert "자연스러운 연결 표현으로 문장을 이어" in prompt
+
+
+def test_features_rules_distinguish_implementation_status():
+    """이미 구현된 것과 계획·논의 중인 것을 구분해서 쓰라는 규칙."""
+    prompt = build_plan_system_prompt()
+    assert "확정 수준을 임의로 올리지 않습니다" in prompt
+
+
+def test_detailed_goal_rules_allow_guarded_ai_suggestion_without_negation():
+    """
+    목표 미확인 시 AI 제안을 다시 허용하되(가드레일 강화), 문제를
+    그대로 뒤집는 반전 패턴은 여전히 금지한다는 걸 프롬프트에서 확인합니다.
+    """
+    prompt = build_plan_system_prompt()
+    assert "반전은 목표를 지어내는 것이며" in prompt
+    assert "새로운 권한·기능을" in prompt
+    assert "정도를 열어둔 표현을 씁니다" in prompt
+
+
+# ─────────────────────────────────────────────────────────────
+# 2026-09-17 — build_feature_citation_sources의 tech/scope 후보 확대
+#
+# 기능 작성 자체는 이제 LLM이 직접 하지만(build_features는 죽은 코드라
+# 삭제했습니다), 그 재료를 무엇으로 넓힐지는 코드가 quote 일치로
+# 기계적으로 결정합니다. 여기서는 그 후보 선정 로직만 검증합니다 —
+# 실제 문장을 어떻게 묶어 쓰는지는 LLM 몫이라 fewshot으로 안내합니다.
+# ─────────────────────────────────────────────────────────────
+
+
+def test_같은_quote로_하나의_기능과만_연결된_범위_결정은_후보에_포함된다():
+    shared_quote = "발주 수량은 재고와 최근 판매량 기준으로 계산해 추천하되, 자동 발주는 이번 범위에서 제외하겠습니다."
     structured = {
         "requirements": {
             "functional": [
                 _functional(
-                    "바코드 입출고 등록 기능을 제공한다.",
-                    "바코드 입출고 등록",
+                    "발주 수량을 재고와 최근 판매량 기준으로 계산해 추천한다.",
+                    None,
+                    quote=shared_quote,
                 ),
-                _functional(
-                    "바코드 스캔은 웹 카메라 API(BarcodeDetector) 방식으로 구현한다.",
-                    "바코드 입출고 등록",
-                    quote=barcode_quote,
-                ),
-                _functional(
-                    "iOS 사파리 대응을 위한 ZXing 폴백을 필수로 포함한다.",
-                    "바코드 입출고 등록",
-                    quote=barcode_quote,
-                ),
-                _functional(
-                    "발주서 자동 생성 기능을 제공한다.",
-                    "발주서 자동 생성",
-                ),
-                _functional(
-                    "최근 4주 평균 판매량 기반 추천 수량 계산을 제공한다.",
-                    "발주서 자동 생성",
-                    quote=order_quote,
-                ),
-                _functional(
-                    "POS 연동은 A사 API 1곳만 포함한다.",
-                    "POS 연동",
-                    quote=pos_quote,
-                ),
-                _functional(
-                    "거래 내역을 실시간 동기화한다.",
-                    "POS 연동",
-                    status="unverified",
-                ),
-            ]
+            ],
         },
         "decisions": [
             {
-                "category": "feature",
-                "content": barcode_quote,
-                "evidence": _evidence(barcode_quote),
-                "evidence_status": "verified",
-            },
-            {
                 "category": "scope",
-                "content": (
-                    "매출 예측 기능은 MVP에서 제외하고, "
-                    "최근 4주 평균 판매량 기반 추천 수량 계산으로 대체한다."
-                ),
-                "evidence": _evidence(order_quote),
-                "evidence_status": "verified",
-            },
-            {
-                "category": "scope",
-                "content": pos_quote,
-                "evidence": _evidence(pos_quote),
+                "content": "자동 발주는 이번 범위에서 제외한다.",
+                "evidence": _evidence(shared_quote),
                 "evidence_status": "verified",
             },
         ],
     }
 
-    features = build_features(structured)
-    features_by_title = {
-        feature.title: feature
-        for feature in features
+    sources = list_builder.build_feature_citation_sources(structured)
+
+    assert [s["content"] for s in sources] == [
+        "발주 수량을 재고와 최근 판매량 기준으로 계산해 추천한다.",
+        "자동 발주는 이번 범위에서 제외한다.",
+    ]
+
+
+def test_여러_기능에_걸친_공통_quote의_결정은_후보에서_제외된다():
+    """열거 문장(quote)이 두 기능에 걸치면 어느 쪽에 붙일지 모호하므로 제외한다."""
+    enumeration_quote = "결제와 배송 기능은 모두 이번 범위에 포함합니다."
+    structured = {
+        "requirements": {
+            "functional": [
+                _functional("결제 기능을 제공한다.", None, quote=enumeration_quote),
+                _functional("배송 기능을 제공한다.", None, quote=enumeration_quote),
+            ],
+        },
+        "decisions": [
+            {
+                "category": "scope",
+                "content": "결제와 배송은 이번 범위에 포함한다.",
+                "evidence": _evidence(enumeration_quote),
+                "evidence_status": "verified",
+            },
+        ],
     }
 
-    assert list(features_by_title) == [
-        "바코드 입출고 등록",
-        "발주서 자동 생성",
-        "POS 연동",
+    sources = list_builder.build_feature_citation_sources(structured)
+
+    assert "결제와 배송은 이번 범위에 포함한다." not in [
+        s["content"] for s in sources
     ]
 
-    barcode = features_by_title[
-        "바코드 입출고 등록"
-    ].description
-    assert "BarcodeDetector" in barcode
-    assert "ZXing" in barcode
-    assert "iOS" in barcode
-    assert "기능을 제공한다" not in barcode
 
-    order = features_by_title[
-        "발주서 자동 생성"
-    ].description
-    assert "최근 4주" in order
-    assert "평균 판매량" in order
-    assert "추천 수량" in order
-    assert "매출 예측 기능은 MVP에서 제외" in order
-
-    pos = features_by_title["POS 연동"].description
-    assert "A사 API 1곳" in pos
-    assert "2차 개발로 이관" in pos
-    assert "실시간 동기화" not in pos
-    assert "거래 내역" not in pos
-
-
-def test_build_features_preserves_mixed_null_items():
-    features = build_features(
-        {
-            "requirements": {
-                "functional": [
-                    _functional(
-                        "문의 등록 기능을 제공한다.",
-                        "문의 등록",
-                    ),
-                    _functional(
-                        "첨부파일은 최대 3개까지 허용한다.",
-                        None,
-                    ),
-                ]
-            }
-        }
-    )
-
-    assert [feature.title for feature in features] == [
-        "문의 등록",
-        "기타 기능 요구사항",
-    ]
-    assert (
-        "첨부파일은 최대 3개까지 허용한다."
-        in features[1].description
-    )
-
-
-def test_build_features_preserves_legacy_functional_items():
-    features = build_features(
-        {
-            "requirements": {
-                "functional": [
-                    _functional(
-                        "구형 기능 요구사항을 제공한다.",
-                        None,
-                    )
-                ]
-            }
-        }
-    )
-
-    assert len(features) == 1
-    assert features[0].title == "기타 기능 요구사항"
-    assert "구형 기능 요구사항" in features[0].description
-
-
-def test_build_features_uses_verified_feature_decision_fallback():
-    features = build_features(
-        {
-            "requirements": {"functional": []},
-            "decisions": [
+def test_기능_출처의_context_flag가_인용된_기능_설명까지_이어진다():
+    """인용 번호가 유효해도(evidence_status=verified) 사실 검토 경고가 있으면 표시한다."""
+    structured = {
+        "requirements": {
+            "functional": [
                 {
-                    "category": "feature",
-                    "content": "긴급 문의 알림을 제공한다.",
-                    "evidence": _evidence(
-                        "긴급 문의 알림을 제공한다."
-                    ),
+                    "content": "모바일 알림을 제공한다.",
+                    "evidence": _evidence("모바일 알림을 제공한다."),
                     "evidence_status": "verified",
-                },
-                {
-                    "category": "feature",
-                    "content": "거래 내역을 저장한다.",
-                    "evidence": _evidence(
-                        "원문에 없는 내용"
-                    ),
-                    "evidence_status": "unverified",
+                    "context_flag": "근거보다 과도하게 확정적으로 서술 — 제안 수준이었음",
                 },
             ],
-        }
+        },
+        "decisions": [],
+    }
+
+    feature = Feature(
+        group="mvp", title="모바일 알림", description="모바일 알림을 제공한다.",
+        source_indices=[0],
     )
 
-    assert len(features) == 1
-    assert features[0].title == "확정 기능"
-    assert "긴급 문의 알림" in features[0].description
-    assert "거래 내역" not in features[0].description
+    plan_agent._mark_unverified_features([feature], structured)
+
+    assert list_builder.UNVERIFIED_ITEM_SUFFIX not in feature.description
+    assert "근거보다 과도하게 확정적으로 서술" in feature.description
 
 
 def test_feature_evidence_matches_verified_feature_sources():

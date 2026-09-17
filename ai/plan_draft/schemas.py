@@ -39,7 +39,7 @@ is_incomplete 같은 시스템 필드를 LLM 스키마에 넣으면
 from enum import Enum
 from typing import Literal, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from shared.schemas_base import Evidence, ReviewStatus
 
@@ -138,12 +138,15 @@ class Feature(BaseModel):
     상세 정보가 없는 기능은 짧게 설명합니다.
 
     2026-09-14: group을 추가했습니다. 확정 기능 목록과 목록과 별개로
-    확정된 연동을 화면에서 나눠 보여주기 위해서입니다.
-    값은 LLM이 정하지 않고 build_features가 근거로 판정합니다 —
-    회의에서 "제공 기능은 A, B, C로 확정한다"처럼 여러 기능을 한 문장에
-    열거하면 그 문장이 여러 기능의 공통 근거가 됩니다. 공통 근거에
-    들어간 기능이 mvp이고, 자기 근거만 가진 기능이 integration입니다.
-    열거 문장이 없으면 판정 근거가 없으므로 전부 mvp로 둡니다.
+    확정된 연동을 화면에서 나눠 보여주기 위해서입니다. 원래는
+    list_builder.build_features가 quote 열거 패턴으로 mvp/integration을
+    판정했지만, 2026-09-15에 기능 작성 자체가 LLM 직접 작성 방식으로
+    바뀌면서 build_features가 죽은 코드가 됐습니다(2026-09-17 삭제).
+
+    2026-09-17: 그래서 지금 이 필드는 LLM 규칙(plan_generation.yaml
+    features_rules)이 항상 "mvp"로만 쓰게 고정돼 있고, integration을
+    실제로 재판정하는 코드는 없습니다. 나중에 이 구분이 다시 필요하면
+    LLM 직접 작성 방식에 맞는 새 판정 로직을 설계해야 합니다.
 
     2026-09-16: source_indices를 추가했습니다. 예전엔 verified 항목만
     걸러 LLM에게 보여줬는데(prompts.py._verified_only), 그러면 근거
@@ -153,7 +156,16 @@ class Feature(BaseModel):
     참고했는지만 답합니다. agent.py가 그 번호들의 실제 검증 상태를 코드로
     확인해 unverified가 섞여 있으면 표시를 붙입니다 — DetailedGoal의
     matched_goal_index와 같은 원리입니다.
+
+    2026-09-17: model_config에 extra="forbid"를 추가했습니다. 필드가
+    바뀔 때(예: problem_evidence/goal_evidence 삭제) 퓨샷 예시가 옛
+    필드를 계속 들고 있어도 pydantic 기본 동작(extra 무시)으로는
+    검증을 그냥 통과해 계약 불일치가 조용히 남습니다. forbid로 바꿔
+    옛 필드가 남아 있으면 퓨샷 검증(prompt_loader._validate_example)이
+    바로 실패하게 합니다.
     """
+
+    model_config = ConfigDict(extra="forbid")
 
     group: Literal["mvp", "integration"] = Field(
         default="mvp",
@@ -248,7 +260,24 @@ class DetailedGoal(BaseModel):
     옮겨 적다 생기는 오차(예: "깔끔"→"깔끗") 위험이 이 경로에는 없습니다.
     번호가 없거나 범위를 벗어나면 이 goal 필드 값을 그대로 쓰되 "AI 제안"으로
     표시합니다.
+
+    2026-09-17: matched_problem_index를 추가했습니다. goal과 같은 이유로,
+    problem 필드도 project.problem_items를 LLM이 자기 말로 옮기면서
+    표현이 조금씩 달라져 quote 완전 일치로는 어떤 problem_item과
+    대응하는지 코드가 확인할 수 없었습니다. 그러면 노드①이 그 항목에
+    붙인 context_flag(사실 검토 경고)를 problem 문장에 이어 붙일
+    근거가 없어져 경고가 조용히 사라집니다. matched_goal_index와 같은
+    방식으로 problem_sources_for_citation의 번호만 답하게 하고, 번호가
+    유효하면 code가 problem 문장을 원문으로 덮어쓰며 그 항목의
+    context_flag도 함께 적용합니다(list_builder.build_goals 참고).
+
+    2026-09-17: model_config에 extra="forbid"를 추가했습니다. Feature와
+    같은 이유입니다(위 Feature 클래스 주석 참고) — problem_evidence·
+    goal_evidence처럼 삭제된 필드가 퓨샷에 남아 있어도 조용히 통과하는
+    문제를 막습니다.
     """
+
+    model_config = ConfigDict(extra="forbid")
 
     title: str = Field(
         ...,
@@ -265,8 +294,22 @@ class DetailedGoal(BaseModel):
 
     goal: str = Field(
         ...,
-        min_length=1,
-        description="해당 문제를 개선하기 위한 목표를 한 문장으로 작성",
+        description=(
+            "해당 문제를 개선하기 위한 목표를 한 문장으로 작성. "
+            "matched_goal_index가 없고 보수적으로도 제안할 근거가 없으면 "
+            "빈 문자열로 둡니다(2026-09-17: min_length 제약을 없앴습니다 — "
+            "list_builder.build_goals가 빈 문자열을 '목표 미논의' 고정 "
+            "문구로 대체합니다)."
+        ),
+    )
+
+    matched_problem_index: Optional[int] = Field(
+        default=None,
+        description=(
+            "이 problem 문장과 직접 대응하는 문제가 "
+            "problem_sources_for_citation 목록에 있으면 그 index 번호. "
+            "없으면 null."
+        ),
     )
 
     matched_goal_index: Optional[int] = Field(

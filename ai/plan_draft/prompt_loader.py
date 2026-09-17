@@ -176,9 +176,9 @@ def _validate_plan_template(template: dict) -> None:
         "plan_generation.metadata",
     )
 
-    if version != "2.4":
+    if version != "2.5":
         raise PromptTemplateError(
-            "plan_generation.yaml 버전은 2.4여야 합니다."
+            "plan_generation.yaml 버전은 2.5여야 합니다."
         )
 
     _require_text(
@@ -353,10 +353,15 @@ def _validate_plan_template(template: dict) -> None:
     # 2026-09-16: matched_goal_index를 추가했습니다(스키마 docstring 참고)
     # — LLM에게 목표 문장을 옮겨 적게 하는 대신 goals_for_citation의
     # 번호만 답하게 해서, 맞으면 코드가 원문으로 치환합니다.
+    #
+    # 2026-09-17: matched_problem_index를 추가했습니다 — problem 쪽에도
+    # 같은 방식(번호로 원문 대조, context_flag 이어붙이기)을 적용합니다
+    # (스키마 docstring 참고).
     expected_item_fields = [
         "title",
         "problem",
         "goal",
+        "matched_problem_index",
         "matched_goal_index",
     ]
 
@@ -592,10 +597,10 @@ def _validate_fewshots_template(template: dict) -> None:
         "plan_generation_fewshots.metadata",
     )
 
-    if version != "2.2":
+    if version != "2.3":
         raise PromptTemplateError(
             "plan_generation_fewshots.yaml 버전은 "
-            "2.2여야 합니다."
+            "2.3여야 합니다."
         )
 
     examples = _require_list(

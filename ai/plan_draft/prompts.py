@@ -124,6 +124,15 @@ def _build_generation_payload(
             {"index": i, "content": g.get("content", "")}
             for i, g in enumerate(_verified_only(project.get("goals")))
         ],
+        # 2026-09-17: matched_goal_index와 같은 이유로 problem 쪽에도
+        # 번호 매긴 인용 대상을 추가합니다(DetailedGoal.matched_problem_index
+        # 참고) — quote 완전 일치로는 LLM이 옮겨 적은 problem 문장이 어떤
+        # problem_item과 대응하는지 코드가 확인할 수 없어, 그 항목의
+        # context_flag(사실 검토 경고)를 이어 붙일 근거가 없었습니다.
+        "problem_sources_for_citation": [
+            {"index": i, "content": p.get("content", "")}
+            for i, p in enumerate(_verified_only(project.get("problem_items")))
+        ],
     }
 
 

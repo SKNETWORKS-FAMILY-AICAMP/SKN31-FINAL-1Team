@@ -30,7 +30,6 @@ from meeting_analysis.validators.evidence import VERIFIED
 from meeting_analysis.validators.evidence import normalize as _verifier_normalize
 
 from .schemas import (
-    Feature,
     PlanSection,
     SectionType,
     TechScopeGroup,
@@ -177,40 +176,6 @@ def _evidence_quote(item: dict) -> str:
         else ""
     ).strip()
 
-
-def _as_sentence(text: str) -> str:
-    """문장부호를 보존하면서 일반 텍스트를 한 문장으로 만듭니다."""
-    text = str(text).strip()
-
-    if not text:
-        return ""
-
-    if text.endswith((".", "!", "?")):
-        return text
-
-    return f"{text}."
-
-
-def _is_feature_label_sentence(
-    feature_name: str,
-    content: str,
-) -> bool:
-    """
-    기능명만 반복하는 상위 목록 문장인지 확인합니다.
-
-    세부 조건이 존재할 때 이 문장을 함께 붙이면
-    '기능을 제공한다. 세부 기능을 제공한다.'처럼 보이므로 생략합니다.
-    기능명만 있는 경우에는 그대로 보존합니다.
-    """
-    normalized = _norm(content).rstrip(".!?")
-    feature = _norm(feature_name)
-
-    return normalized in {
-        f"{feature}기능을제공한다",
-        f"{feature}을제공한다",
-        f"{feature}를제공한다",
-        f"{feature}기능을포함한다",
-    }
 
 def _dedupe_evidence(
     evidence_items: list[VerifiedEvidence],
@@ -473,11 +438,24 @@ def build_feature_citation_sources(structured: dict) -> list[dict]:
 
     이제 전부 번호를 매겨 넘기고, Feature.source_indices로 LLM이 어떤
     번호를 참고했는지 답하게 합니다(prompts.py는 이 함수 결과에서
-    evidence_status를 지운 index+content만 프롬프트에 넣습니다 — LLM이
-    검증 상태를 보고 "안전한" 번호만 골라 인용하는 걸 막기 위해서입니다).
-    agent.py가 인용된 번호 중 unverified가 섞여 있으면 해당 기능
-    설명에 표시를 붙입니다(build_goals의 matched_goal_index와 같은
-    원리 — 코드가 판정, LLM은 후보만 제시).
+    evidence_status·context_flag를 지운 index+content만 프롬프트에
+    넣습니다 — LLM이 검증 상태를 보고 "안전한" 번호만 골라 인용하는 걸
+    막기 위해서입니다). agent.py가 인용된 번호 중 unverified나
+    context_flag가 섞여 있으면 해당 기능 설명에 표시를 붙입니다
+    (build_goals의 matched_goal_index와 같은 원리 — 코드가 판정, LLM은
+    후보만 제시).
+
+    2026-09-17: decisions[tech]·decisions[scope] 중 인용문(quote)이
+    functional·decisions[feature] 항목 정확히 하나와만 일치하는 것을
+    후보에 추가합니다. 예를 들어 "결제는 카카오페이만 지원하고
+    카드결제는 다음 버전으로 이관한다"가 scope로 분류돼 있어도, 같은
+    quote를 쓰는 기능 요구사항이 정확히 하나면 그 기능 설명에 이 제약을
+    반영할 재료로 씁니다. quote가 여러 기능에 걸치거나(공통 열거 문장)
+    아예 없으면 후보에서 제외합니다 — "확인 가능할 때만 연결, 모호하면
+    연결하지 않는다"는 기준을 quote 일치로 기계적으로 강제하는 것이고,
+    실제로 연결할지는 여전히 LLM의 source_indices 인용 여부가 최종
+    결정합니다(인용 안 하면 6·7번에만 남습니다 — 이 함수는 후보만
+    넓힐 뿐 6·7번에서 항목을 빼지 않습니다).
     """
     requirements = structured.get("requirements") or {}
     functional = [
@@ -485,9 +463,27 @@ def build_feature_citation_sources(structured: dict) -> list[dict]:
         if isinstance(item, dict)
     ]
 
-    feature_decisions = [
+    all_decisions = [
         d for d in (structured.get("decisions") or [])
-        if isinstance(d, dict) and d.get("category") == "feature"
+        if isinstance(d, dict)
+    ]
+
+    feature_decisions = [
+        d for d in all_decisions if d.get("category") == "feature"
+    ]
+
+    primary_sources = functional + feature_decisions
+
+    quote_counts: dict[str, int] = {}
+    for item in primary_sources:
+        key = _evidence_key(_evidence_quote(item))
+        if key:
+            quote_counts[key] = quote_counts.get(key, 0) + 1
+
+    linked_decisions = [
+        d for d in all_decisions
+        if d.get("category") in ("tech", "scope")
+        and quote_counts.get(_evidence_key(_evidence_quote(d)), 0) == 1
     ]
 
     return [
@@ -495,8 +491,9 @@ def build_feature_citation_sources(structured: dict) -> list[dict]:
             "index": i,
             "content": str(item.get("content", "")),
             "evidence_status": _item_status(item),
+            "context_flag": item.get("context_flag") or "",
         }
-        for i, item in enumerate(functional + feature_decisions)
+        for i, item in enumerate(primary_sources + linked_decisions)
     ]
 
 
@@ -547,326 +544,6 @@ def find_orphaned_feature_sources(
         if source["evidence_status"] == VERIFIED and source["index"] not in cited
     ]
 
-
-def decide_feature_groups(
-    quote_groups: dict[str, set[str]],
-) -> dict[str, str]:
-    """
-    기능마다 group을 판정합니다. LLM을 쓰지 않습니다.
-
-    회의에서 "제공 기능은 A, B, C로 확정한다"처럼 여러 기능을 한 문장에
-    열거하면, 그 문장 하나가 여러 feature_name의 공통 근거가 됩니다.
-    quote_groups에 이미 그 관계가 들어 있습니다.
-
-      공통 근거(두 개 이상의 기능이 같은 quote를 씀)에 포함된 기능
-        -> 확정 기능 목록이므로 mvp
-
-      자기 근거만 가진 기능
-        -> 목록과 별개로 확정된 것이므로 integration
-
-    ※ 열거 문장이 아예 없으면(공통 근거 0건) 판정 근거가 없습니다.
-      이때 전부 integration으로 두면 확정 기능이 전멸하므로
-      기본값인 mvp를 그대로 씁니다.
-    """
-    all_names = {
-        name
-        for names in quote_groups.values()
-        for name in names
-    }
-
-    shared_names: set[str] = set()
-
-    for names in quote_groups.values():
-        if len(names) >= 2:
-            shared_names |= names
-
-    if not shared_names:
-        return {name: "mvp" for name in all_names}
-
-    return {
-        name: ("mvp" if name in shared_names else "integration")
-        for name in all_names
-    }
-
-
-def build_features(
-    structured: dict,
-) -> list[Feature]:
-    """
-    검증된 기능 요구사항을 feature_name 기준으로 조립합니다.
-
-    같은 원문 quote가 정확히 하나의 기능 그룹과 결정사항을 연결하면,
-    더 완전한 결정 문장을 기능 설명에 사용합니다. 여러 기능이 나열된
-    공통 quote는 특정 기능에 임의로 붙이지 않습니다.
-
-    이를 통해 기능명과 세부 조건을 보존하면서도 '기능을 제공한다'라는
-    상위 문장과 상세 문장이 반복되는 결과를 줄입니다.
-    """
-    if not isinstance(structured, dict):
-        raise TypeError(
-            "structured는 딕셔너리여야 합니다."
-        )
-
-    requirements = (
-        structured.get("requirements")
-        or {}
-    )
-
-    functional = (
-        requirements.get("functional")
-        if isinstance(requirements, dict)
-        else []
-    ) or []
-
-    grouped_items: dict[str, list[dict]] = {}
-    seen_contents: dict[str, set[str]] = {}
-    quote_groups: dict[str, set[str]] = {}
-    ungrouped_items: list[dict] = []
-    seen_ungrouped: set[str] = set()
-
-    for item in _verified_items(functional):
-
-        feature_name = item.get("feature_name")
-        content = item.get("content")
-
-        if not isinstance(content, str):
-            continue
-
-        content = content.strip()
-
-        if not content:
-            continue
-
-        normalized_content = _norm(content)
-
-        if not normalized_content:
-            continue
-
-        if not isinstance(feature_name, str):
-            feature_name = ""
-        else:
-            feature_name = feature_name.strip()
-
-        # 비어 있거나 Feature.title의 최대 길이를 넘는 이름은
-        # 임의로 줄이지 않고 미분류 묶음으로 보존합니다.
-        if not feature_name or len(feature_name) > 40:
-            if normalized_content not in seen_ungrouped:
-                seen_ungrouped.add(normalized_content)
-                ungrouped_items.append(item)
-            continue
-
-        if feature_name not in grouped_items:
-            grouped_items[feature_name] = []
-            seen_contents[feature_name] = set()
-
-        if normalized_content in seen_contents[feature_name]:
-            continue
-
-        seen_contents[feature_name].add(
-            normalized_content
-        )
-        grouped_items[feature_name].append(item)
-
-        quote_key = _norm(
-            _evidence_quote(item)
-        )
-
-        if quote_key:
-            quote_groups.setdefault(
-                quote_key,
-                set(),
-            ).add(feature_name)
-
-    # 하나의 기능 그룹과만 연결되는 동일 quote의 결정사항을 수집합니다.
-    # MVP 기능 6개가 한 문장에 열거된 공통 근거처럼 여러 기능에 걸친
-    # quote는 제외하므로 잘못된 기능 관계를 만들지 않습니다.
-    decision_details: dict[str, list[dict]] = {}
-    seen_decisions: dict[str, set[str]] = {}
-
-    for decision in _verified_items(
-        structured.get("decisions") or []
-    ):
-        quote_key = _norm(
-            _evidence_quote(decision)
-        )
-        related_groups = quote_groups.get(
-            quote_key,
-            set(),
-        )
-
-        if len(related_groups) != 1:
-            continue
-
-        feature_name = next(iter(related_groups))
-        content = str(
-            decision.get("content", "")
-        ).strip()
-        content_key = _norm(content)
-
-        if not content_key:
-            continue
-
-        feature_seen = seen_decisions.setdefault(
-            feature_name,
-            set(),
-        )
-
-        if content_key in feature_seen:
-            continue
-
-        feature_seen.add(content_key)
-        decision_details.setdefault(
-            feature_name,
-            [],
-        ).append(decision)
-
-    features: list[Feature] = []
-
-    feature_groups = decide_feature_groups(quote_groups)
-
-    for feature_name, items in grouped_items.items():
-        decisions = decision_details.get(
-            feature_name,
-            [],
-        )
-        decision_quote_keys = {
-            _norm(_evidence_quote(decision))
-            for decision in decisions
-        }
-
-        description_parts: list[str] = []
-        seen_parts: set[str] = set()
-
-        def add_part(text: str) -> None:
-            sentence = _as_sentence(text)
-            key = _norm(sentence)
-
-            if not key or key in seen_parts:
-                return
-
-            seen_parts.add(key)
-            description_parts.append(sentence)
-
-        # 확정 결정은 논의 결과를 가장 완전하게 정리한 문장이므로 우선합니다.
-        for decision in decisions:
-            add_part(decision.get("content", ""))
-
-        detailed_items = [
-            item
-            for item in items
-            if not _is_feature_label_sentence(
-                feature_name,
-                str(item.get("content", "")),
-            )
-        ]
-
-        for item in items:
-            quote_key = _norm(
-                _evidence_quote(item)
-            )
-
-            # 같은 quote의 더 완전한 결정 문장을 이미 사용했습니다.
-            if quote_key in decision_quote_keys:
-                continue
-
-            # 세부 설명이 있으면 기능명만 되풀이하는 문장은 생략합니다.
-            if (
-                detailed_items
-                and _is_feature_label_sentence(
-                    feature_name,
-                    str(item.get("content", "")),
-                )
-            ):
-                continue
-
-            add_part(item.get("content", ""))
-
-        if not description_parts:
-            for item in items:
-                add_part(item.get("content", ""))
-
-        # 2026-09-13: 설명이 기능명 반복뿐일 때 "세부 내용은 논의되지
-        # 않았습니다"로 바꿔봤다가 되돌렸습니다. 실행해 보니 MVP 기능
-        # 6개가 전부 그 문장이 되어, 같은 줄이 6번 반복됐습니다.
-        # 담긴 정보는 이전과 같은데 기획서는 텅 빈 것처럼 보였습니다.
-        #
-        # 기능명만 논의된 경우를 표시하려면 기능마다 문장을 붙일 게
-        # 아니라 그런 기능들을 한 번에 묶어 보여줘야 합니다.
-        features.append(
-            Feature(
-                title=feature_name,
-                description=" ".join(
-                    description_parts
-                ),
-                group=feature_groups.get(
-                    feature_name,
-                    "mvp",
-                ),
-            )
-        )
-
-    if ungrouped_items:
-        features.append(
-            Feature(
-                title="기타 기능 요구사항",
-                description=" ".join(
-                    _as_sentence(
-                        item.get("content", "")
-                    )
-                    for item in ungrouped_items
-                ),
-            )
-        )
-
-    if features:
-        return features
-
-    feature_decisions = _verified_items(
-        [
-            decision
-            for decision in (
-                structured.get("decisions")
-                or []
-            )
-            if (
-                isinstance(decision, dict)
-                and decision.get("category") == "feature"
-            )
-        ]
-    )
-    decision_contents: list[str] = []
-    seen_decisions: set[str] = set()
-
-    for decision in feature_decisions:
-        content = decision.get("content")
-
-        if not isinstance(content, str):
-            continue
-
-        content = content.strip()
-        normalized_content = _norm(content)
-
-        if (
-            not normalized_content
-            or normalized_content in seen_decisions
-        ):
-            continue
-
-        seen_decisions.add(normalized_content)
-        decision_contents.append(content)
-
-    if decision_contents:
-        return [
-            Feature(
-                title="확정 기능",
-                description=" ".join(
-                    _as_sentence(content)
-                    for content in decision_contents
-                ),
-            )
-        ]
-
-    return []
 
 def collect_core_goal_evidence(
     structured: dict,
@@ -1008,9 +685,24 @@ def build_goals(
     matched_goal_index_rules), 번호가 실제로 유효하면(0 <= idx <
     검증된 목표 개수) 화면에 보여줄 목표 문장 자체를 그 목표의 원문으로
     코드가 덮어씁니다 — LLM이 옮겨 적다 생기는 오차 위험이 이 경로에는
-    없습니다. 번호가 없거나 범위를 벗어나면 LLM이 쓴 문장을 그대로 쓰되
-    AI_SUGGESTED_GOAL_SUFFIX 표시를 붙여 "이건 회의에 없던 걸 AI가
-    문맥으로 보완한 것"임을 PM이 알 수 있게 합니다.
+    없습니다.
+
+    2026-09-17: matched_problem_index를 problem 쪽에도 같은 방식으로
+    적용합니다 — 이유는 matched_goal_index와 같습니다(schemas.py
+    DetailedGoal 주석 참고). 번호가 유효하면 problem 문장도 원문으로
+    덮어쓰고, 그 원문 항목의 context_flag(사실 검토 경고)를 이어
+    붙입니다. matched_goal_index가 유효한 경우도 마찬가지로 그 목표
+    항목의 context_flag를 goal 문장에 이어 붙입니다 — 이전에는 인용
+    번호가 유효하다는 것만 확인하고 context_flag는 확인하지 않아서,
+    "인용문이 원문에 있다"가 "그 항목의 서술이 실제로 맞다"는 뜻이
+    아닌데도 경고가 조용히 사라졌습니다.
+
+    번호가 없거나 범위를 벗어난 goal은 이제 LLM이 쓴 문장을 그대로
+    받아들이되 AI_SUGGESTED_GOAL_SUFFIX 표시를 붙입니다 — "회의에 없던
+    걸 AI가 보수적으로 제안했다"는 뜻입니다. 부정 반전 재발을 막는
+    가드레일(임의 KPI·일정·권한 신설 금지, 문제 반전 금지)은
+    plan_generation.yaml detailed_goal_rules의 프롬프트 규칙이 맡습니다
+    — 이 함수는 LLM이 실제로 낸 텍스트를 신뢰하는 대신 표시만 붙입니다.
     """
     source_fields = [
         "project.problem",
@@ -1019,10 +711,9 @@ def build_goals(
     ]
 
     project = structured.get("project") or {}
+    verified_problems = _verified_items(project.get("problem_items") or [])
     verified_goals = _verified_items(project.get("goals") or [])
-    has_verified_source = bool(
-        _verified_items(project.get("problem_items") or [])
-    ) or bool(verified_goals)
+    has_verified_source = bool(verified_problems) or bool(verified_goals)
 
     if not has_verified_source:
         return _build_goals_problem_only(structured, source_fields)
@@ -1048,29 +739,39 @@ def build_goals(
         if not title or not problem:
             continue
 
+        matched_problem_index = goal_data.get("matched_problem_index")
+        if isinstance(matched_problem_index, int) and 0 <= matched_problem_index < len(verified_problems):
+            problem_source = verified_problems[matched_problem_index]
+            problem = (
+                str(problem_source.get("content", "")).strip() or problem
+            )
+            problem = _apply_context_flag(problem, problem_source)
+
         matched_index = goal_data.get("matched_goal_index")
         if isinstance(matched_index, int) and 0 <= matched_index < len(verified_goals):
             # 번호가 유효하면 LLM이 쓴 문장을 버리고 원문으로 교체합니다 —
             # "회의 기반"이라고 표시할 내용은 실제로 회의 원문이어야 합니다.
+            goal_source = verified_goals[matched_index]
             goal = (
-                str(verified_goals[matched_index].get("content", "")).strip()
+                str(goal_source.get("content", "")).strip()
                 or GOAL_NOT_DISCUSSED_PLACEHOLDER
             )
+            goal = _apply_context_flag(goal, goal_source)
             is_ai_suggested = False
             cited_goal_indices.add(matched_index)
         else:
             # 2026-09-17: 대응하는 목표가 없을 때 LLM이 쓴 goal 텍스트를
-            # 신뢰하지 않습니다. 실측(웹 테스트)에서 plan_generation.yaml의
-            # 예전 지시("문제가 해소된 상태를 서술")를 따라 모든 항목이
-            # "~하기 어렵다" -> "~할 수 있다"로 기계적으로 반전된 목표가
-            # 되는 문제가 확인됐습니다. 지어낸 목표를 옮겨 쓰는 것 자체가
-            # 근거 없는 확정 서술이므로, 이 경로에서는 LLM의 goal 텍스트를
-            # 아예 쓰지 않고 코드가 고정 문구로 대체합니다. 이 문장은
-            # 그 자체로 "목표가 없다"는 사실을 알려주므로
-            # AI_SUGGESTED_GOAL_SUFFIX(뭔가를 지어내 제안했다는 표시)를
-            # 붙이지 않습니다 — 여기서는 아무것도 지어내지 않았습니다.
-            goal = GOAL_NOT_DISCUSSED_PLACEHOLDER
-            is_ai_suggested = False
+            # 조건부로 받아들입니다. 이전에는(실측에서 plan_generation.yaml의
+            # 옛 지시 "문제가 해소된 상태를 서술"을 따라 모든 항목이
+            # "~하기 어렵다" -> "~할 수 있다"로 기계적으로 반전되는 문제가
+            # 확인돼) 이 경로의 LLM 텍스트를 아예 버리고 고정 문구로만
+            # 대체했습니다. 이제 plan_generation.yaml에 반전 금지·임의
+            # KPI·일정·권한 신설 금지 가드레일을 명시한 뒤, LLM이 낸
+            # 제안 문장을 AI_SUGGESTED_GOAL_SUFFIX 표시와 함께 그대로
+            # 씁니다 — LLM이 빈 문자열을 내면(원문 부족을 자인) 여전히
+            # 고정 문구로 대체합니다.
+            goal = str(goal_data.get("goal", "")).strip() or GOAL_NOT_DISCUSSED_PLACEHOLDER
+            is_ai_suggested = goal != GOAL_NOT_DISCUSSED_PLACEHOLDER
 
         key = (_norm(problem), _norm(goal))
 
@@ -1109,7 +810,24 @@ def build_goals(
         for item in items_out
     ]
 
-    content_html = "<ul>" + "".join(html_items) + "</ul>"
+    # 무료 진단(LLM 재호출 없음): 검증됐지만 어떤 세부 목표에도 인용되지
+    # 않은 project.goals 원문이 있으면 PM에게 확인을 요청합니다
+    # (ORPHANED_ITEMS_NOTE_TEMPLATE 주석 참고).
+    orphaned = [
+        str(verified_goals[i].get("content", "")).strip()
+        for i in range(len(verified_goals))
+        if i not in cited_goal_indices
+    ]
+    needs_input_note = orphaned_items_note(orphaned)
+
+    # 2026-09-17: needs_input 필드에만 담던 걸 content_html에도 이어붙입니다.
+    # backend/meetings/services.py가 content_html만 꺼내 쓰고 needs_input은
+    # 읽지 않아, 이 필드만으로는 화면에 절대 표시되지 않는 걸 확인했습니다.
+    # 필드는 하류(needs_input을 참고할 수 있는 다른 경로)를 위해 그대로 둡니다.
+    content_html = (
+        "<ul>" + "".join(html_items) + "</ul>"
+        + (f"<p>{escape(needs_input_note)}</p>" if needs_input_note else "")
+    )
 
     items = [
         "\n".join(
@@ -1130,15 +848,6 @@ def build_goals(
         ["project.problem_items", "project.goals"],
     )
 
-    # 무료 진단(LLM 재호출 없음): 검증됐지만 어떤 세부 목표에도 인용되지
-    # 않은 project.goals 원문이 있으면 PM에게 확인을 요청합니다
-    # (ORPHANED_ITEMS_NOTE_TEMPLATE 주석 참고).
-    orphaned = [
-        str(verified_goals[i].get("content", "")).strip()
-        for i in range(len(verified_goals))
-        if i not in cited_goal_indices
-    ]
-
     return PlanSection(
         no=3,
         key="goals",
@@ -1148,7 +857,7 @@ def build_goals(
         items=items,
         source_fields=source_fields,
         evidence=evidence,
-        needs_input=orphaned_items_note(orphaned),
+        needs_input=needs_input_note,
         is_incomplete=False,
     )
 
@@ -1289,10 +998,18 @@ def build_tech_scope(structured: dict) -> PlanSection:
         lambda s: f"[{s['type']}] {s['content']}" if s.get("type") else s["content"],
     )
 
+    # 2026-09-17: needs_input 필드에만 담던 걸 content_html에도 이어붙입니다
+    # (build_goals와 같은 이유 — backend/meetings/services.py가 needs_input을
+    # 읽지 않아 이 필드만으로는 화면에 도달하지 않습니다).
+    needs_input_note = UNVERIFIED_ITEMS_NOTE if has_unverified else ""
+    content_html = "".join(parts) + (
+        f"<p>{escape(needs_input_note)}</p>" if needs_input_note else ""
+    )
+
     return PlanSection(
         no=6, key="tech_scope", title="기술 스택 및 제약사항",
         section_type=SectionType.LIST,
-        content_html="".join(parts),
+        content_html=content_html,
         items=items,
         groups=groups,
         source_fields=[
@@ -1302,7 +1019,7 @@ def build_tech_scope(structured: dict) -> PlanSection:
         ],
         evidence=_dedupe_evidence(evidence),
         is_incomplete=not parts,
-        needs_input=UNVERIFIED_ITEMS_NOTE if has_unverified else "",
+        needs_input=needs_input_note,
     )
 
 
@@ -1322,6 +1039,17 @@ def build_decisions(structured: dict) -> PlanSection:
     사라지는 결정사항이 생깁니다(실측 확인 — UNVERIFIED_ITEM_SUFFIX
     정의부 주석 참고). 이제 전부 포함하되 unverified 항목에는 표시를
     붙입니다.
+
+    2026-09-17: content_html과 items를 분리했습니다. items는 지금까지
+    써온 "[기능] 내용" 형태를 그대로 유지합니다 — ai/requirement_draft
+    (node③, 다른 팀원 담당)의 field_roles.yaml이 이 문자열 안의
+    "[기능]"/"[기술]"/"[범위]" 태그를 직접 파싱해 범위 결정을 요구사항화
+    하지 않도록 걸러내고 있어서(TAG_GATED 규칙), 이 형식을 바꾸면 node③이
+    조용히 깨집니다. 반면 content_html(화면 표시 전용, 하류가 안 씀)은
+    모든 줄 앞에 같은 대괄호 태그가 반복되어 로그처럼 읽히는 문제가 있어,
+    tech_scope(6번)처럼 카테고리별 소제목으로 묶어서 사람이 읽기 좋게
+    다시 만듭니다. 두 표현 다 같은 lines(태그 있는 문자열)에서 만드므로
+    내용 자체는 완전히 같습니다.
     """
     decisions = [
         d for d in (structured.get("decisions") or [])
@@ -1344,25 +1072,53 @@ def build_decisions(structured: dict) -> PlanSection:
         "tech": "기술",
         "scope": "범위",
     }
-    lines = []
+    subtitle = {
+        "feature": "기능 관련 결정",
+        "non_functional": "비기능 관련 결정",
+        "data": "데이터 관련 결정",
+        "tech": "기술 관련 결정",
+        "scope": "범위 관련 결정",
+    }
+
+    items: list[str] = []
+    by_category: dict[str, list[str]] = {}
     has_unverified = False
+
     for d in decisions:
-        text = f"[{label.get(d['category'], d['category'])}] {d['content']}"
-        if d.get("rationale"):
-            text += f" — {d['rationale']}"
-        text, unverified = _mark_if_unverified(text, d)
-        text = _apply_context_flag(text, d)
+        category = d["category"]
+        rationale_suffix = f" — {d['rationale']}" if d.get("rationale") else ""
+
+        # items: node③이 파싱하는 태그 형식. 바꾸지 않습니다.
+        tagged_text = f"[{label.get(category, category)}] {d['content']}{rationale_suffix}"
+        tagged_text, unverified = _mark_if_unverified(tagged_text, d)
+        tagged_text = _apply_context_flag(tagged_text, d)
         has_unverified = has_unverified or unverified
-        lines.append(text)
+        items.append(tagged_text)
+
+        # content_html: 화면 표시 전용. 태그 대신 소제목으로 묶습니다.
+        plain_text = f"{d['content']}{rationale_suffix}"
+        plain_text, _ = _mark_if_unverified(plain_text, d)
+        plain_text = _apply_context_flag(plain_text, d)
+        by_category.setdefault(category, []).append(plain_text)
+
+    parts = [
+        f"<p><strong>{subtitle.get(category, category)}</strong></p>" + _ul(lines)
+        for category, lines in by_category.items()
+    ]
+
+    needs_input_note = UNVERIFIED_ITEMS_NOTE if has_unverified else ""
+    content_html = "".join(parts) + (
+        f"<p>{escape(needs_input_note)}</p>" if needs_input_note else ""
+    )
 
     return PlanSection(
         no=7, key="decisions", title="최종 결정사항",
         section_type=SectionType.LIST,
-        content_html=_ul(lines),
-        items=lines,
+        content_html=content_html,
+        items=items,
         source_fields=["decisions"],
         evidence=_dedupe_evidence(_ev(decisions)),
-        needs_input=UNVERIFIED_ITEMS_NOTE if has_unverified else "",
+        needs_input=needs_input_note,
     )
 
 

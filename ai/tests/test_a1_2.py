@@ -310,10 +310,21 @@ def test_원본이_전부_비면_is_incomplete가_True():
 # ─────────────────────────────────────────────────────────────
 
 def test_결정사항에_분류_라벨이_붙는다():
+    """
+    2026-09-17: content_html은 대괄호 태그 대신 소제목으로 묶어 로그처럼
+    반복되지 않게 바꿨다(가독성 개선). items는 ai/requirement_draft
+    (node③, field_roles.yaml의 TAG_GATED 규칙)가 "[범위]" 태그를 직접
+    파싱하므로 그대로 유지한다 — 두 표현이 다른 것이 이 테스트의 요점이다.
+    """
     s = build_decisions(_structured())
-    assert "[기술]" in s.content_html
-    assert "[범위]" in s.content_html
-    assert "[기능]" in s.content_html
+    assert "기술 관련 결정" in s.content_html
+    assert "범위 관련 결정" in s.content_html
+    assert "기능 관련 결정" in s.content_html
+    assert "[기술]" not in s.content_html
+
+    assert any(item.startswith("[기술]") for item in s.items)
+    assert any(item.startswith("[범위]") for item in s.items)
+    assert any(item.startswith("[기능]") for item in s.items)
 
 
 def test_새_결정사항_분류에_라벨이_붙는다():
@@ -334,8 +345,10 @@ def test_새_결정사항_분류에_라벨이_붙는다():
         )
     )
 
-    assert "[비기능 요구사항]" in s.content_html
-    assert "[데이터]" in s.content_html
+    assert "비기능 관련 결정" in s.content_html
+    assert "데이터 관련 결정" in s.content_html
+    assert any(item.startswith("[비기능 요구사항]") for item in s.items)
+    assert any(item.startswith("[데이터]") for item in s.items)
 
 
 def test_rationale이_있으면_붙는다():

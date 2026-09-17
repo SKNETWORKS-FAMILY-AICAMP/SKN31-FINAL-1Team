@@ -1,119 +1,22 @@
 """
-Feature.group 판정과 표시 테스트.
+Feature.group 표시(render_features) 테스트.
 
-group은 LLM이 정하지 않고 코드가 근거로 판정합니다.
-판정 기준은 "여러 기능이 같은 quote를 공유하는가"뿐입니다.
-LLM을 호출하지 않으므로 이 파일의 테스트는 전부 결정적입니다.
+2026-09-17: 이 파일이 테스트하던 decide_feature_groups·build_features는
+list_builder.py에서 삭제했습니다 — 2026-09-15에 5번(주요 기능) 작성
+자체가 LLM 직접 작성 방식으로 바뀌면서 두 함수 모두 프로덕션 어디서도
+호출되지 않는 죽은 코드가 됐습니다(agent.py는 result.features를 그대로
+쓰고 group은 항상 "mvp"로 고정됩니다 — plan_generation.yaml
+features_rules 참고). mvp/integration을 실제로 재판정하는 코드는 지금
+없습니다.
+
+render_features는 Feature 목록을 group별로 나눠 보여주는 순수 렌더링
+함수라 이 변경과 무관하게 그대로 유지합니다 — 아래 테스트는 그 렌더링
+동작만 검증합니다(입력 Feature 객체는 직접 구성한 것이며, group 판정
+로직과는 별개입니다).
 """
 
 from plan_draft.feature_renderer import render_features
-from plan_draft.list_builder import (
-    build_features,
-    decide_feature_groups,
-)
 from plan_draft.schemas import Feature
-
-
-def _func(content, name, quote):
-    return {
-        "content": content,
-        "feature_name": name,
-        "evidence": {"quote": quote},
-        "evidence_status": "verified",
-    }
-
-
-def _structured(items):
-    return {
-        "requirements": {"functional": items},
-        "decisions": [],
-    }
-
-
-# ── decide_feature_groups ────────────────────────────────
-
-
-def test_shared_quote_marks_features_as_mvp():
-    """여러 기능이 같은 문장을 근거로 쓰면 확정 목록입니다."""
-    groups = decide_feature_groups(
-        {"열거문장": {"등록", "조회", "알림"}}
-    )
-    assert groups == {
-        "등록": "mvp",
-        "조회": "mvp",
-        "알림": "mvp",
-    }
-
-
-def test_own_quote_only_marks_feature_as_integration():
-    """자기 근거만 가진 기능은 목록과 별개로 확정된 것입니다."""
-    groups = decide_feature_groups(
-        {
-            "열거문장": {"등록", "조회"},
-            "연동문장": {"외부 연동"},
-        }
-    )
-    assert groups["등록"] == "mvp"
-    assert groups["조회"] == "mvp"
-    assert groups["외부 연동"] == "integration"
-
-
-def test_no_shared_quote_keeps_everything_mvp():
-    """열거 문장이 없으면 판정 근거가 없으므로 기본값을 씁니다.
-
-    여기서 전부 integration으로 두면 확정 기능이 하나도 남지 않습니다.
-    """
-    groups = decide_feature_groups(
-        {
-            "문장1": {"등록"},
-            "문장2": {"조회"},
-        }
-    )
-    assert set(groups.values()) == {"mvp"}
-
-
-def test_empty_input_returns_empty_mapping():
-    assert decide_feature_groups({}) == {}
-
-
-# ── build_features 연동 ──────────────────────────────────
-
-
-def test_build_features_assigns_group_from_evidence():
-    """열거 문장에 든 기능과 별도 확정된 기능이 갈립니다."""
-    listed = "제공 기능은 입출고 등록과 재고 조회로 확정한다."
-    features = build_features(
-        _structured(
-            [
-                _func("입출고 등록 기능을 제공한다", "입출고 등록", listed),
-                _func("재고 조회 기능을 제공한다", "재고 조회", listed),
-                _func(
-                    "외부 시스템 연동은 A사만 지원한다",
-                    "외부 연동",
-                    "외부 시스템 연동은 A사만 지원한다.",
-                ),
-            ]
-        )
-    )
-    by_title = {f.title: f.group for f in features}
-    assert by_title["입출고 등록"] == "mvp"
-    assert by_title["재고 조회"] == "mvp"
-    assert by_title["외부 연동"] == "integration"
-
-
-def test_build_features_defaults_to_mvp_without_list_sentence():
-    features = build_features(
-        _structured(
-            [
-                _func("입출고 등록 기능", "입출고 등록", "입출고 등록 기능을 제공한다."),
-                _func("재고 조회 기능", "재고 조회", "재고 조회 기능을 제공한다."),
-            ]
-        )
-    )
-    assert {f.group for f in features} == {"mvp"}
-
-
-# ── render_features ──────────────────────────────────────
 
 
 def test_renderer_adds_headings_when_both_groups_exist():

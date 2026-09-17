@@ -77,20 +77,42 @@ def _mark_unverified_features(feats: list, structured: dict) -> None:
     가리키면 그 기능은 "근거 확인 필요"로 표시합니다(list_builder의
     UNVERIFIED_ITEM_SUFFIX 재사용 — 6·7번과 같은 의미: LLM이 실존하는
     항목을 썼지만 그 항목의 원문 검증 자체가 실패했다는 뜻입니다).
+
+    2026-09-17: context_flag도 같은 방식으로 확인합니다. 인용 번호가
+    유효하고(evidence_status=verified) 인용문이 원문에 있어도, 노드①의
+    fact_check가 그 항목의 서술 자체를 의심스럽다고 표시했을 수 있습니다
+    (list_builder._apply_context_flag과 같은 개념). 이 경고는
+    feature_sources_for_citation에 인용 상태로만 실려 있어 여기서
+    확인하지 않으면 조용히 사라집니다 — quote 기준으로 새로 추가한
+    tech·scope 후보(build_feature_citation_sources 참고)에도 똑같이
+    적용됩니다.
     """
-    status_by_index = {
-        item["index"]: item["evidence_status"]
+    sources_by_index = {
+        item["index"]: item
         for item in list_builder.build_feature_citation_sources(structured)
     }
 
     for feature in feats:
         indices = feature.source_indices
+
         all_verified = bool(indices) and all(
-            status_by_index.get(idx) == list_builder.VERIFIED for idx in indices
+            idx in sources_by_index
+            and sources_by_index[idx]["evidence_status"] == list_builder.VERIFIED
+            for idx in indices
         )
         if not all_verified:
             feature.description = (
                 feature.description + list_builder.UNVERIFIED_ITEM_SUFFIX
+            )
+
+        cited_flags = dict.fromkeys(
+            sources_by_index[idx]["context_flag"]
+            for idx in indices
+            if idx in sources_by_index and sources_by_index[idx].get("context_flag")
+        )
+        for flag in cited_flags:
+            feature.description = feature.description + (
+                list_builder.CONTEXT_FLAG_SUFFIX_TEMPLATE.format(flag=flag)
             )
 
 
@@ -248,7 +270,17 @@ def run(
             # PM에게 확인을 요청합니다(list_builder.ORPHANED_ITEMS_NOTE_TEMPLATE
             # 참고) — 노드①은 맞게 뽑았는데 노드②가 조용히 빠뜨렸을 수 있는
             # 경우입니다.
+            #
+            # 2026-09-17: needs_input 필드에만 담아뒀던 걸 content_html에도
+            # 이어붙입니다. needs_input은 backend/meetings/services.py가
+            # content_html만 꺼내 쓰고 이 필드를 읽지 않아 실제 화면에
+            # 도달하지 않는 걸 확인했습니다(백엔드를 건드리지 않고 고칠 수
+            # 있는 유일한 통로가 content_html — AI_SUGGESTED_SECTION_NOTE와
+            # 같은 방식입니다). needs_input 필드 자체는 그대로 유지합니다.
             orphaned = list_builder.find_orphaned_feature_sources(feats, structured)
+            needs_input_note = list_builder.orphaned_items_note(orphaned)
+            if needs_input_note:
+                content = content + f"<p>{escape(needs_input_note)}</p>"
             sections.append(PlanSection(
                 no=spec["no"], key=spec["key"], title=spec["title"],
                 section_type=spec["type"],
@@ -259,7 +291,7 @@ def run(
                 # LLM이 스스로 쓴 문장을 근거로 쓰지 않습니다. 노드①이
                 # 검증한 원문을 섹션 전체 단위로 붙입니다(3·6·7번과 동일).
                 evidence=list_builder.collect_feature_evidence(structured),
-                needs_input=list_builder.orphaned_items_note(orphaned),
+                needs_input=needs_input_note,
                 is_incomplete=not feats,
             ))
             continue

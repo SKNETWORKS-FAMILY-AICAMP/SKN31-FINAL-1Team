@@ -36,6 +36,7 @@ def _detailed_goal(
     title: str = "발주 시점 누락 및 품절 방지",
     problem: str = "수기 관리로 발주 시점을 놓쳐 품절이 발생한다.",
     goal: str = "재고 임계치 알림으로 발주 누락과 품절을 줄인다.",
+    matched_problem_index: int | None = None,
     matched_goal_index: int | None = None,
 ) -> DetailedGoal:
     """테스트용 DetailedGoal을 만듭니다."""
@@ -43,6 +44,7 @@ def _detailed_goal(
         title=title,
         problem=problem,
         goal=goal,
+        matched_problem_index=matched_problem_index,
         matched_goal_index=matched_goal_index,
     )
 
@@ -189,7 +191,9 @@ def test_escapes_generated_html_content():
 
 def test_uses_bullet_list_without_numbered_list():
     """세부 목표는 숫자 목록이 아니라 글머리 기호 목록으로 만듭니다."""
-    section = build_goals(_structured(), [_detailed_goal()])
+    # matched_goal_index=0으로 유일한 목표를 인용해 orphan 안내 문구가
+    # 뒤에 붙지 않게 합니다(이 테스트의 관심사는 ul/ol 구조뿐입니다).
+    section = build_goals(_structured(), [_detailed_goal(matched_goal_index=0)])
 
     assert section.content_html.startswith("<ul>")
     assert section.content_html.endswith("</ul>")
@@ -281,14 +285,14 @@ def test_유효한_인덱스면_목표_문장을_원문으로_교체한다():
     assert AI_SUGGESTED_GOAL_SUFFIX not in section.content_html
 
 
-def test_인덱스가_없으면_LLM_목표_대신_고정_문구가_쓰인다():
+def test_인덱스가_없으면_LLM_목표를_AI_제안_표시와_함께_쓴다():
     """
     2026-09-17: matched_goal_index가 없으면(None) LLM이 쓴 goal 텍스트를
-    신뢰하지 않는다. 실측(웹 테스트)에서 plan_generation.yaml의 예전
-    지시("문제가 해소된 상태를 서술")를 따라 모든 항목이 문제를 기계적으로
-    반전한 목표가 되는 문제가 확인됐다. 이제 이 경로에서는 LLM의 텍스트를
-    버리고 코드가 고정 문구로 대체한다 — 아무것도 지어내지 않았으므로
-    AI_SUGGESTED_GOAL_SUFFIX는 붙지 않는다.
+    조건부로 신뢰한다. 09-17 이전에는 이 경로에서 LLM 텍스트를 아예
+    버렸는데(웹 테스트에서 예전 지시 "문제가 해소된 상태를 서술"이
+    문제를 기계적으로 반전시키는 게 확인돼서), 반전 금지·임의 KPI 금지
+    가드레일을 plan_generation.yaml에 명시한 뒤로는 LLM이 낸 보수적인
+    제안을 AI_SUGGESTED_GOAL_SUFFIX 표시와 함께 그대로 쓴다.
     """
     structured = _structured()
     generated = [_detailed_goal(
@@ -298,16 +302,35 @@ def test_인덱스가_없으면_LLM_목표_대신_고정_문구가_쓰인다():
 
     section = build_goals(structured, generated)
 
-    assert "회의에 없던 문맥 보완 목표" not in section.content_html
+    assert "회의에 없던 문맥 보완 목표" in section.content_html
+    assert AI_SUGGESTED_GOAL_SUFFIX in section.content_html
+    assert GOAL_NOT_DISCUSSED_PLACEHOLDER not in section.content_html
+
+
+def test_LLM이_goal을_빈칸으로_두면_고정_문구로_대체된다():
+    """
+    matched_goal_index가 없고 LLM도 제안할 근거가 없다고 판단해 goal을
+    빈 문자열(공백)로 두면, 아무것도 지어내지 않았다는 뜻이므로 고정
+    문구로 대체하고 AI_SUGGESTED_GOAL_SUFFIX를 붙이지 않는다.
+    """
+    structured = _structured()
+    generated = [_detailed_goal(
+        goal="   ",
+        matched_goal_index=None,
+    )]
+
+    section = build_goals(structured, generated)
+
     assert GOAL_NOT_DISCUSSED_PLACEHOLDER in section.content_html
     assert AI_SUGGESTED_GOAL_SUFFIX not in section.content_html
 
 
-def test_범위를_벗어난_인덱스는_고정_문구로_대체된다():
+def test_범위를_벗어난_인덱스는_AI_제안으로_처리된다():
     """
     인덱스가 project.goals 범위를 벗어나면(예: 음수, 목록 길이 이상)
-    검증 실패로 보고 fail-closed 처리한다 — 있지도 않은 번호를 유효하다고
-    믿으면 안 된다. 이때도 LLM의 goal 텍스트는 쓰지 않는다.
+    "인용 대상과 일치"로 신뢰하지 않는다 — 있지도 않은 번호를 유효하다고
+    믿으면 안 된다. 다만 매칭 실패일 뿐 LLM 텍스트 자체를 버리지는
+    않고, 매칭 안 된 경우와 똑같이 AI 제안으로 표시한다.
     """
     structured = _structured()
     generated = [_detailed_goal(
@@ -317,15 +340,16 @@ def test_범위를_벗어난_인덱스는_고정_문구로_대체된다():
 
     section = build_goals(structured, generated)
 
-    assert "엉뚱한 번호를 인용한 목표" not in section.content_html
-    assert GOAL_NOT_DISCUSSED_PLACEHOLDER in section.content_html
+    assert "엉뚱한 번호를 인용한 목표" in section.content_html
+    assert AI_SUGGESTED_GOAL_SUFFIX in section.content_html
 
 
-def test_unverified_목표는_인덱스로_인용할_수_없다():
+def test_unverified_목표는_인덱스로_인용할_수_없고_AI_제안으로_처리된다():
     """
     goals_for_citation은 verified 목표만 번호를 매긴다. project.goals에
     unverified 항목이 섞여 있으면 verified 항목만 세어 인덱스가
-    매겨지므로, unverified 목표는 애초에 인용 대상이 아니다.
+    매겨지므로, unverified 목표는 애초에 인용 대상이 아니다 — 매칭
+    실패이므로 AI 제안 경로로 처리된다.
     """
     structured = _structured(goal_status="unverified")
     generated = [_detailed_goal(
@@ -335,9 +359,9 @@ def test_unverified_목표는_인덱스로_인용할_수_없다():
 
     section = build_goals(structured, generated)
 
-    # verified 목표가 하나도 없으므로 인덱스 0은 항상 무효 → 고정 문구로 대체.
-    assert "검증 안 된 목표를 인용한 척" not in section.content_html
-    assert GOAL_NOT_DISCUSSED_PLACEHOLDER in section.content_html
+    # verified 목표가 하나도 없으므로 인덱스 0은 항상 무효 → AI 제안으로 표시.
+    assert "검증 안 된 목표를 인용한 척" in section.content_html
+    assert AI_SUGGESTED_GOAL_SUFFIX in section.content_html
 
 
 # ─────────────────────────────────────────────────────────────
@@ -396,3 +420,53 @@ def test_모든_검증_목표가_인용되면_needs_input이_비어있다():
     section = build_goals(structured, generated)
 
     assert section.needs_input == ""
+
+
+# ─────────────────────────────────────────────────────────────
+# 2026-09-17 추가 — matched_problem_index와 context_flag 전달
+#
+# matched_goal_index와 같은 이유로 problem 쪽에도 번호 기반 인용을
+# 추가했다. 유효하면 problem 문장을 원문으로 교체하고, 그 원문 항목의
+# context_flag(노드①의 사실 검토 경고)를 이어 붙인다. goal 쪽도
+# matched_goal_index가 유효할 때 같은 방식으로 context_flag를 잃지
+# 않아야 한다 — 이전에는 인덱스 유효성만 확인하고 context_flag는
+# 확인하지 않아 경고가 조용히 사라졌다.
+# ─────────────────────────────────────────────────────────────
+
+
+def test_유효한_problem_인덱스면_문제_문장을_원문으로_교체한다():
+    structured = _structured()
+    generated = [_detailed_goal(
+        problem="LLM이 다르게 옮겨 적은 문제",
+        matched_problem_index=0,
+    )]
+
+    section = build_goals(structured, generated)
+
+    assert "수기 관리로 발주 시점을 놓쳐 품절이 발생한다" in section.content_html
+    assert "LLM이 다르게 옮겨 적은 문제" not in section.content_html
+
+
+def test_matched_problem_index가_가리키는_항목의_context_flag가_이어진다():
+    structured = _structured()
+    structured["project"]["problem_items"][0]["context_flag"] = (
+        "근거보다 과도하게 확정적으로 서술 — 제안 수준이었음"
+    )
+    generated = [_detailed_goal(matched_problem_index=0, matched_goal_index=0)]
+
+    section = build_goals(structured, generated)
+
+    assert "근거보다 과도하게 확정적으로 서술" in section.content_html
+
+
+def test_matched_goal_index가_가리키는_항목의_context_flag가_이어진다():
+    """인용 번호가 유효해도(evidence_status=verified) 사실 검토 경고는 별개로 확인한다."""
+    structured = _structured()
+    structured["project"]["goals"][0]["context_flag"] = (
+        "회의 내용과 모순 — 다른 발언과 충돌"
+    )
+    generated = [_detailed_goal(matched_goal_index=0)]
+
+    section = build_goals(structured, generated)
+
+    assert "회의 내용과 모순" in section.content_html
