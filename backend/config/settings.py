@@ -301,6 +301,15 @@ CSRF_TRUSTED_ORIGINS = [
 "https://*.vercel.app",
 ]
 
+# 2026-09-17: 위 access_token/refresh_token 쿠키(jwt_cookies.py)와 같은 이유로 csrftoken
+# 쿠키도 SameSite=Lax(기본값)면 크로스도메인(vercel.app ↔ duckdns.org) 요청에 브라우저가
+# 안 실어 보내 "CSRF cookie not set" 에러가 난다. None은 Secure(HTTPS)가 있어야만 허용되므로
+# 로컬 개발(DEBUG=True, http)에서는 그대로 Lax를 쓴다.
+CSRF_COOKIE_SAMESITE = 'None' if not DEBUG else 'Lax'
+CSRF_COOKIE_SECURE = not DEBUG
+SESSION_COOKIE_SAMESITE = 'None' if not DEBUG else 'Lax'
+SESSION_COOKIE_SECURE = not DEBUG
+
 CORS_ALLOW_HEADERS = [
 'accept',
 'accept-encoding',
