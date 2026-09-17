@@ -403,6 +403,61 @@ def test_unverified_항목은_지워지지_않고_표시만_붙는다():
     assert "확인" in decisions.needs_input
 
 
+def test_context_flag가_있으면_원문_확인_필요_표시가_붙는다():
+    """
+    2026-09-17: meeting_analysis.fact_check가 항목에 붙인 context_flag를
+    그대로 옮겨 화면에 보여줍니다. (근거 확인 필요)와는 다른 뜻입니다 —
+    인용문 자체는 원문에 있지만(evidence_status=verified) 그 인용이
+    항목의 확정적인 서술을 실제로 뒷받침하는지 의심스럽다는 표시입니다.
+    """
+    s = build_tech_scope(
+        _structured(
+            requirements={
+                "functional": [],
+                "non_functional": [],
+                "data": [],
+                "technical": [
+                    {
+                        "content": "가격 중요 시 동일 등급 기준 최저가를 보유한다",
+                        "evidence": {"quote": "가격 중요하다고 하셨죠"},
+                        "evidence_status": "verified",
+                        "context_flag": "근거보다 과도하게 확정적으로 서술 — 회의에서는 제안 수준으로만 논의됨",
+                    }
+                ],
+            },
+            decisions=[],
+            constraints=[],
+        )
+    )
+
+    assert s.items == [
+        "가격 중요 시 동일 등급 기준 최저가를 보유한다 "
+        "(원문 확인 필요 — 근거보다 과도하게 확정적으로 서술 — 회의에서는 제안 수준으로만 논의됨)"
+    ]
+    # 근거 자체는 검증됐으므로 (근거 확인 필요) 표시는 붙지 않습니다.
+    assert "근거 확인 필요" not in s.items[0]
+
+
+def test_context_flag가_없으면_평소대로_표시된다():
+    s = build_tech_scope(
+        _structured(
+            requirements={
+                "functional": [], "non_functional": [], "data": [],
+                "technical": [
+                    {
+                        "content": "백엔드는 Spring Boot",
+                        "evidence": {"quote": "백엔드 Spring Boot"},
+                        "evidence_status": "verified",
+                    }
+                ],
+            },
+            decisions=[], constraints=[],
+        )
+    )
+
+    assert s.items == ["백엔드는 Spring Boot"]
+
+
 # ─────────────────────────────────────────────────────────────
 # 공통
 # ─────────────────────────────────────────────────────────────

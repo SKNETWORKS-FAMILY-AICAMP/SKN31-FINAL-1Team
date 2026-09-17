@@ -133,6 +133,23 @@ def _mark_if_unverified(text: str, item: dict) -> tuple[str, bool]:
     return text + UNVERIFIED_ITEM_SUFFIX, True
 
 
+# 2026-09-17: (근거 확인 필요)와도 뜻이 다릅니다. 그건 "인용문이 원문에
+# 있는지 확인 안 됨"이고, 이건 "인용문은 원문에 있는데(evidence_status=
+# verified) 그 인용이 이 항목의 확정적인 서술을 실제로 뒷받침하는지
+# 노드①의 meeting_analysis.fact_check가 의심스럽다고 표시한 것"입니다.
+# 노드①이 항목에 붙인 item["context_flag"]를 그대로 옮겨 화면에
+# 보여줍니다(list_builder.py는 새로 판정하지 않고 표시만 전달).
+CONTEXT_FLAG_SUFFIX_TEMPLATE = " (원문 확인 필요 — {flag})"
+
+
+def _apply_context_flag(text: str, item: dict) -> str:
+    """meeting_analysis.fact_check가 붙인 context_flag가 있으면 표시를 덧붙입니다."""
+    flag = item.get("context_flag")
+    if not flag:
+        return text
+    return text + CONTEXT_FLAG_SUFFIX_TEMPLATE.format(flag=flag)
+
+
 def _evidence_quote(item: dict) -> str:
     """구조화 항목에서 원문 근거 문자열을 가져옵니다."""
     evidence = item.get("evidence")
@@ -904,11 +921,12 @@ def _build_goals_problem_only(structured: dict, source_fields: list[str]) -> Pla
     검증된 문제 목록만이라도 남깁니다. 목표는 지어내지 않습니다.
     """
     project = structured.get("project") or {}
-    problems = [
-        str(item.get("content", "")).strip()
-        for item in _verified_items(project.get("problem_items") or [])
-        if str(item.get("content", "")).strip()
-    ]
+    problems = []
+    for item in _verified_items(project.get("problem_items") or []):
+        content = str(item.get("content", "")).strip()
+        if not content:
+            continue
+        problems.append(_apply_context_flag(content, item))
 
     if not problems:
         return PlanSection(
@@ -1164,6 +1182,7 @@ def build_tech_scope(structured: dict) -> PlanSection:
                 continue
             seen_lines.add(key)
             text, unverified = _mark_if_unverified(text, s)
+            text = _apply_context_flag(text, s)
             has_unverified = has_unverified or unverified
             lines.append(text)
             used.append(s)
@@ -1308,6 +1327,7 @@ def build_decisions(structured: dict) -> PlanSection:
         if d.get("rationale"):
             text += f" — {d['rationale']}"
         text, unverified = _mark_if_unverified(text, d)
+        text = _apply_context_flag(text, d)
         has_unverified = has_unverified or unverified
         lines.append(text)
 

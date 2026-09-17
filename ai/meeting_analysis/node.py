@@ -91,6 +91,7 @@ from .eligibility import (
     MeetingEligibilityError,
     assess_meeting,
 )
+from .fact_check import check_facts
 from .prompts import (
     build_messages,
     build_system_prompt,
@@ -533,6 +534,24 @@ def run(
         for gap in coverage_gaps
     ]
     data["validation_notes"] = validation_notes
+
+    # ── [5] 확정 표현 검토 — 회의록 길이와 무관하게 1회 ─────────
+    # 인용문이 원문에 있어도(evidence_status=verified) 그 인용이 항목의
+    # 확정적인 서술을 실제로 뒷받침하는지는 별개다. 노드②로 넘기기 전에
+    # 항목에 context_flag만 붙인다 — list_builder.py가 이 값을 읽어
+    # (근거 확인 필요)와 같은 방식으로 표시를 붙이므로 화면까지 바로
+    # 넘어간다. 실패해도 이 결과에 영향을 주지 않는다(fact_check.check_facts
+    # 참고).
+    _stage("확정 표현 검토 중…")
+    check_facts(
+        client=get_client(MODEL),
+        data=data,
+        meeting_text=relevant_text,
+        model=MODEL,
+        max_retries=MAX_RETRIES,
+        temperature=TEMPERATURE,
+        max_tokens=MAX_TOKENS,
+    )
 
     logger.info(
         (
