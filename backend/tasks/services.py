@@ -413,6 +413,10 @@ def generate_task_suggestions(spec_id: int, on_stage=None) -> dict:
             "risk_buffer_factor": unit.get("risk_buffer_factor"),
             "feature_area": unit.get("feature_area"),
             "package_id": package_by_unit.get(a["unit_id"]),  # Phase 2 item 7
+            # 2026-09-17: Subtask 단위일 때만 값이 있음(원본 Task의 task_id, 예: "TASK-001").
+            # flatten_assignable_units()가 이미 계산해둔 값을 그대로 실어 보낸다 —
+            # _persist_assignments()가 TaskAssignment.parent_task(문자열, FK 아님)로 저장한다.
+            "parent_task_id": unit.get("parent_task_id"),
         })
 
     # 2026-09-11 (Phase 2): LLM이 만든 의존성에 순환이 있으면 여기서 잡힌다.
@@ -524,6 +528,15 @@ def _persist_assignments(req_def: RequirementDefinition, items: list, status_cod
             # 복원할지 판단한다.
             original_assigned_user_id=int(item["assignee_id"]),
             original_assignment_reason=reason_text,
+            # 2026-09-17: Subtask 단위 업무의 원본 Task를 문자열로 기록한다(parent_task는
+            # FK가 아니라 CharField — epic_no/epic_title과 같은 패턴). task_no와 같은
+            # "RD{req_def.id}-{...}" 형식으로 맞춰, 같은 규칙으로 만들어진 값끼리 비교 가능하게
+            # 한다. 부모 Task 자신은 Subtask가 있으면 배정 단위가 아니라서 별도 행이 없다 —
+            # 이 값은 그 행을 가리키는 게 아니라 "어느 Task에서 갈라져 나왔는지"를 남기는
+            # 참조 문자열일 뿐이다.
+            parent_task=(
+                f"RD{req_def.id}-{item['parent_task_id']}" if item.get("parent_task_id") else None
+            ),
             epic_no=item.get("epic_no", ""),
             epic_title=item.get("epic_title", ""),
             start_date=item.get("start_date") or item.get("suggested_start_date") or None,
