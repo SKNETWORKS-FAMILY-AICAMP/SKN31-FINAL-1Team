@@ -3,6 +3,7 @@ import logging
 import threading
 from django.db import transaction
 from django.shortcuts import get_object_or_404
+from django.http import Http404
 from django.utils import timezone
 from rest_framework import generics, status, permissions
 from rest_framework.response import Response
@@ -15,12 +16,14 @@ from drf_spectacular.utils import (
     OpenApiResponse,
 )
 
-from requirements.models import RequirementDefinition, RequirementItem, RequirementExtractionJob
+from requirements.models import RequirementDefinition, RequirementItem, RequirementExtractionJob, RequirementValidationReport
 from requirements.serializers import (
     RequirementDefinitionSerializer,
     RequirementDefinitionCreateSerializer,
     RequirementItemSerializer,
+    RequirementValidationReportSerializer,
 )
+from requirements.services import validate_requirement_definition, apply_requirement_validation
 from meetings.models import SpecDocument
 from common.models import CommonCode
 from users.permissions import IsPMUser, IsOwnerOrPM  # PM 권한 검증
@@ -32,6 +35,17 @@ from requirement_draft.agent import generate_requirements
 from requirement_draft.schemas import PlanDocument
 
 logger = logging.getLogger(__name__)
+
+
+def latest_requirement_definition(spec_id):
+    return RequirementDefinition.objects.filter(spec_id=spec_id).order_by('-created_at', '-id').first()
+
+
+def latest_requirement_definition_or_404(spec_id):
+    req_def = latest_requirement_definition(spec_id)
+    if req_def is None:
+        raise Http404
+    return req_def
 
 
 def get_target_author(req_def):
@@ -155,18 +169,19 @@ def process_ai_requirement_extraction(spec_document, user, on_stage=None):
             code_id='DRAFT'
         ).first()
 
-        req_def, created = RequirementDefinition.objects.get_or_create(
-            spec=spec_document,
-            defaults={
+        req_def = latest_requirement_definition(spec_document.spec_id)
+        created = req_def is None
+        if created:
+            req_def = RequirementDefinition.objects.create(
+                spec=spec_document,
                 # SpecDocument엔 project 필드가 없다 — meeting을 거쳐야 프로젝트를 알 수 있다
                 # (spec_document.project로 잘못 참조하면 hasattr()가 항상 False라 계속 None으로
                 # 저장되는 버그가 있었음, 2026-09-08부터 발생).
-                'project': spec_document.meeting.project,
-                'title': f"{spec_document.title} - 요구사항 정의서",
-                'status_code': draft_status,
-                'created_by': user
-            }
-        )
+                project=spec_document.meeting.project,
+                title=f"{spec_document.title} - 요구사항 정의서",
+                status_code=draft_status,
+                created_by=user,
+            )
 
         if not created:
             # get_or_create의 defaults는 "새로 만들 때"만 적용되고 기존 행은 절대 안 건드린다 —
@@ -265,7 +280,7 @@ def process_ai_requirement_extraction(spec_document, user, on_stage=None):
     )
 )
 class RequirementDefinitionListCreateView(generics.ListCreateAPIView):
-    queryset = RequirementDefinition.objects.all()
+    queryset = RequirementDefinition.objects.all().order_by('-created_at', '-id')
     permission_classes = [permissions.IsAuthenticated]
 
     def get_serializer_class(self):
@@ -347,6 +362,13 @@ class RequirementDefinitionDetailView(generics.RetrieveUpdateDestroyAPIView):
     lookup_field = 'spec_id'
     lookup_url_kwarg = 'spec_id'
 
+    def get_object(self):
+        obj = self.get_queryset().filter(spec_id=self.kwargs['spec_id']).order_by('-created_at', '-id').first()
+        if obj is None:
+            raise Http404
+        self.check_object_permissions(self.request, obj)
+        return obj
+
     def update(self, request, *args, **kwargs):
         new_status = request.data.get('status_code') or request.data.get('status_code_id')
         if new_status and not request.user.is_staff:
@@ -393,10 +415,7 @@ class RequirementDefinitionSubmitReviewView(APIView):
         }
     )
     def post(self, request, spec_id):
-        req_def = get_object_or_404(
-            RequirementDefinition.objects.select_related('spec', 'created_by', 'spec__created_by'),
-            spec_id=spec_id
-        )
+        req_def = latest_requirement_definition_or_404(spec_id)
         
         # 작성자 검증
         created_by_user = get_target_author(req_def)
@@ -430,10 +449,7 @@ class RequirementDefinitionApproveView(APIView):
         responses={200: OpenApiResponse(description='승인 완료')}
     )
     def post(self, request, spec_id):
-        req_def = get_object_or_404(
-            RequirementDefinition.objects.select_related('spec', 'created_by', 'spec__created_by'),
-            spec_id=spec_id
-        )
+        req_def = latest_requirement_definition_or_404(spec_id)
         status_code = CommonCode.objects.filter(group_id='REQSPEC_STATUS', code_id='APPROVED').first()
         if status_code:
             req_def.status_code = status_code
@@ -475,10 +491,7 @@ class RequirementDefinitionRejectView(APIView):
         responses={200: OpenApiResponse(description='반려 완료')}
     )
     def post(self, request, spec_id):
-        req_def = get_object_or_404(
-            RequirementDefinition.objects.select_related('spec', 'created_by', 'spec__created_by'),
-            spec_id=spec_id
-        )
+        req_def = latest_requirement_definition_or_404(spec_id)
         status_code = CommonCode.objects.filter(group_id='REQSPEC_STATUS', code_id='REJECTED').first()
         if status_code:
             req_def.status_code = status_code
@@ -495,6 +508,49 @@ class RequirementDefinitionRejectView(APIView):
             )
 
         return Response({"message": "요구사항 정의서가 반려되었습니다.", "data": RequirementDefinitionSerializer(req_def).data})
+
+
+class RequirementDefinitionValidateView(APIView):
+    """기획서와 요구사항정의서를 비교 평가한다."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, req_def_id):
+        req_def = get_object_or_404(
+            RequirementDefinition.objects.select_related('spec__meeting').prefetch_related('items'),
+            pk=req_def_id,
+        )
+        is_pm = request.user.is_staff or request.user.groups.filter(name='PM').exists()
+        if req_def.spec.meeting.created_by_id != request.user.id and not is_pm:
+            return Response({'detail': '작성자 또는 PM만 검증할 수 있습니다.'}, status=status.HTTP_403_FORBIDDEN)
+        try:
+            report = validate_requirement_definition(req_def, request.user)
+        except Exception as exc:
+            return Response({'detail': f'요구사항정의서 검증 중 오류가 발생했습니다: {exc}'}, status=status.HTTP_502_BAD_GATEWAY)
+        return Response(RequirementValidationReportSerializer(report).data, status=status.HTTP_201_CREATED)
+
+
+class RequirementValidationReportApplyView(APIView):
+    """AI 보완안을 원본을 보존한 새 요구사항정의서 버전으로 만든다."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, report_id):
+        report = get_object_or_404(
+            RequirementValidationReport.objects.select_related(
+                'requirement_definition__spec__meeting', 'applied_definition'
+            ), pk=report_id,
+        )
+        meeting = report.requirement_definition.spec.meeting
+        is_pm = request.user.is_staff or request.user.groups.filter(name='PM').exists()
+        if meeting.created_by_id != request.user.id and not is_pm:
+            return Response({'detail': '작성자 또는 PM만 적용할 수 있습니다.'}, status=status.HTTP_403_FORBIDDEN)
+        try:
+            revised = apply_requirement_validation(report)
+        except ValueError as exc:
+            return Response({'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({
+            'message': '보완사항을 적용한 새 요구사항정의서 버전을 생성했습니다.',
+            'requirement_definition': RequirementDefinitionSerializer(revised).data,
+        })
 
 
 class RequirementExtractView(APIView):

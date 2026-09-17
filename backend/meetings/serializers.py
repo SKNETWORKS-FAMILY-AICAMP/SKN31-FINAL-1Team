@@ -103,7 +103,14 @@ class MeetingNoteSerializer(serializers.ModelSerializer):
     id = serializers.ReadOnlyField(source='pk')
     created_by_name = serializers.CharField(source='created_by.username', read_only=True)
     status_display = serializers.CharField(source='get_status_display', read_only=True)
-    spec_documents = SpecDocumentSerializer(many=True, read_only=True)
+    # 품질 검증 적용 시 같은 회의록에 여러 기획서 버전이 생긴다. 모델의 created_at
+    # 정렬에만 의존하면 DB의 timestamp 정밀도에 따라 v1/v2 순서가 같아질 수 있고,
+    # 프론트가 배열 첫 항목(v1)을 계속 표시하게 된다. 최신 버전을 명시적으로 먼저 보낸다.
+    spec_documents = serializers.SerializerMethodField()
+
+    def get_spec_documents(self, obj):
+        specs = obj.spec_documents.all().order_by('-version', '-created_at', '-spec_id')
+        return SpecDocumentSerializer(specs, many=True, context=self.context).data
 
     class Meta:
         model = MeetingNote
