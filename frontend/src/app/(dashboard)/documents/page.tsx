@@ -166,6 +166,7 @@ type TaskSuggestionDto = {
   suggested_end_date: string | null;
   feature_area: string | null; // 2026-09-11 (Phase 2): 같은 기능 묶음(WorkPackage) 라벨
   schedule_reason: string | null; // 2026-09-11 (Phase 4): 이 날짜에 놓인 이유(결정적)
+  parent_task_id: string | null; // 2026-09-17: Subtask일 때만 원본 Task의 task_id(예: "TASK-001")
 };
 
 // 2026-09-10 (Phase 0): 남는 프로젝트 기간을 업무 사이 갭으로 숨기지 않고 PM에게
@@ -208,6 +209,7 @@ type TaskDraft = {
   hold_explanation: string | null;
   feature_area: string | null; // 2026-09-11 (Phase 2)
   schedule_reason: string | null; // 2026-09-11 (Phase 4)
+  parent_task_id: string | null; // 2026-09-17
   start_date: string; // yyyy-mm-dd, <input type="date"> 용 — 없으면 빈 문자열
   end_date: string;
 };
@@ -244,6 +246,7 @@ const suggestionToDraft = (s: TaskSuggestionDto): TaskDraft => ({
   hold_explanation: s.hold_explanation,
   feature_area: s.feature_area,
   schedule_reason: s.schedule_reason,
+  parent_task_id: s.parent_task_id,
   start_date: toDateInput(s.suggested_start_date),
   end_date: toDateInput(s.suggested_end_date),
 });
@@ -1077,6 +1080,7 @@ export default function DocumentsPage() {
                 workload_fit: d.workload_fit,
                 experience_fit: d.experience_fit,
                 schedule_reason: d.schedule_reason, // 2026-09-11 (Phase 4)
+                parent_task_id: d.parent_task_id, // 2026-09-17
                 start_date: d.start_date || null,
                 end_date: d.end_date || null,
               })),
