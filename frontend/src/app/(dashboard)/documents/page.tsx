@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useMemo, useRef, Fragment, type Dispatch, type SetStateAction, type ReactNode } from "react";
+import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import { useAuth } from "@/lib/auth";
 import { apiFetch } from "@/lib/api/client";
 import {
@@ -392,7 +393,17 @@ export default function DocumentsPage() {
   const [reassigningTaskId, setReassigningTaskId] = useState<number | null>(null);
   const [members, setMembers] = useState<Member[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selectedNoteId, setSelectedNoteId] = useState<number | null>(null);
+  // 2026-09-17: 문서를 골라 보고 있다가 새로고침(F5)하면 선택이 풀려서 목록 맨 위
+  // 문서로 돌아가 버린다는 요청 — 선택 상태를 URL 쿼리(?note=)에 반영해서, 새로고침
+  // 해도 같은 문서를 그대로 보여준다. 최초 렌더에서 쿼리값으로 시작해야 목록이 아직
+  // 안 불러와진 순간에도 깜빡임 없이 바로 그 문서를 가리킨다.
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const [selectedNoteId, setSelectedNoteId] = useState<number | null>(() => {
+    const q = searchParams.get("note");
+    return q ? Number(q) : null;
+  });
   const [activeTab, setActiveTab] = useState<PipelineTab>("proposal");
   const [newDocModalOpen, setNewDocModalOpen] = useState(false);
   // 좌측 전체 사이드바와 별개로, 이 화면 안의 문서 목록 패널도 접을 수 있게 해달라는
@@ -468,6 +479,15 @@ export default function DocumentsPage() {
   useEffect(() => {
     if (!selectedNoteId && sortedNotes.length > 0) setSelectedNoteId(sortedNotes[0].id);
   }, [sortedNotes, selectedNoteId]);
+  // URL의 ?note= 값을 선택 상태와 계속 맞춘다 — router.replace라 히스토리를 새로
+  // 쌓지 않고(뒤로가기가 문서 하나하나를 안 거침), 새로고침 시 이 값을 그대로
+  // 읽어 위 useState 초기값으로 복원된다.
+  useEffect(() => {
+    if (!selectedNoteId) return;
+    const current = searchParams.get("note");
+    if (current === String(selectedNoteId)) return;
+    router.replace(`${pathname}?note=${selectedNoteId}`, { scroll: false });
+  }, [selectedNoteId, pathname, router, searchParams]);
   // taskDrafts/taskDraftsReqDefId는 selectedNote와 무관한 전역 state라, 문서를 바꿔도
   // 저절로 안 지워진다 — A 문서에서 "업무 배분 실행"으로 draft를 만든 뒤 확정하지 않고
   // B 문서로 넘어가면, B의 배분 화면에 A의 draft가 그대로 보이고 그 상태로 "배분 확정"을
