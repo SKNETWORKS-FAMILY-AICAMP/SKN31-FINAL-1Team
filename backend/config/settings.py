@@ -268,6 +268,7 @@ CORS_ALLOWED_ORIGINS = [
 "http://127.0.0.1:5173",
 "http://localhost:8080",   # Vue CLI 등
 "https://heyzzabi.vercel.app",  # 2026-09-17: 프로젝트 이름을 heyzzabi로 바꾼 뒤의 정식 주소 — 실제로 쓰는 주소는 이것
+"https://heyzzabi-heyzzabi.vercel.app",  # 2026-09-17: Vercel이 프로젝트/팀 이름으로 자동 생성한 별칭 주소(브라우저가 실제로 이 주소에서 요청을 보냄)
 "https://frontend-chi-eight-58.vercel.app",  # 2026-09-17: 개명 전 임시 고정 주소(안전망으로 남겨둠)
 "https://frontend-r8mfpyon4-heyzzabi.vercel.app",  # 2026-09-17: 첫 배포 시점의 "Deployment"별 주소(배포마다 바뀜, 안전망으로 남겨둠)
 ]
