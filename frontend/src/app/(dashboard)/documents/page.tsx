@@ -254,13 +254,20 @@ type TaskDraft = {
 type Member = { id: number; name: string; jobRoleCode: string | null };
 
 // 업무 자체엔 "직무" 필드가 없어서, 담당자 계정의 job_role_code로 대신 집계한다.
-// 예상 인원 요약 박스에 쓸 카테고리만 라벨을 붙이고 나머지(풀스택/PM/QA/디자이너/미지정)는
-// "미분류"로 묶는다.
+// 2026-09-17: 원래 4개 직무만 라벨이 있고 나머지(풀스택/PM/QA/디자이너)는 전부
+// "미분류"로 뭉뚱그렸는데, 실제 데이터로 확인해보니 FULLSTACK만 해도 배정 인원의
+// 상당수를 차지해 "미분류"가 실질적으로 의미 없이 커지는 문제가 있었다(사용자
+// 리포트로 확인) — USER_JOB_ROLE 8개 전부에 라벨을 준다. 이제 "미분류"는 정말
+// job_role_code가 비어있거나(미등록) 알 수 없는 값일 때만 남는다.
 const JOB_ROLE_LABEL: Record<string, string> = {
   BACKEND: "백엔드",
   FRONTEND: "프론트",
   DATA_ENGINEER: "데이터",
   DEVOPS: "데브옵스",
+  QA_ENGINEER: "QA",
+  UIUX_DESIGNER: "디자인",
+  FULLSTACK: "풀스택",
+  PROJECT_MANAGER: "PM",
 };
 const roleLabelOf = (code: string | null) => (code && JOB_ROLE_LABEL[code]) || "미분류";
 
