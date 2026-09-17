@@ -82,7 +82,7 @@ def _match_skills(
     return matched
 
 # TODO(팀 합의 필요): 담당자 1인이 근무일 하루에 이 업무에 쓸 수 있는 시간.
-# DB 필드가 아니라 코드 상수 — calculate_max_hours_per_assignee()가 프로젝트
+# DB 필드가 아니라 코드 상수 calculate_max_hours_per_assignee()가 프로젝트
 # 기간 내 평일 수와 곱해 실제 상한을 계산하는 데 쓴다.
 DAILY_HOURS_PER_ASSIGNEE = 8.0
 
