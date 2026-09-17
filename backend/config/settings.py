@@ -267,6 +267,18 @@ CORS_ALLOWED_ORIGINS = [
 "http://localhost:5173",   # Vite (React / Vue 등)
 "http://127.0.0.1:5173",
 "http://localhost:8080",   # Vue CLI 등
+"https://heyzzabi.vercel.app",  # 2026-09-17: 프로젝트 이름을 heyzzabi로 바꾼 뒤의 정식 주소 — 실제로 쓰는 주소는 이것
+"https://frontend-chi-eight-58.vercel.app",  # 2026-09-17: 개명 전 임시 고정 주소(안전망으로 남겨둠)
+"https://frontend-r8mfpyon4-heyzzabi.vercel.app",  # 2026-09-17: 첫 배포 시점의 "Deployment"별 주소(배포마다 바뀜, 안전망으로 남겨둠)
+]
+
+# 2026-09-17: `vercel --prod`로 재배포할 때마다 배포별 URL(위 r8mfpyon4 같은 부분)이 매번
+# 새로 생긴다 — 매번 위 CORS_ALLOWED_ORIGINS를 손으로 고치지 않도록, 같은 프로젝트(frontend-*)의
+# heyzzabi 팀/계정 아래 vercel.app 주소는 전부 허용하는 정규식을 추가한다. 다른 사람의
+# vercel.app 사이트까지 열어주는 *.vercel.app 전체 허용보다 좁게 잡아둔다. (실제 사용자에게
+# 노출되는 "Domains" 고정 주소는 위 CORS_ALLOWED_ORIGINS에 이미 정확히 등록해뒀다.)
+CORS_ALLOWED_ORIGIN_REGEXES = [
+    r"^https://frontend-[a-zA-Z0-9]+-heyzzabi\.vercel\.app$",
 ]
 
 # 인증 정보(Cookie, Authorization 헤더 등)를 포함한 요청 허용
@@ -275,9 +287,17 @@ CORS_ALLOW_CREDENTIALS = True
 # 2026-08-31: 쿠키 기반 인증으로 옮기면서 CSRF 검증이 다시 필요해졌다(위 CookieJWTAuthentication
 # 참고). Django의 CSRF 미들웨어는 Origin/Referer가 다른 포트(localhost:3000 → :8000)로 온
 # 요청을 기본적으로 신뢰하지 않으므로, 프론트 개발 서버 주소를 명시적으로 허용해야 한다.
+# 2026-09-17: Vercel 배포 주소도 추가. 와일드카드(*.)는 Django 4.0+부터 CSRF_TRUSTED_ORIGINS에서
+# 지원되는데, 정규식이 아니라 서브도메인 한 자리만 통째로 치환하는 방식이라(위 CORS처럼
+# "frontend-*-heyzzabi"로 좁게는 못 잡음) *.vercel.app 전체를 허용하는 셈이다 — 이 프로젝트
+# 규모에서는 감내 가능한 절충으로 판단(실제 요청 자체는 위 CORS 정규식이 먼저 좁게 막아준다).
 CSRF_TRUSTED_ORIGINS = [
 "http://localhost:3000",
 "http://127.0.0.1:3000",
+"https://heyzzabi.vercel.app",
+"https://frontend-chi-eight-58.vercel.app",
+"https://frontend-r8mfpyon4-heyzzabi.vercel.app",
+"https://*.vercel.app",
 ]
 
 CORS_ALLOW_HEADERS = [
