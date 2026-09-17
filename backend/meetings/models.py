@@ -66,6 +66,11 @@ class SpecDocument(models.Model):
     회의록을 바탕으로 생성되는 기획서
     """
     spec_id = models.AutoField(primary_key=True, verbose_name="기획서 ID")
+    version = models.PositiveIntegerField(default=1, verbose_name="기획서 버전")
+    parent_spec = models.ForeignKey(
+        'self', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='revisions', verbose_name="이전 기획서 버전",
+    )
     meeting = models.ForeignKey(
         MeetingNote,
         on_delete=models.CASCADE,
@@ -157,6 +162,29 @@ class SpecDocument(models.Model):
 
     def __str__(self):
         return f"[{self.spec_id}] {self.title}"
+
+
+class SpecValidationReport(models.Model):
+    """회의록 원문과 기획서를 비교한 AI 품질 검토 결과."""
+    report_id = models.AutoField(primary_key=True)
+    spec = models.ForeignKey(SpecDocument, on_delete=models.CASCADE, related_name='validation_reports')
+    scores = models.JSONField(default=dict)
+    summary = models.TextField(blank=True)
+    strengths = models.JSONField(default=list)
+    critical_issues = models.JSONField(default=list)
+    section_reviews = models.JSONField(default=list)
+    revised_document = models.JSONField(default=dict)
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True)
+    applied_spec = models.OneToOneField(
+        SpecDocument, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='applied_validation_report',
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    applied_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = 'spec_validation_report'
+        ordering = ['-created_at']
 
 
 class MeetingAnalysisJob(models.Model):

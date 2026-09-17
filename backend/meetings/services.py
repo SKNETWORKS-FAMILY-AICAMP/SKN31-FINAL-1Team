@@ -4,13 +4,18 @@ import re
 import html
 
 from django.contrib.auth import get_user_model
+from django.utils import timezone
+from django.db import transaction
+from django.db.models import Max
 
-from meetings.models import MeetingNote, SpecDocument
+from meetings.models import MeetingNote, SpecDocument, SpecValidationReport
 from meetings.serializers import MeetingNoteSerializer, SpecDocumentSerializer
 from projects.models import PipelineHistory
+from common.models import CommonCode
 
 from meeting_analysis.node import run as analyze_meeting
 from plan_draft.agent import run as generate_plan
+from plan_review.agent import run as review_plan
 
 User = get_user_model()
 
@@ -129,6 +134,10 @@ def run_meeting_analysis(note_id: int, actor_user_id, on_stage=None) -> dict:
             'tech_stack': section_or_not_discussed('tech_scope'),
             'final_decisions': section_or_not_discussed('decisions'),
         }
+        # 초안 생성 AI가 한 문단 안에 ``(1) ... (2) ...``를 이어 쓰는 경우에도
+        # 각 순번이 별도 줄로 보이도록 저장 형식을 통일한다.
+        for field in PLAN_FIELDS:
+            spec_defaults[field] = _normalize_plan_html(spec_defaults[field])
         if evidence_map:
             spec_defaults['evidence_data'] = json.dumps(evidence_map, ensure_ascii=False)
 
@@ -140,10 +149,14 @@ def run_meeting_analysis(note_id: int, actor_user_id, on_stage=None) -> dict:
             spec_defaults['period_start'] = period_match.group(1)
             spec_defaults['period_end'] = period_match.group(2)
 
-        spec, created = SpecDocument.objects.update_or_create(
-            meeting=meeting,
-            defaults=spec_defaults
-        )
+        # 검증 보완 적용으로 여러 버전이 존재할 수 있으므로 최신 버전만 갱신한다.
+        spec = SpecDocument.objects.filter(meeting=meeting).order_by('-version', '-created_at').first()
+        if spec is None:
+            spec = SpecDocument.objects.create(meeting=meeting, **spec_defaults)
+        else:
+            for field, value in spec_defaults.items():
+                setattr(spec, field, value)
+            spec.save()
 
         if meeting.project_id:
             PipelineHistory.objects.create(
@@ -171,3 +184,103 @@ def run_meeting_analysis(note_id: int, actor_user_id, on_stage=None) -> dict:
             "message": "AI 기획서 생성 중 오류가 발생했습니다.",
             "detail": str(e),
         }
+
+
+PLAN_FIELDS = tuple(SECTION_KEY_TO_FIELD.values())
+
+
+def _normalize_plan_html(value: str) -> str:
+    """검증 노드의 일반 텍스트 응답을 기존 기획서의 제한 HTML 형식으로 맞춘다.
+
+    기존 생성 노드는 <p>/<ul>/<li>/<strong>을 반환하지만 검증 모델은 때때로
+    ``1) ... 2) ...``를 한 줄로 반환한다. 그대로 저장하면 브라우저에서 한 문단으로
+    붙으므로 번호/불릿을 목록으로 변환한다. 일반 텍스트는 escape해 HTML 삽입도 막는다.
+    """
+    raw = str(value or '').strip()
+    if not raw:
+        return ''
+    if re.search(r'<\s*(?:p|ul|li|strong)\b', raw, flags=re.IGNORECASE):
+        # 화면에서도 DOMPurify로 한 번 더 제한하지만 저장 데이터 역시 허용 태그만 남긴다.
+        clean = re.sub(r'</?(?!p\b|ul\b|li\b|strong\b)[a-zA-Z][^>]*>', '', raw)
+        # HTML이어도 한 <p> 안에 (1)/(2) 또는 1)/2)가 이어져 있으면 각각 독립
+        # 문단으로 나눈다. <li> 내부 번호나 태그 경계는 건드리지 않는다.
+        def split_numbered_paragraph(match):
+            content = match.group(1).strip()
+            parts = re.split(r'\s+(?=(?:\(\d+\)|\d+\))\s*)', content)
+            return ''.join(f'<p>{part.strip()}</p>' for part in parts if part.strip())
+
+        clean = re.sub(r'<p>(.*?)</p>', split_numbered_paragraph, clean, flags=re.IGNORECASE | re.DOTALL)
+        return clean.strip()
+
+    # 한 줄 안에 이어진 "1) ... 2) ..." / "(1) ... (2) ..." 항목도 각 줄로 분리한다.
+    raw = re.sub(r'\s+(?=(?:\(\d+\)|\d+\)|[-•])\s*)', '\n', raw)
+    lines = [line.strip() for line in raw.splitlines() if line.strip()]
+    blocks = []
+    list_items = []
+
+    def flush_list():
+        if list_items:
+            blocks.append('<ul>' + ''.join(f'<li>{html.escape(item)}</li>' for item in list_items) + '</ul>')
+            list_items.clear()
+
+    for line in lines:
+        numbered = re.match(r'^((?:\(\d+\)|\d+\)))\s*(.+)$', line)
+        bullet = re.match(r'^[-•]\s*(.+)$', line)
+        if numbered:
+            flush_list()
+            blocks.append(f'<p>{html.escape(numbered.group(1))} {html.escape(numbered.group(2).strip())}</p>')
+        elif bullet:
+            list_items.append(bullet.group(1).strip())
+        else:
+            flush_list()
+            blocks.append(f'<p>{html.escape(line)}</p>')
+    flush_list()
+    return ''.join(blocks)
+
+
+def validate_spec_document(spec: SpecDocument, actor) -> SpecValidationReport:
+    document = {field: getattr(spec, field) or "" for field in PLAN_FIELDS}
+    result = review_plan(spec.meeting.content or "", document)
+    data = result.model_dump(mode='json')
+    return SpecValidationReport.objects.create(
+        spec=spec, scores=data['scores'], summary=data['summary'],
+        strengths=data['strengths'], critical_issues=data['critical_issues'],
+        section_reviews=data['section_reviews'], revised_document=data['revised_document'],
+        created_by=actor,
+    )
+
+
+@transaction.atomic
+def apply_spec_validation(report: SpecValidationReport) -> SpecDocument:
+    """검토 당시 원본은 보존하고 보완된 새 버전을 만든다. 중복 적용은 멱등적이다."""
+    report = SpecValidationReport.objects.select_for_update().select_related('spec', 'applied_spec').get(pk=report.pk)
+    if report.applied_spec_id:
+        return report.applied_spec
+    source = report.spec
+    next_version = (SpecDocument.objects.filter(meeting=source.meeting).aggregate(v=Max('version'))['v'] or 0) + 1
+    values = {
+        field: _normalize_plan_html((report.revised_document or {}).get(field, getattr(source, field)))
+        for field in PLAN_FIELDS
+    }
+    for field in ('period_start', 'period_end', 'background', 'target_scope'):
+        values[field] = getattr(source, field)
+    report_evidence = {}
+    for section in report.section_reviews or []:
+        field = section.get('section_key')
+        evidence = section.get('evidence') or []
+        if field in PLAN_FIELDS and evidence:
+            report_evidence[field] = "\n".join(f"- {quote}" for quote in evidence)
+    values['evidence_data'] = json.dumps(report_evidence, ensure_ascii=False) if report_evidence else None
+    values.update(
+        title=f"{source.title.rsplit(' (v', 1)[0]} (v{next_version})",
+        version=next_version,
+        parent_spec=source,
+        status_code=CommonCode.objects.filter(
+            group_id='PROPOSAL_STATUS', code_id='PROPOSAL_DRAFT'
+        ).first(),
+    )
+    revised = SpecDocument.objects.create(meeting=source.meeting, **values)
+    report.applied_spec = revised
+    report.applied_at = timezone.now()
+    report.save(update_fields=['applied_spec', 'applied_at'])
+    return revised

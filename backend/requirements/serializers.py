@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from requirements.models import RequirementDefinition, RequirementItem
+from requirements.models import RequirementDefinition, RequirementItem, RequirementValidationReport
 from common.models import CommonCode
 
 
@@ -69,6 +69,7 @@ class RequirementDefinitionSerializer(serializers.ModelSerializer):
             'project_name',
             'title',
             'version',
+            'parent_definition',
             'description',
             'status_code',    # 상태 변경(승인/반려) 수정을 위한 FK 필드
             'status_info',    # 상태 코드/명칭 조회를 위한 객체 필드
@@ -79,7 +80,24 @@ class RequirementDefinitionSerializer(serializers.ModelSerializer):
             'created_at',
             'updated_at',
         ]
-        read_only_fields = ['id', 'created_at', 'updated_at']
+        read_only_fields = ['id', 'parent_definition', 'created_at', 'updated_at']
+
+
+class RequirementValidationReportSerializer(serializers.ModelSerializer):
+    overall_score = serializers.SerializerMethodField()
+
+    class Meta:
+        model = RequirementValidationReport
+        fields = [
+            'report_id', 'requirement_definition', 'scores', 'overall_score',
+            'summary', 'strengths', 'critical_issues', 'item_reviews',
+            'revised_items', 'applied_definition', 'created_at', 'applied_at',
+        ]
+        read_only_fields = fields
+
+    def get_overall_score(self, obj):
+        values = [v for v in (obj.scores or {}).values() if isinstance(v, (int, float))]
+        return round(sum(values) / len(values)) if values else 0
 
 
 class RequirementDefinitionCreateSerializer(serializers.ModelSerializer):

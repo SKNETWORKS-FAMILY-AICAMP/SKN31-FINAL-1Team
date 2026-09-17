@@ -24,6 +24,10 @@ class RequirementDefinition(models.Model):
     )
     title = models.CharField(max_length=200, verbose_name="요구사항 정의서 제목")
     version = models.CharField(max_length=20, default="v1.0", verbose_name="버전")
+    parent_definition = models.ForeignKey(
+        'self', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='revisions', verbose_name="이전 요구사항정의서 버전",
+    )
     description = models.TextField(null=True, blank=True, verbose_name="설명")
     
     # [추가] 승인/반려 상태 필드 (common_code의 REQSPEC_STATUS 그룹 연동)
@@ -60,6 +64,31 @@ class RequirementDefinition(models.Model):
     def __str__(self):
         status_str = self.status_code.code_name if self.status_code else "미지정"
         return f"[{self.id}] {self.title} ({self.version}) - {status_str}"
+
+
+class RequirementValidationReport(models.Model):
+    """기획서와 요구사항정의서를 비교한 AI 품질 검토 결과."""
+    report_id = models.AutoField(primary_key=True)
+    requirement_definition = models.ForeignKey(
+        RequirementDefinition, on_delete=models.CASCADE, related_name='validation_reports'
+    )
+    scores = models.JSONField(default=dict)
+    summary = models.TextField(blank=True)
+    strengths = models.JSONField(default=list)
+    critical_issues = models.JSONField(default=list)
+    item_reviews = models.JSONField(default=list)
+    revised_items = models.JSONField(default=list)
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True)
+    applied_definition = models.OneToOneField(
+        RequirementDefinition, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='applied_validation_report',
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    applied_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = 'requirement_validation_report'
+        ordering = ['-created_at']
 
 
 class RequirementItem(models.Model):
