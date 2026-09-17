@@ -81,6 +81,35 @@ def test_요약은_content만_모으고_근거_문장은_제외한다():
     assert "근거 B" not in summary
 
 
+def test_요약에_background와_users도_포함된다():
+    """
+    2026-09-17: background·users가 요약에서 빠져 있으면, 회의록에
+    사용자 관련 내용이 있어도 이 커버리지 확인이 "요약에 전혀 반영되지
+    않았다"는 걸 발견할 기회 자체가 없었다(실측 — 웹 테스트에서 관리자
+    페이지 관련 서술이 users로 전혀 안 뽑힌 사례). users는 content
+    필드가 없어 type·description을 합쳐 넣는다.
+    """
+    data = {
+        "project": {
+            "background": "무신사 이미지를 중심으로 학습한다",
+            "problem_items": [],
+            "goals": [],
+        },
+        "requirements": {},
+        "decisions": [],
+        "constraints": [],
+        "unresolved": [],
+        "users": [
+            {"type": "관리자", "description": "수집 데이터를 조회하고 점검한다"},
+        ],
+    }
+
+    summary = _summarize(data)
+
+    assert "무신사 이미지를 중심으로 학습한다" in summary
+    assert "관리자 수집 데이터를 조회하고 점검한다" in summary
+
+
 def test_빈_구조화_데이터도_요약이_비지_않고_에러가_나지_않는다():
     assert _summarize({}) == []
 

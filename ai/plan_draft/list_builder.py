@@ -125,6 +125,15 @@ UNVERIFIED_ITEMS_NOTE = (
 # "이게 왜 확인이 필요한지" 원인을 구분할 수 없습니다.
 AI_SUGGESTED_GOAL_SUFFIX = " (AI 제안 · PM 확인 필요)"
 
+# 2026-09-17: 문제에 대응하는 목표가 project.goals에 없을 때 쓰는 고정
+# 문구입니다. 예전엔 이 경우 LLM이 "문제가 해소된 상태"를 지어내 썼는데,
+# 실측(웹 테스트)에서 모든 항목이 "~하기 어렵다" -> "~할 수 있다"로
+# 기계적으로 반전된 목표가 되는 문제가 확인됐습니다(plan_generation.yaml
+# detailed_goal_rules 주석 참고). 지어낸 목표를 옮겨 쓰는 대신 "목표가
+# 없다"는 사실 자체를 말합니다 — 아무것도 지어내지 않았으므로
+# AI_SUGGESTED_GOAL_SUFFIX를 붙이지 않습니다.
+GOAL_NOT_DISCUSSED_PLACEHOLDER = "이 문제에 대응하는 목표는 회의에서 논의되지 않았습니다."
+
 
 def _mark_if_unverified(text: str, item: dict) -> tuple[str, bool]:
     """미확인 항목이면 표시를 붙입니다. (문장, 미확인 여부)를 반환합니다."""
@@ -1032,21 +1041,36 @@ def build_goals(
 
         title = str(goal_data.get("title", "")).strip()
         problem = str(goal_data.get("problem", "")).strip()
-        goal = str(goal_data.get("goal", "")).strip()
 
-        # 제목, 문제, 목표 중 하나라도 비어 있으면 완전한 항목이 아니므로 제외합니다.
-        if not title or not problem or not goal:
+        # title·problem이 비어 있으면 완전한 항목이 아니므로 제외합니다.
+        # goal은 LLM 텍스트를 그대로 신뢰하지 않고 아래에서 코드가
+        # 최종 결정하므로 여기서는 확인하지 않습니다.
+        if not title or not problem:
             continue
 
         matched_index = goal_data.get("matched_goal_index")
         if isinstance(matched_index, int) and 0 <= matched_index < len(verified_goals):
             # 번호가 유효하면 LLM이 쓴 문장을 버리고 원문으로 교체합니다 —
             # "회의 기반"이라고 표시할 내용은 실제로 회의 원문이어야 합니다.
-            goal = str(verified_goals[matched_index].get("content", "")).strip() or goal
+            goal = (
+                str(verified_goals[matched_index].get("content", "")).strip()
+                or GOAL_NOT_DISCUSSED_PLACEHOLDER
+            )
             is_ai_suggested = False
             cited_goal_indices.add(matched_index)
         else:
-            is_ai_suggested = True
+            # 2026-09-17: 대응하는 목표가 없을 때 LLM이 쓴 goal 텍스트를
+            # 신뢰하지 않습니다. 실측(웹 테스트)에서 plan_generation.yaml의
+            # 예전 지시("문제가 해소된 상태를 서술")를 따라 모든 항목이
+            # "~하기 어렵다" -> "~할 수 있다"로 기계적으로 반전된 목표가
+            # 되는 문제가 확인됐습니다. 지어낸 목표를 옮겨 쓰는 것 자체가
+            # 근거 없는 확정 서술이므로, 이 경로에서는 LLM의 goal 텍스트를
+            # 아예 쓰지 않고 코드가 고정 문구로 대체합니다. 이 문장은
+            # 그 자체로 "목표가 없다"는 사실을 알려주므로
+            # AI_SUGGESTED_GOAL_SUFFIX(뭔가를 지어내 제안했다는 표시)를
+            # 붙이지 않습니다 — 여기서는 아무것도 지어내지 않았습니다.
+            goal = GOAL_NOT_DISCUSSED_PLACEHOLDER
+            is_ai_suggested = False
 
         key = (_norm(problem), _norm(goal))
 

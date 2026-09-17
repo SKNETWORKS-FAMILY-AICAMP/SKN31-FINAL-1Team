@@ -24,6 +24,7 @@ project.problem_items·project.goals를 보고 직접 title/problem/goal을
 
 from plan_draft.list_builder import (
     AI_SUGGESTED_GOAL_SUFFIX,
+    GOAL_NOT_DISCUSSED_PLACEHOLDER,
     GOALS_NOT_DISCUSSED_NOTE,
     build_goals,
 )
@@ -280,8 +281,15 @@ def test_유효한_인덱스면_목표_문장을_원문으로_교체한다():
     assert AI_SUGGESTED_GOAL_SUFFIX not in section.content_html
 
 
-def test_인덱스가_없으면_AI_제안_표시가_붙는다():
-    """matched_goal_index가 없으면(None) LLM 문장을 쓰되 표시를 붙인다."""
+def test_인덱스가_없으면_LLM_목표_대신_고정_문구가_쓰인다():
+    """
+    2026-09-17: matched_goal_index가 없으면(None) LLM이 쓴 goal 텍스트를
+    신뢰하지 않는다. 실측(웹 테스트)에서 plan_generation.yaml의 예전
+    지시("문제가 해소된 상태를 서술")를 따라 모든 항목이 문제를 기계적으로
+    반전한 목표가 되는 문제가 확인됐다. 이제 이 경로에서는 LLM의 텍스트를
+    버리고 코드가 고정 문구로 대체한다 — 아무것도 지어내지 않았으므로
+    AI_SUGGESTED_GOAL_SUFFIX는 붙지 않는다.
+    """
     structured = _structured()
     generated = [_detailed_goal(
         goal="회의에 없던 문맥 보완 목표",
@@ -290,15 +298,16 @@ def test_인덱스가_없으면_AI_제안_표시가_붙는다():
 
     section = build_goals(structured, generated)
 
-    assert "회의에 없던 문맥 보완 목표" in section.content_html
-    assert AI_SUGGESTED_GOAL_SUFFIX in section.content_html
+    assert "회의에 없던 문맥 보완 목표" not in section.content_html
+    assert GOAL_NOT_DISCUSSED_PLACEHOLDER in section.content_html
+    assert AI_SUGGESTED_GOAL_SUFFIX not in section.content_html
 
 
-def test_범위를_벗어난_인덱스는_AI_제안으로_처리한다():
+def test_범위를_벗어난_인덱스는_고정_문구로_대체된다():
     """
     인덱스가 project.goals 범위를 벗어나면(예: 음수, 목록 길이 이상)
-    검증 실패로 보고 AI 제안 취급한다(fail-closed) — 있지도 않은
-    번호를 유효하다고 믿으면 안 된다.
+    검증 실패로 보고 fail-closed 처리한다 — 있지도 않은 번호를 유효하다고
+    믿으면 안 된다. 이때도 LLM의 goal 텍스트는 쓰지 않는다.
     """
     structured = _structured()
     generated = [_detailed_goal(
@@ -308,8 +317,8 @@ def test_범위를_벗어난_인덱스는_AI_제안으로_처리한다():
 
     section = build_goals(structured, generated)
 
-    assert "엉뚱한 번호를 인용한 목표" in section.content_html
-    assert AI_SUGGESTED_GOAL_SUFFIX in section.content_html
+    assert "엉뚱한 번호를 인용한 목표" not in section.content_html
+    assert GOAL_NOT_DISCUSSED_PLACEHOLDER in section.content_html
 
 
 def test_unverified_목표는_인덱스로_인용할_수_없다():
@@ -326,9 +335,9 @@ def test_unverified_목표는_인덱스로_인용할_수_없다():
 
     section = build_goals(structured, generated)
 
-    # verified 목표가 하나도 없으므로 인덱스 0은 항상 무효 → AI 제안 처리.
-    assert "검증 안 된 목표를 인용한 척" in section.content_html
-    assert AI_SUGGESTED_GOAL_SUFFIX in section.content_html
+    # verified 목표가 하나도 없으므로 인덱스 0은 항상 무효 → 고정 문구로 대체.
+    assert "검증 안 된 목표를 인용한 척" not in section.content_html
+    assert GOAL_NOT_DISCUSSED_PLACEHOLDER in section.content_html
 
 
 # ─────────────────────────────────────────────────────────────

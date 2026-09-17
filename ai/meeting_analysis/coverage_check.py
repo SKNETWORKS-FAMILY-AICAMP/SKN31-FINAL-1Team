@@ -74,12 +74,28 @@ def _summarize(data: dict) -> list[str]:
     lines: list[str] = []
 
     project = data.get("project") or {}
+    if project.get("background"):
+        lines.append(str(project["background"]))
     if project.get("problem"):
         lines.append(str(project["problem"]))
     for item in project.get("problem_items") or []:
         lines.append(str(item.get("content", "")))
     for item in project.get("goals") or []:
         lines.append(str(item.get("content", "")))
+
+    # 2026-09-17: users(대상 사용자)가 요약에서 빠져 있었습니다. 실측(웹
+    # 테스트)에서 "관리자 페이지에서 조회·점검을 수행한다"처럼 사용자
+    # 유형을 유추할 수 있는 내용이 회의록에 있는데도 users가 빈 배열로
+    # 나온 사례를 확인했습니다. users를 요약에서 빼면 이 커버리지 확인이
+    # "관리자 관련 문단이 요약에 전혀 없다"는 걸 발견할 기회 자체가
+    # 없었습니다. content 필드가 없어 type·description을 합쳐 넣습니다.
+    for user in data.get("users") or []:
+        if not isinstance(user, dict):
+            continue
+        parts = [str(user.get("type", "")), str(user.get("description", ""))]
+        combined = " ".join(part for part in parts if part)
+        if combined:
+            lines.append(combined)
 
     requirements = data.get("requirements") or {}
     if isinstance(requirements, dict):
