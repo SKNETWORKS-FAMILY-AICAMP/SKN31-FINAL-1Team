@@ -14,7 +14,10 @@ const nextConfig: NextConfig = {
     return [
       {
         source: "/api/:path*",
-        destination: `${BACKEND_ORIGIN}/api/:path*/`, // 끝에 / 추가
+        // 2026-09-17: 프론트 코드가 이미 거의 모든 경로에 끝 슬래시를 붙여서 호출한다
+        // (/api/users/login/ 등) — 여기서 또 붙이면 "login//"처럼 슬래시가 겹쳐 Django가
+        // 404를 낸다(이 rewrite가 실제로 프로덕션에서 쓰인 적이 없어서 지금까지 안 드러났다).
+        destination: `${BACKEND_ORIGIN}/api/:path*`,
       },
     ];
   },
