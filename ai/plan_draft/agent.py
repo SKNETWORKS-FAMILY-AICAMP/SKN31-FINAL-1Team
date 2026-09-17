@@ -30,7 +30,7 @@ from shared.errors import NodeGenerationError
 from shared.llm_client import build_chat_kwargs, get_client, traceable
 from shared.retry_config import MAX_RETRIES, MAX_TOKENS, MODEL, TEMPERATURE
 
-from . import list_builder
+from . import fact_check, list_builder
 from .feature_renderer import render_features
 from .prompts import (
     REGENERATE_PROMPT,
@@ -193,7 +193,13 @@ def run(
     proposal_id: str,
     glossary_text: str = "",
     on_stage=None,
+    meeting_text: str = "",
 ) -> PlanDocument:
+    # meeting_text: 완성된 기획서를 회의록 원문과 대조해 모순·근거 없는
+    # 단정을 찾는 사실 검토(fact_check)에 쓴다(선택, 2026-09-17). 비어
+    # 있으면 이 검토를 건너뛴다 — 원문 없이는 대조할 수 없다. 호출부가
+    # 아직 이 인자를 넘기지 않아도(기존 호출과 100% 호환) 나머지 동작은
+    # 그대로다.
     # on_stage: 있으면 각 내부 단계 시작 시 사람이 읽을 라벨(str)로 호출한다(선택,
     # develop 2026-09-15 — "기획서 초안 생성 중…" 하나로 뭉뚱그려져 있던 걸 세분화).
     def _stage(label: str) -> None:
@@ -310,7 +316,7 @@ def run(
 
     sections.sort(key=lambda s: s.no)
 
-    return PlanDocument(
+    document = PlanDocument(
         proposal_id=proposal_id,
         meeting_id=structured.get("meeting_id", ""),
         status="draft",
@@ -319,6 +325,31 @@ def run(
         # "회의에서 이건 안 정했구나"를 PM이 알아야 합니다.
         unresolved=structured.get("unresolved", []),
     )
+
+    # ── [6] 완성된 기획서 vs 회의록 원문 — 사실 검토(1회) ────────
+    # fact_check.py 참고. meeting_text가 없으면 조용히 건너뛴다.
+    # 실패해도 이미 완성된 document는 그대로 반환한다.
+    _stage("사실 검토 중…")
+    notes_by_section = fact_check.check_facts(
+        client=get_client(MODEL),
+        document=document,
+        meeting_text=meeting_text,
+        model=MODEL,
+        max_retries=MAX_RETRIES,
+        temperature=TEMPERATURE,
+        max_tokens=MAX_TOKENS,
+    )
+    for section in document.sections:
+        new_notes = notes_by_section.get(section.key)
+        if not new_notes:
+            continue
+        # 기존 needs_input(예: UNVERIFIED_ITEMS_NOTE, orphaned_items_note)을
+        # 덮어쓰지 않고 이어붙입니다.
+        section.needs_input = "\n".join(
+            note for note in [section.needs_input, *new_notes] if note
+        )
+
+    return document
 
 
 def regenerate_section(

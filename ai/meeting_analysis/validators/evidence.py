@@ -153,6 +153,33 @@ def _fuzzy_verified(quote: str, source: str) -> bool:
     return ratio >= _SIMILARITY_THRESHOLD
 
 
+def is_quote_verified(quote: str, source_text: str) -> bool:
+    """
+    quote가 source_text(원문, 정규화 전) 안에서 확인되는지 반환합니다.
+
+    verify_and_mark()의 검사 로직(정규화 후 부분 문자열 매칭 → 실패하면
+    유사도 매칭)을 그대로 재사용할 수 있게 뽑아냈습니다. 노드①의 구조화
+    항목 전체를 훑는 verify_and_mark()와 달리, 인용문 하나만 원문과
+    대조하면 되는 호출부(예: plan_draft.fact_check — 완성된 기획서
+    문장이 회의록과 모순되는지 검토할 때, LLM이 댄 인용을 그대로
+    믿지 않고 원문에 실제 있는지 다시 확인)를 위한 것입니다.
+
+    같은 검증 로직을 호출부마다 다시 구현하면 기준이 갈릴 위험이
+    있습니다(_evidence_key 관련 주석 — plan_draft/list_builder.py —
+    참고). 새로 근거를 검증해야 하는 곳은 이 함수를 재사용하세요.
+    """
+    if not quote or not quote.strip():
+        return False
+
+    source = normalize(source_text)
+    normalized_quote = normalize(quote)
+
+    if normalized_quote and normalized_quote in source:
+        return True
+
+    return _fuzzy_verified(normalized_quote, source)
+
+
 def _get(data: dict, path: str):
     """'requirements.functional' 같은 점 경로로 값을 꺼냅니다."""
     cur = data
@@ -171,7 +198,6 @@ def verify_and_mark(data: dict, meeting_raw_text: str) -> EvidenceReport:
     반환하는 리포트는 통과율 집계와 실패 원인 분석에 씁니다.
     """
     report = EvidenceReport()
-    source = normalize(meeting_raw_text)
 
     def check(
         item: dict, path: str, content: str,
@@ -180,16 +206,7 @@ def verify_and_mark(data: dict, meeting_raw_text: str) -> EvidenceReport:
         quote = (item.get(evidence_key) or {}).get("quote", "")
         report.checked += 1
 
-        # 1차: 정규화 후 부분 문자열 매칭
-        normalized_quote = normalize(quote)
-        if quote and normalized_quote in source:
-            item[status_key] = VERIFIED
-            return
-
-        # 2차: 유사도 매칭
-        # 어미·조사가 바뀌거나 한두 글자를 잘못 옮겨 적은 인용(경우 B)을
-        # 구제합니다. _fuzzy_verified 참고.
-        if quote and _fuzzy_verified(normalized_quote, source):
+        if is_quote_verified(quote, meeting_raw_text):
             item[status_key] = VERIFIED
             return
 
