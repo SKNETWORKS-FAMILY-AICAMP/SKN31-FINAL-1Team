@@ -134,6 +134,10 @@ def run_meeting_analysis(note_id: int, actor_user_id, on_stage=None) -> dict:
             'tech_stack': section_or_not_discussed('tech_scope'),
             'final_decisions': section_or_not_discussed('decisions'),
         }
+        # 초안 생성 AI가 한 문단 안에 ``(1) ... (2) ...``를 이어 쓰는 경우에도
+        # 각 순번이 별도 줄로 보이도록 저장 형식을 통일한다.
+        for field in PLAN_FIELDS:
+            spec_defaults[field] = _normalize_plan_html(spec_defaults[field])
         if evidence_map:
             spec_defaults['evidence_data'] = json.dumps(evidence_map, ensure_ascii=False)
 
@@ -198,10 +202,18 @@ def _normalize_plan_html(value: str) -> str:
     if re.search(r'<\s*(?:p|ul|li|strong)\b', raw, flags=re.IGNORECASE):
         # 화면에서도 DOMPurify로 한 번 더 제한하지만 저장 데이터 역시 허용 태그만 남긴다.
         clean = re.sub(r'</?(?!p\b|ul\b|li\b|strong\b)[a-zA-Z][^>]*>', '', raw)
+        # HTML이어도 한 <p> 안에 (1)/(2) 또는 1)/2)가 이어져 있으면 각각 독립
+        # 문단으로 나눈다. <li> 내부 번호나 태그 경계는 건드리지 않는다.
+        def split_numbered_paragraph(match):
+            content = match.group(1).strip()
+            parts = re.split(r'\s+(?=(?:\(\d+\)|\d+\))\s*)', content)
+            return ''.join(f'<p>{part.strip()}</p>' for part in parts if part.strip())
+
+        clean = re.sub(r'<p>(.*?)</p>', split_numbered_paragraph, clean, flags=re.IGNORECASE | re.DOTALL)
         return clean.strip()
 
-    # 한 줄 안에 이어진 "1) ... 2) ..." 항목도 각 줄로 분리한다.
-    raw = re.sub(r'\s+(?=(?:\d+\)|[-•])\s+)', '\n', raw)
+    # 한 줄 안에 이어진 "1) ... 2) ..." / "(1) ... (2) ..." 항목도 각 줄로 분리한다.
+    raw = re.sub(r'\s+(?=(?:\(\d+\)|\d+\)|[-•])\s*)', '\n', raw)
     lines = [line.strip() for line in raw.splitlines() if line.strip()]
     blocks = []
     list_items = []
@@ -212,9 +224,13 @@ def _normalize_plan_html(value: str) -> str:
             list_items.clear()
 
     for line in lines:
-        match = re.match(r'^(?:\d+\)|[-•])\s*(.+)$', line)
-        if match:
-            list_items.append(match.group(1).strip())
+        numbered = re.match(r'^((?:\(\d+\)|\d+\)))\s*(.+)$', line)
+        bullet = re.match(r'^[-•]\s*(.+)$', line)
+        if numbered:
+            flush_list()
+            blocks.append(f'<p>{html.escape(numbered.group(1))} {html.escape(numbered.group(2).strip())}</p>')
+        elif bullet:
+            list_items.append(bullet.group(1).strip())
         else:
             flush_list()
             blocks.append(f'<p>{html.escape(line)}</p>')

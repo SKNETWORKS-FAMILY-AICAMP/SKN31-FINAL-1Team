@@ -125,6 +125,16 @@ type ReqValidationReportDto = {
   applied_definition: number | null;
 };
 
+const specReportNeedsRevision = (report: SpecValidationReportDto) =>
+  report.critical_issues.length > 0 || report.section_reviews.some(section =>
+    section.verdict !== "pass" || section.findings.length > 0 || section.recommendation.trim().length > 0
+  );
+
+const reqReportNeedsRevision = (report: ReqValidationReportDto) =>
+  report.critical_issues.length > 0 || report.item_reviews.some(item =>
+    item.verdict !== "pass" || item.findings.length > 0 || item.recommendation.trim().length > 0
+  );
+
 type NoteDto = {
   id: number;
   project: number | null;
@@ -622,8 +632,14 @@ export default function DocumentsPage() {
           setSpecGenStage("회의록 대비 품질 검증 중…");
           try {
             const report = await apiFetch<SpecValidationReportDto>(`/api/meetings/specs/${createdSpec.id}/validate/`, { method: "POST" });
-            setValidationReport(report);
-            setToastMessage("기획서 생성 및 품질 검증이 완료되었습니다");
+            if (specReportNeedsRevision(report)) {
+              setSpecGenStage("보완사항 자동 적용 중…");
+              await apiFetch(`/api/meetings/spec-validation-reports/${report.report_id}/apply/`, { method: "POST" });
+              await refetchNote(note.id);
+              setToastMessage("기획서 검증 및 보완 버전 생성이 완료되었습니다");
+            } else {
+              setToastMessage("기획서 생성 및 품질 검증이 완료되었습니다");
+            }
           } catch (validationError: any) {
             setErrorToast(validationError.message || "기획서는 생성됐지만 품질 검증에 실패했습니다.");
           }
@@ -685,38 +701,13 @@ export default function DocumentsPage() {
     }
   };
 
-  const handleValidateSpec = async (spec: SpecDto) => {
-    setBusy(`${spec.meeting}-validate-spec`);
+  const handleViewSpecReport = async (spec: SpecDto) => {
+    setBusy(`${spec.meeting}-view-spec-report`);
     try {
-      const report = await apiFetch<SpecValidationReportDto>(`/api/meetings/specs/${spec.id}/validate/`, { method: "POST" });
+      const report = await apiFetch<SpecValidationReportDto>(`/api/meetings/specs/${spec.id}/validate/`);
       setValidationReport(report);
     } catch (err: any) {
-      setErrorToast(err.message || "기획서 검증에 실패했습니다.");
-    } finally {
-      setBusy(null);
-    }
-  };
-
-  const handleApplyValidation = async () => {
-    if (!validationReport || !selectedNote) return;
-    setBusy(`${selectedNote.id}-apply-validation`);
-    try {
-      const result = await apiFetch<{ message: string; spec: SpecDto }>(
-        `/api/meetings/spec-validation-reports/${validationReport.report_id}/apply/`,
-        { method: "POST" }
-      );
-      // 적용 API가 반환한 새 버전을 즉시 첫 항목으로 반영한다. 후속 GET의 관계 객체
-      // 정렬이나 브라우저 캐시에 기대면 방금 만든 v2 대신 기존 v1이 계속 보일 수 있다.
-      setNotes(prev => prev.map(note => {
-        if (note.id !== selectedNote.id) return note;
-        const remaining = note.spec_documents.filter(spec => spec.id !== result.spec.id);
-        return { ...note, spec_documents: [result.spec, ...remaining] };
-      }));
-      await refetchNote(selectedNote.id);
-      setValidationReport(null);
-      setToastMessage("보완사항을 적용한 새 기획서 버전을 생성했습니다");
-    } catch (err: any) {
-      setErrorToast(err.message || "보완사항 적용에 실패했습니다.");
+      setErrorToast(err.message || "검증 보고서를 불러오지 못했습니다.");
     } finally {
       setBusy(null);
     }
@@ -867,8 +858,16 @@ export default function DocumentsPage() {
             const report = await apiFetch<ReqValidationReportDto>(
               `/api/requirements/definitions/${createdReqDef.id}/validate/`, { method: "POST" }
             );
-            setReqValidationReport(report);
-            setToastMessage("요구사항 정의서 생성 및 품질 검증이 완료되었습니다");
+            if (reqReportNeedsRevision(report)) {
+              setReqExtractStage("보완사항 자동 적용 중…");
+              const applied = await apiFetch<{ requirement_definition: ReqDefDto }>(
+                `/api/requirements/validation-reports/${report.report_id}/apply/`, { method: "POST" }
+              );
+              setReqDefs(prev => [applied.requirement_definition, ...prev]);
+              setToastMessage("요구사항정의서 검증 및 보완 버전 생성이 완료되었습니다");
+            } else {
+              setToastMessage("요구사항 정의서 생성 및 품질 검증이 완료되었습니다");
+            }
           } catch (validationError: any) {
             setErrorToast(validationError.message || "요구사항정의서는 생성됐지만 품질 검증에 실패했습니다.");
           }
@@ -885,32 +884,15 @@ export default function DocumentsPage() {
     }
   };
 
-  const handleValidateReqDef = async (reqDef: ReqDefDto) => {
-    setBusy(`reqdef-${reqDef.id}-validate`);
+  const handleViewReqReport = async (reqDef: ReqDefDto) => {
+    setBusy(`reqdef-${reqDef.id}-view-report`);
     try {
       const report = await apiFetch<ReqValidationReportDto>(
-        `/api/requirements/definitions/${reqDef.id}/validate/`, { method: "POST" }
+        `/api/requirements/definitions/${reqDef.id}/validate/`
       );
       setReqValidationReport(report);
     } catch (err: any) {
-      setErrorToast(err.message || "요구사항정의서 검증에 실패했습니다.");
-    } finally {
-      setBusy(null);
-    }
-  };
-
-  const handleApplyReqValidation = async () => {
-    if (!reqValidationReport) return;
-    setBusy(`reqdef-${reqValidationReport.requirement_definition}-apply-validation`);
-    try {
-      const result = await apiFetch<{ requirement_definition: ReqDefDto }>(
-        `/api/requirements/validation-reports/${reqValidationReport.report_id}/apply/`, { method: "POST" }
-      );
-      setReqDefs(prev => [result.requirement_definition, ...prev.filter(item => item.id !== result.requirement_definition.id)]);
-      setReqValidationReport(null);
-      setToastMessage("보완사항을 적용한 새 요구사항정의서 버전을 생성했습니다");
-    } catch (err: any) {
-      setErrorToast(err.message || "요구사항정의서 보완사항 적용에 실패했습니다.");
+      setErrorToast(err.message || "검증 보고서를 불러오지 못했습니다.");
     } finally {
       setBusy(null);
     }
@@ -1506,7 +1488,7 @@ export default function DocumentsPage() {
               specGenStartedAt={specGenStartedAt}
               specGenStage={specGenStage}
               onGenerateSpec={() => handleGenerateSpec(selectedNote)}
-              onValidateSpec={(spec) => handleValidateSpec(spec)}
+              onViewSpecReport={(spec) => handleViewSpecReport(spec)}
               onSaveNoteContent={(content) => handleSaveNoteContent(selectedNote, content)}
               onSaveSpec={(spec, doc) => handleSaveSpec(selectedNote, spec, doc)}
               onSavePeriod={(spec, period) => handleSavePeriod(selectedNote, spec, period)}
@@ -1515,7 +1497,7 @@ export default function DocumentsPage() {
               onReject={(spec) => setRejectTarget({ kind: "spec", specId: spec.id })}
               onCreateReqDef={(spec) => handleCreateReqDef(selectedNote, spec)}
               onExtractItems={handleExtractItems}
-              onValidateReqDef={handleValidateReqDef}
+              onViewReqReport={handleViewReqReport}
               reqExtractStage={reqExtractStage}
               reqExtractStartedAt={reqExtractStartedAt}
               onAddItem={handleAddItem}
@@ -1617,17 +1599,13 @@ export default function DocumentsPage() {
       {validationReport && (
         <SpecValidationModal
           report={validationReport}
-          applying={busy === `${selectedNote?.id}-apply-validation`}
           onClose={() => setValidationReport(null)}
-          onApply={handleApplyValidation}
         />
       )}
       {reqValidationReport && (
         <RequirementValidationModal
           report={reqValidationReport}
-          applying={busy === `reqdef-${reqValidationReport.requirement_definition}-apply-validation`}
           onClose={() => setReqValidationReport(null)}
-          onApply={handleApplyReqValidation}
         />
       )}
       <Toast message={toastMessage} onDismiss={() => setToastMessage(null)} />
@@ -1871,15 +1849,15 @@ function ReqExtractProgressBar({ stage, startedAt }: { stage: string; startedAt:
 
 function NoteDetail({
   note, spec, reqDef, activeTab, isPM, currentUserId, busy,
-  onGenerateSpec, onValidateSpec, specGenStartedAt, specGenStage, onSaveNoteContent, onSaveSpec, onSavePeriod, onSubmitReview, onApprove, onReject,
-  onCreateReqDef, onExtractItems, onValidateReqDef, reqExtractStage, reqExtractStartedAt, onAddItem, onUpdateItem, onDeleteItem, onReqDefStatusChange,
+  onGenerateSpec, onViewSpecReport, specGenStartedAt, specGenStage, onSaveNoteContent, onSaveSpec, onSavePeriod, onSubmitReview, onApprove, onReject,
+  onCreateReqDef, onExtractItems, onViewReqReport, reqExtractStage, reqExtractStartedAt, onAddItem, onUpdateItem, onDeleteItem, onReqDefStatusChange,
   onGenerateTasks, taskAssignments, onRejectReqDef,
   taskDrafts, setTaskDrafts, scheduleSummary, packageSplits, planReview, planBriefing, generatingTasks, generatingStage, generatingStartedAt, confirmingTasks, onConfirmTasks, onCancelTaskDrafts,
   members, reassigningTaskId, onReassignTask,
 }: {
   note: NoteDto; spec: SpecDto | null; reqDef: ReqDefDto | null; activeTab: PipelineTab; isPM: boolean; currentUserId: string | undefined; busy: string | null;
   onGenerateSpec: () => void;
-  onValidateSpec: (spec: SpecDto) => void;
+  onViewSpecReport: (spec: SpecDto) => void;
   specGenStartedAt: number | null;
   specGenStage: string;
   onSaveNoteContent: (content: string) => void;
@@ -1890,7 +1868,7 @@ function NoteDetail({
   onReject: (spec: SpecDto) => void;
   onCreateReqDef: (spec: SpecDto) => void;
   onExtractItems: (specId: number, reqDefId: number) => void;
-  onValidateReqDef: (reqDef: ReqDefDto) => void;
+  onViewReqReport: (reqDef: ReqDefDto) => void;
   reqExtractStage: string;
   reqExtractStartedAt: number | null;
   onAddItem: (reqDefId: number, item: { req_code: string; req_name: string; description: string; order: number; priority_code: string | null }) => void;
@@ -1935,8 +1913,10 @@ function NoteDetail({
   const busyKey = (action: string) => `${note.id}-${action}`;
   // 기획서 생성 job은 끝났지만 자동 품질 검증 API를 기다리는 구간. 이때 이미
   // 기획서 본문이 화면에 나타나므로 별도 표시가 없으면 작업이 끝난 것처럼 보인다.
-  const autoSpecValidating = busy === busyKey("generate") && specGenStage.includes("품질 검증");
-  const specValidating = autoSpecValidating || busy === busyKey("validate-spec");
+  const autoSpecValidating = busy === busyKey("generate") && (
+    specGenStage.includes("품질 검증") || specGenStage.includes("보완사항 자동 적용")
+  );
+  const viewingSpecReport = busy === busyKey("view-spec-report");
 
   const [rawDraft, setRawDraft] = useState(note.content ?? "");
   useEffect(() => { setRawDraft(note.content ?? ""); }, [note.id, note.content]);
@@ -2184,12 +2164,12 @@ function NoteDetail({
 
         {spec && (canGenerate || isPM) && (status === "DRAFT" || status === "REJECTED") && (
           <button
-            onClick={() => onValidateSpec(spec)}
+            onClick={() => onViewSpecReport(spec)}
             disabled={busy !== null}
             className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-cyan-500/30 bg-cyan-500/10 text-cyan-500 text-sm font-bold hover:bg-cyan-500/20 disabled:opacity-50"
           >
-            {specValidating ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
-            {specValidating ? "검증 보고서 생성 중…" : "AI 품질 검증"}
+            {autoSpecValidating || viewingSpecReport ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
+            {autoSpecValidating ? (specGenStage.includes("보완사항") ? "보완사항 적용 중…" : "검증 보고서 생성 중…") : viewingSpecReport ? "보고서 불러오는 중…" : "검증보고서 확인"}
           </button>
         )}
 
@@ -2281,7 +2261,7 @@ function NoteDetail({
             busy={busy}
             onCreate={() => onCreateReqDef(spec!)}
             onExtract={onExtractItems}
-            onValidate={onValidateReqDef}
+            onViewReport={onViewReqReport}
             reqExtractStage={reqExtractStage}
             reqExtractStartedAt={reqExtractStartedAt}
             onAddItem={onAddItem}
@@ -2800,8 +2780,8 @@ function TaskAssignmentList({
 // "예상 필요 인원" 박스 / 업무 일정(Gantt) 공통으로 쓰는 접었다 펼 수 있는 섹션 — 버튼이
 // 아니라 제목 자체를 클릭하게(사용자 요청) 만들고, 다른 화면의 펼침형 행(TaskTitleCell 등)과
 // 동일하게 ChevronDown이 접힌 상태에서 -90도 회전하는 방식으로 통일한다.
-function SpecValidationModal({ report, applying, onClose, onApply }: {
-  report: SpecValidationReportDto; applying: boolean; onClose: () => void; onApply: () => void;
+function SpecValidationModal({ report, onClose }: {
+  report: SpecValidationReportDto; onClose: () => void;
 }) {
   const scoreLabels = { accuracy: "정확성", completeness: "완전성", consistency: "일관성", traceability: "추적가능성" } as const;
   return (
@@ -2837,18 +2817,16 @@ function SpecValidationModal({ report, applying, onClose, onApply }: {
           </div>
         </div>
         <div className="p-5 border-t border-border flex justify-end gap-3">
+          {report.applied_spec && <span className="mr-auto text-xs font-semibold text-emerald-500">보완사항이 새 버전에 자동 적용되었습니다.</span>}
           <button onClick={onClose} className="px-4 py-2.5 rounded-xl border border-border text-sm font-semibold">닫기</button>
-          <button onClick={onApply} disabled={applying || !!report.applied_spec} className="px-5 py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-bold disabled:opacity-50 flex items-center gap-2">
-            {applying && <Loader2 className="w-4 h-4 animate-spin" />}{report.applied_spec ? "이미 적용됨" : "보완사항 적용 및 새 버전 생성"}
-          </button>
         </div>
       </div>
     </div>
   );
 }
 
-function RequirementValidationModal({ report, applying, onClose, onApply }: {
-  report: ReqValidationReportDto; applying: boolean; onClose: () => void; onApply: () => void;
+function RequirementValidationModal({ report, onClose }: {
+  report: ReqValidationReportDto; onClose: () => void;
 }) {
   const scoreLabels = { accuracy: "정확성", completeness: "완전성", consistency: "일관성", testability: "테스트 가능성" } as const;
   return (
@@ -2864,7 +2842,7 @@ function RequirementValidationModal({ report, applying, onClose, onApply }: {
           {report.critical_issues.length > 0 && <div className="rounded-xl border border-red-500/20 bg-red-500/5 p-4"><p className="font-semibold text-red-400 mb-2">우선 보완사항</p><ul className="text-sm space-y-1 list-disc pl-5">{report.critical_issues.map((value, index) => <li key={index}>{value}</li>)}</ul></div>}
           <div className="space-y-2">{report.item_reviews.map((item, index) => <div key={`${item.req_code}-${index}`} className="rounded-xl border border-border p-4"><div className="flex justify-between gap-3"><p className="font-semibold font-mono text-sm">{item.req_code}</p><span className="text-xs font-bold">{item.score}점</span></div>{item.findings.length > 0 && <ul className="mt-2 text-sm text-muted-foreground list-disc pl-5">{item.findings.map((value, i) => <li key={i}>{value}</li>)}</ul>}{item.recommendation && <p className="mt-2 text-sm"><span className="font-semibold text-cyan-500">보완 제안</span> {item.recommendation}</p>}</div>)}</div>
         </div>
-        <div className="p-5 border-t border-border flex justify-end gap-3"><button onClick={onClose} className="px-4 py-2.5 rounded-xl border border-border text-sm font-semibold">닫기</button><button onClick={onApply} disabled={applying || !!report.applied_definition} className="px-5 py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-bold disabled:opacity-50 flex items-center gap-2">{applying && <Loader2 className="w-4 h-4 animate-spin" />}{report.applied_definition ? "이미 적용됨" : "보완사항 적용 및 새 버전 생성"}</button></div>
+        <div className="p-5 border-t border-border flex justify-end items-center gap-3">{report.applied_definition && <span className="mr-auto text-xs font-semibold text-emerald-500">보완사항이 새 버전에 자동 적용되었습니다.</span>}<button onClick={onClose} className="px-4 py-2.5 rounded-xl border border-border text-sm font-semibold">닫기</button></div>
       </div>
     </div>
   );
@@ -3210,7 +3188,7 @@ function GanttSection({ items, title }: { items: GanttItem[]; title: string }) {
 }
 
 function RequirementSection({
-  spec, reqDef, isPM, canGenerate, busy, onCreate, onExtract, onValidate, reqExtractStage, reqExtractStartedAt, onAddItem, onUpdateItem, onDeleteItem, onStatusChange,
+  spec, reqDef, isPM, canGenerate, busy, onCreate, onExtract, onViewReport, reqExtractStage, reqExtractStartedAt, onAddItem, onUpdateItem, onDeleteItem, onStatusChange,
   onGenerateTasks, generatingTasks, generatingStage, generatingStartedAt, onRejectClick, tasksAlreadyAssigned,
 }: {
   spec: SpecDto; reqDef: ReqDefDto | null; isPM: boolean;
@@ -3221,7 +3199,7 @@ function RequirementSection({
   busy: string | null;
   onCreate: () => void;
   onExtract: (specId: number, reqDefId: number) => void;
-  onValidate: (reqDef: ReqDefDto) => void;
+  onViewReport: (reqDef: ReqDefDto) => void;
   reqExtractStage: string;
   reqExtractStartedAt: number | null;
   onAddItem: (reqDefId: number, item: { req_code: string; req_name: string; description: string; order: number; priority_code: string | null }) => void;
@@ -3282,8 +3260,10 @@ function RequirementSection({
   const creating = busy === `${spec.id}-create-reqdef`;
   // 최초 생성 직후 자동 검증 중에는 reqDef가 이미 렌더링된다. 생성 버튼은 사라지기
   // 때문에 품질 검증 버튼 자체가 현재 진행 상태를 이어서 보여줘야 한다.
-  const autoReqValidating = creating && reqExtractStage.includes("품질 검증");
-  const reqValidating = autoReqValidating || busy === `reqdef-${reqDef?.id}-validate`;
+  const autoReqValidating = creating && (
+    reqExtractStage.includes("품질 검증") || reqExtractStage.includes("보완사항 자동 적용")
+  );
+  const viewingReqReport = busy === `reqdef-${reqDef?.id}-view-report`;
   const extracting = reqDef && busy === `reqdef-${reqDef.id}-extract`;
   const addingItem = reqDef && busy === `reqdef-${reqDef.id}-additem`;
   const reqStatus = reqDef?.status_info?.code_id ?? null;
@@ -3881,12 +3861,12 @@ function RequirementSection({
           )}
           {(canGenerate || isPM) && !tasksAlreadyAssigned && (reqStatus === "DRAFT" || reqStatus === "REJECTED" || reqStatus === null) && (
             <button
-              onClick={() => onValidate(reqDef)}
+              onClick={() => onViewReport(reqDef)}
               disabled={busy !== null}
               className="flex items-center gap-2 px-5 py-2.5 rounded-xl border border-cyan-500/30 bg-cyan-500/10 text-cyan-500 text-sm font-bold hover:bg-cyan-500/20 disabled:opacity-50 whitespace-nowrap"
             >
-              {reqValidating ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
-              {reqValidating ? "검증 보고서 생성 중…" : "AI 품질 검증"}
+              {autoReqValidating || viewingReqReport ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
+              {autoReqValidating ? (reqExtractStage.includes("보완사항") ? "보완사항 적용 중…" : "검증 보고서 생성 중…") : viewingReqReport ? "보고서 불러오는 중…" : "검증보고서 확인"}
             </button>
           )}
           {/* 검토요청은 하단 우측 — 기획서 탭과 동일한 위치(승인/반려는 상단, 검토요청/

@@ -3,7 +3,21 @@ from django.test import TestCase
 
 from meetings.models import MeetingNote, SpecDocument, SpecValidationReport
 from meetings.serializers import MeetingNoteSerializer
-from meetings.services import PLAN_FIELDS, apply_spec_validation
+from meetings.services import PLAN_FIELDS, _normalize_plan_html, apply_spec_validation
+
+
+class PlanHtmlNormalizationTests(TestCase):
+    def test_parenthesized_numbers_in_html_are_split_into_paragraphs(self):
+        value = '<p><strong>목표:</strong> 3단계 필터링. (1) 키워드 매칭 (2) 관련성 평가 (3) 감성 분석</p>'
+        normalized = _normalize_plan_html(value)
+        self.assertEqual(
+            normalized,
+            '<p><strong>목표:</strong> 3단계 필터링.</p><p>(1) 키워드 매칭</p><p>(2) 관련성 평가</p><p>(3) 감성 분석</p>',
+        )
+
+    def test_parenthesized_numbers_in_plain_text_keep_numbers(self):
+        normalized = _normalize_plan_html('(1) 첫 번째 (2) 두 번째 (3) 세 번째')
+        self.assertEqual(normalized, '<p>(1) 첫 번째</p><p>(2) 두 번째</p><p>(3) 세 번째</p>')
 
 
 class SpecValidationApplyTests(TestCase):

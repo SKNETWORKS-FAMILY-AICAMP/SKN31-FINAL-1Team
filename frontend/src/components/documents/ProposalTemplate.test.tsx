@@ -54,16 +54,16 @@ describe("ProposalTemplate (read mode)", () => {
     expect(screen.getAllByText("-").length).toBeGreaterThan(0);
   });
 
-  it("converts a legacy one-line numbered review result into list items", () => {
+  it("splits a legacy one-line numbered result into separate paragraphs while keeping numbers", () => {
     render(
       <ProposalTemplate
-        doc={{ ...baseDoc, projectGoals: "1) 첫 번째 목표 2) 두 번째 목표 3) 세 번째 목표" }}
+        doc={{ ...baseDoc, projectGoals: "(1) 첫 번째 목표 (2) 두 번째 목표 (3) 세 번째 목표" }}
         title="테스트 기획서"
         dateLabel="2026. 9. 7."
       />
     );
-    expect(screen.getByText("첫 번째 목표").closest("ul")).not.toBeNull();
-    expect(screen.getByText("두 번째 목표").tagName).toBe("LI");
-    expect(screen.getByText("세 번째 목표").tagName).toBe("LI");
+    expect(screen.getByText("(1) 첫 번째 목표").tagName).toBe("P");
+    expect(screen.getByText("(2) 두 번째 목표").tagName).toBe("P");
+    expect(screen.getByText("(3) 세 번째 목표").tagName).toBe("P");
   });
 });

@@ -31,9 +31,17 @@ function sanitizeRestrictedHtml(html: string): string {
 // ``1) ... 2) ...`` 형태일 수 있다. 기존 데이터도 다시 생성할 필요 없이 정상적으로
 // 보이도록 렌더링 직전에 제한 HTML로 보정한다. 최종 결과는 아래 DOMPurify를 반드시 거친다.
 function normalizeLegacyPlainText(value: string): string {
-  if (!value || /<\s*(?:p|ul|li|strong)\b/i.test(value)) return value;
+  if (!value) return value;
+  if (/<\s*(?:p|ul|li|strong)\b/i.test(value)) {
+    // 이미 HTML인 과거 문서도 한 문단 안의 (1), (2), (3)을 독립 문단으로
+    // 나눈다. 저장된 데이터를 재생성하지 않아도 즉시 줄바꿈되어 보인다.
+    return value.replace(/<p>([\s\S]*?)<\/p>/gi, (_paragraph, content: string) => {
+      const parts = content.trim().split(/\s+(?=(?:\(\d+\)|\d+\))\s*)/);
+      return parts.filter(Boolean).map(part => `<p>${part.trim()}</p>`).join("");
+    });
+  }
   const lines = value
-    .replace(/\s+(?=(?:\d+\)|[-•])\s+)/g, "\n")
+    .replace(/\s+(?=(?:\(\d+\)|\d+\)|[-•])\s*)/g, "\n")
     .split(/\r?\n/)
     .map(line => line.trim())
     .filter(Boolean);
@@ -48,8 +56,12 @@ function normalizeLegacyPlainText(value: string): string {
     items = [];
   };
   for (const line of lines) {
-    const match = line.match(/^(?:\d+\)|[-•])\s*(.+)$/);
-    if (match) items.push(match[1].trim());
+    const numbered = line.match(/^((?:\(\d+\)|\d+\)))\s*(.+)$/);
+    const bullet = line.match(/^[-•]\s*(.+)$/);
+    if (numbered) {
+      flush();
+      blocks.push(`<p>${escapeHtml(numbered[1])} ${escapeHtml(numbered[2].trim())}</p>`);
+    } else if (bullet) items.push(bullet[1].trim());
     else {
       flush();
       blocks.push(`<p>${escapeHtml(line)}</p>`);

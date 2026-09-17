@@ -2,6 +2,7 @@
 import logging
 import threading
 from django.db import transaction
+from django.db.models import Q
 from django.shortcuts import get_object_or_404
 from django.http import Http404
 from django.utils import timezone
@@ -513,6 +514,18 @@ class RequirementDefinitionRejectView(APIView):
 class RequirementDefinitionValidateView(APIView):
     """기획서와 요구사항정의서를 비교 평가한다."""
     permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request, req_def_id):
+        req_def = get_object_or_404(RequirementDefinition.objects.select_related('spec__meeting'), pk=req_def_id)
+        is_pm = request.user.is_staff or request.user.groups.filter(name='PM').exists()
+        if req_def.spec.meeting.created_by_id != request.user.id and not is_pm:
+            return Response({'detail': '작성자 또는 PM만 보고서를 조회할 수 있습니다.'}, status=status.HTTP_403_FORBIDDEN)
+        report = RequirementValidationReport.objects.filter(
+            Q(requirement_definition=req_def) | Q(applied_definition=req_def)
+        ).order_by('-created_at').first()
+        if report is None:
+            return Response({'detail': '저장된 검증 보고서가 없습니다.'}, status=status.HTTP_404_NOT_FOUND)
+        return Response(RequirementValidationReportSerializer(report).data)
 
     def post(self, request, req_def_id):
         req_def = get_object_or_404(

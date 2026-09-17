@@ -2,6 +2,7 @@
 import threading
 from django.shortcuts import get_object_or_404
 from django.db import close_old_connections
+from django.db.models import Q
 from django.utils import timezone
 from rest_framework import status, permissions, generics, parsers
 from rest_framework.views import APIView
@@ -330,6 +331,19 @@ class SpecDocumentReviewView(APIView):
 class SpecDocumentValidateView(APIView):
     """회의록 원문과 기획서를 비교 평가하고 저장된 보고서를 반환한다."""
     permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request, pk):
+        """현재 버전이 직접 검증됐거나 검증 적용으로 생성된 경우의 최신 보고서."""
+        spec = get_object_or_404(SpecDocument.objects.select_related('meeting'), pk=pk)
+        is_pm = request.user.is_staff or request.user.groups.filter(name='PM').exists()
+        if spec.meeting.created_by_id != request.user.id and not is_pm:
+            return Response({'detail': '작성자 또는 PM만 보고서를 조회할 수 있습니다.'}, status=status.HTTP_403_FORBIDDEN)
+        report = SpecValidationReport.objects.filter(
+            Q(spec=spec) | Q(applied_spec=spec)
+        ).order_by('-created_at').first()
+        if report is None:
+            return Response({'detail': '저장된 검증 보고서가 없습니다.'}, status=status.HTTP_404_NOT_FOUND)
+        return Response(SpecValidationReportSerializer(report).data)
 
     def post(self, request, pk):
         spec = get_object_or_404(SpecDocument.objects.select_related('meeting'), pk=pk)
