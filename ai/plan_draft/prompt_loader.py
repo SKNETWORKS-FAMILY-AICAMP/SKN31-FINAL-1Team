@@ -176,9 +176,9 @@ def _validate_plan_template(template: dict) -> None:
         "plan_generation.metadata",
     )
 
-    if version != "2.5":
+    if version != "2.7":
         raise PromptTemplateError(
-            "plan_generation.yaml 버전은 2.5여야 합니다."
+            "plan_generation.yaml 버전은 2.7여야 합니다."
         )
 
     _require_text(
@@ -597,10 +597,10 @@ def _validate_fewshots_template(template: dict) -> None:
         "plan_generation_fewshots.metadata",
     )
 
-    if version != "2.3":
+    if version != "2.4":
         raise PromptTemplateError(
             "plan_generation_fewshots.yaml 버전은 "
-            "2.3여야 합니다."
+            "2.4여야 합니다."
         )
 
     examples = _require_list(

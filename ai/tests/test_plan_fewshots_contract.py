@@ -57,6 +57,28 @@ def test_퓨샷_예시가_features와_source_indices_사용법을_보여준다()
     assert any(f.get("source_indices") for f in features)
 
 
+def test_퓨샷_예시가_AI_제안_goal_경로를_보여준다():
+    """
+    2026-09-17(2차): 실측에서 matched_goal_index가 없는 문제 전부 goal이
+    빈 문자열로 나온 회귀를 막습니다. 대응하는 목표가 없어도(
+    matched_goal_index: null) goal 필드를 채운 예시가 최소 하나는 있어야
+    LLM이 이 경로를 어떻게 채우는지 모방할 대상이 생깁니다.
+    """
+    template = load_plan_fewshots()
+    example = template["examples"][0]
+
+    unmatched_goals = [
+        g for g in example["output"]["goals"]
+        if g.get("matched_goal_index") is None
+    ]
+
+    assert unmatched_goals, "matched_goal_index가 null인 goals 예시가 없습니다."
+    assert all(g["goal"].strip() for g in unmatched_goals), (
+        "AI 제안 경로 예시인데 goal이 비어 있습니다 — 이러면 빈 문자열이 "
+        "기본값이라고 학습시키는 것과 같습니다."
+    )
+
+
 def test_삭제된_필드가_남아있으면_퓨샷_검증이_실패한다():
     """
     2026-09-15에 삭제된 problem_evidence·goal_evidence가 goals 항목에

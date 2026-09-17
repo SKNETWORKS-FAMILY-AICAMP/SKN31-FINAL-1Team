@@ -78,6 +78,24 @@ class Project(BaseModel):
     background_evidence: Evidence = Field(..., description="프로젝트 배경 문장의 근거",
     )
 
+    # 2026-09-17 추가: background는 한 문단에 여러 사실(조사 결과, 현재
+    # 방식, 진행 중인 작업 등)을 담는 경우가 많은데, background_evidence는
+    # 처음부터 quote 1개만 받는 구조라 노드②(plan_draft)의 "프로젝트 개요"
+    # 화면에 근거가 항상 1개만 표시됐다(신뢰하기 어렵다는 실사용 피드백).
+    # background_evidence 자체를 리스트로 바꾸면 이걸 참조하는 기존 코드·
+    # 테스트(schemas·validators·list_builder·fewshots 등 12개 파일)가
+    # 전부 "단일 quote"를 가정하고 있어 다 같이 깨진다. 대신 이 필드를
+    # 추가해서 이번 요구만 채운다 — 기존 필드·소비자는 전혀 안 건드림.
+    background_evidence_extra: list[Evidence] = Field(
+        default_factory=list,
+        description=(
+            "background에 background_evidence 하나로는 다 뒷받침하지 못하는 "
+            "추가 사실이 있으면, 그 사실들을 뒷받침하는 원문 인용을 각각 "
+            "하나씩 더 답합니다. background_evidence 하나로 충분하면 "
+            "빈 배열로 둡니다. 없는 사실을 지어내 채우지 않습니다."
+        ),
+    )
+
     problem_evidence: Evidence = Field(..., description="전체 문제 요약 문장의 근거",
     )
 

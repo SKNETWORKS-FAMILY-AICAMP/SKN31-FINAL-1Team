@@ -118,6 +118,35 @@ def test_project의_background와_problem은_evidence가_따로_검증된다():
     assert project["problem_evidence_status"] == UNVERIFIED
 
 
+def test_background_evidence_extra의_각_quote가_따로_검증된다():
+    """
+    2026-09-17 추가. background_evidence 하나만으로는 근거가 1개로만
+    보여 신뢰하기 어렵다는 문제(plan_draft "프로젝트 개요" 화면)를 고치기
+    위해 추가한 필드입니다. 리스트 안 항목은 서로 독립적으로 검증되고,
+    상태는 병렬 리스트(background_evidence_extra_status)에 담깁니다.
+    """
+    data = _base(project={
+        "name": "테스트", "background": "b", "problem": "p", "goals": [],
+        "background_evidence": {"quote": "백엔드는 Django로 간다"},
+        "problem_evidence": {"quote": "개발 기간은 8주다"},
+        "background_evidence_extra": [
+            {"quote": "개발 기간은 8주다"},          # 원문에 있음
+            {"quote": "회의록에 없는 문장입니다"},     # 원문에 없음
+        ],
+    })
+    verify_and_mark(data, MEETING)
+    project = data["project"]
+
+    assert project["background_evidence_status"] == VERIFIED
+    assert project["background_evidence_extra_status"] == [VERIFIED, UNVERIFIED]
+
+
+def test_background_evidence_extra가_비어있으면_상태도_빈_리스트다():
+    data = _base()
+    verify_and_mark(data, MEETING)
+    assert data["project"]["background_evidence_extra_status"] == []
+
+
 def test_리포트에_quote가_출력된다():
     """원인 A/B를 구분하려면 quote를 눈으로 봐야 합니다."""
     data = _base(constraints=[{

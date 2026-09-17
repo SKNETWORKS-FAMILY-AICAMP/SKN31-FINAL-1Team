@@ -122,7 +122,7 @@ def test_plan_prompt_asks_llm_to_generate_features_with_no_cap():
     template = load_plan_template()
     prompt = build_plan_system_prompt()
 
-    assert template["metadata"]["version"] == "2.5"
+    assert template["metadata"]["version"] == "2.7"
     assert template["output_contract"]["root_fields"] == [
         "sections",
         "goals",
@@ -199,6 +199,18 @@ def test_common_rules_require_consistent_bullet_structure():
     assert "문장 구조와 종결 어미를 통일합니다" in prompt
 
 
+def test_users_rules_allow_guarded_enrichment_from_requirements():
+    """
+    2026-09-17: users 배열에 실제 사용자가 있어도 니즈가 얇아 보이는
+    문제를 고치기 위해, 검증된 requirements로 제한적 보완을 허용하는
+    규칙이 프롬프트에 있는지 확인합니다.
+    """
+    prompt = build_plan_system_prompt()
+    assert "user_sources_for_citation" in prompt
+    assert "새로운 사용자 유형을 만들지 않습니다" in prompt
+    assert "관련성이 불확실하면" in prompt
+
+
 def test_features_rules_preserve_exclusion_direction():
     """제외·보류로 확정된 범위 결정을 기능 제공처럼 쓰지 않는다는 규칙."""
     prompt = build_plan_system_prompt()
@@ -227,6 +239,19 @@ def test_detailed_goal_rules_allow_guarded_ai_suggestion_without_negation():
     assert "반전은 목표를 지어내는 것이며" in prompt
     assert "새로운 권한·기능을" in prompt
     assert "정도를 열어둔 표현을 씁니다" in prompt
+
+
+def test_detailed_goal_rules_default_to_attempting_a_suggestion():
+    """
+    2026-09-17(2차): 실측(무신사 회의록)에서 matched_goal_index가 없는
+    문제 8개 전부 goal이 빈 문자열로 나왔습니다. 금지 규칙만 많고 "이럴
+    땐 제안하라"는 안내가 약해 모델이 계속 빈칸을 골랐던 것으로 보여,
+    빈 문자열을 예외로 다시 정의하는 규칙을 추가했습니다.
+    """
+    prompt = build_plan_system_prompt()
+    assert "빈 문자열을 기본 선택으로 여기지 않습니다" in prompt
+    assert "반전과 방향 제안은 다릅니다" in prompt
+    assert "개선 방향조차 가늠할 수 없을 때만" in prompt
 
 
 # ─────────────────────────────────────────────────────────────
@@ -686,3 +711,122 @@ def test_원본이_있으면_표시가_안_붙는다(monkeypatch):
     assert plan_agent.AI_SUGGESTED_SECTION_NOTE not in users_section.content_html
     assert users_section.content_html == "<p>실제 사용자 설명</p>"
     assert users_section.is_incomplete is False
+
+
+# ─────────────────────────────────────────────────────────────
+# 2026-09-17 추가 — 4번 대상 사용자 설명 보완(source_indices)
+#
+# users 배열에 실제 사용자가 있어도 니즈가 한두 줄뿐이라 화면이 얇아
+# 보이는 문제(실측: 무신사 회의록)를 고치기 위해, 검증된
+# requirements.functional·data를 근거로 설명을 보완할 수 있게 했다.
+# 실제로 보완했는지는 NarrativeSection.source_indices를 코드가 검증해
+# 판정한다(LLM 자기 신고 아님).
+# ─────────────────────────────────────────────────────────────
+
+
+def _structured_with_real_user_and_functional() -> dict:
+    return _minimal_structured(
+        users=[
+            {
+                "type": "소비자",
+                "description": "가격을 비교해 구매를 결정한다.",
+                "needs": ["최저가를 선택할 수 있어야 한다"],
+                "evidence": {"quote": "소비자 관점에서 가장 싼 걸 사지 않을까요?"},
+                "evidence_status": "verified",
+            }
+        ],
+        requirements={
+            "functional": [
+                {
+                    "content": "여러 플랫폼의 가격을 비교해 보여준다.",
+                    "evidence": {"quote": "여러 플랫폼의 가격을 비교해서 보여줍니다."},
+                    "evidence_status": "verified",
+                }
+            ],
+            "non_functional": [],
+            "data": [],
+            "technical": [],
+        },
+    )
+
+
+def test_source_indices를_인용하면_보완_표시와_근거가_추가된다(monkeypatch):
+    monkeypatch.setattr(
+        plan_agent,
+        "_call",
+        _fake_sections_call([
+            {"key": "overview", "content_html": "<p>개요</p>", "evidence": []},
+            {"key": "problem", "content_html": "<p>목표</p>", "evidence": []},
+            {
+                "key": "users",
+                "content_html": "<p>소비자는 가격을 비교해 구매를 결정하며 여러 플랫폼의 가격을 비교해 확인할 수 있다.</p>",
+                "evidence": [],
+                "source_indices": [0],
+            },
+        ]),
+    )
+
+    plan = plan_agent.run(
+        _structured_with_real_user_and_functional(), proposal_id="p1"
+    )
+
+    users_section = next(s for s in plan.sections if s.key == "users")
+    assert plan_agent.USER_ENRICHMENT_NOTE in users_section.content_html
+    assert plan_agent.AI_SUGGESTED_SECTION_NOTE not in users_section.content_html
+
+    quotes = {e.quote for e in users_section.evidence}
+    assert "소비자 관점에서 가장 싼 걸 사지 않을까요?" in quotes
+    assert "여러 플랫폼의 가격을 비교해서 보여줍니다." in quotes
+
+
+def test_source_indices가_비어있으면_보완_표시가_안_붙는다(monkeypatch):
+    monkeypatch.setattr(
+        plan_agent,
+        "_call",
+        _fake_sections_call([
+            {"key": "overview", "content_html": "<p>개요</p>", "evidence": []},
+            {"key": "problem", "content_html": "<p>목표</p>", "evidence": []},
+            {
+                "key": "users",
+                "content_html": "<p>소비자는 가격을 비교해 구매를 결정한다.</p>",
+                "evidence": [],
+                "source_indices": [],
+            },
+        ]),
+    )
+
+    plan = plan_agent.run(
+        _structured_with_real_user_and_functional(), proposal_id="p1"
+    )
+
+    users_section = next(s for s in plan.sections if s.key == "users")
+    assert plan_agent.USER_ENRICHMENT_NOTE not in users_section.content_html
+    quotes = {e.quote for e in users_section.evidence}
+    assert "여러 플랫폼의 가격을 비교해서 보여줍니다." not in quotes
+
+
+def test_잘못된_번호를_인용해도_근거는_추가되지_않는다(monkeypatch):
+    """존재하지 않는 인덱스를 인용하면 근거 없이 조용히 무시한다(지어내지 않음)."""
+    monkeypatch.setattr(
+        plan_agent,
+        "_call",
+        _fake_sections_call([
+            {"key": "overview", "content_html": "<p>개요</p>", "evidence": []},
+            {"key": "problem", "content_html": "<p>목표</p>", "evidence": []},
+            {
+                "key": "users",
+                "content_html": "<p>소비자는 가격을 비교해 구매를 결정한다.</p>",
+                "evidence": [],
+                "source_indices": [99],
+            },
+        ]),
+    )
+
+    plan = plan_agent.run(
+        _structured_with_real_user_and_functional(), proposal_id="p1"
+    )
+
+    users_section = next(s for s in plan.sections if s.key == "users")
+    # 인용은 했으니 표시는 붙지만(코드가 인용 시도 자체를 판단 기준으로 삼음),
+    quotes = {e.quote for e in users_section.evidence}
+    assert "여러 플랫폼의 가격을 비교해서 보여줍니다." not in quotes

@@ -8,6 +8,9 @@
 from plan_draft.list_builder import (
     build_decisions,
     build_tech_scope,
+    build_user_citation_sources,
+    collect_source_evidence,
+    collect_user_enrichment_evidence,
 )
 
 
@@ -296,3 +299,121 @@ def test_core_goal_evidence_prefers_extracted_goals():
             "처리 과정을 확인할 수 있게 합니다."
         ),
     ]
+
+
+# ─────────────────────────────────────────────────────────────
+# 2026-09-17 추가 — background_evidence_extra
+#
+# "프로젝트 개요" 화면의 근거자료가 항상 1개(background_evidence)로만
+# 나와 신뢰하기 어렵다는 문제를 고치기 위해 meeting_analysis.schemas에
+# 추가한 필드입니다. plan_draft는 원본 회의록에 접근할 수 없어 새 quote를
+# 직접 검증할 수 없으므로, 이미 노드①이 검증해둔 값을 그대로 이어받아
+# 노출하는지만 확인합니다.
+# ─────────────────────────────────────────────────────────────
+
+
+def test_background_evidence_extra가_overview_근거에_추가된다():
+    structured = {
+        "project": {
+            "name": "리테일링크",
+            "background": "종합된 배경 문장",
+            "background_evidence": {"quote": "핵심 근거 문장"},
+            "background_evidence_status": "verified",
+            "background_evidence_extra": [
+                {"quote": "추가 근거 문장 1"},
+                {"quote": "추가 근거 문장 2"},
+            ],
+            "background_evidence_extra_status": ["verified", "unverified"],
+        }
+    }
+
+    evidence = collect_source_evidence(
+        structured, ["project.name", "project.background"]
+    )
+    by_quote = {item.quote: item.status for item in evidence}
+
+    assert by_quote["핵심 근거 문장"] == "verified"
+    assert by_quote["추가 근거 문장 1"] == "verified"
+    assert by_quote["추가 근거 문장 2"] == "unverified"
+    assert len(evidence) == 3
+
+
+def test_background_evidence_extra가_없으면_기존과_동일하게_1개다():
+    """필드가 아예 없는 옛 구조화 결과도 그대로 동작해야 합니다(하위 호환)."""
+    structured = {
+        "project": {
+            "name": "리테일링크",
+            "background": "배경 문장",
+            "background_evidence": {"quote": "핵심 근거 문장"},
+            "background_evidence_status": "verified",
+        }
+    }
+
+    evidence = collect_source_evidence(
+        structured, ["project.name", "project.background"]
+    )
+
+    assert len(evidence) == 1
+    assert evidence[0].quote == "핵심 근거 문장"
+
+
+# ─────────────────────────────────────────────────────────────
+# 2026-09-17 추가 — build_user_citation_sources / collect_user_enrichment_evidence
+# ─────────────────────────────────────────────────────────────
+
+
+def test_build_user_citation_sources는_verified_functional과_data만_번호_매긴다():
+    structured = {
+        "requirements": {
+            "functional": [
+                {
+                    "content": "가격을 비교해 보여준다.",
+                    "evidence": {"quote": "가격을 비교해서 보여줍니다."},
+                    "evidence_status": "verified",
+                },
+                {
+                    "content": "미검증 기능.",
+                    "evidence": {"quote": "원문에 없는 문장"},
+                    "evidence_status": "unverified",
+                },
+            ],
+            "data": [
+                {
+                    "content": "트렌드 지표를 저장한다.",
+                    "evidence": {"quote": "트렌드 지표를 저장합니다."},
+                    "evidence_status": "verified",
+                }
+            ],
+        }
+    }
+
+    sources = build_user_citation_sources(structured)
+    contents = [s["content"] for s in sources]
+
+    assert "가격을 비교해 보여준다." in contents
+    assert "트렌드 지표를 저장한다." in contents
+    assert "미검증 기능." not in contents  # unverified는 보완 후보에서 제외
+
+
+def test_collect_user_enrichment_evidence는_인용된_번호의_근거만_모은다():
+    structured = {
+        "requirements": {
+            "functional": [
+                {
+                    "content": "가격을 비교해 보여준다.",
+                    "evidence": {"quote": "가격을 비교해서 보여줍니다."},
+                    "evidence_status": "verified",
+                },
+            ],
+            "data": [],
+        }
+    }
+
+    evidence = collect_user_enrichment_evidence([0], structured)
+    assert [e.quote for e in evidence] == ["가격을 비교해서 보여줍니다."]
+    assert evidence[0].status == "verified"
+
+
+def test_collect_user_enrichment_evidence는_존재하지_않는_번호를_무시한다():
+    structured = {"requirements": {"functional": [], "data": []}}
+    assert collect_user_enrichment_evidence([0, 5], structured) == []

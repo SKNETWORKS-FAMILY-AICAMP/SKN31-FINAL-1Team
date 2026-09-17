@@ -235,6 +235,29 @@ def verify_and_mark(data: dict, meeting_raw_text: str) -> EvidenceReport:
             status_key="problem_evidence_status",
         )
 
+        # 2026-09-17: background_evidence_extra는 quote가 여러 개 담긴
+        # 리스트라 check()(단일 quote 전용)를 그대로 못 씁니다. 항목마다
+        # 따로 검증하고 상태를 병렬 리스트(background_evidence_extra_status)에
+        # 담습니다 — background_evidence(단일)의 상태 저장 방식과는
+        # 다르지만, 리스트 필드이므로 리스트로 상태를 매깁니다.
+        extra_quotes = project.get("background_evidence_extra") or []
+        extra_statuses: list[str] = []
+        for idx, extra in enumerate(extra_quotes):
+            quote = (extra or {}).get("quote", "")
+            report.checked += 1
+            if is_quote_verified(quote, meeting_raw_text):
+                extra_statuses.append(VERIFIED)
+                continue
+            extra_statuses.append(UNVERIFIED)
+            report.unverified.append(
+                UnverifiedItem(
+                    path=f"project.background_evidence_extra[{idx}]",
+                    content=project.get("background", ""),
+                    quote=quote,
+                )
+            )
+        project["background_evidence_extra_status"] = extra_statuses
+
     # 배열 영역
     for base in ARRAY_PATHS:
         items = _get(data, base) or []

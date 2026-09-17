@@ -348,6 +348,27 @@ def collect_source_evidence(
                     evidence_key="background_evidence",
                     status_key="background_evidence_status",
                 )
+
+                # 2026-09-17: background_evidence_extra(리스트) — background
+                # 한 문단에 사실이 여러 개면 노드①이 quote를 추가로 더
+                # 낼 수 있습니다. background_evidence 하나만 쓰면 화면
+                # 근거자료가 항상 1개로 보여 신뢰하기 어렵다는 문제를
+                # 고치기 위해 추가했습니다(schemas.py Project 참고).
+                extra_statuses = (
+                    project.get("background_evidence_extra_status") or []
+                )
+                for i, extra in enumerate(
+                    project.get("background_evidence_extra") or []
+                ):
+                    status = (
+                        extra_statuses[i]
+                        if i < len(extra_statuses)
+                        else "unverified"
+                    )
+                    add(
+                        {"evidence": extra, "evidence_status": status}
+                    )
+
                 continue
 
         # requirements.functional 같은 일반 점 경로
@@ -495,6 +516,62 @@ def build_feature_citation_sources(structured: dict) -> list[dict]:
         }
         for i, item in enumerate(primary_sources + linked_decisions)
     ]
+
+
+# 2026-09-17: 4번 대상 사용자 설명 보완용 재료.
+#
+# users 배열 자체는 이미 검증된 사용자 발언 그대로 프롬프트에 그대로
+# 전달됩니다 — 여기서 다시 다루지 않습니다. 이 함수는 users에는 없지만
+# 이미 확인된 사용자와 명백히 관련된 requirements.functional·
+# requirements.data 내용을 번호 매겨 후보로 제공하는 용도입니다
+# (NarrativeSection.source_indices, prompts.py user_sources_for_citation
+# 참고).
+#
+# verified 항목만 보여줍니다 — 이건 핵심 추출(6·7번, 기능)과 달리
+# "있으면 좋은" 보완 자료라, 근거 검증에 실패한 항목까지 넓혀 노출할
+# 이유가 없습니다. 놓쳐도 사용자 프로필이 사라지는 게 아니라 그냥 그
+# 문장만 덜 풍부해질 뿐입니다.
+def build_user_citation_sources(structured: dict) -> list[dict]:
+    requirements = structured.get("requirements") or {}
+    functional = [
+        item for item in (requirements.get("functional") or [])
+        if isinstance(item, dict)
+    ]
+    data = [
+        item for item in (requirements.get("data") or [])
+        if isinstance(item, dict)
+    ]
+
+    return [
+        {
+            "index": i,
+            "content": str(item.get("content", "")),
+            "quote": _evidence_quote(item),
+        }
+        for i, item in enumerate(_verified_items(functional + data))
+    ]
+
+
+def collect_user_enrichment_evidence(
+    cited_indices: list[int],
+    structured: dict,
+) -> list[VerifiedEvidence]:
+    """
+    users 설명 보완에 실제로 인용된 번호의 원문 근거를 모읍니다.
+
+    build_user_citation_sources가 verified 항목만 내놓으므로, 여기서
+    찾은 근거는 전부 status="verified"입니다. 존재하지 않는 번호(잘못된
+    인용)는 조용히 무시합니다 — 근거 없이 억지로 채우지 않습니다.
+    """
+    sources = {
+        s["index"]: s for s in build_user_citation_sources(structured)
+    }
+    out: list[VerifiedEvidence] = []
+    for idx in cited_indices:
+        source = sources.get(idx)
+        if source and source["quote"]:
+            out.append(VerifiedEvidence(quote=source["quote"], status=VERIFIED))
+    return _dedupe_evidence(out)
 
 
 # 2026-09-16: LLM 호출을 추가하지 않는(무료) 진단입니다.

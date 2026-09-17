@@ -62,6 +62,18 @@ AI_SUGGESTED_SECTION_NOTE = (
     "AI가 추정해 제안했습니다. PM 확인이 필요합니다."
 )
 
+# 2026-09-17: 4번 대상 사용자 전용 표시입니다. AI_SUGGESTED_SECTION_NOTE는
+# "원본이 아예 없을 때"만 붙는데, users는 실제 사용자가 있어도 니즈가
+# 한두 줄뿐이라 화면이 얇아 보이는 문제가 있었습니다(실측: 무신사
+# 회의록). 이 표시는 "사용자 자체는 실제로 확인됐지만, 설명 일부는
+# 검증된 기능·데이터를 근거로 보완했다"는 뜻으로 위와는 다른 상황이라
+# 문구도 다릅니다. NarrativeSection.source_indices가 비어 있지 않을
+# 때만(코드가 판정) 붙입니다 — LLM 자기 신고를 믿지 않습니다.
+USER_ENRICHMENT_NOTE = (
+    "위 설명 중 일부는 회의에서 사용자가 직접 언급한 내용이 아니라, "
+    "확인된 기능·데이터를 근거로 보완했습니다. PM 확인이 필요합니다."
+)
+
 
 def _mark_unverified_features(feats: list, structured: dict) -> None:
     """
@@ -293,6 +305,47 @@ def run(
                 evidence=list_builder.collect_feature_evidence(structured),
                 needs_input=needs_input_note,
                 is_incomplete=not feats,
+            ))
+            continue
+
+        # ── 4번 대상 사용자는 근거 보완 인용을 별도 처리 ────────
+        #
+        # 2026-09-17: users 배열에 실제 사용자가 있어도 니즈가 한두
+        # 줄뿐이라 화면이 얇아 보이는 문제가 실측(무신사 회의록)으로
+        # 확인됐습니다. NarrativeSection.source_indices에 담긴 번호를
+        # 코드가 검증해, 실제로 검증된 기능·데이터를 근거로 보완한
+        # 경우에만 표시를 붙이고 그 근거를 evidence에 추가합니다.
+        if spec["key"] == "users":
+            gen = by_key.get("users")
+            content = gen.content_html if gen else ""
+            cited = list(getattr(gen, "source_indices", None) or []) if gen else []
+
+            evidence = list_builder.collect_source_evidence(
+                structured, spec["source_fields"]
+            )
+
+            # users 배열 자체가 완전히 비었는데 LLM이 그래도 내용을 썼다면
+            # 기존과 같은 방식(AI_SUGGESTED_SECTION_NOTE)으로 표시합니다.
+            # 실제 사용자가 있고 그 설명만 보완된 경우(USER_ENRICHMENT_NOTE)와는
+            # 다른 상황이라 문구를 구분합니다.
+            source_empty = _source_is_empty(structured, spec["source_fields"])
+            if source_empty and content.strip():
+                content = content + f"<p>{escape(AI_SUGGESTED_SECTION_NOTE)}</p>"
+            elif cited:
+                evidence = evidence + list_builder.collect_user_enrichment_evidence(
+                    cited, structured
+                )
+                if content.strip():
+                    content = content + f"<p>{escape(USER_ENRICHMENT_NOTE)}</p>"
+
+            sections.append(PlanSection(
+                no=spec["no"], key=spec["key"], title=spec["title"],
+                section_type=spec["type"],
+                content_html=content,
+                items=[],
+                source_fields=spec["source_fields"],
+                evidence=evidence,
+                is_incomplete=not content.strip(),
             ))
             continue
 

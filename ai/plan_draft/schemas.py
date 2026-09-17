@@ -213,6 +213,17 @@ class NarrativeSection(BaseModel):
     추정한 것인지는 LLM의 자기 신고가 아니라 agent.py가
     _source_is_empty()로 판정해 표시를 붙입니다 — evidence_status를
     LLM이 아니라 코드가 판정하는 것과 같은 이유입니다.
+
+    2026-09-17: source_indices를 추가했습니다. 4번 대상 사용자 전용으로
+    씁니다 — users 배열에 이미 실제 사용자가 있어도 니즈가 한두 줄뿐이라
+    화면이 얇아 보이는 문제가 있었습니다(예: "최저가를 고른다" 한 줄).
+    user_sources_for_citation(검증된 requirements.functional·
+    requirements.data)에서 그 사용자와 명백히 관련된 항목을 인용해
+    설명을 보완할 수 있게 하고, 실제로 어떤 번호를 참고했는지 여기 답하게
+    합니다. Feature.source_indices와 같은 원리로, agent.py가 이 번호가
+    실제로 있는지 코드로 확인해 보완 여부를 판정합니다 — LLM이 "이건
+    추정입니다"라고 스스로 밝히게 하지 않습니다. overview·problem
+    섹션은 이 필드를 쓰지 않으므로 빈 배열로 둡니다.
     """
     key: str
     content_html: str = Field(
@@ -224,6 +235,13 @@ class NarrativeSection(BaseModel):
         ),
     )
     evidence: list[Evidence] = Field(default_factory=list)
+    source_indices: list[int] = Field(
+        default_factory=list,
+        description=(
+            "users 섹션 전용. 설명을 보완하려고 user_sources_for_citation에서 "
+            "참고한 항목의 번호. overview·problem 섹션은 항상 빈 배열입니다."
+        ),
+    )
 
     # 반려 사유를 다 반영하지 못했을 때 그 이유를 적습니다.
     #

@@ -1,6 +1,6 @@
 metadata:
   name: plan_generation_fewshots
-  version: "2.3"
+  version: "2.4"
   purpose: 구체성을 보존하고 임의의 기능 인과관계를 만들지 않는 기획서 작성 예시
   # 2026-09-17: 2.2 → 2.3. 실제 입출력 계약과 어긋나 있던 부분을 고쳤습니다.
   #   - output.goals가 09-15에 삭제된 problem_evidence/goal_evidence를 계속
@@ -13,6 +13,11 @@ metadata:
   #   - output에 features 예시가 하나도 없어 source_indices 사용법을
   #     보여주지 못했습니다. 기능-결정 연결(같은 quote로 이어진 tech/scope
   #     결정 후보)과 제외 방향 보존, 연결어 사용 예시를 추가했습니다.
+  # 2026-09-17(2차): 2.3 → 2.4. 실측(무신사 회의록)에서 matched_goal_index가
+  # 없는 문제 8개 전부 goal이 빈 문자열로 나왔습니다. "AI 제안" 경로를
+  # 실제로 보여주는 예시가 하나도 없어 모델이 이 경로를 어떻게 채워야
+  # 하는지 모방할 대상이 없었던 게 원인 중 하나로 보여, 예시 1에 대응하는
+  # 목표가 없는 문제 항목(발주서 양식 표준화)과 그 AI 제안 goal을 추가했습니다.
 
 examples:
   - id: preserve_specific_context_without_feature_inference
@@ -36,6 +41,10 @@ examples:
           - content: 점주가 자리를 비우면 직원이 재고 수량을 확인하지 못한다.
             evidence:
               quote: 점주가 자리를 비운 시간에는 직원이 재고 수량을 확인하지 못합니다.
+            evidence_status: verified
+          - content: 발주서 양식이 거래처마다 달라 매번 새로 만들어야 한다.
+            evidence:
+              quote: 거래처마다 발주서 양식이 달라서 매번 새로 만들고 있습니다.
             evidence_status: verified
         goals:
           - content: 재고 확인 누락으로 발생하는 품절 횟수를 줄인다.
@@ -88,6 +97,8 @@ examples:
           content: 담당자의 경험에 의존한 발주로 과재고와 폐기 손실이 발생한다.
         - index: 2
           content: 점주가 자리를 비우면 직원이 재고 수량을 확인하지 못한다.
+        - index: 3
+          content: 발주서 양식이 거래처마다 달라 매번 새로 만들어야 한다.
       goals_for_citation:
         - index: 0
           content: 재고 확인 누락으로 발생하는 품절 횟수를 줄인다.
@@ -129,6 +140,17 @@ examples:
           goal: 점주가 자리를 비운 시간에도 직원이 재고 수량을 확인할 수 있게 한다.
           matched_problem_index: 2
           matched_goal_index: 2
+        # 2026-09-17(2차): goals_for_citation에 대응하는 목표가 없는 경우의
+        # 예시입니다(matched_goal_index: null). "반전"이 아니라 문제 문장의
+        # 방향을 그대로 살린 "방향 제안"이라는 걸 보여줍니다 — "매번 새로
+        # 만든다"(문제)를 반대로 뒤집지 않고, "표준화해 부담을 줄인다"처럼
+        # 정도를 열어둔 짧은 문장으로 제안합니다. KPI·일정·담당자·새 기능은
+        # 추가하지 않습니다.
+        - title: 발주서 양식 표준화
+          problem: 발주서 양식이 거래처마다 달라 매번 새로 만들어야 한다.
+          goal: 발주서 양식을 표준화해 매번 새로 만드는 부담을 줄인다.
+          matched_problem_index: 3
+          matched_goal_index: null
       # 같은 quote로 이어진 기능(index 1)과 범위 결정(index 3)을 "-되"로
       # 자연스럽게 묶고, 제외 방향(자동 발주 제외)을 그대로 보존한 예시입니다.
       features:

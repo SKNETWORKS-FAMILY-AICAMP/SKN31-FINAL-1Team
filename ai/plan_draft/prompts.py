@@ -18,7 +18,7 @@ YAML 읽기와 검증:
 
 import json
 
-from .list_builder import build_feature_citation_sources
+from .list_builder import build_feature_citation_sources, build_user_citation_sources
 from .prompt_loader import (
     build_plan_fewshot_messages,
     build_plan_system_prompt,
@@ -132,6 +132,14 @@ def _build_generation_payload(
         "problem_sources_for_citation": [
             {"index": i, "content": p.get("content", "")}
             for i, p in enumerate(_verified_only(project.get("problem_items")))
+        ],
+        # 2026-09-17: 4번 대상 사용자 설명을 보완할 때 참고할 검증된
+        # 기능·데이터 후보입니다(list_builder.build_user_citation_sources
+        # 참고). users 배열에 이미 있는 사용자와 명백히 관련된 내용만
+        # 골라 쓰고, 새 사용자 유형을 만드는 데는 쓰지 않습니다.
+        "user_sources_for_citation": [
+            {"index": item["index"], "content": item["content"]}
+            for item in build_user_citation_sources(structured)
         ],
     }
 
