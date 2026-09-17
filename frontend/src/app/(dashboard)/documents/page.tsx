@@ -2476,6 +2476,24 @@ function TaskDraftReview({
       end: d.end_date,
     }));
 
+  // 2026-09-17: 원래 정렬이 전혀 없어 백엔드가 담당자를 결정한 순서(우선순위·업무
+  // 패키지 크기, 날짜와 무관) 그대로 표에 나열됐다 — 그래서 같은 담당자의 업무도
+  // 화면에서 날짜순으로 안 읽혀 workload_fit(담당자별 날짜순 누적 부하 문구, 방금
+  // 고침)를 읽어도 여전히 뒤죽박죽으로 보이는 문제가 있었다(사용자 리포트). 담당자
+  // 이름으로 묶고 그 안에서 시작일순으로 정렬해, 같은 사람의 업무가 날짜 순서대로
+  // 이어져 보이게 한다 — 미배정은 맨 뒤로.
+  const sortedDrafts = useMemo(() => {
+    const nameOf = (d: TaskDraft) => members.find(m => m.id === d.assignee_id)?.name ?? "";
+    return [...drafts].sort((a, b) => {
+      if (a.assignee_id == null && b.assignee_id == null) return 0;
+      if (a.assignee_id == null) return 1;
+      if (b.assignee_id == null) return -1;
+      const nameCompare = nameOf(a).localeCompare(nameOf(b), "ko");
+      if (nameCompare !== 0) return nameCompare;
+      return (a.start_date || "").localeCompare(b.start_date || "");
+    });
+  }, [drafts, members]);
+
   // 전부 "미배정"인 채로 확정을 누르면 서버가 저장할 게 하나도 없어 created_count=0
   // 인데도 "확정되었습니다" 성공 토스트가 뜨는 버그가 있었다(사용자 신고: "배분 확정하고
   // DB에 안 들어가는 상황"). "미배정" 자체는 AI가 워크로드/스킬 불일치로 일부러 보류
@@ -2563,7 +2581,7 @@ function TaskDraftReview({
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
-            {drafts.map(d => (
+            {sortedDrafts.map(d => (
               <Fragment key={d.unit_id}>
                 <tr className="align-top">
                   <td className="px-4 py-3">
