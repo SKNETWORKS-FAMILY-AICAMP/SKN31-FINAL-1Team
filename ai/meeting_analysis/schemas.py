@@ -15,7 +15,7 @@ validation_notes 같은 시스템 필드를 LLM 스키마에 넣으면
 아예 보여주지 않는 게 안전합니다.
 """
 
-from typing import Optional
+from typing import Literal, Optional
 
 from pydantic import BaseModel, Field
 
@@ -103,6 +103,16 @@ class UserGroup(BaseModel):
     type: str = Field(..., description="사용자 유형 (예: 서기, PM)")
     description: str
     needs: list[str] = Field(default_factory=list, description="이 사용자의 요구")
+    evidence: Evidence
+
+
+class UserSignal(BaseModel):
+    """사용자 프로필 합성용 원문 단서. 확인된 사용자 요구와 구분합니다."""
+
+    kind: Literal["service_purpose", "user_action", "information_need"]
+    actor: str = Field(default="", description="원문에 명시된 역할만 작성. 없으면 빈 문자열")
+    content: str
+    statement_status: Literal["stated", "proposed", "question", "rejected"]
     evidence: Evidence
 
 
@@ -216,6 +226,7 @@ class MeetingExtraction(BaseModel):
 
     project: Project
     users: list[UserGroup] = Field(default_factory=list)
+    user_signals: list[UserSignal] = Field(default_factory=list)
     requirements: Requirements
     scenarios: list[Scenario] = Field(default_factory=list)
     decisions: list[Decision] = Field(default_factory=list)

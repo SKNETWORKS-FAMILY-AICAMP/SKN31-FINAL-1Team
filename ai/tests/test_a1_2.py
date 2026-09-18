@@ -393,7 +393,7 @@ def test_unverified_항목은_지워지지_않고_표시만_붙는다():
         )
     )
 
-    assert s.items == ["근거 없는 응답 시간 기준 (근거 확인 필요)"]
+    assert s.items == ["근거 없는 응답 시간 기준"]
     assert s.is_incomplete is False
     assert "확인" in s.needs_input
 
@@ -443,12 +443,11 @@ def test_context_flag가_있으면_원문_확인_필요_표시가_붙는다():
         )
     )
 
-    assert s.items == [
-        "가격 중요 시 동일 등급 기준 최저가를 보유한다 "
-        "(원문 확인 필요 — 근거보다 과도하게 확정적으로 서술 — 회의에서는 제안 수준으로만 논의됨)"
-    ]
-    # 근거 자체는 검증됐으므로 (근거 확인 필요) 표시는 붙지 않습니다.
+    assert s.items == ["가격 중요 시 동일 등급 기준 최저가를 보유한다"]
+    # 근거 자체는 검증됐으므로 본문·PM 확인 사항 어디에도 '(근거 확인 필요)'는 붙지 않습니다.
     assert "근거 확인 필요" not in s.items[0]
+    assert "근거 확인 필요" not in s.needs_input
+    assert "근거보다 과도하게 확정적으로 서술" in s.needs_input
 
 
 def test_context_flag가_없으면_평소대로_표시된다():

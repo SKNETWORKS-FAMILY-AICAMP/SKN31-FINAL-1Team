@@ -104,10 +104,11 @@ def test_generation_payload_exposes_numbered_feature_sources_including_unverifie
     assert "바코드 방식을 확정한다." in contents
     assert "백엔드는 Django를 사용한다." not in contents
 
-    # 프롬프트에는 검증 상태를 노출하지 않습니다.
+    # 프롬프트에는 검증 상태를 노출하지 않지만, LLM이 구체적인
+    # review_questions를 쓸 수 있도록 context_flag는 review_context로 넘깁니다.
     for source in sources:
         assert "evidence_status" not in source
-        assert set(source.keys()) == {"index", "content"}
+        assert set(source.keys()) == {"index", "content", "review_context"}
 
 
 def test_plan_prompt_asks_llm_to_generate_features_with_no_cap():
@@ -321,8 +322,11 @@ def test_여러_기능에_걸친_공통_quote의_결정은_후보에서_제외�
     ]
 
 
-def test_기능_출처의_context_flag가_인용된_기능_설명까지_이어진다():
-    """인용 번호가 유효해도(evidence_status=verified) 사실 검토 경고가 있으면 표시한다."""
+def test_기능_출처의_context_flag가_PM_확인_질문으로_이어진다():
+    """
+    인용 번호가 유효해도(evidence_status=verified) 사실 검토 경고가 있으면
+    description은 그대로 두고 review_questions에 확인 질문을 추가한다.
+    """
     structured = {
         "requirements": {
             "functional": [
@@ -345,7 +349,12 @@ def test_기능_출처의_context_flag가_인용된_기능_설명까지_이어�
     plan_agent._mark_unverified_features([feature], structured)
 
     assert list_builder.UNVERIFIED_ITEM_SUFFIX not in feature.description
-    assert "근거보다 과도하게 확정적으로 서술" in feature.description
+    assert feature.description == "모바일 알림을 제공한다."
+    assert "근거보다 과도하게 확정적으로 서술" not in feature.description
+    assert any(
+        "모바일 알림" in q and "확인이 필요" in q
+        for q in feature.review_questions
+    )
 
 
 def test_feature_evidence_matches_verified_feature_sources():
@@ -589,7 +598,8 @@ def test_미검증_번호를_인용하면_표시가_붙는다():
 
     plan_agent._mark_unverified_features(feature_objs, _feature_structured())
 
-    assert list_builder.UNVERIFIED_ITEM_SUFFIX in feature_objs[0].description
+    assert feature_objs[0].description == "설명"
+    assert "기능 B 기능의 작성 근거를 회의록 원문과 대조해 확인해 주세요." in feature_objs[0].review_questions
 
 
 def test_인용_번호가_없으면_표시가_붙는다():
@@ -600,7 +610,8 @@ def test_인용_번호가_없으면_표시가_붙는다():
 
     plan_agent._mark_unverified_features(feature_objs, _feature_structured())
 
-    assert list_builder.UNVERIFIED_ITEM_SUFFIX in feature_objs[0].description
+    assert feature_objs[0].description == "설명"
+    assert "기능 C 기능의 작성 근거를 회의록 원문과 대조해 확인해 주세요." in feature_objs[0].review_questions
 
 
 def test_범위를_벗어난_번호는_표시가_붙는다():
@@ -611,7 +622,8 @@ def test_범위를_벗어난_번호는_표시가_붙는다():
 
     plan_agent._mark_unverified_features(feature_objs, _feature_structured())
 
-    assert list_builder.UNVERIFIED_ITEM_SUFFIX in feature_objs[0].description
+    assert feature_objs[0].description == "설명"
+    assert "기능 D 기능의 작성 근거를 회의록 원문과 대조해 확인해 주세요." in feature_objs[0].review_questions
 
 
 def test_검증된_번호와_미검증_번호를_섞어_인용하면_표시가_붙는다():
@@ -622,7 +634,8 @@ def test_검증된_번호와_미검증_번호를_섞어_인용하면_표시가_�
 
     plan_agent._mark_unverified_features(feature_objs, _feature_structured())
 
-    assert list_builder.UNVERIFIED_ITEM_SUFFIX in feature_objs[0].description
+    assert feature_objs[0].description == "설명"
+    assert "기능 E 기능의 작성 근거를 회의록 원문과 대조해 확인해 주세요." in feature_objs[0].review_questions
 
 
 # ─────────────────────────────────────────────────────────────

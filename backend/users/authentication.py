@@ -28,6 +28,21 @@ class CookieJWTAuthentication(JWTAuthentication):
     """
 
     def authenticate(self, request):
+        # 2026-09-17: 음성 파일 업로드(transcribe-audio)는 Vercel 프록시(Route Handler)의
+        # 요청 본문 4.5MB 제한에 걸려, 이 요청만 프록시를 안 거치고 브라우저가 백엔드로 직접
+        # 보낸다 — 그러면 크로스도메인이라 access_token 쿠키가 안 실리므로, 이 경우엔 대신
+        # Authorization: Bearer 헤더로 같은 토큰을 받는다. 브라우저가 "자동으로" 붙이는
+        # 쿠키와 달리 헤더는 프론트 코드가 명시적으로 붙여야만 실리므로 CSRF 위협이 없다
+        # (그래서 이 경로는 아래 쿠키 경로와 달리 enforce_csrf를 타지 않는다).
+        header = self.get_header(request)
+        if header is not None:
+            header_token = self.get_raw_token(header)
+            if header_token is not None:
+                validated_token = self.get_validated_token(header_token)
+                user = self.get_user(validated_token)
+                touch_session(user)
+                return (user, validated_token)
+
         raw_token = request.COOKIES.get('access_token')
         if raw_token is None:
             return None

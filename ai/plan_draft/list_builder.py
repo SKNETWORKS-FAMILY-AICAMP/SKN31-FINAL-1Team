@@ -111,12 +111,6 @@ def _verified_items(items: list) -> list[dict]:
 # 확인이 필요하다고 티 내는 편이 낫습니다.
 UNVERIFIED_ITEM_SUFFIX = " (근거 확인 필요)"
 
-UNVERIFIED_ITEMS_NOTE = (
-    "'(근거 확인 필요)' 표시가 붙은 항목은 회의록 원문과 근거 문장이 "
-    "정확히 일치하지 않아 자동으로 확인되지 않았습니다. 내용 자체는 "
-    "노드①이 뽑아낸 것이니, 원문과 직접 대조해 확정해 주세요."
-)
-
 # 2026-09-16: (근거 확인 필요)와 뜻이 다릅니다. 그건 "원문 대조는
 # 했는데 검증에 실패했다"는 뜻이고, 이건 "애초에 회의에 없어서
 # AI가 문맥으로 보완했다"는 뜻입니다(build_goals의
@@ -156,6 +150,39 @@ def _apply_context_flag(text: str, item: dict) -> str:
     if not flag:
         return text
     return text + CONTEXT_FLAG_SUFFIX_TEMPLATE.format(flag=flag)
+
+
+# 2026-09-18: 6·7번(기술 스택·최종 결정사항)의 content_html 전용 경고 생성.
+#
+# 위 _mark_if_unverified·_apply_context_flag는 본문 문장 뒤에 괄호로
+# 경고를 이어붙인다. 1~5번은 이미 본문을 깨끗하게 두고 섹션 하단
+# "PM 확인 사항"으로 모으도록 바꿨는데(context_writer.py, feature_renderer.py
+# 참고), 6·7번은 code 조립 섹션이라 아직 옛 방식이 남아 있었다 — 실측
+# (무신사 회의록 웹 테스트)에서 6번 본문에 "(원문 확인 필요 — 근거보다
+# 과도하게 확정적으로 서술: ...)"가 그대로 섞여 나와 기획서가 완성된
+# 문서처럼 안 읽히는 문제가 확인됐다. 여기서는 본문(text)은 그대로 두고
+# 경고만 따로 뽑아 하단 블록으로 옮긴다.
+#
+# decisions(7번)의 items(태그 형식)는 node③이 파싱하므로 건드리지 않는다
+# — 이 함수는 content_html에만 쓴다.
+def _review_notes_for(text: str, item: dict) -> list[str]:
+    """항목 본문 대신 섹션 하단에 보여줄 PM 확인 문구를 만듭니다."""
+    notes: list[str] = []
+    if _item_status(item) != VERIFIED:
+        notes.append(f"'{text}'의 근거를 회의록 원문과 대조해 확인해 주세요.")
+    flag = item.get("context_flag")
+    if flag:
+        notes.append(f"'{text}' — {flag}. 최종 확정 여부를 확인해 주세요.")
+    return notes
+
+
+def _review_html(notes: list[str]) -> str:
+    notes = list(dict.fromkeys(note.strip() for note in notes if note.strip()))
+    if not notes:
+        return ""
+    return "<p><strong>PM 확인 사항</strong></p><ul>" + "".join(
+        f"<li>{escape(note)}</li>" for note in notes
+    ) + "</ul>"
 
 
 def _evidence_quote(item: dict) -> str:
@@ -522,8 +549,8 @@ def build_feature_citation_sources(structured: dict) -> list[dict]:
 #
 # users 배열 자체는 이미 검증된 사용자 발언 그대로 프롬프트에 그대로
 # 전달됩니다 — 여기서 다시 다루지 않습니다. 이 함수는 users에는 없지만
-# 이미 확인된 사용자와 명백히 관련된 requirements.functional·
-# requirements.data 내용을 번호 매겨 후보로 제공하는 용도입니다
+# 이미 확인된 사용자와 관련된 기능·데이터 및 user_signals의 원문 단서를
+# 번호 매겨 후보로 제공합니다. 인용 존재 여부와 발언 상태는 별개입니다
 # (NarrativeSection.source_indices, prompts.py user_sources_for_citation
 # 참고).
 #
@@ -542,14 +569,35 @@ def build_user_citation_sources(structured: dict) -> list[dict]:
         if isinstance(item, dict)
     ]
 
-    return [
+    sources = [
         {
             "index": i,
             "content": str(item.get("content", "")),
             "quote": _evidence_quote(item),
+            "kind": "requirement",
+            "actor": "",
+            "statement_status": "stated",
+            "context_flag": item.get("context_flag") or "",
         }
         for i, item in enumerate(_verified_items(functional + data))
     ]
+    for item in structured.get("user_signals") or []:
+        if not isinstance(item, dict) or item.get("evidence_status") != VERIFIED:
+            continue
+        if item.get("statement_status") not in {"stated", "proposed", "question", "rejected"}:
+            continue
+        if not _evidence_quote(item):
+            continue
+        sources.append({
+            "index": len(sources),
+            "content": str(item.get("content", "")),
+            "quote": _evidence_quote(item),
+            "kind": item.get("kind", ""),
+            "actor": item.get("actor", ""),
+            "statement_status": item["statement_status"],
+            "context_flag": item.get("context_flag") or "",
+        })
+    return sources
 
 
 def collect_user_enrichment_evidence(
@@ -971,17 +1019,16 @@ def build_tech_scope(structured: dict) -> PlanSection:
     # (섹션 간 중복은 건드리지 않습니다. 6번과 7번은 관점이 달라
     #  같은 결정이 양쪽에 나오는 것이 의도된 동작입니다.)
     seen_lines: set[str] = set()
-    has_unverified = False
+    review_notes: list[str] = []
 
     def add(title: str, sources: list[dict], render) -> None:
         """
         항목을 조립하고 이미 나온 문장은 제외합니다.
 
-        unverified 항목도 지우지 않고 포함하되 표시를 붙입니다
-        (UNVERIFIED_ITEM_SUFFIX 참고) — 이유는 이 파일의 해당 상수
-        정의부 주석을 보세요.
+        unverified·context_flag 항목도 지우지 않고 포함하되, 본문에 괄호로
+        경고를 붙이지 않고 섹션 하단 PM 확인 사항으로 모읍니다
+        (_review_notes_for 참고).
         """
-        nonlocal has_unverified
         lines, used = [], []
         for s in sources:
             if not isinstance(s, dict):
@@ -991,9 +1038,7 @@ def build_tech_scope(structured: dict) -> PlanSection:
             if not key or key in seen_lines:
                 continue
             seen_lines.add(key)
-            text, unverified = _mark_if_unverified(text, s)
-            text = _apply_context_flag(text, s)
-            has_unverified = has_unverified or unverified
+            review_notes.extend(_review_notes_for(text, s))
             lines.append(text)
             used.append(s)
 
@@ -1078,10 +1123,8 @@ def build_tech_scope(structured: dict) -> PlanSection:
     # 2026-09-17: needs_input 필드에만 담던 걸 content_html에도 이어붙입니다
     # (build_goals와 같은 이유 — backend/meetings/services.py가 needs_input을
     # 읽지 않아 이 필드만으로는 화면에 도달하지 않습니다).
-    needs_input_note = UNVERIFIED_ITEMS_NOTE if has_unverified else ""
-    content_html = "".join(parts) + (
-        f"<p>{escape(needs_input_note)}</p>" if needs_input_note else ""
-    )
+    review_notes = list(dict.fromkeys(review_notes))
+    content_html = "".join(parts) + _review_html(review_notes)
 
     return PlanSection(
         no=6, key="tech_scope", title="기술 스택 및 제약사항",
@@ -1096,7 +1139,7 @@ def build_tech_scope(structured: dict) -> PlanSection:
         ],
         evidence=_dedupe_evidence(evidence),
         is_incomplete=not parts,
-        needs_input=needs_input_note,
+        needs_input="\n".join(review_notes),
     )
 
 
@@ -1159,23 +1202,22 @@ def build_decisions(structured: dict) -> PlanSection:
 
     items: list[str] = []
     by_category: dict[str, list[str]] = {}
-    has_unverified = False
+    review_notes: list[str] = []
 
     for d in decisions:
         category = d["category"]
-        rationale_suffix = f" — {d['rationale']}" if d.get("rationale") else ""
+        rationale_suffix = f" (이유: {d['rationale']})" if d.get("rationale") else ""
 
         # items: node③이 파싱하는 태그 형식. 바꾸지 않습니다.
         tagged_text = f"[{label.get(category, category)}] {d['content']}{rationale_suffix}"
-        tagged_text, unverified = _mark_if_unverified(tagged_text, d)
+        tagged_text, _ = _mark_if_unverified(tagged_text, d)
         tagged_text = _apply_context_flag(tagged_text, d)
-        has_unverified = has_unverified or unverified
         items.append(tagged_text)
 
-        # content_html: 화면 표시 전용. 태그 대신 소제목으로 묶습니다.
+        # content_html: 화면 표시 전용. 태그 대신 소제목으로 묶고, 경고는
+        # 본문에 붙이지 않고 섹션 하단 PM 확인 사항으로 모읍니다.
         plain_text = f"{d['content']}{rationale_suffix}"
-        plain_text, _ = _mark_if_unverified(plain_text, d)
-        plain_text = _apply_context_flag(plain_text, d)
+        review_notes.extend(_review_notes_for(plain_text, d))
         by_category.setdefault(category, []).append(plain_text)
 
     parts = [
@@ -1183,10 +1225,8 @@ def build_decisions(structured: dict) -> PlanSection:
         for category, lines in by_category.items()
     ]
 
-    needs_input_note = UNVERIFIED_ITEMS_NOTE if has_unverified else ""
-    content_html = "".join(parts) + (
-        f"<p>{escape(needs_input_note)}</p>" if needs_input_note else ""
-    )
+    review_notes = list(dict.fromkeys(review_notes))
+    content_html = "".join(parts) + _review_html(review_notes)
 
     return PlanSection(
         no=7, key="decisions", title="최종 결정사항",
@@ -1195,7 +1235,7 @@ def build_decisions(structured: dict) -> PlanSection:
         items=items,
         source_fields=["decisions"],
         evidence=_dedupe_evidence(_ev(decisions)),
-        needs_input=needs_input_note,
+        needs_input="\n".join(review_notes),
     )
 
 

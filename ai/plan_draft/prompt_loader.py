@@ -469,6 +469,7 @@ def _validate_plan_template(template: dict) -> None:
         "title",
         "description",
         "source_indices",
+        "review_questions",
     ]
 
     if features_item_fields != expected_feature_item_fields:

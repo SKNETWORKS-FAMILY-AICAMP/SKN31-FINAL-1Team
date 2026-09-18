@@ -40,8 +40,21 @@ export function stepDone(
 // 없었을 때 결정), 지금은 승인 워크플로우와 업무배분 확정까지 생겨서 문서가 실제로
 // 끝까지 진행됐는데도 목록/스테퍼가 "요구사항정의서" 단계에 멈춰 보이는 문제가
 // 있었다 — reqDef/hasConfirmedTasks가 있으면 그만큼 더 뒤 단계로 보여준다.
-export function stageOf(spec: SpecLike, reqDef?: ReqDefLike, hasConfirmedTasks?: boolean): PipelineTab {
-  if (reqDef?.status_info?.code_id === "APPROVED" && hasConfirmedTasks) return "taskAssignment";
+//
+// 2026-09-17: hasDraft(BACKLOG 초안이 있음, 아직 미확정) 추가 — "업무 배분 실행"
+// 직후엔 taskDrafts가 바로 채워져 강제로 taskAssignment 탭을 보여주지만(문서 최초
+// 진입 흐름), 새로고침하거나 문서를 다시 열면 이 함수가 다시 단계를 계산한다.
+// hasConfirmedTasks만 보면 미확정 초안이 있어도 "reqSpec" 단계로 되돌아가고,
+// documents/page.tsx의 스테퍼는 "i > currentStageIndex"를 잠금 기준으로 쓰므로
+// taskAssignment 탭 자체가 잠겨 복원된 초안을 볼 방법이 없어진다(실제 재현된 버그).
+// hasDraft는 "완료"(stepDone)는 아니지만 "도달 가능"(stageOf)하다고 봐서 이 문제를 막는다.
+export function stageOf(
+  spec: SpecLike,
+  reqDef?: ReqDefLike,
+  hasConfirmedTasks?: boolean,
+  hasDraft?: boolean,
+): PipelineTab {
+  if (reqDef?.status_info?.code_id === "APPROVED" && (hasConfirmedTasks || hasDraft)) return "taskAssignment";
   if (bareStatus(spec) === "APPROVED") return "reqSpec";
   return "proposal";
 }

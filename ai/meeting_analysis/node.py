@@ -242,6 +242,7 @@ def _merge_extractions(
     merged: dict = {
         "project": overview.project.model_dump(),
         "users": [item.model_dump() for item in overview.users],
+        "user_signals": [item.model_dump() for item in overview.user_signals],
         "requirements": {category: [] for category in REQUIREMENT_CATEGORIES},
         "scenarios": [],
         "decisions": [],
@@ -563,6 +564,7 @@ def run(
         evidence_report.pass_rate,
     )
 
+    data["plan_source_text"] = meeting_text
     return NodeResult(
         data=data,
         evidence=evidence_report,

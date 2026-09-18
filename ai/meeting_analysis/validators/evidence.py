@@ -35,6 +35,7 @@ ARRAY_PATHS = [
     "project.problem_items",
     "project.goals",
     "users",
+    "user_signals",
     "requirements.functional",
     "requirements.non_functional",
     "requirements.data",

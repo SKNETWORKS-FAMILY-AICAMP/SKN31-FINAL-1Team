@@ -103,11 +103,17 @@ def _build_generation_payload(
     project = structured.get("project") or {}
 
     feature_sources = [
-        {"index": item["index"], "content": item["content"]}
+        {
+            "index": item["index"],
+            "content": item["content"],
+            "review_context": item.get("context_flag") or "",
+        }
         for item in build_feature_citation_sources(structured)
     ]
 
     return {
+        "meeting_source_text": structured.get("plan_source_text") or "",
+        "validation_notes": structured.get("validation_notes") or [],
         "project": project,
         "users": (
             structured.get("users")
@@ -138,7 +144,7 @@ def _build_generation_payload(
         # 참고). users 배열에 이미 있는 사용자와 명백히 관련된 내용만
         # 골라 쓰고, 새 사용자 유형을 만드는 데는 쓰지 않습니다.
         "user_sources_for_citation": [
-            {"index": item["index"], "content": item["content"]}
+            dict(item)
             for item in build_user_citation_sources(structured)
         ],
     }

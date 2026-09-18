@@ -201,6 +201,14 @@ class Feature(BaseModel):
         ),
     )
 
+    review_questions: list[str] = Field(
+        default_factory=list,
+        description=(
+            "기능 설명 본문에 경고를 붙이지 않고 섹션 하단에서 PM에게 확인할 "
+            "구체적인 질문. 질문이 없으면 빈 배열입니다."
+        ),
+    )
+
 
 class NarrativeSection(BaseModel):
     """

@@ -31,6 +31,7 @@ from shared.llm_client import build_chat_kwargs, get_client, traceable
 from shared.retry_config import MAX_RETRIES, MAX_TOKENS, MODEL, TEMPERATURE
 
 from . import list_builder
+from . import context_writer
 from .feature_renderer import render_features
 from .prompts import (
     REGENERATE_PROMPT,
@@ -68,36 +69,57 @@ AI_SUGGESTED_SECTION_NOTE = (
 # 회의록). 이 표시는 "사용자 자체는 실제로 확인됐지만, 설명 일부는
 # 검증된 기능·데이터를 근거로 보완했다"는 뜻으로 위와는 다른 상황이라
 # 문구도 다릅니다. NarrativeSection.source_indices가 비어 있지 않을
-# 때만(코드가 판정) 붙입니다 — LLM 자기 신고를 믿지 않습니다.
+# 때 붙입니다. 번호의 유효성은 코드로 확인하지만 인용 선택은 모델 출력입니다.
 USER_ENRICHMENT_NOTE = (
     "위 설명 중 일부는 회의에서 사용자가 직접 언급한 내용이 아니라, "
-    "확인된 기능·데이터를 근거로 보완했습니다. PM 확인이 필요합니다."
+    "원문에서 확인된 서비스 목적·이용 행동·기능·데이터를 바탕으로 "
+    "AI가 보완한 제안입니다. PM 확인이 필요합니다."
 )
+
+
+def _build_users_section(gen, structured: dict, spec: dict) -> PlanSection:
+    """최초 생성과 재생성에 동일한 인용 검증과 확인 문구를 적용합니다."""
+    content = gen.content_html if gen else ""
+    cited = list(gen.source_indices or []) if gen else []
+    sources = {s["index"]: s for s in list_builder.build_user_citation_sources(structured)}
+    evidence = list_builder.collect_source_evidence(structured, spec["source_fields"])
+    evidence += list_builder.collect_user_enrichment_evidence(cited, structured)
+    notes = [gen.needs_input] if gen and gen.needs_input else []
+    if any(idx not in sources for idx in cited):
+        notes.append("사용자 설명의 인용 번호를 확인할 수 없습니다. 원문 대조가 필요합니다.")
+    for idx in cited:
+        source = sources.get(idx)
+        if not source:
+            continue
+        if source.get("context_flag"):
+            notes.append(f"사용자 설명 근거 검토: {source['context_flag']}")
+        if source.get("statement_status") in {"proposed", "question", "rejected"}:
+            notes.append("제안·질문·철회된 발언이 확정된 사용자 요구로 서술되지 않았는지 확인해 주세요.")
+    if content.strip():
+        if _source_is_empty(structured, spec["source_fields"]):
+            content += f"<p>{escape(AI_SUGGESTED_SECTION_NOTE)}</p>"
+        elif cited:
+            content += f"<p>{escape(USER_ENRICHMENT_NOTE)}</p>"
+        if notes:
+            content += "<p><strong>PM 확인 사항</strong></p><ul>" + "".join(
+                f"<li>{escape(note)}</li>" for note in dict.fromkeys(notes)
+            ) + "</ul>"
+    return PlanSection(
+        no=spec["no"], key=spec["key"], title=spec["title"],
+        section_type=spec["type"], content_html=content, items=[],
+        source_fields=spec["source_fields"],
+        evidence=list({e.quote: e for e in evidence}.values()),
+        needs_input="\n".join(dict.fromkeys(notes)), is_incomplete=not content.strip(),
+    )
 
 
 def _mark_unverified_features(feats: list, structured: dict) -> None:
     """
-    5번 주요 기능의 source_indices를 코드가 검증해 제자리에서 표시를 붙입니다.
+    주요 기능의 근거 상태를 검증하고 PM 확인 질문으로 모읍니다.
 
-    2026-09-16: feature_sources_for_citation은 verified 여부와 무관하게
-    전부 넘깁니다(prompts.py 참고) — LLM이 어떤 기능 요구사항을 실제로
-    참고했는지는 알아야 묶어 쓸 수 있기 때문입니다. 대신 그 인용이
-    유효한지(검증된 항목만 인용했는지)는 LLM의 자기 신고가 아니라 여기서
-    코드가 판정합니다 — DetailedGoal.matched_goal_index와 같은 원리입니다.
-
-    인용 번호가 하나도 없거나, 범위를 벗어나거나, unverified 항목을
-    가리키면 그 기능은 "근거 확인 필요"로 표시합니다(list_builder의
-    UNVERIFIED_ITEM_SUFFIX 재사용 — 6·7번과 같은 의미: LLM이 실존하는
-    항목을 썼지만 그 항목의 원문 검증 자체가 실패했다는 뜻입니다).
-
-    2026-09-17: context_flag도 같은 방식으로 확인합니다. 인용 번호가
-    유효하고(evidence_status=verified) 인용문이 원문에 있어도, 노드①의
-    fact_check가 그 항목의 서술 자체를 의심스럽다고 표시했을 수 있습니다
-    (list_builder._apply_context_flag과 같은 개념). 이 경고는
-    feature_sources_for_citation에 인용 상태로만 실려 있어 여기서
-    확인하지 않으면 조용히 사라집니다 — quote 기준으로 새로 추가한
-    tech·scope 후보(build_feature_citation_sources 참고)에도 똑같이
-    적용됩니다.
+    검토 문구를 description에 붙이면 본문을 읽기 어렵게 만드므로 설명은
+    그대로 유지합니다. 모델이 context_flag를 바탕으로 구체적인 질문을
+    작성하고, 코드 검증에서 누락이 발견된 경우에만 보수적인 질문을 더합니다.
     """
     sources_by_index = {
         item["index"]: item
@@ -113,8 +135,8 @@ def _mark_unverified_features(feats: list, structured: dict) -> None:
             for idx in indices
         )
         if not all_verified:
-            feature.description = (
-                feature.description + list_builder.UNVERIFIED_ITEM_SUFFIX
+            feature.review_questions.append(
+                f"{feature.title} 기능의 작성 근거를 회의록 원문과 대조해 확인해 주세요."
             )
 
         cited_flags = dict.fromkeys(
@@ -122,10 +144,14 @@ def _mark_unverified_features(feats: list, structured: dict) -> None:
             for idx in indices
             if idx in sources_by_index and sources_by_index[idx].get("context_flag")
         )
-        for flag in cited_flags:
-            feature.description = feature.description + (
-                list_builder.CONTEXT_FLAG_SUFFIX_TEMPLATE.format(flag=flag)
+        if cited_flags and not feature.review_questions:
+            feature.review_questions.append(
+                f"{feature.title}에 포함된 계획과 적용 기준이 최종 확정됐는지 확인이 필요합니다."
             )
+
+        feature.review_questions = list(dict.fromkeys(
+            question.strip() for question in feature.review_questions if question.strip()
+        ))
 
 
 def _call(system: str, messages: list[dict], response_model, context: str = ""):
@@ -236,14 +262,26 @@ def run(
 
     # [1] 서술형 섹션과 세부 목표를 생성합니다.
     _stage("기획서 초안 작성 중…")
-    result: PlanSections = _call(
-        build_system_prompt(glossary_text),
-        build_messages(structured, glossary_text),
-        PlanSections,
+    source = structured.get("plan_source_text") or ""
+    contextual = bool(source.strip())
+    messages = build_messages(structured, glossary_text)
+    result = _call(
+        context_writer.system_prompt(glossary_text) if contextual else build_system_prompt(glossary_text),
+        messages[-1:] if contextual else messages,
+        context_writer.ContextPlan if contextual else PlanSections,
         context=f"run proposal_id={proposal_id}",
     )
 
-    by_key = {s.key: s for s in result.sections}
+    by_key = (
+        {
+            "overview": result.overview,
+            "problem": result.problem,
+            "goals": result.goals,
+            "users": result.users,
+        }
+        if contextual
+        else {s.key: s for s in result.sections}
+    )
 
     # ── [2] 목록형 3개 조립 ──────────────────────────────────
     _stage("목록형 섹션 조립 중…")
@@ -251,7 +289,7 @@ def run(
         section.key: section
         for section in list_builder.build_all(
             structured,
-            generated_goals=result.goals,
+            generated_goals=[] if contextual else result.goals,
         )
     }
 
@@ -259,6 +297,9 @@ def run(
     _stage("섹션 병합 및 근거 매칭 중…")
     sections: list[PlanSection] = []
     for spec in SECTION_SPEC:
+        if contextual and spec["key"] in {"overview", "problem", "goals", "users"}:
+            sections.append(context_writer.render_section(by_key[spec["key"]], source, spec))
+            continue
         if spec["type"] == SectionType.LIST:
             sections.append(list_sections[spec["key"]])
             continue
@@ -276,7 +317,6 @@ def run(
         if spec["key"] == "features":
             feats = list(result.features)
             _mark_unverified_features(feats, structured)
-            content = render_features(feats)
             # 무료 진단(LLM 재호출 없음): 검증됐지만 어떤 기능의
             # source_indices에도 인용되지 않은 기능 요구사항·결정이 있으면
             # PM에게 확인을 요청합니다(list_builder.ORPHANED_ITEMS_NOTE_TEMPLATE
@@ -291,8 +331,13 @@ def run(
             # 같은 방식입니다). needs_input 필드 자체는 그대로 유지합니다.
             orphaned = list_builder.find_orphaned_feature_sources(feats, structured)
             needs_input_note = list_builder.orphaned_items_note(orphaned)
-            if needs_input_note:
-                content = content + f"<p>{escape(needs_input_note)}</p>"
+            section_review_questions = [needs_input_note] if needs_input_note else []
+            content = render_features(feats, section_review_questions)
+            all_review_questions = [
+                question
+                for feature in feats
+                for question in feature.review_questions
+            ] + section_review_questions
             sections.append(PlanSection(
                 no=spec["no"], key=spec["key"], title=spec["title"],
                 section_type=spec["type"],
@@ -303,7 +348,7 @@ def run(
                 # LLM이 스스로 쓴 문장을 근거로 쓰지 않습니다. 노드①이
                 # 검증한 원문을 섹션 전체 단위로 붙입니다(3·6·7번과 동일).
                 evidence=list_builder.collect_feature_evidence(structured),
-                needs_input=needs_input_note,
+                needs_input="\n".join(dict.fromkeys(all_review_questions)),
                 is_incomplete=not feats,
             ))
             continue
@@ -316,37 +361,7 @@ def run(
         # 코드가 검증해, 실제로 검증된 기능·데이터를 근거로 보완한
         # 경우에만 표시를 붙이고 그 근거를 evidence에 추가합니다.
         if spec["key"] == "users":
-            gen = by_key.get("users")
-            content = gen.content_html if gen else ""
-            cited = list(getattr(gen, "source_indices", None) or []) if gen else []
-
-            evidence = list_builder.collect_source_evidence(
-                structured, spec["source_fields"]
-            )
-
-            # users 배열 자체가 완전히 비었는데 LLM이 그래도 내용을 썼다면
-            # 기존과 같은 방식(AI_SUGGESTED_SECTION_NOTE)으로 표시합니다.
-            # 실제 사용자가 있고 그 설명만 보완된 경우(USER_ENRICHMENT_NOTE)와는
-            # 다른 상황이라 문구를 구분합니다.
-            source_empty = _source_is_empty(structured, spec["source_fields"])
-            if source_empty and content.strip():
-                content = content + f"<p>{escape(AI_SUGGESTED_SECTION_NOTE)}</p>"
-            elif cited:
-                evidence = evidence + list_builder.collect_user_enrichment_evidence(
-                    cited, structured
-                )
-                if content.strip():
-                    content = content + f"<p>{escape(USER_ENRICHMENT_NOTE)}</p>"
-
-            sections.append(PlanSection(
-                no=spec["no"], key=spec["key"], title=spec["title"],
-                section_type=spec["type"],
-                content_html=content,
-                items=[],
-                source_fields=spec["source_fields"],
-                evidence=evidence,
-                is_incomplete=not content.strip(),
-            ))
+            sections.append(_build_users_section(by_key.get("users"), structured, spec))
             continue
 
         gen = by_key.get(spec["key"])
@@ -430,6 +445,17 @@ def regenerate_section(
             f"알 수 없는 섹션입니다: {section_key}"
         )
 
+    source = structured.get("plan_source_text") or ""
+    if source.strip() and section_key in {"overview", "problem", "goals", "users"}:
+        result = _call(
+            context_writer.system_prompt()
+            + f"\n재생성: sections/features 대신 key={section_key}인 섹션 객체 하나만 출력합니다.",
+            build_regenerate_messages(structured, section_key, reject_type, comment),
+            context_writer.SECTION_MODELS[section_key],
+            context=f"regenerate_section={section_key}",
+        )
+        return context_writer.render_section(result, source, spec)
+
     if section_key not in {
         "overview",
         "problem",
@@ -456,6 +482,8 @@ def regenerate_section(
         context=f"regenerate_section={section_key}",
     )
     gen = next((s for s in result.sections if s.key == section_key), None)
+    if section_key == "users":
+        return _build_users_section(gen, structured, spec)
     content = gen.content_html if gen else ""
 
     return PlanSection(

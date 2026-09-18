@@ -19,6 +19,7 @@ from project_scale.agent import assess_project_complexity
 from assignee_mapping.agent import assignee_mapping_node
 from assignee_recommend.agent import assignee_recommend_node
 from assignee_recommend.rule_filter import (
+    _sane_buffer,
     calculate_max_hours_per_assignee,
     flatten_assignable_units,
     list_project_workdays,
@@ -127,6 +128,45 @@ def _schedule_suggestion_dates(suggestions: list, start_date: date, end_date: da
         s["schedule_reason"] = placed.get("schedule_reason", "")  # Phase 4
 
     return result["summary"]
+
+
+def _recompute_workload_fit_by_schedule(
+    suggestions: list, current_workload: dict, total_workdays: int, max_hours_per_assignee: float,
+) -> None:
+    """
+    2026-09-17: workload_fit("이번 배정 포함 현재 부하 …" 서술)는 원래
+    assignee_recommend.rule_filter.schedule_assignments()가 담당자를 결정하던
+    순서(우선순위+묶음 크기, 날짜와 무관) 그대로 누적 계산해서 만들어진다. 그런데
+    PM 미리보기 화면은 같은 담당자의 업무를 캘린더 날짜순으로 나열해서 보여주므로,
+    이 두 순서가 어긋나는 조합(우선순위상 먼저 배정 결정된 일이 실제 일정에서는
+    나중에 배치되는 경우)에서는 화면에 보이는 순서로 읽었을 때 부하가 거꾸로 가는
+    것처럼 보이는 문제가 실측됨(사용자 리포트로 재현 확인).
+
+    _schedule_suggestion_dates()가 suggested_start_date를 다 채운 뒤(=최종 캘린더
+    배치가 확정된 뒤) 호출한다 — 담당자 배정 자체는 건드리지 않고, 화면에 보이는
+    순서(날짜순) 그대로 담당자별 누적 부하를 다시 계산해 workload_fit 문구만
+    덮어쓴다. current_workload 시딩 방식은 schedule_assignments()의 초기화 로직과
+    동일하게 맞춘다(기존 업무가 전혀 없는 담당자는 0평일부터, 있으면
+    plan_days(기존시간, 기본버퍼)부터 시작).
+    """
+    by_assignee: dict = {}
+    for s in suggestions:
+        if s.get("assignee_id") is not None:
+            by_assignee.setdefault(s["assignee_id"], []).append(s)
+
+    for assignee_id, items in by_assignee.items():
+        items.sort(key=lambda s: s.get("suggested_start_date") or "9999-12-31")
+        key = str(assignee_id)
+        hours = float(current_workload.get(key, 0.0))
+        days = plan_days(hours, DEFAULT_RISK_BUFFER) if key in current_workload else 0
+        for s in items:
+            buffer = _sane_buffer(s.get("risk_buffer_factor"))
+            hours += float(s.get("estimated_hours") or 0)
+            days += plan_days(s.get("estimated_hours"), buffer)
+            s["workload_fit"] = (
+                f"이번 배정 포함 현재 부하 {hours:.1f}시간 · "
+                f"약 {days}평일 (프로젝트 {total_workdays}평일, 참고 상한 {max_hours_per_assignee:.1f}시간)"
+            )
 
 
 # 2026-09-11 (Phase 4): 계획 검토 요약(결정적) + LLM 브리핑 컨텍스트.
@@ -425,6 +465,12 @@ def generate_task_suggestions(spec_id: int, on_stage=None) -> dict:
     except ScheduleError as e:
         logger.warning("업무 일정 계산 실패 (spec_id=%s): %s", spec_id, e)
         return {"status": "error", "message": f"업무 일정 계산 실패: {e}"}
+
+    # 2026-09-17: 최종 캘린더 배치가 확정된 뒤, 화면에 보이는 순서(담당자별 날짜순)
+    # 기준으로 workload_fit 문구를 다시 계산한다 — 위 함수 docstring 참고.
+    _recompute_workload_fit_by_schedule(
+        suggestions, current_workload, project_period["workdays"], max_hours_per_assignee,
+    )
 
     schedule_summary_full = {
         **schedule_summary,

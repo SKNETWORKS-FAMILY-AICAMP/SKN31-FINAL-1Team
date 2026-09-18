@@ -50,7 +50,7 @@ def _base_meeting_text(additional_text: str = "") -> str:
 
 def test_extraction_template_has_expected_version():
     template = load_extraction_template()
-    assert template["metadata"]["version"] == "2.9"
+    assert template["metadata"]["version"] == "2.10"
 
 def test_extraction_template_has_scenario_rules():
     """시나리오는 스키마에 있는데 규칙이 없어 가짜 흐름이 생기던 문제."""

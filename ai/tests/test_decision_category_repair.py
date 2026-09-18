@@ -215,5 +215,5 @@ def test_빈_rationale은_7번에_붙지_않는다():
 
     assert section.items[0] == "[기술] React를 사용한다"
     assert section.items[1] == (
-        "[기술] Next.js는 채택하지 않는다 — SEO 요구가 없다"
+        "[기술] Next.js는 채택하지 않는다 (이유: SEO 요구가 없다)"
     )

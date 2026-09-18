@@ -219,7 +219,13 @@ def check_facts(
             continue  # 원문에서 확인 안 되는 인용 — 폐기(자동으로 유효 처리 안 함)
 
         label = PROBLEM_TYPE_LABELS[finding.problem_type]
-        unit["item"]["context_flag"] = f"{label} — {finding.reason}"
+        # 2026-09-17: " — "로 이으면 이 문자열을 다시 감싸는
+        # list_builder.CONTEXT_FLAG_SUFFIX_TEMPLATE(" (원문 확인 필요 — {flag})")와
+        # 대시가 겹쳐 "내용 — 이유 (원문 확인 필요 — 라벨 — 이유)"처럼
+        # 한 문장에 대시가 세 번 나와 뭉쳐 보였습니다(실측: 무신사
+        # 회의록의 결정사항 문장). 콜론으로 바꿔 바깥쪽 대시 하나만
+        # 남게 합니다.
+        unit["item"]["context_flag"] = f"{label}: {finding.reason}"
         flagged += 1
 
     return flagged
