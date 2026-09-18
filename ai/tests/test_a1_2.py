@@ -368,6 +368,44 @@ def test_결정사항이_없으면_비어있음():
     assert s.items == []
 
 
+def test_context_flag가_있는_결정은_본문에서_빠지고_PM_확인사항으로만_남는다():
+    """
+    2026-09-18: 7번은 6번보다 엄격하게 검증한다("최종 결정사항 엄격 검증"
+    요청서 참고). fact_check가 과도한 확정 서술로 표시(context_flag)한
+    항목은 제안·논의 수준일 가능성이 높으므로, 6번처럼 본문에 표시만
+    붙이는 게 아니라 본문에서 완전히 빼고 PM 확인 사항으로만 보여준다.
+    """
+    s = build_decisions(
+        _structured(
+            decisions=[
+                {
+                    "category": "scope",
+                    "content": "리셀은 크림을 우선 소스로 수집한다",
+                    "rationale": None,
+                    "evidence": {"quote": "일단 크림 먼저 보죠"},
+                    "context_flag": "근거보다 과도하게 확정적으로 서술 — 제안 수준으로만 논의됨",
+                },
+                {
+                    "category": "tech",
+                    "content": "Next.js는 채택하지 않는다",
+                    "rationale": "SEO 요구 없음",
+                    "evidence": {"quote": "Next.js는 채택하지 않는다"},
+                },
+            ]
+        )
+    )
+
+    body_html, _, review_html = s.content_html.partition("PM 확인 사항")
+    assert "리셀은 크림을 우선 소스로 수집한다" not in body_html
+    assert "리셀은 크림을 우선 소스로 수집한다" in review_html
+    assert "Next.js는 채택하지 않는다" in body_html
+    assert "제안 수준으로만 논의됨" in review_html
+    assert "제안 수준으로만 논의됨" in s.needs_input
+
+    # items(node③이 파싱하는 태그 형식)는 그대로 둔다 — 두 항목 다 남는다.
+    assert any("리셀은 크림을 우선 소스로 수집한다" in item for item in s.items)
+
+
 def test_unverified_항목은_지워지지_않고_표시만_붙는다():
     """
     2026-09-16: unverified라고 항목을 지우면, 내용은 맞게 뽑혔는데

@@ -1218,7 +1218,15 @@ def build_decisions(structured: dict) -> PlanSection:
         # 본문에 붙이지 않고 섹션 하단 PM 확인 사항으로 모읍니다.
         plain_text = f"{d['content']}{rationale_suffix}"
         review_notes.extend(_review_notes_for(plain_text, d))
-        by_category.setdefault(category, []).append(plain_text)
+
+        # 2026-09-18: 7번은 6번보다 엄격하게 검증합니다("최종 결정사항 엄격
+        # 검증" 요청서 참고) — fact_check가 과도한 확정 서술로 표시한
+        # (context_flag가 있는) 항목은 제안·논의 수준일 가능성이 높으므로
+        # 확정된 결정처럼 본문에 남기지 않고 PM 확인 사항으로만 보여줍니다.
+        # 근거 인용 자체가 안 맞는 것(_mark_if_unverified)과는 다른 문제라
+        # 그건 6번과 동일하게 본문에 남깁니다 — context_flag만 이 기준입니다.
+        if not d.get("context_flag"):
+            by_category.setdefault(category, []).append(plain_text)
 
     parts = [
         f"<p><strong>{subtitle.get(category, category)}</strong></p>" + _ul(lines)

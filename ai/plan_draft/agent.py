@@ -113,18 +113,28 @@ def _build_users_section(gen, structured: dict, spec: dict) -> PlanSection:
     )
 
 
-def _mark_unverified_features(feats: list, structured: dict) -> None:
+def _mark_unverified_features(feats: list, structured: dict) -> tuple[list[str], list[str]]:
     """
-    주요 기능의 근거 상태를 검증하고 PM 확인 질문으로 모읍니다.
+    주요 기능의 근거 상태를 검증합니다.
 
     검토 문구를 description에 붙이면 본문을 읽기 어렵게 만드므로 설명은
-    그대로 유지합니다. 모델이 context_flag를 바탕으로 구체적인 질문을
-    작성하고, 코드 검증에서 누락이 발견된 경우에만 보수적인 질문을 더합니다.
+    그대로 유지합니다. 모델이 context_flag를 바탕으로 구체적인 질문을 쓴
+    feature.review_questions는 그대로 둡니다.
+
+    2026-09-18: 코드가 붙이는 보수적인 문구(근거 미검증·과도한 확정)는
+    더 이상 기능마다 하나씩 feature.review_questions에 넣지 않습니다.
+    기능이 여러 개면 거의 같은 문장이 이름만 바뀐 채 5~6번 반복되어
+    PM 확인 사항이 실제 결정 사항보다 boilerplate로 채워지는 문제가
+    실측(무신사 회의록 웹 테스트)으로 확인됐습니다. 대신 영향받은 기능
+    제목만 모아 반환하고, run()이 섹션 하단에 한 문장으로 묶어 보여줍니다.
     """
     sources_by_index = {
         item["index"]: item
         for item in list_builder.build_feature_citation_sources(structured)
     }
+
+    unverified_titles: list[str] = []
+    flagged_titles: list[str] = []
 
     for feature in feats:
         indices = feature.source_indices
@@ -135,23 +145,24 @@ def _mark_unverified_features(feats: list, structured: dict) -> None:
             for idx in indices
         )
         if not all_verified:
-            feature.review_questions.append(
-                f"{feature.title} 기능의 작성 근거를 회의록 원문과 대조해 확인해 주세요."
+            unverified_titles.append(feature.title)
+        else:
+            # 인용 자체는 유효하지만(citation 검증 통과) fact_check가 과도한
+            # 확정 서술이라고 표시한 경우만 별도로 묻습니다 — 근거 미검증
+            # 쪽이 더 근본적인 문제라 그쪽에만 묻고 중복으로 두 번 안 묻습니다.
+            cited_flags = dict.fromkeys(
+                sources_by_index[idx]["context_flag"]
+                for idx in indices
+                if idx in sources_by_index and sources_by_index[idx].get("context_flag")
             )
-
-        cited_flags = dict.fromkeys(
-            sources_by_index[idx]["context_flag"]
-            for idx in indices
-            if idx in sources_by_index and sources_by_index[idx].get("context_flag")
-        )
-        if cited_flags and not feature.review_questions:
-            feature.review_questions.append(
-                f"{feature.title}에 포함된 계획과 적용 기준이 최종 확정됐는지 확인이 필요합니다."
-            )
+            if cited_flags:
+                flagged_titles.append(feature.title)
 
         feature.review_questions = list(dict.fromkeys(
             question.strip() for question in feature.review_questions if question.strip()
         ))
+
+    return unverified_titles, flagged_titles
 
 
 def _call(system: str, messages: list[dict], response_model, context: str = ""):
@@ -316,7 +327,7 @@ def run(
         # result.features를 그대로 씁니다(schemas.py PlanSections.features).
         if spec["key"] == "features":
             feats = list(result.features)
-            _mark_unverified_features(feats, structured)
+            unverified_titles, flagged_titles = _mark_unverified_features(feats, structured)
             # 무료 진단(LLM 재호출 없음): 검증됐지만 어떤 기능의
             # source_indices에도 인용되지 않은 기능 요구사항·결정이 있으면
             # PM에게 확인을 요청합니다(list_builder.ORPHANED_ITEMS_NOTE_TEMPLATE
@@ -332,6 +343,20 @@ def run(
             orphaned = list_builder.find_orphaned_feature_sources(feats, structured)
             needs_input_note = list_builder.orphaned_items_note(orphaned)
             section_review_questions = [needs_input_note] if needs_input_note else []
+            # 2026-09-18: 기능마다 거의 같은 문구가 반복되지 않도록, 근거
+            # 미검증·과도한 확정 두 유형을 기능별로 나누지 않고 섹션당
+            # 한 문장으로 묶습니다(이름만 나열) — _mark_unverified_features
+            # 주석 참고.
+            if unverified_titles:
+                section_review_questions.append(
+                    "다음 기능은 인용 근거가 회의록 원문과 정확히 일치하지 않아 "
+                    "확인이 필요합니다: " + ", ".join(dict.fromkeys(unverified_titles))
+                )
+            if flagged_titles:
+                section_review_questions.append(
+                    "다음 기능에 포함된 계획과 적용 기준이 최종 확정됐는지 "
+                    "확인이 필요합니다: " + ", ".join(dict.fromkeys(flagged_titles))
+                )
             content = render_features(feats, section_review_questions)
             all_review_questions = [
                 question

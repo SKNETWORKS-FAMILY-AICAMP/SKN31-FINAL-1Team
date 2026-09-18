@@ -1,11 +1,12 @@
 """원문 기반 1~4번 작성 계약과 결정적 렌더링."""
 
 import json
+import re
 from html import escape
 from pathlib import Path
 
 import yaml
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from meeting_analysis.validators.evidence import is_quote_verified
 from shared.schemas_base import Evidence
@@ -13,9 +14,34 @@ from .prompt_loader import load_plan_template
 from .schemas import Feature, PlanSection, VerifiedEvidence
 
 
+# 2026-09-18: overview·problem 문단에 저장 구조·수집 주기·모델명 같은 구현
+# 세부사항이 새어 들어오는 문제가 실측(무신사 회의록 웹 테스트)으로 확인됐다.
+# context_generation.yaml의 프롬프트 지시만으로는 매번 지켜지지 않아서,
+# instructor의 reask 메커니즘(validator가 ValueError를 던지면 그 메시지를
+# LLM에 그대로 돌려주고 다시 쓰게 함 — meeting_analysis.eligibility의
+# model_validator와 같은 원리)으로 강제한다. 패턴은 "GPU"처럼 흔한 단어보다
+# 런팟·A100·클래스 개수처럼 이 문맥에서 오탐 가능성이 낮은 신호 위주로 고른다.
+IMPLEMENTATION_DETAIL_PATTERN = re.compile(
+    r"RDS|오브젝트 스토리지|DB에 적재|런팟|RunPod|A100|Whisper|CLIP|주클로|"
+    r"\d+시간마다|\d+개\s*클래스|\d+개\s*채널|\d+,?\d*개\s*(?:어휘|사전)"
+)
+
+
 class CitedParagraph(BaseModel):
     text: str
     evidence: list[Evidence] = Field(default_factory=list)
+
+    @field_validator("text")
+    @classmethod
+    def no_implementation_detail(cls, value: str) -> str:
+        match = IMPLEMENTATION_DETAIL_PATTERN.search(value)
+        if match:
+            raise ValueError(
+                f"이 문단에 저장 구조·수집 주기·모델명 같은 구현 세부사항"
+                f"('{match.group()}')이 포함되어 있습니다. 목적과 범위만 남기고, "
+                "그 내용은 features(5번)·tech_scope(6번)에서 다루도록 빼고 다시 쓰세요."
+            )
+        return value
 
 
 class OverviewDraft(BaseModel):

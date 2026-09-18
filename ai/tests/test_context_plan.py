@@ -131,3 +131,20 @@ def test_goal_direction_text_is_preserved_verbatim():
     result = context_writer.render_section(_draft("goals"), SOURCE, _spec("goals"))
     assert "<strong>추진 목표:</strong> 처리 과정을 자동화한다." in result.content_html
     assert "누락이 아닌지" not in result.content_html
+
+
+def test_overview_paragraph_rejects_implementation_detail():
+    """
+    1~2번 문단에 저장 구조·수집 주기 같은 구현 세부사항이 섞이면 즉시 거부한다.
+    instructor가 이 ValidationError를 LLM에 재요청(reask) 메시지로 그대로
+    돌려주므로, 메시지 자체가 "무엇이 왜 틀렸는지"를 설명해야 한다.
+    """
+    with pytest.raises(ValidationError, match="오브젝트 스토리지"):
+        context_writer.CitedParagraph(
+            text="원본은 오브젝트 스토리지에 보관하고 서비스 데이터만 DB에 적재한다.",
+        )
+
+
+def test_overview_paragraph_allows_clean_text():
+    para = context_writer.CitedParagraph(text="상품과 콘텐츠 데이터를 연결해 트렌드를 분석한다.")
+    assert "트렌드" in para.text

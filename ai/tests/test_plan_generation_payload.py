@@ -346,15 +346,13 @@ def test_기능_출처의_context_flag가_PM_확인_질문으로_이어진다():
         source_indices=[0],
     )
 
-    plan_agent._mark_unverified_features([feature], structured)
+    unverified_titles, flagged_titles = plan_agent._mark_unverified_features([feature], structured)
 
     assert list_builder.UNVERIFIED_ITEM_SUFFIX not in feature.description
     assert feature.description == "모바일 알림을 제공한다."
     assert "근거보다 과도하게 확정적으로 서술" not in feature.description
-    assert any(
-        "모바일 알림" in q and "확인이 필요" in q
-        for q in feature.review_questions
-    )
+    assert unverified_titles == []
+    assert flagged_titles == ["모바일 알림"]
 
 
 def test_feature_evidence_matches_verified_feature_sources():
@@ -596,10 +594,12 @@ def test_미검증_번호를_인용하면_표시가_붙는다():
         group="mvp", title="기능 B", description="설명", source_indices=[1],
     )]
 
-    plan_agent._mark_unverified_features(feature_objs, _feature_structured())
+    unverified_titles, flagged_titles = plan_agent._mark_unverified_features(feature_objs, _feature_structured())
 
     assert feature_objs[0].description == "설명"
-    assert "기능 B 기능의 작성 근거를 회의록 원문과 대조해 확인해 주세요." in feature_objs[0].review_questions
+    assert feature_objs[0].review_questions == []
+    assert unverified_titles == ["기능 B"]
+    assert flagged_titles == []
 
 
 def test_인용_번호가_없으면_표시가_붙는다():
@@ -608,10 +608,10 @@ def test_인용_번호가_없으면_표시가_붙는다():
         group="mvp", title="기능 C", description="설명", source_indices=[],
     )]
 
-    plan_agent._mark_unverified_features(feature_objs, _feature_structured())
+    unverified_titles, flagged_titles = plan_agent._mark_unverified_features(feature_objs, _feature_structured())
 
     assert feature_objs[0].description == "설명"
-    assert "기능 C 기능의 작성 근거를 회의록 원문과 대조해 확인해 주세요." in feature_objs[0].review_questions
+    assert unverified_titles == ["기능 C"]
 
 
 def test_범위를_벗어난_번호는_표시가_붙는다():
@@ -620,10 +620,10 @@ def test_범위를_벗어난_번호는_표시가_붙는다():
         group="mvp", title="기능 D", description="설명", source_indices=[99],
     )]
 
-    plan_agent._mark_unverified_features(feature_objs, _feature_structured())
+    unverified_titles, flagged_titles = plan_agent._mark_unverified_features(feature_objs, _feature_structured())
 
     assert feature_objs[0].description == "설명"
-    assert "기능 D 기능의 작성 근거를 회의록 원문과 대조해 확인해 주세요." in feature_objs[0].review_questions
+    assert unverified_titles == ["기능 D"]
 
 
 def test_검증된_번호와_미검증_번호를_섞어_인용하면_표시가_붙는다():
@@ -632,10 +632,40 @@ def test_검증된_번호와_미검증_번호를_섞어_인용하면_표시가_�
         group="mvp", title="기능 E", description="설명", source_indices=[0, 1],
     )]
 
-    plan_agent._mark_unverified_features(feature_objs, _feature_structured())
+    unverified_titles, flagged_titles = plan_agent._mark_unverified_features(feature_objs, _feature_structured())
 
     assert feature_objs[0].description == "설명"
-    assert "기능 E 기능의 작성 근거를 회의록 원문과 대조해 확인해 주세요." in feature_objs[0].review_questions
+    assert unverified_titles == ["기능 E"]
+
+
+def test_미검증_기능이_여러개면_섹션_하단에_한_문장으로_묶인다(monkeypatch):
+    """
+    2026-09-18: 기능마다 "OOO 기능의 작성 근거를 확인해 주세요"가 하나씩
+    반복되던 걸 섹션 하단 한 문장으로 합쳤다. 실제 회의록 웹 테스트에서
+    이 boilerplate가 5~6번 반복돼 PM 확인 사항이 부풀어 보이던 문제였다.
+    """
+    monkeypatch.setattr(
+        plan_agent,
+        "_call",
+        lambda system, messages, response_model, context="": PlanSections(
+            sections=[
+                {"key": "overview", "content_html": "<p>개요</p>", "evidence": []},
+                {"key": "problem", "content_html": "<p>목표</p>", "evidence": []},
+                {"key": "users", "content_html": "<p>사용자</p>", "evidence": []},
+            ],
+            goals=[],
+            features=[
+                Feature(group="mvp", title="기능 X", description="설명 X", source_indices=[]),
+                Feature(group="mvp", title="기능 Y", description="설명 Y", source_indices=[]),
+            ],
+        ),
+    )
+
+    plan = plan_agent.run(_minimal_structured(), proposal_id="p1")
+    features_section = next(s for s in plan.sections if s.key == "features")
+
+    assert features_section.content_html.count("인용 근거가 회의록 원문과") == 1
+    assert "기능 X, 기능 Y" in features_section.content_html
 
 
 # ─────────────────────────────────────────────────────────────
