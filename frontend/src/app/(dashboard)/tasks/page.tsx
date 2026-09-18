@@ -334,14 +334,13 @@ export default function TasksPage() {
                             {task.description && <div className="text-xs text-muted-foreground line-clamp-1 max-w-md">{task.description}</div>}
                           </td>
                           <td className="px-6 py-4" onClick={e => e.stopPropagation()}>
-                            {/* 2026-09-16 (재수정): 배분 승인/반려는 "PM이 검토하는 것"이 아니라
-                                "PM이 배정한 업무를 담당자 본인이 받아들일지 정하는 것"이다 —
-                                기획서/요구사항정의서 승인(PM이 문서를 검토)과는 성격이 다르다는
-                                지적으로, PM이 아니라 담당자 본인에게 승인/반려 버튼을 준다.
-                                CANCELLED(반려/취소)는 반려 사유 입력으로만 바뀌어야 하므로
-                                드롭다운으로는 못 바꾸게 막는다. */}
+                            {/* 2026-09-18 (사용자 재확인): PENDING_APPROVAL(배분승인대기)은 PM
+                                개별 승인 전이라 여기서도 발견/승인이 가능해야 한다(팀 결정 —
+                                칸반/승인함만으론 발견성이 떨어진다는 지적). PM에게는 승인/반려
+                                버튼을, 일반유저에게는 대기 배지를 보여준다. CANCELLED(반려/취소)는
+                                반려 사유 입력으로만 바뀌어야 하므로 드롭다운으로는 못 바꾸게 막는다. */}
                             {task.status_code === "PENDING_APPROVAL" ? (
-                              String(task.assigned_user) === String(user?.id) ? (
+                              isPM ? (
                                 <div className="flex items-center gap-1.5">
                                   <button
                                     onClick={() => handleApprove(task.id)}
@@ -364,11 +363,14 @@ export default function TasksPage() {
                                 </span>
                               )
                             ) : task.status_code === "CANCELLED" ? (
-                              // 2026-09-16 (다시 수정): 승인/반려가 담당자 권한이 되면서, 담당자가
-                              // 반려하면 그 반려 응답을 받는 쪽은 PM이다 — "재승인 요청"은 반려를
-                              // 받은 PM이 다시 검토 대상으로 되돌리는(재배정 또는 재고 요청) 액션이라
-                              // PM 전용으로 되돌린다. 담당자 본인은 이미 반려로 의사표시를 했으니 배지만 본다.
-                              isPM ? (
+                              // 2026-09-16: CANCELLED로 한 번 반려되면 되돌릴 화면 경로가 아예
+                              // 없었다(사용자 리포트 — 담당자 계정으로 보니 "취소됨"만 뜨고 재승인
+                              // 받을 방법이 없음). 반려도 PM 권한이니(TaskStatusUpdateView 참고),
+                              // "재승인 요청"은 PM이 스스로에게 다시 봐달라고 요청하는 게 아니라
+                              // 반려당한 담당자 본인이 "다시 검토해주세요"라고 요청하는 액션이라는
+                              // 지적으로 담당자 본인 전용으로 뒀다 — PM은 배지만 본다(반려는
+                              // 여전히 PM 권한 그대로).
+                              String(task.assigned_user) === String(user?.id) ? (
                                 <div className="flex items-center gap-1.5">
                                   <span className={cn("inline-block text-xs font-bold px-2.5 py-1.5 rounded-lg", statusInfo.bg, statusInfo.color)}>
                                     {statusLabel}
@@ -376,7 +378,7 @@ export default function TasksPage() {
                                   <button
                                     onClick={() => handleReopen(task.id)}
                                     disabled={processingId === task.id}
-                                    title="배분승인대기 상태로 되돌려 담당자에게 다시 수락/반려를 요청합니다"
+                                    title="배분승인대기 상태로 되돌려 PM에게 다시 검토를 요청합니다"
                                     className="inline-flex items-center gap-1 px-2 py-1.5 rounded-lg text-xs font-bold bg-sky-500/10 text-sky-500 hover:bg-sky-500/20 transition-colors disabled:opacity-50"
                                   >
                                     <RotateCcw className="w-3.5 h-3.5" /> 재승인 요청

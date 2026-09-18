@@ -206,10 +206,10 @@ export function TaskDetailModal({
           {task.status_code === "CANCELLED" && (
             <div className="p-3 rounded-lg bg-red-500/10 text-red-400 text-sm space-y-2">
               {task.reject_reason && <div>반려 사유: {task.reject_reason}</div>}
-              {/* 2026-09-16 (다시 수정): 승인/반려가 담당자 권한이 되면서, 담당자가 반려하면
-                  그 반려 응답을 받는 쪽은 PM이다 — "재승인 요청"은 PM이 다시 검토 대상으로
-                  되돌리는 액션이라 PM 전용으로 되돌린다. 담당자 본인은 배지만 본다. */}
-              {isPM && (
+              {/* 2026-09-18 (사용자 재확인): 승인/반려가 다시 PM 권한으로 돌아왔으니, PM이
+                  반려하면 그 반려 응답을 받는 쪽은 담당자다 — "재승인 요청"은 반려당한
+                  담당자 본인이 "다시 검토해주세요"라고 요청하는 액션으로 되돌린다. */}
+              {String(task.assigned_user) === String(user?.id) && (
                 <button
                   onClick={handleReopen}
                   disabled={isReopening}

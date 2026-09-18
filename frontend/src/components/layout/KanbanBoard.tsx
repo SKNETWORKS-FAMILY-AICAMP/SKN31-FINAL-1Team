@@ -93,9 +93,7 @@ function SortableTask({ task, members, onAssign, onClick, isPM, onApprove, onRej
     transition,
   };
 
-  // 2026-09-16 (재수정): 배분 승인/반려는 PM이 검토하는 게 아니라, PM이 배정한 업무를
-  // 담당자 본인이 받아들일지 정하는 것이다 — PM이 아니라 담당자 본인에게 버튼을 보여준다.
-  const showApprovalActions = String(task.assigned_user) === String(currentUserId) && task.status_code === "PENDING_APPROVAL";
+  const showApprovalActions = isPM && task.status_code === "PENDING_APPROVAL";
   const overdue = isTaskOverdue({ wbsEnd: task.end_date, status: task.status_code });
 
   return (
