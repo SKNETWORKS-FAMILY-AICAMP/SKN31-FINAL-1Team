@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useMemo, useRef, Fragment, type Dispatch, type SetStateAction, type ReactNode } from "react";
+import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import { useAuth } from "@/lib/auth";
 import { apiFetch } from "@/lib/api/client";
 import {
@@ -437,9 +438,20 @@ export default function DocumentsPage() {
   const [specGenStage, setSpecGenStage] = useState("");
   const [confirmingTasks, setConfirmingTasks] = useState(false);
   const [reassigningTaskId, setReassigningTaskId] = useState<number | null>(null);
+  const [approvingAllTasks, setApprovingAllTasks] = useState(false);
   const [members, setMembers] = useState<Member[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selectedNoteId, setSelectedNoteId] = useState<number | null>(null);
+  // 2026-09-17: 문서를 골라 보고 있다가 새로고침(F5)하면 선택이 풀려서 목록 맨 위
+  // 문서로 돌아가 버린다는 요청 — 선택 상태를 URL 쿼리(?note=)에 반영해서, 새로고침
+  // 해도 같은 문서를 그대로 보여준다. 최초 렌더에서 쿼리값으로 시작해야 목록이 아직
+  // 안 불러와진 순간에도 깜빡임 없이 바로 그 문서를 가리킨다.
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const [selectedNoteId, setSelectedNoteId] = useState<number | null>(() => {
+    const q = searchParams.get("note");
+    return q ? Number(q) : null;
+  });
   const [activeTab, setActiveTab] = useState<PipelineTab>("proposal");
   const [newDocModalOpen, setNewDocModalOpen] = useState(false);
   // 좌측 전체 사이드바와 별개로, 이 화면 안의 문서 목록 패널도 접을 수 있게 해달라는
@@ -517,6 +529,15 @@ export default function DocumentsPage() {
   useEffect(() => {
     if (!selectedNoteId && sortedNotes.length > 0) setSelectedNoteId(sortedNotes[0].id);
   }, [sortedNotes, selectedNoteId]);
+  // URL의 ?note= 값을 선택 상태와 계속 맞춘다 — router.replace라 히스토리를 새로
+  // 쌓지 않고(뒤로가기가 문서 하나하나를 안 거침), 새로고침 시 이 값을 그대로
+  // 읽어 위 useState 초기값으로 복원된다.
+  useEffect(() => {
+    if (!selectedNoteId) return;
+    const current = searchParams.get("note");
+    if (current === String(selectedNoteId)) return;
+    router.replace(`${pathname}?note=${selectedNoteId}`, { scroll: false });
+  }, [selectedNoteId, pathname, router, searchParams]);
   // taskDrafts/taskDraftsReqDefId는 selectedNote와 무관한 전역 state라, 문서를 바꿔도
   // 저절로 안 지워진다 — A 문서에서 "업무 배분 실행"으로 draft를 만든 뒤 확정하지 않고
   // B 문서로 넘어가면, B의 배분 화면에 A의 draft가 그대로 보이고 그 상태로 "배분 확정"을
@@ -1277,6 +1298,26 @@ export default function DocumentsPage() {
     }
   };
 
+  // 2026-09-18 (사용자 요청): 배분 승인/반려를 담당자 본인 전용으로 좁혔던 정책(9/16)을
+  // 되돌려 PM도 다시 승인할 수 있게 했다(백엔드 TaskStatusUpdateView 권한 체크 참고) —
+  // 이 문서생성 화면에서 PENDING_APPROVAL 건 전체를 한 번에 TASK_APPROVED로 승인한다.
+  const handleApproveAllTasks = async (taskIds: number[]) => {
+    if (taskIds.length === 0) return;
+    setApprovingAllTasks(true);
+    try {
+      await Promise.all(taskIds.map(id => apiFetch(`/api/tasks/assignments/${id}/status/`, {
+        method: "PATCH",
+        body: JSON.stringify({ status_code: "TASK_APPROVED" }),
+      })));
+      setToastMessage(`업무 배분이 확정되었습니다 — ${taskIds.length}건`);
+      await fetchTaskAssignments();
+    } catch (err: any) {
+      setErrorToast(err.message || "업무 배분 확정에 실패했습니다.");
+    } finally {
+      setApprovingAllTasks(false);
+    }
+  };
+
   if (loading) {
     return <div className="flex items-center justify-center h-[60vh]"><Loader2 className="w-8 h-8 animate-spin text-primary" /></div>;
   }
@@ -1560,6 +1601,7 @@ export default function DocumentsPage() {
               onRejectReqDef={(spec, reqDefId) => setRejectTarget({ kind: "reqdef", specId: spec.id, reqDefId })}
               taskAssignments={taskAssignments}
               taskDrafts={taskDrafts}
+              taskDraftsReqDefId={taskDraftsReqDefId}
               setTaskDrafts={setTaskDrafts}
               scheduleSummary={scheduleSummary}
               packageSplits={packageSplits}
@@ -1574,6 +1616,8 @@ export default function DocumentsPage() {
               members={members}
               reassigningTaskId={reassigningTaskId}
               onReassignTask={(taskId, assigneeId) => handleReassignTask(selectedNote, taskId, assigneeId)}
+              approvingAllTasks={approvingAllTasks}
+              onApproveAllTasks={handleApproveAllTasks}
             />
           )}
         </div>
@@ -1904,8 +1948,8 @@ function NoteDetail({
   onGenerateSpec, onViewSpecReport, specGenStartedAt, specGenStage, onSaveNoteContent, onSaveSpec, onSavePeriod, onSubmitReview, onApprove, onReject,
   onCreateReqDef, onExtractItems, onViewReqReport, reqExtractStage, reqExtractStartedAt, onAddItem, onUpdateItem, onDeleteItem, onReqDefStatusChange,
   onGenerateTasks, taskAssignments, onRejectReqDef,
-  taskDrafts, setTaskDrafts, scheduleSummary, packageSplits, planReview, planBriefing, generatingTasks, generatingStage, generatingStartedAt, confirmingTasks, onConfirmTasks, onCancelTaskDrafts,
-  members, reassigningTaskId, onReassignTask,
+  taskDrafts, taskDraftsReqDefId, setTaskDrafts, scheduleSummary, packageSplits, planReview, planBriefing, generatingTasks, generatingStage, generatingStartedAt, confirmingTasks, onConfirmTasks, onCancelTaskDrafts,
+  members, reassigningTaskId, onReassignTask, approvingAllTasks, onApproveAllTasks,
 }: {
   note: NoteDto; spec: SpecDto | null; reqDef: ReqDefDto | null; activeTab: PipelineTab; isPM: boolean; currentUserId: string | undefined; busy: string | null;
   onGenerateSpec: () => void;
@@ -1931,6 +1975,7 @@ function NoteDetail({
   onRejectReqDef: (spec: SpecDto, reqDefId: number) => void;
   taskAssignments: TaskAssignmentDto[];
   taskDrafts: TaskDraft[] | null;
+  taskDraftsReqDefId: number | null;
   setTaskDrafts: Dispatch<SetStateAction<TaskDraft[] | null>>;
   scheduleSummary: ScheduleSummaryDto | null; // 2026-09-10 (Phase 0)
   packageSplits: PackageSplitDto[]; // 2026-09-11 (Phase 3)
@@ -1945,6 +1990,8 @@ function NoteDetail({
   members: Member[];
   reassigningTaskId: number | null;
   onReassignTask: (taskId: number, assigneeId: number) => void;
+  approvingAllTasks: boolean;
+  onApproveAllTasks: (taskIds: number[]) => void;
 }) {
   const status = bareStatus(spec);
   const meta = STATUS_META[status];
@@ -2326,6 +2373,7 @@ function NoteDetail({
             generatingStartedAt={!!reqDef && busy === `reqdef-${reqDef.id}-tasks` ? generatingStartedAt : null}
             onRejectClick={() => onRejectReqDef(spec!, reqDef!.id)}
             tasksAlreadyAssigned={tasksForReqDef.length > 0}
+            hasUnconfirmedDraft={!!taskDrafts && taskDrafts.length > 0 && taskDraftsReqDefId === reqDef?.id}
           />
         )}
       </div>
@@ -2390,6 +2438,10 @@ function NoteDetail({
             reassigningTaskId={reassigningTaskId}
             onReassign={onReassignTask}
             scheduleTitle={note.title}
+            approvingAll={approvingAllTasks}
+            onApproveAll={() => onApproveAllTasks(
+              tasksForReqDef.filter(t => t.status_info?.code_id === "PENDING_APPROVAL").map(t => t.id)
+            )}
           />
         )}
       </div>
@@ -2578,6 +2630,12 @@ function TaskDraftReview({
         <GanttSection items={ganttItems} title={scheduleTitle} />
       </div>
       <div className="border border-border rounded-xl overflow-hidden overflow-x-auto">
+        {/* 아직 "배분 확정"을 누르지 않은 draft 상태임을 강조 — 확정되면 이 화면 자체가
+            TaskAssignmentList로 바뀌면서 같이 사라진다(사용자 요청). 표 헤더와 같은
+            회색 배경을 그대로 위로 늘려서 표의 일부처럼 보이게 했다. */}
+        <div className="px-4 py-2 text-xs font-bold text-center text-amber-600 dark:text-amber-400 bg-black/5 dark:bg-white/5 border-b border-border">
+          미리보기 (확정 전)
+        </div>
         <table className="w-full text-sm text-left">
           <thead className="text-xs text-muted-foreground uppercase bg-black/5 dark:bg-white/5">
             <tr>
@@ -2641,12 +2699,6 @@ function TaskDraftReview({
       </div>
       <div className="flex justify-end gap-3">
         <button
-          onClick={onCancel}
-          className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 text-sm font-bold transition-colors"
-        >
-          취소
-        </button>
-        <button
           onClick={onConfirm}
           disabled={confirming || !hasAnyAssignee}
           title={!hasAnyAssignee ? "최소 1건 이상 담당자를 지정해야 확정할 수 있습니다." : undefined}
@@ -2666,12 +2718,14 @@ function TaskDraftReview({
 // 이미 확정(TaskAssignment로 저장)된 목록 — 일반 사용자는 읽기 전용, PM은 담당자 드롭다운으로
 // 재배정할 수 있다(기존 PATCH /api/tasks/assignments/{id}/ 재사용).
 function TaskAssignmentList({
-  tasks, members, isPM, reassigningTaskId, onReassign, scheduleTitle,
+  tasks, members, isPM, reassigningTaskId, onReassign, scheduleTitle, approvingAll, onApproveAll,
 }: {
   tasks: TaskAssignmentDto[]; members: Member[]; isPM: boolean;
   reassigningTaskId: number | null;
   onReassign: (taskId: number, assigneeId: number) => void;
   scheduleTitle: string;
+  approvingAll: boolean;
+  onApproveAll: () => void;
 }) {
   const [expandedId, setExpandedId] = useState<number | null>(null);
   // 드롭박스를 바꾸는 즉시 저장되면 실수로 잘못 바꾸기 쉽다는 피드백 — 이 기능 전체가
@@ -2683,6 +2737,11 @@ function TaskAssignmentList({
     .filter(t => t.start_date && t.end_date)
     .map(t => ({ id: String(t.id), title: t.title, assigneeName: t.assigned_user_name, start: t.start_date!, end: t.end_date! }));
 
+  // 배분 확정 직후엔 전부 PENDING_APPROVAL("배분승인대기")로 시작해서, PM이 projects/[id]
+  // 칸반보드에서 개별 승인해야 TASK_APPROVED로 바뀐다(위 상태 배지 주석 참고). 하나라도
+  // 아직 승인 전이면 이 배치 전체가 "확정 전" 미리보기 단계임을 표시한다(사용자 요청).
+  const hasPendingApproval = tasks.some(t => t.status_info?.code_id === "PENDING_APPROVAL");
+
   return (
     <div className="space-y-4">
       <CollapsibleSection title="예상 필요 인원">
@@ -2692,6 +2751,11 @@ function TaskAssignmentList({
         <GanttSection items={ganttItems} title={scheduleTitle} />
       </div>
       <div className="border border-border rounded-xl overflow-hidden overflow-x-auto">
+        {hasPendingApproval && (
+          <div className="px-4 py-2 text-xs font-bold text-center text-amber-600 dark:text-amber-400 bg-black/5 dark:bg-white/5 border-b border-border">
+            미리보기 (확정 전)
+          </div>
+        )}
         <table className="w-full text-sm text-left">
           <thead className="text-xs text-muted-foreground uppercase bg-black/5 dark:bg-white/5">
             <tr>
@@ -2843,6 +2907,22 @@ function TaskAssignmentList({
           </tbody>
         </table>
       </div>
+      {/* 2026-09-18 (사용자 요청): 담당자 본인이 /approvals나 칸반보드에서 한 건씩 승인하지
+          않아도, 이 문서 화면에서 PM이 PENDING_APPROVAL 건 전체를 한 번에 확정할 수 있어야
+          한다 — 백엔드도 이제 PM 승인을 다시 허용한다. 전부 승인되면(hasPendingApproval=false)
+          이 버튼과 위 미리보기 배지가 함께 사라진다. */}
+      {isPM && hasPendingApproval && (
+        <div className="flex justify-end">
+          <button
+            onClick={onApproveAll}
+            disabled={approvingAll}
+            className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-bold hover:bg-primary/90 disabled:opacity-50"
+          >
+            {approvingAll ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
+            배분 확정
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -3259,7 +3339,7 @@ function GanttSection({ items, title }: { items: GanttItem[]; title: string }) {
 
 function RequirementSection({
   spec, reqDef, isPM, canGenerate, busy, onCreate, onExtract, onViewReport, reqExtractStage, reqExtractStartedAt, onAddItem, onUpdateItem, onDeleteItem, onStatusChange,
-  onGenerateTasks, generatingTasks, generatingStage, generatingStartedAt, onRejectClick, tasksAlreadyAssigned,
+  onGenerateTasks, generatingTasks, generatingStage, generatingStartedAt, onRejectClick, tasksAlreadyAssigned, hasUnconfirmedDraft,
 }: {
   spec: SpecDto; reqDef: ReqDefDto | null; isPM: boolean;
   // 기획서 탭과 동일한 규칙 — 이 문서(회의록)를 시작한 작성자 본인만 요구사항정의서를
@@ -3289,6 +3369,10 @@ function RequirementSection({
   // 탭으로 돌아왔을 때 버튼이 그대로 남아있으면 실수로 다시 눌러 기존 배정을 통째로
   // 덮어쓸 위험이 있다(사용자 요청 — 재배분이 필요하면 업무배분 탭에서 별도로 처리).
   tasksAlreadyAssigned: boolean;
+  // 아직 확정하지 않은 draft가 이 요구사항정의서용으로 이미 나와있는 상태 — 확정 전에
+  // 다시 누르면 검토 중인 draft가 새 결과로 덮어써질 수 있어 비활성화한다(확정 후
+  // 숨기는 tasksAlreadyAssigned와 별개 — 확정 전에도 재클릭을 막아야 한다는 사용자 요청).
+  hasUnconfirmedDraft: boolean;
 }) {
   // 하단에 고정된 "항목 직접 추가" 버튼 대신, 표의 행과 행 사이에 있는 + 버튼을 눌러 그
   // 자리에 바로 추가 폼이 펼쳐지도록 바꿨다(사용자 요청). null이면 어디에도 안 열려있고,
@@ -3432,7 +3516,8 @@ function RequirementSection({
               {generatingTasks && <TaskGenProgressBar stage={generatingStage} startedAt={generatingStartedAt} />}
               <button
                 onClick={onGenerateTasks}
-                disabled={generatingTasks}
+                disabled={generatingTasks || hasUnconfirmedDraft}
+                title={hasUnconfirmedDraft ? "이미 검토 중인 배분 초안이 있습니다. 업무배분 탭에서 확정하거나 확인해주세요." : undefined}
                 className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-primary text-primary-foreground text-xs font-bold hover:bg-primary/90 disabled:opacity-50 whitespace-nowrap"
               >
                 {generatingTasks ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Bot className="w-3.5 h-3.5" />}
