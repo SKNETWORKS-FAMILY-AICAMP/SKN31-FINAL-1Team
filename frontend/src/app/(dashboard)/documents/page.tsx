@@ -35,6 +35,8 @@ type SpecStatusCode = "PROPOSAL_DRAFT" | "PROPOSAL_PENDING_REVIEW" | "PROPOSAL_A
 
 type SpecDto = {
   id: number;
+  version: number;
+  parent_spec: number | null;
   meeting: number;
   title: string;
   overview: string | null;
@@ -54,6 +56,18 @@ type SpecDto = {
   review_comment: string | null;
   created_at: string;
   updated_at: string;
+};
+
+type SpecValidationReportDto = {
+  report_id: number;
+  spec: number;
+  scores: Record<"accuracy" | "completeness" | "consistency" | "traceability", number>;
+  overall_score: number;
+  summary: string;
+  strengths: string[];
+  critical_issues: string[];
+  section_reviews: { section_key: string; section_title: string; score: number; verdict: string; evidence: string[]; findings: string[]; recommendation: string }[];
+  applied_spec: number | null;
 };
 
 type ReqItemDto = {
@@ -88,6 +102,7 @@ type ReqDefDto = {
   project_name: string;
   title: string;
   version: string;
+  parent_definition: number | null;
   description?: string | null;
   status_code: string | null;
   status_info: { code_id: ReqDefStatusCode; code_name: string } | null;
@@ -98,6 +113,28 @@ type ReqDefDto = {
   created_at: string;
   updated_at: string;
 };
+
+type ReqValidationReportDto = {
+  report_id: number;
+  requirement_definition: number;
+  scores: Record<"accuracy" | "completeness" | "consistency" | "testability", number>;
+  overall_score: number;
+  summary: string;
+  strengths: string[];
+  critical_issues: string[];
+  item_reviews: { req_code: string; score: number; verdict: string; findings: string[]; recommendation: string }[];
+  applied_definition: number | null;
+};
+
+const specReportNeedsRevision = (report: SpecValidationReportDto) =>
+  report.critical_issues.length > 0 || report.section_reviews.some(section =>
+    section.verdict !== "pass" || section.findings.length > 0 || section.recommendation.trim().length > 0
+  );
+
+const reqReportNeedsRevision = (report: ReqValidationReportDto) =>
+  report.critical_issues.length > 0 || report.item_reviews.some(item =>
+    item.verdict !== "pass" || item.findings.length > 0 || item.recommendation.trim().length > 0
+  );
 
 type NoteDto = {
   id: number;
@@ -167,6 +204,7 @@ type TaskSuggestionDto = {
   suggested_end_date: string | null;
   feature_area: string | null; // 2026-09-11 (Phase 2): 같은 기능 묶음(WorkPackage) 라벨
   schedule_reason: string | null; // 2026-09-11 (Phase 4): 이 날짜에 놓인 이유(결정적)
+  parent_task_id: string | null; // 2026-09-17: Subtask일 때만 원본 Task의 task_id(예: "TASK-001")
 };
 
 // 2026-09-10 (Phase 0): 남는 프로젝트 기간을 업무 사이 갭으로 숨기지 않고 PM에게
@@ -209,6 +247,7 @@ type TaskDraft = {
   hold_explanation: string | null;
   feature_area: string | null; // 2026-09-11 (Phase 2)
   schedule_reason: string | null; // 2026-09-11 (Phase 4)
+  parent_task_id: string | null; // 2026-09-17
   start_date: string; // yyyy-mm-dd, <input type="date"> 용 — 없으면 빈 문자열
   end_date: string;
 };
@@ -216,13 +255,20 @@ type TaskDraft = {
 type Member = { id: number; name: string; jobRoleCode: string | null };
 
 // 업무 자체엔 "직무" 필드가 없어서, 담당자 계정의 job_role_code로 대신 집계한다.
-// 예상 인원 요약 박스에 쓸 카테고리만 라벨을 붙이고 나머지(풀스택/PM/QA/디자이너/미지정)는
-// "미분류"로 묶는다.
+// 2026-09-17: 원래 4개 직무만 라벨이 있고 나머지(풀스택/PM/QA/디자이너)는 전부
+// "미분류"로 뭉뚱그렸는데, 실제 데이터로 확인해보니 FULLSTACK만 해도 배정 인원의
+// 상당수를 차지해 "미분류"가 실질적으로 의미 없이 커지는 문제가 있었다(사용자
+// 리포트로 확인) — USER_JOB_ROLE 8개 전부에 라벨을 준다. 이제 "미분류"는 정말
+// job_role_code가 비어있거나(미등록) 알 수 없는 값일 때만 남는다.
 const JOB_ROLE_LABEL: Record<string, string> = {
   BACKEND: "백엔드",
   FRONTEND: "프론트",
   DATA_ENGINEER: "데이터",
   DEVOPS: "데브옵스",
+  QA_ENGINEER: "QA",
+  UIUX_DESIGNER: "디자인",
+  FULLSTACK: "풀스택",
+  PROJECT_MANAGER: "PM",
 };
 const roleLabelOf = (code: string | null) => (code && JOB_ROLE_LABEL[code]) || "미분류";
 
@@ -245,6 +291,7 @@ const suggestionToDraft = (s: TaskSuggestionDto): TaskDraft => ({
   hold_explanation: s.hold_explanation,
   feature_area: s.feature_area,
   schedule_reason: s.schedule_reason,
+  parent_task_id: s.parent_task_id,
   start_date: toDateInput(s.suggested_start_date),
   end_date: toDateInput(s.suggested_end_date),
 });
@@ -422,6 +469,8 @@ export default function DocumentsPage() {
   const [error, setError] = useState("");
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [errorToast, setErrorToast] = useState<string | null>(null);
+  const [validationReport, setValidationReport] = useState<SpecValidationReportDto | null>(null);
+  const [reqValidationReport, setReqValidationReport] = useState<ReqValidationReportDto | null>(null);
 
   const fetchAll = async (preferredProjectId?: number) => {
     setLoading(true);
@@ -498,6 +547,43 @@ export default function DocumentsPage() {
     setTaskDrafts(null);
     setTaskDraftsReqDefId(null);
   }, [selectedNoteId]);
+  // 2026-09-17: 위 리셋 직후 서버에 "아직 확정 안 된 BACKLOG 초안이 있는지" 물어봐서
+  // 있으면 그대로 복원한다 — 새로고침하거나 문서를 다시 열어도 미리보기가 안 날아가게
+  // 하기 위함(taskDrafts는 순수 React state라 원래는 새로고침하면 사라졌었다).
+  // taskAssignment 탭으로 직접 옮겨준다 — 옮기지 않으면 stageOf가 기본으로 고르는
+  // 탭(hasDraftFor 반영 전엔 reqSpec)에 머물러 있어, 탭 잠금은 풀렸어도(아래 stepper
+  // 참고) 사용자가 초안이 복원된 걸 못 보고 "사라졌다"고 오인하는 문제가 실제로
+  // 있었다. 실패해도 에러 토스트로 방해하지 않는다 — "업무 배분 실행"을 다시 누르면
+  // 되므로 조용히 무시.
+  useEffect(() => {
+    if (!isPM || !selectedNote) return;
+    const noteId = selectedNote.id;
+    const spec = selectedNote.spec_documents[0] ?? null;
+    if (!spec) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await apiFetch<{ has_draft: boolean; result?: GenerateTasksResult }>(
+          `/api/requirements/${spec.id}/task-draft/`
+        );
+        if (cancelled || selectedNoteId !== noteId) return;
+        if (res.has_draft && res.result) {
+          setTaskDrafts((res.result.suggestions ?? []).map(suggestionToDraft));
+          setTaskDraftsReqDefId(res.result.req_def_id ?? null);
+          setScheduleSummary(res.result.schedule_summary ?? null);
+          setPackageSplits(res.result.package_splits ?? []);
+          setPlanReview(res.result.plan_review ?? null);
+          setPlanBriefing(res.result.plan_briefing ?? null);
+          setActiveTab("taskAssignment");
+          setToastMessage("저장된 업무 배분 초안을 불러왔습니다. 검토 후 확정해주세요.");
+        }
+      } catch {
+        // 조용히 무시 — 위 주석 참고
+      }
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedNoteId]);
   // 업무배분 탭을 열었을 때 이미 배분된 업무가 있으면 보여준다(재배분 직후뿐 아니라
   // 문서를 다시 열었을 때도). 2026-09-11: 예전엔 selectedNote.project로 매번 "선택된
   // 노트의 프로젝트"만 좁혀서 가져왔는데, 문서 목록 카드마다 표시하는 미니 파이프라인도
@@ -519,6 +605,11 @@ export default function DocumentsPage() {
     const itemIds = new Set(reqDef.items.map(i => i.id));
     return taskAssignments.some(t => itemIds.has(t.req_item));
   };
+  // 2026-09-17: BACKLOG 초안(미확정)이 있으면 taskAssignment 탭에 "도달"은 가능해야
+  // 한다(완료는 아니지만) — stageOf에 넘겨서 새로고침 후에도 탭이 안 잠기게 한다.
+  // taskDrafts는 위 복원 effect가 채워주므로, 지금 보고 있는 reqDef와 맞는지만 확인한다.
+  const hasDraftFor = (reqDef: ReqDefDto | null) =>
+    !!reqDef && taskDraftsReqDefId === reqDef.id && !!taskDrafts && taskDrafts.length > 0;
 
   // 문서를 고르면(직접 클릭이든, 등록 직후 자동이든) 항상 "그 문서가 지금 있는 단계"를
   // 첫 화면으로 보여준다 — heyzzabi2와 동일한 동작.
@@ -526,7 +617,7 @@ export default function DocumentsPage() {
     setSelectedNoteId(note.id);
     const spec = note.spec_documents[0] ?? null;
     const reqDef = reqDefFor(spec);
-    setActiveTab(stageOf(spec, reqDef, hasConfirmedTasksFor(reqDef)));
+    setActiveTab(stageOf(spec, reqDef, hasConfirmedTasksFor(reqDef), hasDraftFor(reqDef)));
   };
   // 지금 보던 탭이 승인/확정으로 "방금" 완료 처리됐을 때만(=상태가 실제로 바뀐 순간)
   // 자동으로 다음 단계로 넘어간다. done이 항상 클릭 가능해진 뒤로(위 stepper 참고)
@@ -580,9 +671,9 @@ export default function DocumentsPage() {
 
       const poll = async (): Promise<void> => {
         if (specGenSeqRef.current !== seq) return;
-        let job: { status: string; stage?: string; message?: string };
+        let job: { status: string; stage?: string; message?: string; result?: { created_spec?: SpecDto } };
         try {
-          job = await apiFetch<{ status: string; stage?: string; message?: string }>(
+          job = await apiFetch<{ status: string; stage?: string; message?: string; result?: { created_spec?: SpecDto } }>(
             `/api/meetings/notes/analyze-jobs/${started.job_id}/`
           );
         } catch (err: any) {
@@ -606,7 +697,25 @@ export default function DocumentsPage() {
 
         // SUCCESS
         await refetchNote(note.id);
-        setToastMessage("기획서 생성이 완료되었습니다");
+        const createdSpec = job.result?.created_spec;
+        if (createdSpec) {
+          setSpecGenStage("회의록 대비 품질 검증 중…");
+          try {
+            const report = await apiFetch<SpecValidationReportDto>(`/api/meetings/specs/${createdSpec.id}/validate/`, { method: "POST" });
+            if (specReportNeedsRevision(report)) {
+              setSpecGenStage("보완사항 자동 적용 중…");
+              await apiFetch(`/api/meetings/spec-validation-reports/${report.report_id}/apply/`, { method: "POST" });
+              await refetchNote(note.id);
+              setToastMessage("기획서 검증 및 보완 버전 생성이 완료되었습니다");
+            } else {
+              setToastMessage("기획서 생성 및 품질 검증이 완료되었습니다");
+            }
+          } catch (validationError: any) {
+            setErrorToast(validationError.message || "기획서는 생성됐지만 품질 검증에 실패했습니다.");
+          }
+        } else {
+          setToastMessage("기획서 생성이 완료되었습니다");
+        }
         stop();
       };
       await poll();
@@ -657,6 +766,18 @@ export default function DocumentsPage() {
       await refetchNote(note.id);
     } catch (err: any) {
       setErrorToast(err.message || "저장에 실패했습니다.");
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const handleViewSpecReport = async (spec: SpecDto) => {
+    setBusy(`${spec.meeting}-view-spec-report`);
+    try {
+      const report = await apiFetch<SpecValidationReportDto>(`/api/meetings/specs/${spec.id}/validate/`);
+      setValidationReport(report);
+    } catch (err: any) {
+      setErrorToast(err.message || "검증 보고서를 불러오지 못했습니다.");
     } finally {
       setBusy(null);
     }
@@ -800,7 +921,29 @@ export default function DocumentsPage() {
         // SUCCESS
         const allReqDefs = await apiFetch<ReqDefDto[]>("/api/requirements/");
         setReqDefs(allReqDefs);
-        setToastMessage("요구사항 정의서가 생성되었습니다");
+        const createdReqDef = allReqDefs.find(item => item.spec === spec.id);
+        if (createdReqDef) {
+          setReqExtractStage("기획서 대비 품질 검증 중…");
+          try {
+            const report = await apiFetch<ReqValidationReportDto>(
+              `/api/requirements/definitions/${createdReqDef.id}/validate/`, { method: "POST" }
+            );
+            if (reqReportNeedsRevision(report)) {
+              setReqExtractStage("보완사항 자동 적용 중…");
+              const applied = await apiFetch<{ requirement_definition: ReqDefDto }>(
+                `/api/requirements/validation-reports/${report.report_id}/apply/`, { method: "POST" }
+              );
+              setReqDefs(prev => [applied.requirement_definition, ...prev]);
+              setToastMessage("요구사항정의서 검증 및 보완 버전 생성이 완료되었습니다");
+            } else {
+              setToastMessage("요구사항 정의서 생성 및 품질 검증이 완료되었습니다");
+            }
+          } catch (validationError: any) {
+            setErrorToast(validationError.message || "요구사항정의서는 생성됐지만 품질 검증에 실패했습니다.");
+          }
+        } else {
+          setToastMessage("요구사항 정의서가 생성되었습니다");
+        }
         stop();
       };
       await poll();
@@ -808,6 +951,20 @@ export default function DocumentsPage() {
       if (reqExtractSeqRef.current !== seq) return;
       setErrorToast(err.message || "요구사항 정의서 생성에 실패했습니다.");
       stop();
+    }
+  };
+
+  const handleViewReqReport = async (reqDef: ReqDefDto) => {
+    setBusy(`reqdef-${reqDef.id}-view-report`);
+    try {
+      const report = await apiFetch<ReqValidationReportDto>(
+        `/api/requirements/definitions/${reqDef.id}/validate/`
+      );
+      setReqValidationReport(report);
+    } catch (err: any) {
+      setErrorToast(err.message || "검증 보고서를 불러오지 못했습니다.");
+    } finally {
+      setBusy(null);
     }
   };
 
@@ -1098,6 +1255,7 @@ export default function DocumentsPage() {
                 workload_fit: d.workload_fit,
                 experience_fit: d.experience_fit,
                 schedule_reason: d.schedule_reason, // 2026-09-11 (Phase 4)
+                parent_task_id: d.parent_task_id, // 2026-09-17
                 start_date: d.start_date || null,
                 end_date: d.end_date || null,
               })),
@@ -1227,7 +1385,10 @@ export default function DocumentsPage() {
       <div className="flex items-center print:hidden">
         {(() => {
           const hasConfirmedTasks = hasConfirmedTasksFor(activeReqDef);
-          const currentStage = stageOf(activeSpec, activeReqDef, hasConfirmedTasks);
+          // 2026-09-17: 미확정 BACKLOG 초안만 있어도 taskAssignment 탭은 잠기면 안 된다
+          // (locked 판정이 currentStageIndex 기준이라, stageOf가 hasDraft를 몰라 "reqSpec"에
+          // 머물면 탭 자체가 잠겨 복원된 초안을 볼 방법이 없어짐 — 실제 재현된 버그).
+          const currentStage = stageOf(activeSpec, activeReqDef, hasConfirmedTasks, hasDraftFor(activeReqDef));
           const currentStageIndex = PIPELINE_STEPS.indexOf(currentStage);
           return PIPELINE_STEPS.map((step, i) => {
             const done = stepDone(activeSpec, step, activeReqDef, hasConfirmedTasks);
@@ -1420,6 +1581,7 @@ export default function DocumentsPage() {
               specGenStartedAt={specGenStartedAt}
               specGenStage={specGenStage}
               onGenerateSpec={() => handleGenerateSpec(selectedNote)}
+              onViewSpecReport={(spec) => handleViewSpecReport(spec)}
               onSaveNoteContent={(content) => handleSaveNoteContent(selectedNote, content)}
               onSaveSpec={(spec, doc) => handleSaveSpec(selectedNote, spec, doc)}
               onSavePeriod={(spec, period) => handleSavePeriod(selectedNote, spec, period)}
@@ -1428,6 +1590,7 @@ export default function DocumentsPage() {
               onReject={(spec) => setRejectTarget({ kind: "spec", specId: spec.id })}
               onCreateReqDef={(spec) => handleCreateReqDef(selectedNote, spec)}
               onExtractItems={handleExtractItems}
+              onViewReqReport={handleViewReqReport}
               reqExtractStage={reqExtractStage}
               reqExtractStartedAt={reqExtractStartedAt}
               onAddItem={handleAddItem}
@@ -1528,6 +1691,18 @@ export default function DocumentsPage() {
             </div>
           </div>
         </div>
+      )}
+      {validationReport && (
+        <SpecValidationModal
+          report={validationReport}
+          onClose={() => setValidationReport(null)}
+        />
+      )}
+      {reqValidationReport && (
+        <RequirementValidationModal
+          report={reqValidationReport}
+          onClose={() => setReqValidationReport(null)}
+        />
       )}
       <Toast message={toastMessage} onDismiss={() => setToastMessage(null)} />
       <Toast message={errorToast} variant="error" onDismiss={() => setErrorToast(null)} />
@@ -1770,14 +1945,15 @@ function ReqExtractProgressBar({ stage, startedAt }: { stage: string; startedAt:
 
 function NoteDetail({
   note, spec, reqDef, activeTab, isPM, currentUserId, busy,
-  onGenerateSpec, specGenStartedAt, specGenStage, onSaveNoteContent, onSaveSpec, onSavePeriod, onSubmitReview, onApprove, onReject,
-  onCreateReqDef, onExtractItems, reqExtractStage, reqExtractStartedAt, onAddItem, onUpdateItem, onDeleteItem, onReqDefStatusChange,
+  onGenerateSpec, onViewSpecReport, specGenStartedAt, specGenStage, onSaveNoteContent, onSaveSpec, onSavePeriod, onSubmitReview, onApprove, onReject,
+  onCreateReqDef, onExtractItems, onViewReqReport, reqExtractStage, reqExtractStartedAt, onAddItem, onUpdateItem, onDeleteItem, onReqDefStatusChange,
   onGenerateTasks, taskAssignments, onRejectReqDef,
   taskDrafts, taskDraftsReqDefId, setTaskDrafts, scheduleSummary, packageSplits, planReview, planBriefing, generatingTasks, generatingStage, generatingStartedAt, confirmingTasks, onConfirmTasks, onCancelTaskDrafts,
   members, reassigningTaskId, onReassignTask, approvingAllTasks, onApproveAllTasks,
 }: {
   note: NoteDto; spec: SpecDto | null; reqDef: ReqDefDto | null; activeTab: PipelineTab; isPM: boolean; currentUserId: string | undefined; busy: string | null;
   onGenerateSpec: () => void;
+  onViewSpecReport: (spec: SpecDto) => void;
   specGenStartedAt: number | null;
   specGenStage: string;
   onSaveNoteContent: (content: string) => void;
@@ -1788,6 +1964,7 @@ function NoteDetail({
   onReject: (spec: SpecDto) => void;
   onCreateReqDef: (spec: SpecDto) => void;
   onExtractItems: (specId: number, reqDefId: number) => void;
+  onViewReqReport: (reqDef: ReqDefDto) => void;
   reqExtractStage: string;
   reqExtractStartedAt: number | null;
   onAddItem: (reqDefId: number, item: { req_code: string; req_name: string; description: string; order: number; priority_code: string | null }) => void;
@@ -1833,6 +2010,12 @@ function NoteDetail({
     : tasksForReqDef.filter(t => String(t.assigned_user) === currentUserId);
 
   const busyKey = (action: string) => `${note.id}-${action}`;
+  // 기획서 생성 job은 끝났지만 자동 품질 검증 API를 기다리는 구간. 이때 이미
+  // 기획서 본문이 화면에 나타나므로 별도 표시가 없으면 작업이 끝난 것처럼 보인다.
+  const autoSpecValidating = busy === busyKey("generate") && (
+    specGenStage.includes("품질 검증") || specGenStage.includes("보완사항 자동 적용")
+  );
+  const viewingSpecReport = busy === busyKey("view-spec-report");
 
   const [rawDraft, setRawDraft] = useState(note.content ?? "");
   useEffect(() => { setRawDraft(note.content ?? ""); }, [note.id, note.content]);
@@ -2078,6 +2261,17 @@ function NoteDetail({
           </button>
         )}
 
+        {spec && (canGenerate || isPM) && (status === "DRAFT" || status === "REJECTED") && (
+          <button
+            onClick={() => onViewSpecReport(spec)}
+            disabled={busy !== null}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-cyan-500/30 bg-cyan-500/10 text-cyan-500 text-sm font-bold hover:bg-cyan-500/20 disabled:opacity-50"
+          >
+            {autoSpecValidating || viewingSpecReport ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
+            {autoSpecValidating ? (specGenStage.includes("보완사항") ? "보완사항 적용 중…" : "검증 보고서 생성 중…") : viewingSpecReport ? "보고서 불러오는 중…" : "검증보고서 확인"}
+          </button>
+        )}
+
         {/* "기획서 생성"/"검토요청"과 같은 기준(작성자 본인, PM은 예외)으로 맞춘다 —
             이 체크가 빠져있어서 다른 사람이 시작한 초안도 고칠 수 있는 상태였다. */}
         {spec && (status === "REJECTED" || status === "DRAFT") && (canGenerate || isPM) && !editMode && (
@@ -2166,6 +2360,7 @@ function NoteDetail({
             busy={busy}
             onCreate={() => onCreateReqDef(spec!)}
             onExtract={onExtractItems}
+            onViewReport={onViewReqReport}
             reqExtractStage={reqExtractStage}
             reqExtractStartedAt={reqExtractStartedAt}
             onAddItem={onAddItem}
@@ -2340,6 +2535,24 @@ function TaskDraftReview({
       end: d.end_date,
     }));
 
+  // 2026-09-17: 원래 정렬이 전혀 없어 백엔드가 담당자를 결정한 순서(우선순위·업무
+  // 패키지 크기, 날짜와 무관) 그대로 표에 나열됐다 — 그래서 같은 담당자의 업무도
+  // 화면에서 날짜순으로 안 읽혀 workload_fit(담당자별 날짜순 누적 부하 문구, 방금
+  // 고침)를 읽어도 여전히 뒤죽박죽으로 보이는 문제가 있었다(사용자 리포트). 담당자
+  // 이름으로 묶고 그 안에서 시작일순으로 정렬해, 같은 사람의 업무가 날짜 순서대로
+  // 이어져 보이게 한다 — 미배정은 맨 뒤로.
+  const sortedDrafts = useMemo(() => {
+    const nameOf = (d: TaskDraft) => members.find(m => m.id === d.assignee_id)?.name ?? "";
+    return [...drafts].sort((a, b) => {
+      if (a.assignee_id == null && b.assignee_id == null) return 0;
+      if (a.assignee_id == null) return 1;
+      if (b.assignee_id == null) return -1;
+      const nameCompare = nameOf(a).localeCompare(nameOf(b), "ko");
+      if (nameCompare !== 0) return nameCompare;
+      return (a.start_date || "").localeCompare(b.start_date || "");
+    });
+  }, [drafts, members]);
+
   // 전부 "미배정"인 채로 확정을 누르면 서버가 저장할 게 하나도 없어 created_count=0
   // 인데도 "확정되었습니다" 성공 토스트가 뜨는 버그가 있었다(사용자 신고: "배분 확정하고
   // DB에 안 들어가는 상황"). "미배정" 자체는 AI가 워크로드/스킬 불일치로 일부러 보류
@@ -2433,7 +2646,7 @@ function TaskDraftReview({
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
-            {drafts.map(d => (
+            {sortedDrafts.map(d => (
               <Fragment key={d.unit_id}>
                 <tr className="align-top">
                   <td className="px-4 py-3">
@@ -2717,6 +2930,74 @@ function TaskAssignmentList({
 // "예상 필요 인원" 박스 / 업무 일정(Gantt) 공통으로 쓰는 접었다 펼 수 있는 섹션 — 버튼이
 // 아니라 제목 자체를 클릭하게(사용자 요청) 만들고, 다른 화면의 펼침형 행(TaskTitleCell 등)과
 // 동일하게 ChevronDown이 접힌 상태에서 -90도 회전하는 방식으로 통일한다.
+function SpecValidationModal({ report, onClose }: {
+  report: SpecValidationReportDto; onClose: () => void;
+}) {
+  const scoreLabels = { accuracy: "정확성", completeness: "완전성", consistency: "일관성", traceability: "추적가능성" } as const;
+  return (
+    <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/65 backdrop-blur-sm p-4">
+      <div className="bg-background border border-border rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col">
+        <div className="flex items-center justify-between p-5 border-b border-border">
+          <div>
+            <h3 className="text-lg font-bold">회의록 대비 기획서 비교검토 보고서</h3>
+            <p className="text-xs text-muted-foreground mt-1">종합 점수 {report.overall_score}점 · 보고서 #{report.report_id}</p>
+          </div>
+          <button onClick={onClose} className="p-2 rounded-lg hover:bg-black/5 dark:hover:bg-white/5"><X className="w-5 h-5" /></button>
+        </div>
+        <div className="p-5 overflow-y-auto space-y-5">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            {(Object.keys(scoreLabels) as (keyof typeof scoreLabels)[]).map(key => (
+              <div key={key} className="rounded-xl border border-border p-3 bg-black/5 dark:bg-white/5">
+                <p className="text-xs text-muted-foreground">{scoreLabels[key]}</p>
+                <p className="text-2xl font-bold mt-1">{report.scores[key]}<span className="text-xs font-normal text-muted-foreground"> / 100</span></p>
+              </div>
+            ))}
+          </div>
+          <div className="rounded-xl border border-border p-4"><p className="font-semibold mb-1">총평</p><p className="text-sm text-muted-foreground whitespace-pre-wrap">{report.summary}</p></div>
+          {report.critical_issues.length > 0 && <div className="rounded-xl border border-red-500/20 bg-red-500/5 p-4"><p className="font-semibold text-red-400 mb-2">우선 보완사항</p><ul className="text-sm space-y-1 list-disc pl-5">{report.critical_issues.map((v, i) => <li key={i}>{v}</li>)}</ul></div>}
+          <div className="space-y-3">
+            {report.section_reviews.map(section => (
+              <div key={section.section_key} className="rounded-xl border border-border p-4">
+                <div className="flex items-center justify-between"><p className="font-semibold">{section.section_title}</p><span className="text-sm font-bold">{section.score}점</span></div>
+                {section.findings.length > 0 && <ul className="mt-2 text-sm text-muted-foreground list-disc pl-5 space-y-1">{section.findings.map((v, i) => <li key={i}>{v}</li>)}</ul>}
+                {section.recommendation && <p className="mt-3 text-sm"><span className="font-semibold text-cyan-500">보완 제안</span> {section.recommendation}</p>}
+                {section.evidence.length > 0 && <details className="mt-2 text-xs text-muted-foreground"><summary className="cursor-pointer">회의록 근거 보기</summary><ul className="list-disc pl-5 mt-1">{section.evidence.map((v, i) => <li key={i}>{v}</li>)}</ul></details>}
+              </div>
+            ))}
+          </div>
+        </div>
+        <div className="p-5 border-t border-border flex justify-end gap-3">
+          {report.applied_spec && <span className="mr-auto text-xs font-semibold text-emerald-500">보완사항이 새 버전에 자동 적용되었습니다.</span>}
+          <button onClick={onClose} className="px-4 py-2.5 rounded-xl border border-border text-sm font-semibold">닫기</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function RequirementValidationModal({ report, onClose }: {
+  report: ReqValidationReportDto; onClose: () => void;
+}) {
+  const scoreLabels = { accuracy: "정확성", completeness: "완전성", consistency: "일관성", testability: "테스트 가능성" } as const;
+  return (
+    <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/65 backdrop-blur-sm p-4">
+      <div className="bg-background border border-border rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col">
+        <div className="flex items-center justify-between p-5 border-b border-border">
+          <div><h3 className="text-lg font-bold">기획서 대비 요구사항정의서 품질검토 보고서</h3><p className="text-xs text-muted-foreground mt-1">종합 점수 {report.overall_score}점 · 보고서 #{report.report_id}</p></div>
+          <button onClick={onClose} className="p-2 rounded-lg hover:bg-black/5 dark:hover:bg-white/5"><X className="w-5 h-5" /></button>
+        </div>
+        <div className="p-5 overflow-y-auto space-y-5">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">{(Object.keys(scoreLabels) as (keyof typeof scoreLabels)[]).map(key => <div key={key} className="rounded-xl border border-border p-3 bg-black/5 dark:bg-white/5"><p className="text-xs text-muted-foreground">{scoreLabels[key]}</p><p className="text-2xl font-black mt-1">{report.scores[key]}</p></div>)}</div>
+          <div><p className="font-semibold mb-1">종합 의견</p><p className="text-sm text-muted-foreground">{report.summary}</p></div>
+          {report.critical_issues.length > 0 && <div className="rounded-xl border border-red-500/20 bg-red-500/5 p-4"><p className="font-semibold text-red-400 mb-2">우선 보완사항</p><ul className="text-sm space-y-1 list-disc pl-5">{report.critical_issues.map((value, index) => <li key={index}>{value}</li>)}</ul></div>}
+          <div className="space-y-2">{report.item_reviews.map((item, index) => <div key={`${item.req_code}-${index}`} className="rounded-xl border border-border p-4"><div className="flex justify-between gap-3"><p className="font-semibold font-mono text-sm">{item.req_code}</p><span className="text-xs font-bold">{item.score}점</span></div>{item.findings.length > 0 && <ul className="mt-2 text-sm text-muted-foreground list-disc pl-5">{item.findings.map((value, i) => <li key={i}>{value}</li>)}</ul>}{item.recommendation && <p className="mt-2 text-sm"><span className="font-semibold text-cyan-500">보완 제안</span> {item.recommendation}</p>}</div>)}</div>
+        </div>
+        <div className="p-5 border-t border-border flex justify-end items-center gap-3">{report.applied_definition && <span className="mr-auto text-xs font-semibold text-emerald-500">보완사항이 새 버전에 자동 적용되었습니다.</span>}<button onClick={onClose} className="px-4 py-2.5 rounded-xl border border-border text-sm font-semibold">닫기</button></div>
+      </div>
+    </div>
+  );
+}
+
 function CollapsibleSection({
   title, defaultOpen = true, children,
 }: {
@@ -3057,7 +3338,7 @@ function GanttSection({ items, title }: { items: GanttItem[]; title: string }) {
 }
 
 function RequirementSection({
-  spec, reqDef, isPM, canGenerate, busy, onCreate, onExtract, reqExtractStage, reqExtractStartedAt, onAddItem, onUpdateItem, onDeleteItem, onStatusChange,
+  spec, reqDef, isPM, canGenerate, busy, onCreate, onExtract, onViewReport, reqExtractStage, reqExtractStartedAt, onAddItem, onUpdateItem, onDeleteItem, onStatusChange,
   onGenerateTasks, generatingTasks, generatingStage, generatingStartedAt, onRejectClick, tasksAlreadyAssigned, hasUnconfirmedDraft,
 }: {
   spec: SpecDto; reqDef: ReqDefDto | null; isPM: boolean;
@@ -3068,6 +3349,7 @@ function RequirementSection({
   busy: string | null;
   onCreate: () => void;
   onExtract: (specId: number, reqDefId: number) => void;
+  onViewReport: (reqDef: ReqDefDto) => void;
   reqExtractStage: string;
   reqExtractStartedAt: number | null;
   onAddItem: (reqDefId: number, item: { req_code: string; req_name: string; description: string; order: number; priority_code: string | null }) => void;
@@ -3130,6 +3412,12 @@ function RequirementSection({
   };
 
   const creating = busy === `${spec.id}-create-reqdef`;
+  // 최초 생성 직후 자동 검증 중에는 reqDef가 이미 렌더링된다. 생성 버튼은 사라지기
+  // 때문에 품질 검증 버튼 자체가 현재 진행 상태를 이어서 보여줘야 한다.
+  const autoReqValidating = creating && (
+    reqExtractStage.includes("품질 검증") || reqExtractStage.includes("보완사항 자동 적용")
+  );
+  const viewingReqReport = busy === `reqdef-${reqDef?.id}-view-report`;
   const extracting = reqDef && busy === `reqdef-${reqDef.id}-extract`;
   const addingItem = reqDef && busy === `reqdef-${reqDef.id}-additem`;
   const reqStatus = reqDef?.status_info?.code_id ?? null;
@@ -3725,6 +4013,16 @@ function RequirementSection({
                 {extracting ? (reqExtractStage || "재생성 중…") : "재생성"}
               </button>
             </>
+          )}
+          {(canGenerate || isPM) && !tasksAlreadyAssigned && (reqStatus === "DRAFT" || reqStatus === "REJECTED" || reqStatus === null) && (
+            <button
+              onClick={() => onViewReport(reqDef)}
+              disabled={busy !== null}
+              className="flex items-center gap-2 px-5 py-2.5 rounded-xl border border-cyan-500/30 bg-cyan-500/10 text-cyan-500 text-sm font-bold hover:bg-cyan-500/20 disabled:opacity-50 whitespace-nowrap"
+            >
+              {autoReqValidating || viewingReqReport ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
+              {autoReqValidating ? (reqExtractStage.includes("보완사항") ? "보완사항 적용 중…" : "검증 보고서 생성 중…") : viewingReqReport ? "보고서 불러오는 중…" : "검증보고서 확인"}
+            </button>
           )}
           {/* 검토요청은 하단 우측 — 기획서 탭과 동일한 위치(승인/반려는 상단, 검토요청/
               직접수정 성격의 액션은 하단). reqStatus===null은 REQSPEC_STATUS 도입 전

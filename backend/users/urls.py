@@ -2,6 +2,7 @@
 from django.urls import path
 from .views import (
     CsrfCookieView,
+    UploadTokenView,
     LoginView,
     LogoutView,
     CookieTokenRefreshView,
@@ -27,6 +28,7 @@ urlpatterns = [
     path('me/certifications/<int:pk>/', MyCertificationDetailView.as_view(), name='my-certification-detail'),
     path('', UserListView.as_view(), name='user-list'),
     path('csrf/', CsrfCookieView.as_view(), name='csrf-cookie'),
+    path('upload-token/', UploadTokenView.as_view(), name='upload-token'),
     path('login/', LoginView.as_view(), name='login'),
     path('logout/', LogoutView.as_view(), name='logout'),
     # 2026-08-31: 토큰을 HttpOnly 쿠키로 옮기면서 simplejwt 기본 TokenRefreshView(요청 바디로

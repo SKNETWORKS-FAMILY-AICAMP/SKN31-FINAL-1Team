@@ -27,6 +27,50 @@ function sanitizeRestrictedHtml(html: string): string {
   });
 }
 
+// 검증 보완 기능 도입 초기에 저장된 문서와, 형식을 지키지 않은 AI 응답은 일반 텍스트
+// ``1) ... 2) ...`` 형태일 수 있다. 기존 데이터도 다시 생성할 필요 없이 정상적으로
+// 보이도록 렌더링 직전에 제한 HTML로 보정한다. 최종 결과는 아래 DOMPurify를 반드시 거친다.
+function normalizeLegacyPlainText(value: string): string {
+  if (!value) return value;
+  if (/<\s*(?:p|ul|li|strong)\b/i.test(value)) {
+    // 이미 HTML인 과거 문서도 한 문단 안의 (1), (2), (3)을 독립 문단으로
+    // 나눈다. 저장된 데이터를 재생성하지 않아도 즉시 줄바꿈되어 보인다.
+    return value.replace(/<p>([\s\S]*?)<\/p>/gi, (_paragraph, content: string) => {
+      const parts = content.trim().split(/\s+(?=(?:\(\d+\)|\d+\))\s*)/);
+      return parts.filter(Boolean).map(part => `<p>${part.trim()}</p>`).join("");
+    });
+  }
+  const lines = value
+    .replace(/\s+(?=(?:\(\d+\)|\d+\)|[-•])\s*)/g, "\n")
+    .split(/\r?\n/)
+    .map(line => line.trim())
+    .filter(Boolean);
+  const blocks: string[] = [];
+  let items: string[] = [];
+  const escapeHtml = (text: string) => text
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+  const flush = () => {
+    if (!items.length) return;
+    blocks.push(`<ul>${items.map(item => `<li>${escapeHtml(item)}</li>`).join("")}</ul>`);
+    items = [];
+  };
+  for (const line of lines) {
+    const numbered = line.match(/^((?:\(\d+\)|\d+\)))\s*(.+)$/);
+    const bullet = line.match(/^[-•]\s*(.+)$/);
+    if (numbered) {
+      flush();
+      blocks.push(`<p>${escapeHtml(numbered[1])} ${escapeHtml(numbered[2].trim())}</p>`);
+    } else if (bullet) items.push(bullet[1].trim());
+    else {
+      flush();
+      blocks.push(`<p>${escapeHtml(line)}</p>`);
+    }
+  }
+  flush();
+  return blocks.join("");
+}
+
 // 2026-09-16: "직접 수정" 모드가 raw HTML을 그대로 담은 textarea라 <p>/<strong>
 // 태그가 글자 그대로 보이는 문제(사용자 보고) — 게시판 글쓰기처럼 툴바(굵게/목록)로
 // 조작하는 간단한 리치텍스트 편집기로 바꾼다. 이 프로젝트엔 TipTap 같은 에디터
@@ -47,7 +91,7 @@ function EditableRichText({
   // useState의 지연 초기화 함수는 마운트 시 한 번만 실행되도록 공식적으로 보장되는
   // 자리라 이렇게 값을 얼린다(useRef(...).current를 렌더 중에 읽는 것은 최신
   // eslint-plugin-react-hooks 규칙(react-hooks/refs)이 금지한다).
-  const [initialHtml] = useState(() => sanitizeRestrictedHtml(html));
+  const [initialHtml] = useState(() => sanitizeRestrictedHtml(normalizeLegacyPlainText(html)));
 
   // execCommand는 브라우저마다 <b>/<div>를 쓰기도 해서, 저장 형식(p/strong/ul/li)과
   // 어긋나면 다시 읽어들일 때(sanitizeRestrictedHtml이 b/div를 걸러냄) 서식이
@@ -113,7 +157,7 @@ function RichText({ html }: { html: string }) {
   return (
     <div
       className="leading-relaxed [&_p]:mb-2 [&_p:last-child]:mb-0 [&_strong]:font-bold [&_ul]:list-disc [&_ul]:pl-5 [&_li]:mb-1"
-      dangerouslySetInnerHTML={{ __html: sanitizeRestrictedHtml(html) }}
+      dangerouslySetInnerHTML={{ __html: sanitizeRestrictedHtml(normalizeLegacyPlainText(html)) }}
     />
   );
 }

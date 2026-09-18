@@ -2,7 +2,9 @@
 import logging
 import threading
 from django.db import transaction
+from django.db.models import Q
 from django.shortcuts import get_object_or_404
+from django.http import Http404
 from django.utils import timezone
 from rest_framework import generics, status, permissions
 from rest_framework.response import Response
@@ -15,12 +17,14 @@ from drf_spectacular.utils import (
     OpenApiResponse,
 )
 
-from requirements.models import RequirementDefinition, RequirementItem, RequirementExtractionJob
+from requirements.models import RequirementDefinition, RequirementItem, RequirementExtractionJob, RequirementValidationReport
 from requirements.serializers import (
     RequirementDefinitionSerializer,
     RequirementDefinitionCreateSerializer,
     RequirementItemSerializer,
+    RequirementValidationReportSerializer,
 )
+from requirements.services import validate_requirement_definition, apply_requirement_validation
 from meetings.models import SpecDocument
 from common.models import CommonCode
 from users.permissions import IsPMUser, IsOwnerOrPM  # PM 권한 검증
@@ -34,6 +38,17 @@ from requirement_draft.schemas import PlanDocument
 logger = logging.getLogger(__name__)
 
 
+def latest_requirement_definition(spec_id):
+    return RequirementDefinition.objects.filter(spec_id=spec_id).order_by('-created_at', '-id').first()
+
+
+def latest_requirement_definition_or_404(spec_id):
+    req_def = latest_requirement_definition(spec_id)
+    if req_def is None:
+        raise Http404
+    return req_def
+
+
 def get_target_author(req_def):
     """요구사항 정의서 작성자 또는 기획서 작성자를 안전하게 반환하는 헬퍼 함수"""
     if getattr(req_def, 'created_by', None):
@@ -41,6 +56,69 @@ def get_target_author(req_def):
     if hasattr(req_def, 'spec') and getattr(req_def.spec, 'created_by', None):
         return req_def.spec.created_by
     return None
+
+
+def _build_fallback_draft_result(req_def):
+    """
+    2026-09-17: RequirementTaskDraftView의 최후 수단 — TaskGenerationJob.result가
+    없을 때(아주 오래된 데이터 등)만 쓴다. BACKLOG로 저장된 TaskAssignment 컬럼만으로
+    최소한의 미리보기를 재구성한다. 적합도 서술(tech_fit/workload_fit/experience_fit
+    개별 값)·팀 규모 추정·일정 브리핑 등은 애초에 TaskAssignment에 저장되는 컬럼이
+    아니라서 복원할 방법이 없다 — assignment_reason(합쳐진 근거 문자열) 전체를
+    tech_fit 한 자리에 몰아넣는 정도가 할 수 있는 최선이다.
+    """
+    from tasks.models import TaskAssignment, TaskStatusCode
+
+    rows = TaskAssignment.objects.filter(
+        req_item__req_def=req_def, status_code_id=TaskStatusCode.BACKLOG,
+    ).select_related('req_item', 'assigned_user')
+    prefix = f"RD{req_def.id}-"
+
+    def _strip_prefix(value):
+        return value[len(prefix):] if value and value.startswith(prefix) else value
+
+    suggestions = []
+    for r in rows:
+        assignee_name = None
+        if r.assigned_user:
+            full_name = f"{r.assigned_user.last_name}{r.assigned_user.first_name}".strip()
+            assignee_name = full_name or r.assigned_user.username
+        suggestions.append({
+            "unit_id": _strip_prefix(r.task_no),
+            "source_req_id": r.req_item.req_code if r.req_item else "",
+            "title": r.title,
+            "description": r.description or "",
+            "estimated_hours": r.estimated_hours,
+            "difficulty_reason": r.difficulty_reason,
+            "epic_no": r.epic_no,
+            "epic_title": r.epic_title,
+            "assignee_id": r.assigned_user_id,
+            "assignee_name": assignee_name,
+            "score": None,
+            "tech_fit": r.assignment_reason,
+            "workload_fit": None,
+            "experience_fit": None,
+            "review_required": False,
+            "hold_explanation": None,
+            "suggested_start_date": str(r.start_date) if r.start_date else None,
+            "suggested_end_date": str(r.end_date) if r.end_date else None,
+            "feature_area": None,
+            "schedule_reason": None,
+            "parent_task_id": _strip_prefix(r.parent_task),
+        })
+
+    return {
+        "status": "success",
+        "req_def_id": req_def.id,
+        "suggestions": suggestions,
+        "team_size_estimate": None,
+        "complexity_assessment": None,
+        "schedule_summary": None,
+        "work_packages": [],
+        "package_splits": [],
+        "plan_review": {"held_units": [], "over_period_units": [], "needs_attention": False},
+        "plan_briefing": {"risks": [], "checkpoints": []},
+    }
 
 
 def _parse_feature_lines(raw_features) -> list:
@@ -155,18 +233,19 @@ def process_ai_requirement_extraction(spec_document, user, on_stage=None):
             code_id='DRAFT'
         ).first()
 
-        req_def, created = RequirementDefinition.objects.get_or_create(
-            spec=spec_document,
-            defaults={
+        req_def = latest_requirement_definition(spec_document.spec_id)
+        created = req_def is None
+        if created:
+            req_def = RequirementDefinition.objects.create(
+                spec=spec_document,
                 # SpecDocument엔 project 필드가 없다 — meeting을 거쳐야 프로젝트를 알 수 있다
                 # (spec_document.project로 잘못 참조하면 hasattr()가 항상 False라 계속 None으로
                 # 저장되는 버그가 있었음, 2026-09-08부터 발생).
-                'project': spec_document.meeting.project,
-                'title': f"{spec_document.title} - 요구사항 정의서",
-                'status_code': draft_status,
-                'created_by': user
-            }
-        )
+                project=spec_document.meeting.project,
+                title=f"{spec_document.title} - 요구사항 정의서",
+                status_code=draft_status,
+                created_by=user,
+            )
 
         if not created:
             # get_or_create의 defaults는 "새로 만들 때"만 적용되고 기존 행은 절대 안 건드린다 —
@@ -265,7 +344,7 @@ def process_ai_requirement_extraction(spec_document, user, on_stage=None):
     )
 )
 class RequirementDefinitionListCreateView(generics.ListCreateAPIView):
-    queryset = RequirementDefinition.objects.all()
+    queryset = RequirementDefinition.objects.all().order_by('-created_at', '-id')
     permission_classes = [permissions.IsAuthenticated]
 
     def get_serializer_class(self):
@@ -347,6 +426,13 @@ class RequirementDefinitionDetailView(generics.RetrieveUpdateDestroyAPIView):
     lookup_field = 'spec_id'
     lookup_url_kwarg = 'spec_id'
 
+    def get_object(self):
+        obj = self.get_queryset().filter(spec_id=self.kwargs['spec_id']).order_by('-created_at', '-id').first()
+        if obj is None:
+            raise Http404
+        self.check_object_permissions(self.request, obj)
+        return obj
+
     def update(self, request, *args, **kwargs):
         new_status = request.data.get('status_code') or request.data.get('status_code_id')
         if new_status and not request.user.is_staff:
@@ -393,10 +479,7 @@ class RequirementDefinitionSubmitReviewView(APIView):
         }
     )
     def post(self, request, spec_id):
-        req_def = get_object_or_404(
-            RequirementDefinition.objects.select_related('spec', 'created_by', 'spec__created_by'),
-            spec_id=spec_id
-        )
+        req_def = latest_requirement_definition_or_404(spec_id)
         
         # 작성자 검증
         created_by_user = get_target_author(req_def)
@@ -430,10 +513,7 @@ class RequirementDefinitionApproveView(APIView):
         responses={200: OpenApiResponse(description='승인 완료')}
     )
     def post(self, request, spec_id):
-        req_def = get_object_or_404(
-            RequirementDefinition.objects.select_related('spec', 'created_by', 'spec__created_by'),
-            spec_id=spec_id
-        )
+        req_def = latest_requirement_definition_or_404(spec_id)
         status_code = CommonCode.objects.filter(group_id='REQSPEC_STATUS', code_id='APPROVED').first()
         if status_code:
             req_def.status_code = status_code
@@ -475,10 +555,7 @@ class RequirementDefinitionRejectView(APIView):
         responses={200: OpenApiResponse(description='반려 완료')}
     )
     def post(self, request, spec_id):
-        req_def = get_object_or_404(
-            RequirementDefinition.objects.select_related('spec', 'created_by', 'spec__created_by'),
-            spec_id=spec_id
-        )
+        req_def = latest_requirement_definition_or_404(spec_id)
         status_code = CommonCode.objects.filter(group_id='REQSPEC_STATUS', code_id='REJECTED').first()
         if status_code:
             req_def.status_code = status_code
@@ -495,6 +572,61 @@ class RequirementDefinitionRejectView(APIView):
             )
 
         return Response({"message": "요구사항 정의서가 반려되었습니다.", "data": RequirementDefinitionSerializer(req_def).data})
+
+
+class RequirementDefinitionValidateView(APIView):
+    """기획서와 요구사항정의서를 비교 평가한다."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request, req_def_id):
+        req_def = get_object_or_404(RequirementDefinition.objects.select_related('spec__meeting'), pk=req_def_id)
+        is_pm = request.user.is_staff or request.user.groups.filter(name='PM').exists()
+        if req_def.spec.meeting.created_by_id != request.user.id and not is_pm:
+            return Response({'detail': '작성자 또는 PM만 보고서를 조회할 수 있습니다.'}, status=status.HTTP_403_FORBIDDEN)
+        report = RequirementValidationReport.objects.filter(
+            Q(requirement_definition=req_def) | Q(applied_definition=req_def)
+        ).order_by('-created_at').first()
+        if report is None:
+            return Response({'detail': '저장된 검증 보고서가 없습니다.'}, status=status.HTTP_404_NOT_FOUND)
+        return Response(RequirementValidationReportSerializer(report).data)
+
+    def post(self, request, req_def_id):
+        req_def = get_object_or_404(
+            RequirementDefinition.objects.select_related('spec__meeting').prefetch_related('items'),
+            pk=req_def_id,
+        )
+        is_pm = request.user.is_staff or request.user.groups.filter(name='PM').exists()
+        if req_def.spec.meeting.created_by_id != request.user.id and not is_pm:
+            return Response({'detail': '작성자 또는 PM만 검증할 수 있습니다.'}, status=status.HTTP_403_FORBIDDEN)
+        try:
+            report = validate_requirement_definition(req_def, request.user)
+        except Exception as exc:
+            return Response({'detail': f'요구사항정의서 검증 중 오류가 발생했습니다: {exc}'}, status=status.HTTP_502_BAD_GATEWAY)
+        return Response(RequirementValidationReportSerializer(report).data, status=status.HTTP_201_CREATED)
+
+
+class RequirementValidationReportApplyView(APIView):
+    """AI 보완안을 원본을 보존한 새 요구사항정의서 버전으로 만든다."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, report_id):
+        report = get_object_or_404(
+            RequirementValidationReport.objects.select_related(
+                'requirement_definition__spec__meeting', 'applied_definition'
+            ), pk=report_id,
+        )
+        meeting = report.requirement_definition.spec.meeting
+        is_pm = request.user.is_staff or request.user.groups.filter(name='PM').exists()
+        if meeting.created_by_id != request.user.id and not is_pm:
+            return Response({'detail': '작성자 또는 PM만 적용할 수 있습니다.'}, status=status.HTTP_403_FORBIDDEN)
+        try:
+            revised = apply_requirement_validation(report)
+        except ValueError as exc:
+            return Response({'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({
+            'message': '보완사항을 적용한 새 요구사항정의서 버전을 생성했습니다.',
+            'requirement_definition': RequirementDefinitionSerializer(revised).data,
+        })
 
 
 class RequirementExtractView(APIView):
@@ -645,9 +777,12 @@ def _run_generate_tasks_job(job_id, actor_user_id):
         close_old_connections()
         return
 
-    # 파이프라인 이력 로그 생성 — "업무 배분 AI 추천" 버튼 시점. 이 단계는 아직
-    # TaskAssignment를 저장하지 않는 미리보기라(확정은 RequirementConfirmTasksView가
-    # TASK_ASSIGNED로 별도 로그) 여기서 남기지 않으면 에이전트 탭에서 이 실행 자체가 보이지 않는다.
+    # 파이프라인 이력 로그 생성 — "업무 배분 AI 추천" 버튼 시점. 2026-09-15부터
+    # generate_task_suggestions() 안에서 이 결과를 TaskAssignment(BACKLOG, 초안)로
+    # 바로 저장하지만, 그건 어디까지나 "PM 확정 전 안전 보관"이지 확정이 아니다 —
+    # PM이 "배분 확정"을 눌러야 RequirementConfirmTasksView가 PENDING_APPROVAL로
+    # 전환하며 TASK_ASSIGNED로 별도 로그를 남긴다. 여기서 남기지 않으면 에이전트
+    # 탭에서 "AI 추천이 실행됐다"는 이 시점 자체가 보이지 않는다.
     if result.get("status") == "success" and result.get("req_def_id"):
         req_def = RequirementDefinition.objects.filter(pk=result["req_def_id"]).select_related('spec').first()
         if req_def and req_def.project_id:
@@ -749,6 +884,55 @@ class RequirementConfirmTasksView(APIView):
         result = confirm_task_assignments(request.data.get("req_def_id"), request.data.get("assignments") or [])
         http_status = status.HTTP_200_OK if result.get("status") == "success" else status.HTTP_400_BAD_REQUEST
         return Response(result, status=http_status)
+
+
+class RequirementTaskDraftView(APIView):
+    """
+    2026-09-17: 새로고침 대비 — "업무 배분 실행" 미리보기(documents/page.tsx의
+    taskDrafts)는 순수 React state라 새로고침하면 사라진다. 그런데 그 결과는 이미
+    두 곳에 남아있다:
+      1) TaskAssignment(BACKLOG) — 제목/담당자/일정/Epic 등 뼈대만
+      2) TaskGenerationJob.result — 생성 당시 generate_task_suggestions()가 반환한
+         전체 값 그대로(적합도 서술·팀 규모 추정·일정 브리핑 등 포함)
+    BACKLOG가 아직 남아있다는 건 PM이 아직 확정하지 않았다는 뜻이므로, 그때만 가장
+    최근 성공한 TaskGenerationJob.result를 그대로 돌려줘 화면을 원래대로 복원한다.
+    이미 확정됐거나(BACKLOG가 confirm 시점에 삭제됨) 애초에 생성한 적이 없으면
+    has_draft=False — 이 경우 프론트는 기존처럼 빈 화면/실제 배정 목록을 보여준다.
+    """
+    permission_classes = [permissions.IsAuthenticated, IsPMUser]
+
+    @extend_schema(
+        tags=['3단계 - 업무 배정'],
+        summary='저장된 업무 배분 초안(BACKLOG) 복원',
+        description='아직 확정하지 않은 BACKLOG 초안이 있으면 생성 당시의 전체 결과를 그대로 돌려준다(새로고침 복원용).',
+        parameters=[
+            OpenApiParameter(name='spec_id', type=OpenApiTypes.INT, location=OpenApiParameter.PATH, description='기획서 ID')
+        ],
+        responses={200: OpenApiResponse(description='has_draft + (있으면) generate_task_suggestions와 동일한 모양의 result')}
+    )
+    def get(self, request, spec_id):
+        from tasks.models import TaskAssignment, TaskGenerationJob, TaskStatusCode
+
+        req_def = RequirementDefinition.objects.filter(spec_id=spec_id).order_by('-id').first()
+        if not req_def:
+            return Response({"has_draft": False})
+
+        has_backlog = TaskAssignment.objects.filter(
+            req_item__req_def=req_def, status_code_id=TaskStatusCode.BACKLOG,
+        ).exists()
+        if not has_backlog:
+            return Response({"has_draft": False})
+
+        job = (
+            TaskGenerationJob.objects
+            .filter(spec_id=spec_id, status=TaskGenerationJob.STATUS_SUCCESS)
+            .order_by('-created_at')
+            .first()
+        )
+        if job and job.result and job.result.get("req_def_id") == req_def.id:
+            return Response({"has_draft": True, "result": job.result})
+
+        return Response({"has_draft": True, "result": _build_fallback_draft_result(req_def)})
 
 
 LOCKED_REQDEF_STATUSES = ('APPROVED', 'PENDING_REVIEW')

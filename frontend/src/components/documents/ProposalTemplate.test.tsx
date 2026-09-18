@@ -53,4 +53,17 @@ describe("ProposalTemplate (read mode)", () => {
     render(<ProposalTemplate doc={baseDoc} title="테스트 기획서" dateLabel="2026. 9. 7." />);
     expect(screen.getAllByText("-").length).toBeGreaterThan(0);
   });
+
+  it("splits a legacy one-line numbered result into separate paragraphs while keeping numbers", () => {
+    render(
+      <ProposalTemplate
+        doc={{ ...baseDoc, projectGoals: "(1) 첫 번째 목표 (2) 두 번째 목표 (3) 세 번째 목표" }}
+        title="테스트 기획서"
+        dateLabel="2026. 9. 7."
+      />
+    );
+    expect(screen.getByText("(1) 첫 번째 목표").tagName).toBe("P");
+    expect(screen.getByText("(2) 두 번째 목표").tagName).toBe("P");
+    expect(screen.getByText("(3) 세 번째 목표").tagName).toBe("P");
+  });
 });

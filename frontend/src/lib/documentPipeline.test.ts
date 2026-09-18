@@ -73,4 +73,16 @@ describe("stageOf", () => {
     const approved = specWith("PROPOSAL_APPROVED");
     expect(stageOf(approved, { status_info: { code_id: "APPROVED" } }, true)).toBe("taskAssignment");
   });
+
+  // 2026-09-17: BACKLOG 초안(미확정)만 있어도 taskAssignment 탭에 도달은 가능해야
+  // 한다 — 안 그러면 새로고침 후 복원된 초안을 볼 방법이 없다(탭 자체가 잠김).
+  it("moves to taskAssignment once the requirement definition is approved and an unconfirmed draft exists", () => {
+    const approved = specWith("PROPOSAL_APPROVED");
+    expect(stageOf(approved, { status_info: { code_id: "APPROVED" } }, false, true)).toBe("taskAssignment");
+  });
+
+  it("stays on reqSpec when neither a confirmed task nor a draft exists", () => {
+    const approved = specWith("PROPOSAL_APPROVED");
+    expect(stageOf(approved, { status_info: { code_id: "APPROVED" } }, false, false)).toBe("reqSpec");
+  });
 });

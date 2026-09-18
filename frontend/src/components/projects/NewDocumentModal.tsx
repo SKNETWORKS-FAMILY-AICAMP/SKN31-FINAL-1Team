@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { X, Loader2, FileText, Users, CalendarIcon, FolderKanban, Paperclip } from "lucide-react";
-import { apiFetch } from "@/lib/api/client";
+import { apiFetch, directUploadFetch } from "@/lib/api/client";
 import { formatTranscriptSentences } from "@/lib/transcript";
 import TagAutocomplete from "@/components/ui/TagAutocomplete";
 
@@ -203,7 +203,7 @@ export function NewDocumentModal({
         const formData = new FormData();
         formData.append("file", file);
         const { transcript } = await runAudioStage("transcribing", () =>
-          apiFetch<{ transcript: string }>("/api/meetings/notes/transcribe-audio/", { method: "POST", body: formData })
+          directUploadFetch<{ transcript: string }>("/api/meetings/notes/transcribe-audio/", formData)
         );
         setContent(formatTranscriptSentences(transcript));
       } else {

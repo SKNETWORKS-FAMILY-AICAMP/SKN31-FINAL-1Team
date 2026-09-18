@@ -56,6 +56,27 @@ class CsrfCookieView(APIView):
         return Response({"detail": "csrf cookie set"})
 
 
+class UploadTokenView(APIView):
+    """
+    음성 파일처럼 큰 업로드는 Vercel 프록시(요청 본문 4.5MB 제한)를 안 거치고 프론트가
+    브라우저에서 백엔드로 직접 보낸다 — 크로스도메인이라 access_token 쿠키가 안 실리므로,
+    그 요청에 Authorization 헤더로 실을 토큰 값을 여기서 내려준다(쿠키에 있는 값 그대로,
+    HttpOnly라 JS가 직접 못 읽어서 이렇게 한 번 발급해줘야 한다).
+    GET /api/users/upload-token/
+    """
+    @extend_schema(
+        tags=['0단계 - 사용자 관리'],
+        summary='대용량 업로드용 access 토큰 조회',
+        description='로그인 상태의 access_token 쿠키 값을 그대로 반환한다. 백엔드로 직접 파일을 업로드할 때 Authorization 헤더에 실어 쓴다.',
+        responses={200: OpenApiTypes.OBJECT}
+    )
+    def get(self, request):
+        raw_token = request.COOKIES.get('access_token')
+        if raw_token is None:
+            return Response({"detail": "로그인이 필요합니다."}, status=status.HTTP_401_UNAUTHORIZED)
+        return Response({"token": raw_token})
+
+
 class LoginView(APIView):
     """
     사용자 로그인 API
