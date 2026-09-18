@@ -59,6 +59,8 @@ export default function TasksPage() {
 
   // 일반유저는 "내 업무"가 기본값 — 전체 업무 조회는 PM만 필요하다는 판단
   const [filterScope, setFilterScope] = useState<"ME" | "ALL">("ME");
+  // null = "전체 보기" — 특정 프로젝트를 고르면 그 프로젝트 업무만 남긴다.
+  const [projectFilter, setProjectFilter] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<"KANBAN" | "LIST" | "WBS">("LIST");
   const [processingId, setProcessingId] = useState<number | null>(null);
   const [page, setPage] = useState(1);
@@ -102,6 +104,12 @@ export default function TasksPage() {
     queryFn: () => apiFetch<any[]>("/api/users/"),
   });
   const currentProjectId = projectsData?.[0] ? String(projectsData[0].id) : null;
+  // 회의록이 프로젝트별로 다 섞여서 보여 어떤 업무가 어느 프로젝트인지 구분이 안 된다는
+  // 요청 — 검색창 옆에 프로젝트 선택 드롭다운을 두고, 카드에도 프로젝트명을 표시한다.
+  const projectNameById = useMemo(
+    () => new Map((projectsData ?? []).map((p: any) => [String(p.id), p.name as string])),
+    [projectsData]
+  );
   // 칸반 담당자 드롭다운엔 실제로 업무를 받을 수 있는 사람만 — PM(is_staff)은 배정 대상이
   // 아니고, 온보딩 전이라 이름이 비어있는 계정도 빈 옵션으로 보이니 제외한다.
   const members: Member[] = useMemo(
@@ -176,6 +184,9 @@ export default function TasksPage() {
     if (statusFilter) {
       filtered = filtered.filter(t => t.status_code === statusFilter);
     }
+    if (projectFilter) {
+      filtered = filtered.filter(t => String(t.project) === projectFilter);
+    }
     if (search.trim()) {
       const q = search.toLowerCase();
       filtered = filtered.filter(t =>
@@ -184,10 +195,10 @@ export default function TasksPage() {
       );
     }
     return filtered;
-  }, [tasks, filterScope, search, user, statusFilter]);
+  }, [tasks, filterScope, search, user, statusFilter, projectFilter]);
 
   // 탭·검색어가 바뀌면 목록이 통째로 달라지므로 페이지를 1로 되돌린다
-  useEffect(() => { setPage(1); }, [filterScope, search, viewMode, statusFilter]);
+  useEffect(() => { setPage(1); }, [filterScope, search, viewMode, statusFilter, projectFilter]);
   const totalPages = Math.max(1, Math.ceil(filteredTasks.length / PAGE_SIZE));
   // 위 리셋 대상이 아닌 다른 이유로 목록이 줄어들 수도 있으므로(다른 화면에서 상태 변경 후 재조회 등),
   // 지금 페이지가 범위를 넘으면 마지막 페이지로 당겨서 빈 화면이 뜨지 않게 한다
@@ -222,6 +233,16 @@ export default function TasksPage() {
         </div>
 
         <div className="flex items-center gap-4">
+          <select
+            value={projectFilter ?? ""}
+            onChange={e => setProjectFilter(e.target.value || null)}
+            className="px-4 py-2.5 bg-card border border-transparent hover:border-black/10 dark:hover:border-white/10 rounded-xl text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-primary/40 focus:bg-background transition-all shadow-sm"
+          >
+            <option value="">전체 보기</option>
+            {(projectsData ?? []).map((p: any) => (
+              <option key={p.id} value={String(p.id)}>{p.name}</option>
+            ))}
+          </select>
           <div className="relative group">
             <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground group-focus-within:text-primary transition-colors" />
             <input
@@ -330,6 +351,9 @@ export default function TasksPage() {
                           className="hover:bg-black/5 dark:hover:bg-white/5 transition-colors group relative cursor-pointer"
                         >
                           <td className="px-6 py-4">
+                            {task.project != null && projectNameById.get(String(task.project)) && (
+                              <div className="text-[11px] font-bold text-primary mb-0.5">{projectNameById.get(String(task.project))}</div>
+                            )}
                             <div className="font-bold mb-1">{task.title}</div>
                             {task.description && <div className="text-xs text-muted-foreground line-clamp-1 max-w-md">{task.description}</div>}
                           </td>
