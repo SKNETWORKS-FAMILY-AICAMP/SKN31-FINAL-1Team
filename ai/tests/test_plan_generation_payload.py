@@ -293,6 +293,9 @@ def test_같은_quote로_하나의_기능과만_연결된_범위_결정은_후�
         "발주 수량을 재고와 최근 판매량 기준으로 계산해 추천한다.",
         "자동 발주는 이번 범위에서 제외한다.",
     ]
+    # 2026-09-18: 원문 보기 패널이 하이라이트할 실제 회의록 원문(quote)도
+    # content와 별도로 내려온다 — 근거연동 UI 요청서 참고.
+    assert [s["quote"] for s in sources] == [shared_quote, shared_quote]
 
 
 def test_여러_기능에_걸친_공통_quote의_결정은_후보에서_제외된다():

@@ -29,6 +29,12 @@ import {
   type BareStatus, type PipelineTab,
 } from "@/lib/documentPipeline";
 
+// 2026-09-18: plan_review(AI 품질 검증·자동 보완)가 기획서 생성 직후 자동으로
+// 실행되면서, 방금 생성된 기획서 내용을 검증 모델의 revised_document로 바로
+// 덮어쓰는 문제가 있어 잠시 꺼둔다. false인 동안은 기획서 생성만 완료되고
+// 검증·자동 적용 단계는 건너뛴다.
+const AUTO_VALIDATE_SPEC_ENABLED = false;
+
 // ── Django 응답 shape ──────────────────────────────────────────
 type SpecStatusCode = "PROPOSAL_DRAFT" | "PROPOSAL_PENDING_REVIEW" | "PROPOSAL_APPROVED" | "PROPOSAL_REJECTED";
 
@@ -677,7 +683,7 @@ export default function DocumentsPage() {
         // SUCCESS
         await refetchNote(note.id);
         const createdSpec = job.result?.created_spec;
-        if (createdSpec) {
+        if (createdSpec && AUTO_VALIDATE_SPEC_ENABLED) {
           setSpecGenStage("회의록 대비 품질 검증 중…");
           try {
             const report = await apiFetch<SpecValidationReportDto>(`/api/meetings/specs/${createdSpec.id}/validate/`, { method: "POST" });

@@ -22,6 +22,7 @@ PM이 "아까 있던 항목이 왜 없지?"를 겪게 됩니다.
 어차피 배열을 갖고 있다가 HTML로 조립하므로 추가 비용이 거의 없습니다.
 """
 
+import re
 from html import escape
 
 # 근거 대조는 노드 1의 검증기와 같은 정규화를 써야 합니다.
@@ -64,6 +65,26 @@ def _evidence_key(text: str) -> str:
     직접 가져옵니다. 중복 판정(_norm)과는 목적이 다른 별개 함수입니다.
     """
     return _verifier_normalize(str(text))
+
+
+# 2026-09-18: build_tech_scope의 "같은 quote를 쓴 tech 결정은 건너뛴다" 중복
+# 제거가 정확 일치(set membership) 기준이라, 노드①이 같은 원문 문장을 두 번
+# 뽑으면서 인용 범위가 살짝 달라지면(예: 회의록이 "4. 기술 스택은..."처럼
+# 번호 매김돼 있을 때 한쪽은 번호를 포함하고 한쪽은 빼고 인용) 못 잡는 사례가
+# 다양한 회의록 테스트(헬스케어 케이스)로 실측됐다 — 같은 사실이 6번에
+# 두 번 나왔다. 번호 매김을 지우고, 완전 일치 대신 한쪽이 다른 쪽을 포함하면
+# 같은 원문으로 보는 느슨한 비교로 바꾼다.
+_LEADING_NUMBERING = re.compile(r"^\s*\d+[.)]\s*")
+
+
+def _quote_overlaps(a: str, b: str) -> bool:
+    """번호 매김 등 흔한 인용 범위 차이를 무시하고, 두 인용문이 같은 원문 문장을
+    가리키는지(한쪽이 다른 쪽을 포함하는지) 판정합니다."""
+    key_a = _evidence_key(_LEADING_NUMBERING.sub("", a))
+    key_b = _evidence_key(_LEADING_NUMBERING.sub("", b))
+    if not key_a or not key_b:
+        return False
+    return key_a == key_b or key_a in key_b or key_b in key_a
 
 
 def _item_status(item: dict) -> str:
@@ -538,6 +559,13 @@ def build_feature_citation_sources(structured: dict) -> list[dict]:
         {
             "index": i,
             "content": str(item.get("content", "")),
+            # 2026-09-18: 원문 보기 패널(회의록 전체원문 근거연동 UI)이 이 번호로
+            # 실제 회의록 원문을 찾아 하이라이트해야 하므로, content(요구사항
+            # 서술문, LLM이 다듬은 문장일 수 있음)와 별도로 원문 그대로인
+            # quote를 추가합니다. prompts.py가 이 함수 결과에서 index+content만
+            # 골라 쓰므로 프롬프트에는 영향 없습니다(build_user_citation_sources와
+            # 같은 방식으로 맞춥니다).
+            "quote": _evidence_quote(item),
             "evidence_status": _item_status(item),
             "context_flag": item.get("context_flag") or "",
         }
@@ -1081,12 +1109,12 @@ def build_tech_scope(structured: dict) -> PlanSection:
     # verified 여부와 무관하게 전부 봅니다 — 이제 unverified 항목도
     # add()가 지우지 않고 표시만 붙여 포함하므로, 같은 quote를 쓴 tech
     # 결정을 걸러내는 기준도 verified로 한정할 이유가 없습니다.
-    used_quotes = {
-        _evidence_key(_evidence_quote(item))
-        for item in technical_items
-        if isinstance(item, dict)
-    }
-    used_quotes.discard("")
+    #
+    # _quote_overlaps로 느슨하게 비교합니다(정확 일치 대신 포함 관계) —
+    # 이유는 그 함수 정의부 주석 참고.
+    technical_quotes = [
+        _evidence_quote(item) for item in technical_items if isinstance(item, dict)
+    ]
 
     tech_decisions = [
         decision
@@ -1094,7 +1122,10 @@ def build_tech_scope(structured: dict) -> PlanSection:
         if (
             isinstance(decision, dict)
             and decision.get("category") == "tech"
-            and _evidence_key(_evidence_quote(decision)) not in used_quotes
+            and not any(
+                _quote_overlaps(_evidence_quote(decision), quote)
+                for quote in technical_quotes
+            )
         )
     ]
 

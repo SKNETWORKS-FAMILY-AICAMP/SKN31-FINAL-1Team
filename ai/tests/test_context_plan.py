@@ -59,6 +59,23 @@ def test_render_keeps_multiple_quotes_and_marks_proposed_user():
     assert "원문과 대조해 확인해 주세요" not in result.content_html
 
 
+def test_proposed_user_josa_matches_batchim():
+    """
+    2026-09-18: "{이름}을 서비스 대상 사용자로..."가 받침 유무와 무관하게 항상
+    "을"을 붙여서, "보호자을"·"이용자을"처럼 받침 없는 이름에서 조사가 틀리는
+    문제가 다양한 회의록 테스트에서 재현됐다. 받침 없는 이름은 "를"이 맞다.
+    """
+    evidence = [Evidence(quote=QUOTE_1), Evidence(quote=QUOTE_2)]
+    user = context_writer.UserDraft(
+        name="보호자", description="환자의 복약 상황을 함께 인지한다.",
+        usage="", evidence=evidence, is_proposal=True,
+    )
+    draft = context_writer.UsersDraft(users=[user])
+    result = context_writer.render_section(draft, SOURCE, _spec("users"))
+    assert "보호자를 서비스 대상 사용자로 정의할지 확인이 필요합니다." in result.content_html
+    assert "보호자을" not in result.content_html
+
+
 def test_missing_quote_is_not_verified_and_html_is_escaped():
     para = context_writer.CitedParagraph(
         text="<script>test</script>",
@@ -148,3 +165,15 @@ def test_overview_paragraph_rejects_implementation_detail():
 def test_overview_paragraph_allows_clean_text():
     para = context_writer.CitedParagraph(text="상품과 콘텐츠 데이터를 연결해 트렌드를 분석한다.")
     assert "트렌드" in para.text
+
+
+@pytest.mark.parametrize("word,expected", [
+    ("사장님", "을"),       # 받침 있음(ㅁ)
+    ("직원(파트타임)", "을"),  # 받침 있음(ㄴ), 닫는 괄호는 건너뜀
+    ("보호자", "를"),       # 받침 없음
+    ("이용자", "를"),       # 받침 없음
+    ("내부 분석가/기획자", "를"),  # 받침 없음(자)
+    ("John", "를"),         # 한글 아님 → 받침 없음으로 간주
+])
+def test_josa_picks_batchim_correct_particle(word, expected):
+    assert context_writer._josa(word, "을", "를") == expected

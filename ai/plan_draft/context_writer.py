@@ -27,6 +27,35 @@ IMPLEMENTATION_DETAIL_PATTERN = re.compile(
 )
 
 
+# 2026-09-18: "{user.name}을 서비스 대상 사용자로 정의할지..."처럼 받침 여부와
+# 무관하게 "을"을 고정으로 붙여서, 사용자 이름이 모음으로 끝나면("보호자",
+# "이용자" 등) "보호자을"처럼 조사가 틀리는 문제가 실측(다양한 회의록 테스트)
+# 으로 3번 재현됐다. 유니코드 한글 완성형 코드포인트 공식(코드 - 0xAC00을
+# 28로 나눈 나머지가 0이면 받침 없음)으로 마지막 글자를 판정한다.
+_HANGUL_BASE = 0xAC00
+_HANGUL_LAST = 0xD7A3
+
+
+def _has_batchim(word: str) -> bool:
+    """word의 마지막 글자(닫는 괄호·따옴표는 건너뜀) 받침 유무를 판정합니다.
+
+    한글이 아닌 문자로 끝나면(영문 이름 등) 판정할 수 없으므로 받침 없음으로
+    간주해 "를" 계열을 씁니다 — 한국어 문장에서 더 무난하게 읽힙니다.
+    """
+    for ch in reversed(word.strip()):
+        if ch in ")]}\"'」』〉》":
+            continue
+        if _HANGUL_BASE <= ord(ch) <= _HANGUL_LAST:
+            return (ord(ch) - _HANGUL_BASE) % 28 != 0
+        return False
+    return False
+
+
+def _josa(word: str, with_batchim: str, without_batchim: str) -> str:
+    """word 뒤에 붙일 조사를 받침 유무에 따라 고릅니다(예: 을/를, 이/가, 은/는)."""
+    return with_batchim if _has_batchim(word) else without_batchim
+
+
 class CitedParagraph(BaseModel):
     text: str
     evidence: list[Evidence] = Field(default_factory=list)
@@ -185,7 +214,8 @@ def render_section(section, source: str, spec: dict) -> PlanSection:
             if not _verified_evidence(user.evidence, source, evidence):
                 notes.append(f"{user.name} 사용자 설명의 근거를 회의록 원문과 대조해 확인해 주세요.")
             if user.is_proposal:
-                notes.append(f"{user.name}을 서비스 대상 사용자로 정의할지 확인이 필요합니다.")
+                josa = _josa(user.name, "을", "를")
+                notes.append(f"{user.name}{josa} 서비스 대상 사용자로 정의할지 확인이 필요합니다.")
             parts.append(f"<p><strong>{escape(user.name.strip())}</strong></p>")
             parts.append(f"<p>{escape(user.description.strip())}</p>")
             if user.usage.strip():

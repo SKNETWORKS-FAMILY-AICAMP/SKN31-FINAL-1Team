@@ -15,6 +15,7 @@ from common.models import CommonCode
 
 from meeting_analysis.node import run as analyze_meeting
 from plan_draft.agent import run as generate_plan
+from plan_draft.list_builder import build_feature_citation_sources
 from plan_review.agent import run as review_plan
 
 User = get_user_model()
@@ -44,6 +45,75 @@ def _strip_html_tags(text):
     clean_text = re.sub(r'[ \t]+', ' ', clean_text)
     clean_text = re.sub(r'\n\s*\n', '\n', clean_text)
     return clean_text.strip()
+
+
+def _build_evidence_items(plan_dict: dict, structured: dict) -> dict:
+    """
+    회의록 전체원문 근거연동 UI("원문 보기" 패널) 준비용 — evidence_data(섹션당
+    인용문을 줄바꿈으로 합친 문자열 하나)와 별도로, 항목 단위 근거를 JSON으로
+    만든다. 화면 쪽 작업(패널·하이라이트)은 아직 없고, 이건 그 화면이 나중에
+    읽을 데이터만 먼저 채워두는 것이다.
+
+    5번(주요 기능)만 기능 하나하나 단위로 쪼갠다 — Feature.source_indices가
+    이미 원문 인용 번호를 들고 있어 유일하게 항목 단위 연결이 가능하기
+    때문이다(build_feature_citation_sources 참고). 다른 섹션(1~4·6·7번)은
+    문단·목표·사용자·결정 단위 근거가 아직 섹션 전체로 뭉쳐서 나온다
+    (plan_draft.context_writer.render_section·list_builder가 evidence를
+    섹션 하나의 dict/list로 모으기 때문) — 그래서 지금은 섹션 전체 인용문
+    목록만 담는다. 항목 단위로 더 쪼개려면 그 렌더링 함수들을 먼저 고쳐야
+    한다.
+
+    반환 형태 (evidence_data와 같은 필드명으로 키를 맞춘다):
+        {
+          "key_features": {
+            "quotes": ["원문 인용1", "원문 인용2", ...],   # 섹션 전체 근거
+            "items": [                                       # features만 있음
+              {"title": "기능명", "quotes": ["원문 인용1", ...]},
+              ...
+            ]
+          },
+          "overview": {"quotes": [...]},
+          ...
+        }
+    """
+    citation_sources = {}
+    if isinstance(structured, dict):
+        citation_sources = {
+            s["index"]: s for s in build_feature_citation_sources(structured)
+        }
+
+    result: dict = {}
+    for sec in (plan_dict.get('sections') or []):
+        if not isinstance(sec, dict):
+            continue
+        sec_key = sec.get('key')
+        field_name = SECTION_KEY_TO_FIELD.get(sec_key)
+        if not field_name:
+            continue
+
+        quotes = [
+            e.get('quote') for e in (sec.get('evidence') or [])
+            if isinstance(e, dict) and e.get('status') == 'verified' and e.get('quote')
+        ]
+        entry: dict = {"quotes": quotes}
+
+        if sec_key == 'features':
+            items = []
+            for f in (sec.get('features') or []):
+                if not isinstance(f, dict):
+                    continue
+                f_quotes = list(dict.fromkeys(
+                    citation_sources[idx]["quote"]
+                    for idx in (f.get('source_indices') or [])
+                    if idx in citation_sources and citation_sources[idx].get("quote")
+                ))
+                items.append({"title": f.get('title', ''), "quotes": f_quotes})
+            entry["items"] = items
+
+        if entry["quotes"] or entry.get("items"):
+            result[field_name] = entry
+
+    return result
 
 
 def run_meeting_analysis(note_id: int, actor_user_id, on_stage=None) -> dict:
@@ -140,6 +210,9 @@ def run_meeting_analysis(note_id: int, actor_user_id, on_stage=None) -> dict:
             spec_defaults[field] = _normalize_plan_html(spec_defaults[field])
         if evidence_map:
             spec_defaults['evidence_data'] = json.dumps(evidence_map, ensure_ascii=False)
+        evidence_items_map = _build_evidence_items(plan_dict, structured_data)
+        if evidence_items_map:
+            spec_defaults['evidence_items'] = json.dumps(evidence_items_map, ensure_ascii=False)
 
         period_match = re.search(
             r'(\d{4}-\d{2}-\d{2})\s*(?:~|-|부터)\s*(\d{4}-\d{2}-\d{2})',

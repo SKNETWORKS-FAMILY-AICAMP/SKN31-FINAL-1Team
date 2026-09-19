@@ -145,6 +145,39 @@ def test_요구사항과_같은_근거를_쓴_tech_결정은_중복으로_뺀다
     assert "백엔드 기술은 Spring Boot로 확정한다" not in s.content_html
 
 
+def test_번호_매김만_다른_근거의_tech_결정도_중복으로_뺀다():
+    """
+    2026-09-18: 노드①이 같은 원문 문장을 요구사항과 결정에 각각 뽑을 때,
+    회의록이 번호 매김("4. ...")돼 있으면 한쪽만 번호를 포함해 인용 범위가
+    미세하게 달라지는 사례가 다양한 회의록 테스트(헬스케어 케이스)로
+    실측됐다 — 정확 일치 기준(_evidence_key 비교)이 이걸 못 걸러 6번에
+    같은 기술 스택 사실이 두 번 나왔다. 번호 매김 차이는 무시하고 걸러야 한다.
+    """
+    번호_있는_근거 = "4. 기술 스택은 프론트엔드 Flutter, 백엔드 Node.js로 확정한다."
+    번호_없는_근거 = "기술 스택은 프론트엔드 Flutter, 백엔드 Node.js로 확정한다."
+
+    s = build_tech_scope(_structured(
+        requirements={
+            "technical": [{
+                "content": "프론트엔드는 Flutter, 백엔드는 Node.js를 사용한다.",
+                "evidence": {"quote": 번호_있는_근거},
+                "evidence_status": "verified",
+            }],
+        },
+        decisions=[{
+            "category": "tech",
+            "content": "프론트엔드는 Flutter, 백엔드는 Node.js로 확정한다.",
+            "rationale": "",
+            "evidence": {"quote": 번호_없는_근거},
+            "evidence_status": "verified",
+        }],
+        constraints=[],
+    ))
+
+    assert "프론트엔드는 Flutter, 백엔드는 Node.js를 사용한다." in s.content_html
+    assert "프론트엔드는 Flutter, 백엔드는 Node.js로 확정한다." not in s.content_html
+
+
 def test_근거가_다른_tech_결정은_남긴다():
     """근거가 다르면 다른 논의이므로 별도 항목으로 봅니다."""
     s = build_tech_scope(_structured(

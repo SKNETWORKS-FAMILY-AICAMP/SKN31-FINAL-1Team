@@ -102,6 +102,19 @@ class SpecDocument(models.Model):
         verbose_name="섹션별 근거 데이터",
     )
 
+    # 2026-09-18: 회의록 전체원문 근거연동 UI(원문 보기 패널) 준비용.
+    # evidence_data는 섹션 하나당 인용문을 줄바꿈으로 합친 문자열 하나뿐이라,
+    # "이 항목 하나 → 이 인용문"처럼 항목 단위로 연결할 수가 없었다. 이 필드는
+    # 같은 데이터를 항목 단위 JSON으로도 담아, 프론트가 나중에 "원문 보기"
+    # 버튼 하나당 정확히 어느 인용문(들)을 강조할지 찾아갈 수 있게 한다.
+    # evidence_data는 기존 화면이 그대로 쓰므로 손대지 않고 이 필드를 새로
+    # 추가만 한다 — 필드 형태는 meetings/services.py의
+    # _build_evidence_items() 주석 참고.
+    evidence_items = models.TextField(
+        null=True, blank=True,
+        verbose_name="항목 단위 근거 데이터 (원문 보기용)",
+    )
+
     # 2026-09-01: 회의록 원문에 "프로젝트 기간: YYYY-MM-DD ~ YYYY-MM-DD"처럼 명시된 경우 AI 분석
     # 시점에 정규식으로 추출해 자동으로 채운다(views.py MeetingNoteAnalyzeView). 원문에 없으면
     # null로 두고 화면(ProposalTemplate)에서 직접 입력하게 한다 — 지어내지 않는다는 원칙 유지.
