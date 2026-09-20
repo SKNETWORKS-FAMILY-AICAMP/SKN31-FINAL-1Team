@@ -4,6 +4,7 @@ import json
 import re
 from html import escape
 from pathlib import Path
+from typing import Literal
 
 import yaml
 from pydantic import BaseModel, Field, field_validator
@@ -11,7 +12,7 @@ from pydantic import BaseModel, Field, field_validator
 from meeting_analysis.validators.evidence import is_quote_verified
 from shared.schemas_base import Evidence
 from .prompt_loader import load_plan_template
-from .schemas import Feature, PlanSection, VerifiedEvidence
+from .schemas import Feature, PlanSection, SectionType, TechScopeGroup, VerifiedEvidence
 
 
 # 2026-09-18: overview·problem 문단에 저장 구조·수집 주기·모델명 같은 구현
@@ -120,6 +121,40 @@ class ContextPlan(BaseModel):
     features: list[Feature] = Field(default_factory=list)
 
 
+class CitedListItem(BaseModel):
+    text: str
+    evidence: list[Evidence] = Field(default_factory=list)
+
+
+class TechGroupDraft(BaseModel):
+    title: Literal["기술 구성", "데이터·저장 방침", "핵심 제약"]
+    items: list[CitedListItem] = Field(default_factory=list)
+
+
+class TechScopeDraft(BaseModel):
+    groups: list[TechGroupDraft] = Field(default_factory=list)
+    review_questions: list[str] = Field(default_factory=list)
+
+
+class DecisionItemDraft(BaseModel):
+    category: Literal["feature", "non_functional", "data", "tech", "scope"]
+    content: str
+    rationale: str = ""
+    evidence: list[Evidence] = Field(default_factory=list)
+
+
+class DecisionsDraft(BaseModel):
+    items: list[DecisionItemDraft] = Field(default_factory=list)
+    review_questions: list[str] = Field(default_factory=list)
+
+
+class TechnicalDecisionPlan(BaseModel):
+    """전체 회의록에서 직접 작성하는 6·7번 전용 응답."""
+
+    tech_scope: TechScopeDraft
+    decisions: DecisionsDraft
+
+
 SECTION_MODELS = {
     "overview": OverviewDraft,
     "problem": CoreGoalDraft,
@@ -134,6 +169,16 @@ def system_prompt(glossary_text: str = "") -> str:
     rules["features_rules"] = load_plan_template()["features_rules"]
     rules["glossary_rules"] = load_plan_template()["glossary_rules"]
     return json.dumps(rules, ensure_ascii=False) + "\n용어집(참고 자료):\n" + glossary_text
+
+
+def technical_decision_system_prompt(glossary_text: str = "") -> str:
+    path = Path(__file__).parent / "prompt_templates" / "technical_decisions.yaml"
+    rules = yaml.safe_load(path.read_text(encoding="utf-8"))
+    return json.dumps(rules, ensure_ascii=False) + "\n용어집(참고 자료):\n" + glossary_text
+
+
+def technical_decision_messages(source: str) -> list[dict]:
+    return [{"role": "user", "content": "[회의록 원문]\n" + source.strip()}]
 
 
 def _verified_evidence(
@@ -232,3 +277,92 @@ def render_section(section, source: str, spec: dict) -> PlanSection:
         source_fields=["plan_source_text"], evidence=list(evidence.values()),
         needs_input="\n".join(notes), is_incomplete=not body_exists,
     )
+
+
+def render_technical_sections(
+    draft: TechnicalDecisionPlan,
+    source: str,
+) -> tuple[PlanSection, PlanSection]:
+    """원문 전용 응답을 기존 프론트·하류 계약의 6·7번으로 변환합니다."""
+    tech_evidence: dict[str, VerifiedEvidence] = {}
+    tech_notes = list(draft.tech_scope.review_questions)
+    tech_parts: list[str] = []
+    tech_items: list[str] = []
+    tech_groups: list[TechScopeGroup] = []
+
+    for group in draft.tech_scope.groups:
+        lines: list[str] = []
+        for item in group.items:
+            text = item.text.strip()
+            if not text:
+                continue
+            if not _verified_evidence(item.evidence, source, tech_evidence):
+                tech_notes.append(f"'{text}'의 작성 근거를 회의록 원문과 대조해 확인해 주세요.")
+            lines.append(text)
+        if not lines:
+            continue
+        tech_parts.append(
+            f"<p><strong>{escape(group.title)}</strong></p><ul>"
+            + "".join(f"<li>{escape(line)}</li>" for line in lines)
+            + "</ul>"
+        )
+        tech_items.extend(lines)
+        tech_groups.append(TechScopeGroup(subtitle=group.title, items=lines))
+
+    tech_notes = list(dict.fromkeys(note.strip() for note in tech_notes if note.strip()))
+    tech_body_exists = bool(tech_parts)
+    tech_parts.append(_review_html(tech_notes))
+    tech_section = PlanSection(
+        no=6, key="tech_scope", title="기술 스택 및 제약사항",
+        section_type=SectionType.LIST, content_html="".join(tech_parts),
+        items=tech_items, groups=tech_groups, source_fields=["plan_source_text"],
+        evidence=list(tech_evidence.values()), needs_input="\n".join(tech_notes),
+        is_incomplete=not tech_body_exists,
+    )
+
+    decision_evidence: dict[str, VerifiedEvidence] = {}
+    decision_notes = list(draft.decisions.review_questions)
+    decision_groups: dict[str, list[str]] = {}
+    decision_items: list[str] = []
+    labels = {
+        "feature": "기능", "non_functional": "비기능 요구사항",
+        "data": "데이터", "tech": "기술", "scope": "범위",
+    }
+    subtitles = {
+        "feature": "기능 관련 결정", "non_functional": "비기능 관련 결정",
+        "data": "데이터 관련 결정", "tech": "기술 관련 결정",
+        "scope": "범위 관련 결정",
+    }
+
+    for item in draft.decisions.items:
+        content = item.content.strip()
+        if not content:
+            continue
+        if not _verified_evidence(item.evidence, source, decision_evidence):
+            decision_notes.append(f"'{content}'의 작성 근거를 회의록 원문과 대조해 확인해 주세요.")
+        rendered = content + (
+            f" (이유: {item.rationale.strip()})" if item.rationale.strip() else ""
+        )
+        decision_groups.setdefault(item.category, []).append(rendered)
+        decision_items.append(f"[{labels[item.category]}] {rendered}")
+
+    decision_parts = [
+        f"<p><strong>{escape(subtitles[category])}</strong></p><ul>"
+        + "".join(f"<li>{escape(line)}</li>" for line in lines)
+        + "</ul>"
+        for category, lines in decision_groups.items()
+    ]
+    decision_notes = list(dict.fromkeys(
+        note.strip() for note in decision_notes if note.strip()
+    ))
+    decision_body_exists = bool(decision_parts)
+    decision_parts.append(_review_html(decision_notes))
+    decision_section = PlanSection(
+        no=7, key="decisions", title="최종 결정사항",
+        section_type=SectionType.LIST, content_html="".join(decision_parts),
+        items=decision_items, source_fields=["plan_source_text"],
+        evidence=list(decision_evidence.values()),
+        needs_input="\n".join(decision_notes),
+        is_incomplete=not decision_body_exists,
+    )
+    return tech_section, decision_section

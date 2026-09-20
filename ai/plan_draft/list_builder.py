@@ -1235,6 +1235,8 @@ def build_decisions(structured: dict) -> PlanSection:
     by_category: dict[str, list[str]] = {}
     review_notes: list[str] = []
 
+    visible_decisions: list[dict] = []
+
     for d in decisions:
         category = d["category"]
         rationale_suffix = f" (이유: {d['rationale']})" if d.get("rationale") else ""
@@ -1258,6 +1260,7 @@ def build_decisions(structured: dict) -> PlanSection:
         # 그건 6번과 동일하게 본문에 남깁니다 — context_flag만 이 기준입니다.
         if not d.get("context_flag"):
             by_category.setdefault(category, []).append(plain_text)
+            visible_decisions.append(d)
 
     parts = [
         f"<p><strong>{subtitle.get(category, category)}</strong></p>" + _ul(lines)
@@ -1273,7 +1276,10 @@ def build_decisions(structured: dict) -> PlanSection:
         content_html=content_html,
         items=items,
         source_fields=["decisions"],
-        evidence=_dedupe_evidence(_ev(decisions)),
+        # 본문에서 제외한 제안·과도한 확정 항목의 근거까지 버튼 개수에
+        # 포함되면 사용자는 보이지 않는 결정의 원문을 보게 됩니다.
+        # 화면에 실제로 남은 최종 결정과 근거 개수를 정확히 맞춥니다.
+        evidence=_dedupe_evidence(_ev(visible_decisions)),
         needs_input="\n".join(review_notes),
     )
 

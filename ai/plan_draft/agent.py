@@ -17,6 +17,7 @@
   다른 안내문을 고르는 부분은 별도 작업 — shared/errors.py 참고.)
 """
 import logging
+from concurrent.futures import ThreadPoolExecutor
 from html import escape
 
 from openai import APIError
@@ -276,12 +277,35 @@ def run(
     source = structured.get("plan_source_text") or ""
     contextual = bool(source.strip())
     messages = build_messages(structured, glossary_text)
-    result = _call(
-        context_writer.system_prompt(glossary_text) if contextual else build_system_prompt(glossary_text),
-        messages[-1:] if contextual else messages,
-        context_writer.ContextPlan if contextual else PlanSections,
-        context=f"run proposal_id={proposal_id}",
-    )
+    technical_draft = None
+    if contextual:
+        # 1~5번과 6~7번은 모두 전체 회의록을 직접 읽되 서로 독립적으로
+        # 작성합니다. 두 GPT-5 호출을 병렬 실행해 원문 기반 작성 범위를
+        # 넓혀도 응답 시간이 직렬로 합산되지 않게 합니다.
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            content_future = executor.submit(
+                _call,
+                context_writer.system_prompt(glossary_text),
+                messages[-1:],
+                context_writer.ContextPlan,
+                context=f"run content proposal_id={proposal_id}",
+            )
+            technical_future = executor.submit(
+                _call,
+                context_writer.technical_decision_system_prompt(glossary_text),
+                context_writer.technical_decision_messages(source),
+                context_writer.TechnicalDecisionPlan,
+                context=f"run technical-decisions proposal_id={proposal_id}",
+            )
+            result = content_future.result()
+            technical_draft = technical_future.result()
+    else:
+        result = _call(
+            build_system_prompt(glossary_text),
+            messages,
+            PlanSections,
+            context=f"run proposal_id={proposal_id}",
+        )
 
     by_key = (
         {
@@ -296,13 +320,23 @@ def run(
 
     # ── [2] 목록형 3개 조립 ──────────────────────────────────
     _stage("목록형 섹션 조립 중…")
-    list_sections = {
-        section.key: section
-        for section in list_builder.build_all(
-            structured,
-            generated_goals=[] if contextual else result.goals,
+    if contextual:
+        tech_section, decision_section = context_writer.render_technical_sections(
+            technical_draft,
+            source,
         )
-    }
+        list_sections = {
+            "tech_scope": tech_section,
+            "decisions": decision_section,
+        }
+    else:
+        list_sections = {
+            section.key: section
+            for section in list_builder.build_all(
+                structured,
+                generated_goals=result.goals,
+            )
+        }
 
     # ── [3] 병합 + [4] is_incomplete 판정 ────────────────────
     _stage("섹션 병합 및 근거 매칭 중…")

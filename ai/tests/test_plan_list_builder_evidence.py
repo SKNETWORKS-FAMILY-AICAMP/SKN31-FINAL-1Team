@@ -126,6 +126,19 @@ def test_decision_section_uses_decision_evidence():
     ]
 
 
+def test_decision_section_excludes_evidence_for_hidden_overstated_decision():
+    structured = _structured_data()
+    structured["decisions"][0]["context_flag"] = (
+        "근거보다 과도하게 확정적으로 서술 — 제안 수준"
+    )
+
+    section = build_decisions(structured)
+    quotes = [evidence.quote for evidence in section.evidence]
+
+    assert "재고 알림을 제공하기로 했습니다." not in quotes
+    assert quotes == ["B사 POS는 2차 개발로 이관하기로 했습니다."]
+
+
 def test_tech_scope_removes_duplicate_evidence():
     structured = _structured_data()
 

@@ -237,6 +237,19 @@ class MeetingExtraction(BaseModel):
     )
 
 
+class DecisionResolution(BaseModel):
+    """청크에서 찾은 결정 후보를 최종 결정 하나 또는 제외로 정리한 결과."""
+
+    candidate_ids: list[int] = Field(min_length=1)
+    action: Literal["keep", "merge", "drop"]
+    decision: Optional[Decision] = None
+    reason: str = ""
+
+
+class DecisionReconciliation(BaseModel):
+    resolutions: list[DecisionResolution] = Field(default_factory=list)
+
+
 class MeetingStructured(MeetingExtraction):
     """저장·전달용 최종 형태. 시스템이 채우는 필드가 추가됩니다."""
 

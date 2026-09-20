@@ -95,15 +95,35 @@ def test_missing_quote_is_not_verified_and_html_is_escaped():
 
 def test_generation_receives_source_without_legacy_limits(monkeypatch):
     def call(system, messages, response_model, **kwargs):
-        assert response_model is context_writer.ContextPlan
         assert len(messages) == 1
-        payload = json.loads(messages[0]["content"])
-        assert payload["meeting_source_text"] == SOURCE
-        return context_writer.ContextPlan(
-            overview=_draft("overview"),
-            problem=_draft("problem"),
-            goals=_draft("goals"),
-            users=_draft("users"),
+        if response_model is context_writer.ContextPlan:
+            payload = json.loads(messages[0]["content"])
+            assert payload["meeting_source_text"] == SOURCE
+            return context_writer.ContextPlan(
+                overview=_draft("overview"),
+                problem=_draft("problem"),
+                goals=_draft("goals"),
+                users=_draft("users"),
+            )
+        assert response_model is context_writer.TechnicalDecisionPlan
+        assert SOURCE in messages[0]["content"]
+        return context_writer.TechnicalDecisionPlan(
+            tech_scope=context_writer.TechScopeDraft(groups=[
+                context_writer.TechGroupDraft(
+                    title="데이터·저장 방침",
+                    items=[context_writer.CitedListItem(
+                        text="A몰을 기준 상품 소스로 사용한다.",
+                        evidence=[Evidence(quote=QUOTE_1)],
+                    )],
+                )
+            ]),
+            decisions=context_writer.DecisionsDraft(items=[
+                context_writer.DecisionItemDraft(
+                    category="scope",
+                    content="A몰을 기준 상품 소스로 사용한다.",
+                    evidence=[Evidence(quote=QUOTE_1)],
+                )
+            ]),
         )
 
     monkeypatch.setattr(agent, "_call", call)
@@ -114,6 +134,39 @@ def test_generation_receives_source_without_legacy_limits(monkeypatch):
         assert not item.is_incomplete
     assert result.sections[2].items
     assert result.sections[4].key == "features"
+    assert result.sections[5].evidence[0].quote == QUOTE_1
+    assert result.sections[6].items == ["[범위] A몰을 기준 상품 소스로 사용한다."]
+
+
+def test_render_technical_sections_groups_items_and_verifies_quotes():
+    draft = context_writer.TechnicalDecisionPlan(
+        tech_scope=context_writer.TechScopeDraft(groups=[
+            context_writer.TechGroupDraft(
+                title="기술 구성",
+                items=[context_writer.CitedListItem(
+                    text="분석 파이프라인을 자동화한다.",
+                    evidence=[Evidence(quote="완전 자동화가 목표입니다.")],
+                )],
+            )
+        ]),
+        decisions=context_writer.DecisionsDraft(items=[
+            context_writer.DecisionItemDraft(
+                category="scope",
+                content="A몰을 기준 상품 소스로 사용한다.",
+                rationale="기준 데이터로 선택했다.",
+                evidence=[Evidence(quote=QUOTE_1)],
+            )
+        ]),
+    )
+
+    tech, decisions = context_writer.render_technical_sections(draft, SOURCE)
+
+    assert tech.groups[0].subtitle == "기술 구성"
+    assert tech.evidence[0].quote == "완전 자동화가 목표입니다."
+    assert decisions.items == [
+        "[범위] A몰을 기준 상품 소스로 사용한다. (이유: 기준 데이터로 선택했다.)"
+    ]
+    assert decisions.evidence[0].quote == QUOTE_1
 
 
 @pytest.mark.parametrize("key", ["overview", "problem", "goals", "users"])
@@ -165,6 +218,14 @@ def test_overview_paragraph_rejects_implementation_detail():
 def test_overview_paragraph_allows_clean_text():
     para = context_writer.CitedParagraph(text="상품과 콘텐츠 데이터를 연결해 트렌드를 분석한다.")
     assert "트렌드" in para.text
+
+
+def test_core_goal_prompt_defines_outcome_instead_of_feature_list():
+    prompt = context_writer.system_prompt()
+
+    assert "무엇을 만든다" in prompt
+    assert "기능 목록입니다" in prompt
+    assert "일관되고 신뢰할 수 있는 트렌드 판단 근거" in prompt
 
 
 @pytest.mark.parametrize("word,expected", [

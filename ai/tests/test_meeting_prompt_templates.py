@@ -14,7 +14,11 @@ from meeting_analysis.prompt_loader import (
     load_extraction_fewshots,
     load_extraction_template,
 )
-from meeting_analysis.prompts import build_messages, build_system_prompt
+from meeting_analysis.prompts import (
+    build_decision_system_prompt,
+    build_messages,
+    build_system_prompt,
+)
 from meeting_analysis.schemas import MeetingExtraction
 from meeting_analysis.validators.evidence import verify_and_mark
 
@@ -128,6 +132,16 @@ def test_extraction_template_has_decision_rationale_rule():
     assert "rationale" in prompt
 
 
+def test_decision_reconciliation_keeps_adopted_plan_and_expands_references():
+    prompt = build_decision_system_prompt()
+
+    assert "중요한 기술·데이터 아키텍처" in prompt
+    assert "기술 현황 또는 기능 요구사항" in prompt
+    assert "이미 정한 실행 계획" in prompt
+    assert "지시어만" in prompt
+    assert "원본은 S3에 두고 서비스 데이터만 RDS" in prompt
+
+
 def test_extraction_template_allows_technical_dual_recording():
     """확정된 기술을 decisions뿐 아니라 requirements.technical에도 적을 수 있다는
     규칙이 시스템 프롬프트에 포함되는지 확인합니다."""
@@ -220,6 +234,7 @@ def test_extraction_system_prompt_contains_required_fields():
         assert f"decisions.category={category}" in prompt
 
     assert "evidence.quote" in prompt
+    assert "마지막으로 합의된 결론만" in prompt
 
 
 def test_meeting_build_messages_adds_actual_input():
