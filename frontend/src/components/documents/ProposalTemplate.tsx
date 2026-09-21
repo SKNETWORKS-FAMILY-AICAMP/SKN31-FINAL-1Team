@@ -1,5 +1,4 @@
 import { useRef, useState } from "react";
-import { ChevronDown } from "lucide-react";
 import DOMPurify from "isomorphic-dompurify";
 import type { ProposalDoc } from "@/lib/documentTemplates";
 
@@ -10,6 +9,12 @@ export type ProposalEvidence = Partial<Record<
   "projectOverview" | "problemDefinition" | "projectGoals" | "target" | "features" | "techStackConstraints" | "finalDecisions",
   string
 >>;
+
+export type ProposalEvidenceItem = { title: string; quotes: string[] };
+export type ProposalEvidenceEntries = Partial<Record<keyof ProposalEvidence, {
+  quotes: string[];
+  items?: ProposalEvidenceItem[];
+}>>;
 
 const inputCls = "w-full bg-black/5 border border-black/10 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40";
 
@@ -163,7 +168,8 @@ function RichText({ html }: { html: string }) {
 }
 
 export function ProposalTemplate({
-  doc, title, dateLabel, editable, onChange, periodEditable, onPeriodChange, evidence,
+  doc, title, dateLabel, editable, onChange, periodEditable, onPeriodChange,
+  evidenceItems, activeEvidenceKey, onViewEvidence,
 }: {
   doc: ProposalDoc; title: string; dateLabel: string;
   editable?: boolean; onChange?: (doc: ProposalDoc) => void;
@@ -171,11 +177,23 @@ export function ProposalTemplate({
   // 한다(회의록에 범위가 없으면 AI가 채울 수 없는 값이라 매번 수정 모드까지 탈 필요가 없음).
   // 그래서 본문 편집 여부(editable)와 별도로 periodEditable을 둔다.
   periodEditable?: boolean; onPeriodChange?: (period: { start: string; end: string }) => void;
-  // 섹션별 근거자료 — 없으면(백엔드 미채움) 각 섹션 아래에 "아직 근거 자료가 없습니다"만 보임.
-  // 전달 안 하면(reqSpec 탭의 작은 참고 박스 등) 근거자료 토글 자체를 안 보여준다.
-  evidence?: ProposalEvidence;
+  evidenceItems?: ProposalEvidenceEntries;
+  activeEvidenceKey?: keyof ProposalEvidence;
+  onViewEvidence?: (key: keyof ProposalEvidence, quotes: string[], items?: ProposalEvidenceItem[]) => void;
 }) {
   const set = <K extends keyof ProposalDoc>(key: K, value: ProposalDoc[K]) => onChange?.({ ...doc, [key]: value });
+  const sectionQuotes = (key: keyof ProposalEvidence) => {
+    const entry = evidenceItems?.[key];
+    if (!entry) return [];
+    const quotes = key === "features" && entry.items
+      ? entry.items.flatMap(item => item.quotes)
+      : entry.quotes;
+    return Array.from(new Set(quotes));
+  };
+  // 항목별 근거가 준비된 섹션(지금은 주요 기능뿐)에서만 값이 있다 — 없는 섹션은
+  // undefined 그대로 전달돼 EvidencePanel이 기존 단색 방식으로 동작한다.
+  const sectionEvidenceItems = (key: keyof ProposalEvidence): ProposalEvidenceItem[] | undefined =>
+    key === "features" ? evidenceItems?.[key]?.items : undefined;
   const setPeriod = (period: { start: string; end: string }) => {
     onPeriodChange?.(period);
     if (editable) set("projectPeriod", period);
@@ -210,7 +228,7 @@ export function ProposalTemplate({
         ) : null}
       </div>
 
-      <Section num="1" title="프로젝트 개요" evidence={evidence} evidenceKey="projectOverview">
+      <Section num="1" title="프로젝트 개요" evidenceKey="projectOverview" evidenceQuotes={sectionQuotes("projectOverview")} activeEvidenceKey={activeEvidenceKey} onViewEvidence={onViewEvidence}>
         {editable ? (
           <EditableRichText html={doc.projectOverview} onChange={html => set("projectOverview", html)} />
         ) : (
@@ -218,7 +236,7 @@ export function ProposalTemplate({
         )}
       </Section>
 
-      <Section num="2" title="핵심 목표" evidence={evidence} evidenceKey="problemDefinition">
+      <Section num="2" title="핵심 목표" evidenceKey="problemDefinition" evidenceQuotes={sectionQuotes("problemDefinition")} activeEvidenceKey={activeEvidenceKey} onViewEvidence={onViewEvidence}>
         {editable ? (
           <EditableRichText html={doc.problemDefinition} onChange={html => set("problemDefinition", html)} />
         ) : (
@@ -226,7 +244,7 @@ export function ProposalTemplate({
         )}
       </Section>
 
-      <Section num="3" title="세부 목표 및 문제 정의" evidence={evidence} evidenceKey="projectGoals">
+      <Section num="3" title="세부 목표 및 문제 정의" evidenceKey="projectGoals" evidenceQuotes={sectionQuotes("projectGoals")} activeEvidenceKey={activeEvidenceKey} onViewEvidence={onViewEvidence}>
         {editable ? (
           <EditableRichText
             html={doc.projectGoals}
@@ -238,7 +256,7 @@ export function ProposalTemplate({
         )}
       </Section>
 
-      <Section num="4" title="대상 사용자" evidence={evidence} evidenceKey="target">
+      <Section num="4" title="대상 사용자" evidenceKey="target" evidenceQuotes={sectionQuotes("target")} activeEvidenceKey={activeEvidenceKey} onViewEvidence={onViewEvidence}>
         {editable ? (
           <EditableRichText html={doc.target} onChange={html => set("target", html)} minHeightClass="min-h-20" />
         ) : (
@@ -246,7 +264,7 @@ export function ProposalTemplate({
         )}
       </Section>
 
-      <Section num="5" title="주요 기능" evidence={evidence} evidenceKey="features">
+      <Section num="5" title="주요 기능" evidenceKey="features" evidenceQuotes={sectionQuotes("features")} evidenceGroupedItems={sectionEvidenceItems("features")} activeEvidenceKey={activeEvidenceKey} onViewEvidence={onViewEvidence}>
         {editable ? (
           <EditableRichText
             html={doc.features}
@@ -259,7 +277,7 @@ export function ProposalTemplate({
         )}
       </Section>
 
-      <Section num="6" title="기술 스택 및 제약사항" evidence={evidence} evidenceKey="techStackConstraints">
+      <Section num="6" title="기술 스택 및 제약사항" evidenceKey="techStackConstraints" evidenceQuotes={sectionQuotes("techStackConstraints")} activeEvidenceKey={activeEvidenceKey} onViewEvidence={onViewEvidence}>
         {editable ? (
           <EditableRichText
             html={doc.techStackConstraints}
@@ -272,7 +290,7 @@ export function ProposalTemplate({
         )}
       </Section>
 
-      <Section num="7" title="최종 결정사항" evidence={evidence} evidenceKey="finalDecisions">
+      <Section num="7" title="최종 결정사항" evidenceKey="finalDecisions" evidenceQuotes={sectionQuotes("finalDecisions")} activeEvidenceKey={activeEvidenceKey} onViewEvidence={onViewEvidence}>
         {editable ? (
           <EditableRichText
             html={doc.finalDecisions}
@@ -288,46 +306,34 @@ export function ProposalTemplate({
 }
 
 function Section({
-  num, title, children, evidence, evidenceKey,
+  num, title, children, evidenceKey, evidenceQuotes, evidenceGroupedItems, activeEvidenceKey, onViewEvidence,
 }: {
   num: string; title: string; children: React.ReactNode;
-  // evidence가 아예 안 넘어오면(예: reqSpec 탭의 작은 참고 박스) 근거자료 토글 자체를 안 보여준다.
-  // evidence 객체는 있는데 이 섹션 키 값이 없으면 "아직 근거 자료가 없습니다"를 보여준다.
-  evidence?: ProposalEvidence; evidenceKey?: keyof ProposalEvidence;
+  evidenceKey: keyof ProposalEvidence;
+  evidenceQuotes: string[];
+  // 항목별(예: 기능별) 근거가 있는 섹션만 넘어온다 — 없는 섹션은 undefined.
+  evidenceGroupedItems?: ProposalEvidenceItem[];
+  activeEvidenceKey?: keyof ProposalEvidence;
+  onViewEvidence?: (key: keyof ProposalEvidence, quotes: string[], items?: ProposalEvidenceItem[]) => void;
 }) {
+  const hasEvidence = evidenceQuotes.length > 0 && !!onViewEvidence;
+  const active = activeEvidenceKey === evidenceKey;
   return (
     <div className="mb-7 break-inside-avoid">
-      <h2 className="text-lg font-bold border-l-4 border-primary pl-3 mb-3">{num}. {title}</h2>
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <h2 className="text-lg font-bold border-l-4 border-primary pl-3">{num}. {title}</h2>
+        {hasEvidence && (
+          <button
+            type="button"
+            aria-label={`${title} 원문 보기`}
+            onClick={() => onViewEvidence(evidenceKey, evidenceQuotes, evidenceGroupedItems)}
+            className={`shrink-0 rounded-full border px-3 py-1 text-xs font-semibold transition-colors print:hidden ${active ? "border-blue-600 bg-blue-600 text-white" : "border-blue-200 bg-white text-blue-700 hover:bg-blue-100"}`}
+          >
+            원문 보기 · {evidenceQuotes.length}
+          </button>
+        )}
+      </div>
       <div className="pl-3">{children}</div>
-      {evidence && evidenceKey && (
-        <div className="pl-3 mt-2 print:hidden">
-          <SectionEvidence text={evidence[evidenceKey]} />
-        </div>
-      )}
-    </div>
-  );
-}
-
-// 섹션별 근거자료 토글 — 기본은 접힘(사용자 요청), 제목 클릭으로 펼침. PDF 인쇄에는 위
-// print:hidden으로 이미 빠지고, PPTX 내보내기는 ProposalDoc(evidence 없는 타입)만 읽으므로
-// 애초에 포함되지 않는다.
-function SectionEvidence({ text }: { text?: string }) {
-  const [open, setOpen] = useState(false);
-  return (
-    <div className="text-xs">
-      <button
-        type="button"
-        onClick={() => setOpen(v => !v)}
-        className="flex items-center gap-1 text-gray-500 font-semibold hover:text-gray-700 transition-colors"
-      >
-        <ChevronDown className={`w-3.5 h-3.5 transition-transform ${!open ? "-rotate-90" : ""}`} />
-        근거자료
-      </button>
-      {open && (
-        <div className="mt-1.5 p-3 rounded-lg bg-gray-50 border border-gray-200 text-gray-600 whitespace-pre-wrap">
-          {text && text.trim() ? text : "아직 근거 자료가 없습니다."}
-        </div>
-      )}
     </div>
   );
 }
