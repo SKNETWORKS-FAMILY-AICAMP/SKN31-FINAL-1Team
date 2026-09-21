@@ -1,10 +1,9 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import Link from "next/link";
 import {
   History as HistoryIcon, FileText, Loader2, CheckCircle2,
-  Clock, FolderKanban, PlusCircle, Bot, AlertTriangle,
+  Clock, FolderKanban, Bot, AlertTriangle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { apiFetch } from "@/lib/api/client";
@@ -159,13 +158,13 @@ export default function HistoryPage() {
   }
 
   if (projects.length === 0) {
+    // 2026-09-21 (사용자 요청): 히스토리는 조회 전용 화면이라 여기서 프로젝트를
+    // "만들 수 있게" 유도할 필요가 없다 — 이력이 없다는 것만 보여준다(프로젝트
+    // 생성 진입점은 대시보드/문서생성에만 둔다).
     return (
       <div className="flex flex-col items-center justify-center h-[60vh] text-center gap-3">
-        <FolderKanban className="w-10 h-10 text-muted-foreground/30" />
-        <p className="text-muted-foreground">아직 프로젝트가 없습니다.</p>
-        <Link href="/project/new" className="inline-flex items-center gap-1.5 mt-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-bold hover:bg-primary/90 transition-colors">
-          <PlusCircle className="w-4 h-4" /> 첫 프로젝트 만들기
-        </Link>
+        <HistoryIcon className="w-10 h-10 text-muted-foreground/30" />
+        <p className="text-muted-foreground">히스토리에 데이터가 없습니다.</p>
       </div>
     );
   }
