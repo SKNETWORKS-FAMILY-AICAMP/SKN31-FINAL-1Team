@@ -630,21 +630,3 @@ def confirm_task_assignments(req_def_id: int, assignments: list) -> dict:
         return {"status": "error", "message": f"업무 배정 확정 중 오류가 발생했습니다: {e}"}
 
     return {"status": "success", "created_count": created_count}
-
-
-# ==========================================
-# 뷰(views.py)에서 호출하는 AI 연동 서비스 함수들
-# ==========================================
-
-def run_assignee_mapping(data):
-    spec_id = data.get("spec_id")
-    if not spec_id:
-        return {"status": "error", "message": "spec_id는 필수입니다."}
-    return generate_task_suggestions(spec_id)
-
-
-def run_task_generation(data):
-    spec_id = data.get("spec_id")
-    if not spec_id:
-        return {"status": "error", "message": "spec_id는 필수입니다."}
-    return generate_task_suggestions(spec_id)
