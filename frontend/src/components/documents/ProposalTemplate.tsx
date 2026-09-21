@@ -1,6 +1,7 @@
-import { useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import DOMPurify from "isomorphic-dompurify";
 import type { ProposalDoc } from "@/lib/documentTemplates";
+import { EVIDENCE_GROUP_PALETTE } from "./EvidencePanel";
 
 // 섹션별 근거자료 — 각 섹션(1~7번) 바로 아래에 개별로 붙는다(사용자 요청, 문서 맨 아래에
 // 하나로 모아두던 이전 방식은 폐기). ProposalDoc의 7개 섹션 필드명을 그대로 근거 데이터의
@@ -167,6 +168,68 @@ function RichText({ html }: { html: string }) {
   );
 }
 
+// content_html은 "<p><strong>기능명</strong></p><p>설명...</p>"가 기능 수만큼
+// 이어붙은 하나의 문자열이다(백엔드가 기능별로 안 쪼개고 하나로 합쳐서 저장).
+// 근거 패널(EvidencePanel)과 같은 색으로 기능마다 테두리를 매칭하려면, 이미 굳은
+// 문자열을 다시 항목 단위로 나눠야 한다 — "제목만 있는 <p><strong>...</strong></p>"를
+// 새 기능의 시작으로 보고 그 앞까지를 한 그룹으로 묶는다(경계 판정에 제목 텍스트를
+// 쓰지 않으므로 이스케이프 차이 등으로 어긋날 일이 없다).
+function splitFeatureGroups(sanitizedHtml: string): string[] | null {
+  if (typeof document === "undefined") return null;
+  const container = document.createElement("div");
+  container.innerHTML = sanitizedHtml;
+  const isTitleParagraph = (node: ChildNode): boolean => {
+    if (node.nodeType !== Node.ELEMENT_NODE) return false;
+    const el = node as Element;
+    if (el.tagName !== "P" || el.children.length !== 1) return false;
+    const only = el.children[0];
+    return only.tagName === "STRONG" && only.textContent?.trim() === el.textContent?.trim();
+  };
+  const groups: string[] = [];
+  let current: string[] = [];
+  container.childNodes.forEach(node => {
+    const html = node instanceof Element ? node.outerHTML : node.textContent ?? "";
+    if (!html.trim()) return;
+    if (isTitleParagraph(node) && current.length > 0) {
+      groups.push(current.join(""));
+      current = [];
+    }
+    current.push(html);
+  });
+  if (current.length > 0) groups.push(current.join(""));
+  return groups.length > 0 ? groups : null;
+}
+
+// 5번 주요 기능 전용 — 기능별 근거(items)가 있을 때만 기능마다 다른 색 테두리를
+// 붙인다. items가 없으면(아직 항목별 근거가 없는 다른 섹션과 동일한 상황) 기존
+// RichText와 똑같이 렌더링해 동작이 하나도 안 바뀐다.
+function ColoredFeatureList({ html, items }: { html: string; items?: ProposalEvidenceItem[] }) {
+  const sanitized = sanitizeRestrictedHtml(normalizeLegacyPlainText(html));
+  const groups = useMemo(
+    () => (items && items.length > 0 ? splitFeatureGroups(sanitized) : null),
+    [sanitized, items],
+  );
+
+  if (!html) return <p className="leading-relaxed">-</p>;
+  if (!groups) return <RichText html={html} />;
+
+  return (
+    <div>
+      {groups.map((groupHtml, index) => (
+        <div
+          key={index}
+          className={`mb-3 border-l-[3px] pl-3 last:mb-0 ${EVIDENCE_GROUP_PALETTE[index % EVIDENCE_GROUP_PALETTE.length].border}`}
+        >
+          <div
+            className="leading-relaxed [&_p]:mb-2 [&_p:last-child]:mb-0 [&_strong]:font-bold [&_ul]:list-disc [&_ul]:pl-5 [&_li]:mb-1"
+            dangerouslySetInnerHTML={{ __html: groupHtml }}
+          />
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export function ProposalTemplate({
   doc, title, dateLabel, editable, onChange, periodEditable, onPeriodChange,
   evidenceItems, activeEvidenceKey, onViewEvidence,
@@ -273,7 +336,7 @@ export function ProposalTemplate({
             minHeightClass="min-h-28"
           />
         ) : (
-          <RichText html={doc.features} />
+          <ColoredFeatureList html={doc.features} items={sectionEvidenceItems("features")} />
         )}
       </Section>
 

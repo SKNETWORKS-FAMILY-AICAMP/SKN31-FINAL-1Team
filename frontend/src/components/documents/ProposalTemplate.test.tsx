@@ -121,4 +121,48 @@ describe("ProposalTemplate (read mode)", () => {
 
     expect(screen.queryByRole("button", { name: "기술 스택 및 제약사항 원문 보기" })).not.toBeInTheDocument();
   });
+
+  it("borders each feature with a different color matching its evidence group", () => {
+    render(
+      <ProposalTemplate
+        doc={{
+          ...baseDoc,
+          features: "<p><strong>예약 알림</strong></p><p>전날 알림을 보낸다.</p><p><strong>복약 알림</strong></p><p>정해진 시간에 알린다.</p>",
+        }}
+        title="테스트 기획서"
+        dateLabel="2026. 9. 7."
+        evidenceItems={{
+          features: {
+            quotes: [],
+            items: [
+              { title: "예약 알림", quotes: ["예약 전날에도 알려주세요."] },
+              { title: "복약 알림", quotes: ["복약 시간에 맞춰 알려주세요."] },
+            ],
+          },
+        }}
+      />
+    );
+
+    const reservationBlock = screen.getByText("예약 알림").closest("div.border-l-\\[3px\\]");
+    const medicationBlock = screen.getByText("복약 알림").closest("div.border-l-\\[3px\\]");
+    expect(reservationBlock).not.toBeNull();
+    expect(medicationBlock).not.toBeNull();
+    // 서로 다른 기능은 서로 다른 테두리 색을 써야 한다(근거 패널과 같은 팔레트·순서).
+    expect(reservationBlock!.className).not.toBe(medicationBlock!.className);
+    expect(reservationBlock!.className).toContain("border-amber-500");
+    expect(medicationBlock!.className).toContain("border-sky-500");
+  });
+
+  it("falls back to plain rendering for features without per-item evidence", () => {
+    render(
+      <ProposalTemplate
+        doc={{ ...baseDoc, features: "<p><strong>예약 알림</strong></p><p>전날 알림을 보낸다.</p>" }}
+        title="테스트 기획서"
+        dateLabel="2026. 9. 7."
+      />
+    );
+
+    expect(screen.getByText("예약 알림")).toBeInTheDocument();
+    expect(document.querySelector("div.border-l-\\[3px\\]")).toBeNull();
+  });
 });

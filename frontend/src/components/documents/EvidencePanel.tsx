@@ -11,15 +11,18 @@ export type EvidenceGroup = { title: string; quotes: string[] };
 // 구분할 수 있게 한다 — 항목 정보가 없는 섹션(대상 사용자·기술 스택·최종 결정 등,
 // 아직 항목별 근거가 안 쪼개진 섹션)은 이 팔레트를 쓰지 않고 기존 단색(amber) 그대로
 // 유지한다. 그런 섹션은 targetGroups를 안 넘기면 되므로 동작이 하나도 안 바뀐다.
+// border는 ProposalTemplate이 본문 쪽(왼쪽 패널) 항목에 같은 색 테두리를 매칭할 때
+// 쓴다 — 근거 패널(mark/dot)과 본문(border) 양쪽이 같은 배열·같은 순서를 공유해야
+// "몇 번째 항목이 무슨 색"이 항상 일치한다(두 파일에 팔레트를 따로 두지 않는 이유).
 export const EVIDENCE_GROUP_PALETTE = [
-  { mark: "bg-amber-200 ring-amber-300", dot: "bg-amber-500" },
-  { mark: "bg-sky-200 ring-sky-300", dot: "bg-sky-500" },
-  { mark: "bg-emerald-200 ring-emerald-300", dot: "bg-emerald-500" },
-  { mark: "bg-violet-200 ring-violet-300", dot: "bg-violet-500" },
-  { mark: "bg-rose-200 ring-rose-300", dot: "bg-rose-500" },
-  { mark: "bg-orange-200 ring-orange-300", dot: "bg-orange-500" },
-  { mark: "bg-teal-200 ring-teal-300", dot: "bg-teal-500" },
-  { mark: "bg-fuchsia-200 ring-fuchsia-300", dot: "bg-fuchsia-500" },
+  { mark: "bg-amber-200 ring-amber-300", dot: "bg-amber-500", border: "border-amber-500" },
+  { mark: "bg-sky-200 ring-sky-300", dot: "bg-sky-500", border: "border-sky-500" },
+  { mark: "bg-emerald-200 ring-emerald-300", dot: "bg-emerald-500", border: "border-emerald-500" },
+  { mark: "bg-violet-200 ring-violet-300", dot: "bg-violet-500", border: "border-violet-500" },
+  { mark: "bg-rose-200 ring-rose-300", dot: "bg-rose-500", border: "border-rose-500" },
+  { mark: "bg-orange-200 ring-orange-300", dot: "bg-orange-500", border: "border-orange-500" },
+  { mark: "bg-teal-200 ring-teal-300", dot: "bg-teal-500", border: "border-teal-500" },
+  { mark: "bg-fuchsia-200 ring-fuchsia-300", dot: "bg-fuchsia-500", border: "border-fuchsia-500" },
 ] as const;
 
 function buildHighlightedParts(
