@@ -119,6 +119,11 @@ if env.str('MYSQL_HOST', default=''):
             'PASSWORD': env.str('MYSQL_PASSWORD'),
             'HOST': env.str('MYSQL_HOST'),
             'PORT': env.int('MYSQL_PORT', default=3306),
+            # 2026-09-21: MySQL DATETIME 컬럼엔 시간대 정보가 없어, 이 값이 없으면 UTC로 저장돼
+            # DB를 직접 볼 때 한국 시간보다 9시간 이르게 보인다. 값을 지정하면 앞으로 저장되는
+            # 시각이 한국 시간(TIME_ZONE과 같은 값)으로 들어간다. 로컬·운영이 같은 RDS를 쓰므로
+            # 이 설정은 모두가 같이 적용해야 한다(옛 설정으로 저장하면 UTC/KST가 섞인다).
+            'TIME_ZONE': 'Asia/Seoul',
         }
     }
 else:
