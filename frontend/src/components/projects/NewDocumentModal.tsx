@@ -7,7 +7,6 @@ import { formatTranscriptSentences } from "@/lib/transcript";
 import TagAutocomplete from "@/components/ui/TagAutocomplete";
 
 type ProjectOption = { id: number; name: string };
-const NEW_PROJECT_VALUE = "__new__";
 
 // 2026-09-01: /api/meetings/notes/parse-file/ (.docx/.pdf/.txt/.hwp 지원 — .hwp는 hwp5txt
 // CLI를 서브프로세스로 호출) 로 파일을 올리면 텍스트를 추출해 "원본 내용" 칸을 채운다.
@@ -63,11 +62,8 @@ const SAMPLE_NOTES = [
 ];
 
 export function NewDocumentModal({
-  defaultProjectId,
   onClose,
 }: {
-  // 문서생성 페이지가 현재 보고 있는 프로젝트가 있으면 기본 선택값으로 넘겨준다
-  defaultProjectId?: number;
   onClose: (projectId?: number, createdNoteId?: number) => void;
 }) {
   const [title, setTitle] = useState("");
@@ -82,22 +78,9 @@ export function NewDocumentModal({
   const [audioProgress, setAudioProgress] = useState(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const [projects, setProjects] = useState<ProjectOption[]>([]);
-  const [loadingProjects, setLoadingProjects] = useState(true);
-  const [selectedProjectId, setSelectedProjectId] = useState<string>(defaultProjectId ? String(defaultProjectId) : "");
+  // 2026-09-21 (사용자 요청): 기존 프로젝트에 붙이는 선택지(드롭다운) 자체를 없애고,
+  // 새 회의록/문서는 항상 새 프로젝트를 만든다 — 입력창 하나로 단순화.
   const [newProjectName, setNewProjectName] = useState("");
-
-  useEffect(() => {
-    apiFetch<ProjectOption[]>("/api/projects/")
-      .then(list => {
-        setProjects(list);
-        if (!defaultProjectId) {
-          setSelectedProjectId(list.length > 0 ? String(list[0].id) : NEW_PROJECT_VALUE);
-        }
-      })
-      .catch(() => setSelectedProjectId(NEW_PROJECT_VALUE))
-      .finally(() => setLoadingProjects(false));
-  }, [defaultProjectId]);
 
   // 참석자 드롭박스 후보 — DB에 등록된 사람 이름. 목록에 없는 사람은 TagAutocomplete에서 직접 입력해 추가할 수 있다.
   useEffect(() => {
@@ -224,27 +207,21 @@ export function NewDocumentModal({
     }
   };
 
-  const isCreatingNewProject = selectedProjectId === NEW_PROJECT_VALUE;
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
     if (!content.trim()) return;
-    if (isCreatingNewProject && !newProjectName.trim()) return;
+    if (!newProjectName.trim()) return;
 
     const finalTitle = title.trim() || deriveTitleFromContent(content);
 
     setIsLoading(true);
     try {
-      let targetProjectId = Number(selectedProjectId);
-
-      if (isCreatingNewProject) {
-        const newProject = await apiFetch<ProjectOption>("/api/projects/", {
-          method: "POST",
-          body: JSON.stringify({ name: newProjectName.trim() }),
-        });
-        targetProjectId = newProject.id;
-      }
+      const newProject = await apiFetch<ProjectOption>("/api/projects/", {
+        method: "POST",
+        body: JSON.stringify({ name: newProjectName.trim() }),
+      });
+      const targetProjectId = newProject.id;
 
       const note = await apiFetch<any>("/api/meetings/notes/", {
         method: "POST",
@@ -290,46 +267,28 @@ export function NewDocumentModal({
           )}
 
           <form id="doc-form" onSubmit={handleSubmit} className="space-y-3">
-            <div className="grid grid-cols-[3fr_2fr] gap-4">
-              <div>
-                <label className="block text-sm font-medium mb-1">문서 제목 (선택)</label>
-                <input
-                  type="text"
-                  value={title}
-                  onChange={(e) => setTitle(e.target.value)}
-                  placeholder="비워두면 내용에서 자동으로 생성됩니다"
-                  className="w-full bg-black/5 dark:bg-white/5 border border-border rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-primary/50 font-medium"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-1 flex items-center gap-1.5"><FolderKanban className="w-3.5 h-3.5" /> 프로젝트</label>
-                <select
-                  value={selectedProjectId}
-                  onChange={(e) => setSelectedProjectId(e.target.value)}
-                  disabled={loadingProjects}
-                  className="w-full bg-black/5 dark:bg-white/5 border border-border rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-primary/50 text-sm disabled:opacity-60"
-                >
-                  {projects.map((p) => (
-                    <option key={p.id} value={p.id}>{p.name}</option>
-                  ))}
-                  <option value={NEW_PROJECT_VALUE}>+ 새 프로젝트</option>
-                </select>
-              </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">문서 제목 (선택)</label>
+              <input
+                type="text"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                placeholder="비워두면 내용에서 자동으로 생성됩니다"
+                className="w-full bg-black/5 dark:bg-white/5 border border-border rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-primary/50 font-medium"
+              />
             </div>
 
-            {isCreatingNewProject && (
-              <div>
-                <label className="block text-sm font-medium mb-1">새 프로젝트 이름</label>
-                <input
-                  type="text"
-                  required
-                  value={newProjectName}
-                  onChange={(e) => setNewProjectName(e.target.value)}
-                  placeholder="예: 사내 인트라넷 고도화"
-                  className="w-full bg-black/5 dark:bg-white/5 border border-border rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-primary/50 text-sm"
-                />
-              </div>
-            )}
+            <div>
+              <label className="block text-sm font-medium mb-1 flex items-center gap-1.5"><FolderKanban className="w-3.5 h-3.5" /> 새 프로젝트 이름</label>
+              <input
+                type="text"
+                required
+                value={newProjectName}
+                onChange={(e) => setNewProjectName(e.target.value)}
+                placeholder="예: 사내 인트라넷 고도화"
+                className="w-full bg-black/5 dark:bg-white/5 border border-border rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-primary/50 text-sm"
+              />
+            </div>
 
             <div className="grid grid-cols-2 gap-4">
               <div>
@@ -421,7 +380,7 @@ export function NewDocumentModal({
           <button
             form="doc-form"
             type="submit"
-            disabled={isLoading || !content.trim() || (isCreatingNewProject && !newProjectName.trim())}
+            disabled={isLoading || !content.trim() || !newProjectName.trim()}
             className="flex items-center gap-2 bg-primary text-primary-foreground hover:bg-primary/90 px-8 py-2.5 rounded-lg transition-colors text-sm font-medium shadow-lg shadow-primary/20 disabled:opacity-50"
           >
             {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : null}

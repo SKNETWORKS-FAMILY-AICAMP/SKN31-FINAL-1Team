@@ -10,7 +10,6 @@ import {
 import {
   GitPullRequest, AlertTriangle, CheckCircle2, Clock,
   Activity, Users, FolderKanban, Loader2, ArrowUpRight,
-  PlusCircle
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { formatDistanceToNow } from "date-fns";
@@ -273,14 +272,6 @@ export default function OverviewView() {
                   <span className="text-muted-foreground font-medium">({projectList.length}건)</span>
                 )}
               </h3>
-              {isPM && (
-                <Link
-                  href="/project/new"
-                  className="flex items-center gap-1.5 px-3 py-1.5 bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 rounded-lg text-xs font-semibold transition-colors"
-                >
-                  <PlusCircle className="w-4 h-4" /> 새 프로젝트
-                </Link>
-              )}
             </div>
             {projectList.length === 0 ? (
               <div className="py-10 text-center text-muted-foreground space-y-2">

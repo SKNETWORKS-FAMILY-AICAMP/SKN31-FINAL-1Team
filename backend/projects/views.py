@@ -91,13 +91,17 @@ class ProjectDetailView(generics.RetrieveUpdateDestroyAPIView):
 class PipelineHistoryListView(generics.ListAPIView):
     """
     /history 페이지 타임라인 전체 이력 조회 API
-    GET /api/projects/{id}/history/
+    GET /api/projects/{id}/history/  — 해당 프로젝트만
+    GET /api/projects/history/       — 전체 프로젝트("전체 보기" 드롭다운, 사용자 요청)
     """
     serializer_class = PipelineHistorySerializer
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
         project_id = self.kwargs.get('project_id')
-        return PipelineHistory.objects.filter(project_id=project_id).select_related(
-            'project', 'actor', 'meeting', 'spec', 'requirement', 'task'
-        )
+        qs = PipelineHistory.objects.select_related('project', 'actor', 'meeting', 'spec', 'requirement', 'task')
+        if project_id is not None:
+            qs = qs.filter(project_id=project_id)
+        # "전체 보기"에선 여러 프로젝트가 섞이므로, PK 순서에 의존하지 않고 명시적으로
+        # 최신순 정렬한다(단일 프로젝트 조회는 기존과 동일하게 보이지만 명시해두는 게 안전).
+        return qs.order_by('-created_at')

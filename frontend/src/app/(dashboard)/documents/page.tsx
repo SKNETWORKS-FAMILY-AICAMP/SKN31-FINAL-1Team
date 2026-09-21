@@ -1625,7 +1625,6 @@ export default function DocumentsPage() {
 
       {newDocModalOpen && (
         <NewDocumentModal
-          defaultProjectId={project.id}
           onClose={async (createdProjectId, createdNoteId) => {
             setNewDocModalOpen(false);
             await fetchAll(createdProjectId);
