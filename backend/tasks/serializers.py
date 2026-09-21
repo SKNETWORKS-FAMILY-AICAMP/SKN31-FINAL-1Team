@@ -106,7 +106,8 @@ class TaskAssignmentSerializer(serializers.ModelSerializer):
         #   - 진행률을 1% 이상으로 올리면 "승인됨" → "진행 중" (착수 신호)
         #   - 진행률을 다시 0%로 내리면 "진행 중" → "승인됨" (착수 취소 신호)
         #   - 진행률이 100%가 되면 "진행 중" → "완료" (완료 신호, is_busy 해제도 같이 처리)
-        #   - 완료 후 100% 밑으로 다시 내리면 "완료" → "진행 중" (재오픈, is_busy 다시 걸어줌)
+        #   - 완료 후 100% 밑으로 다시 내리면 "완료" → "진행 중" (재오픈, is_busy 다시 걸어줌),
+        #     0%까지 내리면 "완료" → "승인됨"
         # 이 요청(TaskDetailModal의 일반 PATCH)에서 status_code를 명시적으로 같이
         # 보낸 경우엔 그 값을 그대로 존중하고 자동 전환하지 않는다.
         new_progress = validated_data.get('progress', instance.progress)
@@ -131,7 +132,10 @@ class TaskAssignmentSerializer(serializers.ModelSerializer):
                         assigned_dev.is_busy = False
                         assigned_dev.save(update_fields=['is_busy'])
             elif instance.status_code_id == TaskStatusCode.COMPLETED and new_progress < 100:
-                instance.status_code_id = TaskStatusCode.IN_PROGRESS
+                # 0%까지 내리면 착수 전 상태(승인됨)로, 1~99%면 진행 중으로 재오픈한다.
+                instance.status_code_id = (
+                    TaskStatusCode.APPROVED if new_progress <= 0 else TaskStatusCode.IN_PROGRESS
+                )
                 assigned_dev = instance.assigned_user
                 if assigned_dev and not assigned_dev.is_busy:
                     assigned_dev.is_busy = True
