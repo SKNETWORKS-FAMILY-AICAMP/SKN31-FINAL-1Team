@@ -4,11 +4,12 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import {
   History as HistoryIcon, FileText, Loader2, CheckCircle2,
-  Clock, FolderKanban, PlusCircle, ChevronLeft, ChevronRight, Bot, AlertTriangle,
+  Clock, FolderKanban, PlusCircle, Bot, AlertTriangle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { apiFetch } from "@/lib/api/client";
 import { useAuth } from "@/lib/auth";
+import { Pagination } from "@/components/ui/Pagination";
 
 // 이 페이지는 백엔드의 PipelineHistory 테이블(/api/projects/{id}/history/)을 그대로
 // 보여준다 — 문서/업무의 "현재 상태"를 프론트에서 역추적하지 않는다.
@@ -62,36 +63,37 @@ const PAGE_SIZE = 15;
 export default function HistoryPage() {
   const { user } = useAuth();
   const isPM = user?.role === "PM";
-  const [project, setProject] = useState<ProjectDto | null>(null);
+  const [projects, setProjects] = useState<ProjectDto[]>([]);
   const [items, setItems] = useState<HistoryItem[]>([]);
   const [loading, setLoading] = useState(true);
-  // 조회 실패 시 project가 null로 남는 건 "프로젝트가 없는 것"과 똑같이 보여서
-  // (아래 !project 분기), 네트워크 오류를 "아직 참여 중인 프로젝트가 없다"는 오해를
-  // 주는 문구로 잘못 표시하는 문제가 있었다 — 실패 여부를 따로 들고 구분해서 보여준다.
+  // 조회 실패 시 projects가 빈 배열로 남는 건 "프로젝트가 없는 것"과 똑같이 보여서
+  // (아래 projects.length === 0 분기), 네트워크 오류를 "아직 참여 중인 프로젝트가 없다"는
+  // 오해를 주는 문구로 잘못 표시하는 문제가 있었다 — 실패 여부를 따로 들고 구분해서 보여준다.
   const [loadError, setLoadError] = useState(false);
   const [filter, setFilter] = useState<FilterKey>("all");
   const [page, setPage] = useState(1);
+  // null = "전체 보기" — 특정 프로젝트를 고르면 그 프로젝트 이력만 남긴다(사용자 요청,
+  // 업무관리 페이지의 프로젝트 필터 드롭다운과 동일한 패턴).
+  const [projectFilter, setProjectFilter] = useState<string | null>(null);
 
   // 마운트 시 한 번만 불러오고 끝이라, 히스토리 탭을 열어둔 채로 다른 화면(승인/배분 등)에서
   // 새 이력이 쌓여도 여기 화면엔 반영이 안 되는 문제가 있었다(실제 사용자 리포트). 탭을
   // 벗어났다 돌아오는(다른 창 보다가, 또는 다른 화면 갔다 옴) 흐름에서 최소한의 부담으로
   // 최신 상태를 다시 받아오도록, 마운트 시뿐 아니라 창이 다시 포커스될 때도 재조회한다.
+  // projectFilter가 바뀌면 그 프로젝트(또는 전체)로 다시 불러온다.
   useEffect(() => {
     let cancelled = false;
     const load = async () => {
       setLoading(true);
       setLoadError(false);
       try {
-        // 단일 프로젝트 운영 전제 — 목록의 첫 프로젝트를 그대로 쓴다(다른 화면들과 동일한 패턴).
-        const projects = await apiFetch<ProjectDto[]>("/api/projects/");
+        const projectList = await apiFetch<ProjectDto[]>("/api/projects/");
         if (cancelled) return;
-        const current = projects[0] ?? null;
-        setProject(current);
-        if (current) {
-          const history = await apiFetch<HistoryItem[]>(`/api/projects/${current.id}/history/`);
-          if (cancelled) return;
-          setItems(history);
-        }
+        setProjects(projectList);
+        const historyUrl = projectFilter ? `/api/projects/${projectFilter}/history/` : "/api/projects/history/";
+        const history = await apiFetch<HistoryItem[]>(historyUrl);
+        if (cancelled) return;
+        setItems(history);
       } catch (e) {
         if (cancelled) return;
         console.error(e);
@@ -107,7 +109,7 @@ export default function HistoryPage() {
       cancelled = true;
       window.removeEventListener("focus", onFocus);
     };
-  }, []);
+  }, [projectFilter]);
 
   // PM은 전체를 보고, 일반유저는 본인이 실행한 이력만 본다(사용자 요청, heyzzabi2 참고).
   // actor_info가 없는(작성자 정보 유실) 이력은 PM에게만 노출 — 일반유저 화면에서 "누가 한
@@ -127,7 +129,7 @@ export default function HistoryPage() {
   }), [visibleItems, filter]);
 
   // 필터가 바뀌면 목록이 통째로 달라지므로 페이지를 1로 되돌린다
-  useEffect(() => { setPage(1); }, [filter]);
+  useEffect(() => { setPage(1); }, [filter, projectFilter]);
 
   const totalPages = Math.max(1, Math.ceil(filteredItems.length / PAGE_SIZE));
   useEffect(() => { setPage(p => Math.min(p, totalPages)); }, [totalPages]);
@@ -156,7 +158,7 @@ export default function HistoryPage() {
     );
   }
 
-  if (!project) {
+  if (projects.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center h-[60vh] text-center gap-3">
         <FolderKanban className="w-10 h-10 text-muted-foreground/30" />
@@ -180,19 +182,31 @@ export default function HistoryPage() {
         </p>
       </div>
 
-      <div className="flex items-center gap-1 p-1 bg-black/5 dark:bg-white/5 rounded-xl w-fit">
-        {FILTER_TABS.map(tab => (
-          <button
-            key={tab.key}
-            onClick={() => setFilter(tab.key)}
-            className={cn(
-              "px-4 py-2 rounded-lg text-sm font-bold transition-all",
-              filter === tab.key ? "bg-white dark:bg-white/10 text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
-            )}
-          >
-            {tab.label}
-          </button>
-        ))}
+      <div className="flex items-center justify-between gap-4 flex-wrap">
+        <div className="flex items-center gap-1 p-1 bg-black/5 dark:bg-white/5 rounded-xl w-fit">
+          {FILTER_TABS.map(tab => (
+            <button
+              key={tab.key}
+              onClick={() => setFilter(tab.key)}
+              className={cn(
+                "px-4 py-2 rounded-lg text-sm font-bold transition-all",
+                filter === tab.key ? "bg-white dark:bg-white/10 text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+        <select
+          value={projectFilter ?? ""}
+          onChange={e => setProjectFilter(e.target.value || null)}
+          className="px-4 py-2.5 bg-card border border-transparent hover:border-black/10 dark:hover:border-white/10 rounded-xl text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-primary/40 focus:bg-background transition-all shadow-sm"
+        >
+          <option value="">전체 보기</option>
+          {projects.map(p => (
+            <option key={p.id} value={String(p.id)}>{p.name}</option>
+          ))}
+        </select>
       </div>
 
       {filteredItems.length === 0 ? (
@@ -233,36 +247,7 @@ export default function HistoryPage() {
         </div>
       )}
 
-      {totalPages > 1 && (
-        <div className="flex items-center justify-center gap-1.5">
-          <button
-            onClick={() => setPage(p => Math.max(1, p - 1))}
-            disabled={page === 1}
-            className="p-2 rounded-lg bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-          >
-            <ChevronLeft className="w-4 h-4" />
-          </button>
-          {Array.from({ length: totalPages }, (_, i) => i + 1).map(n => (
-            <button
-              key={n}
-              onClick={() => setPage(n)}
-              className={cn(
-                "w-8 h-8 rounded-lg text-sm font-bold transition-colors",
-                n === page ? "bg-primary text-primary-foreground" : "bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 text-muted-foreground"
-              )}
-            >
-              {n}
-            </button>
-          ))}
-          <button
-            onClick={() => setPage(p => Math.min(totalPages, p + 1))}
-            disabled={page === totalPages}
-            className="p-2 rounded-lg bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-          >
-            <ChevronRight className="w-4 h-4" />
-          </button>
-        </div>
-      )}
+      <Pagination page={page} totalPages={totalPages} onChange={setPage} />
     </div>
   );
 }
