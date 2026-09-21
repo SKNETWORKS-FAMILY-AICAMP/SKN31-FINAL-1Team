@@ -122,47 +122,69 @@ describe("ProposalTemplate (read mode)", () => {
     expect(screen.queryByRole("button", { name: "기술 스택 및 제약사항 원문 보기" })).not.toBeInTheDocument();
   });
 
-  it("borders each feature with a different color matching its evidence group", () => {
+  const featuresDoc = {
+    ...baseDoc,
+    features: "<p><strong>예약 알림</strong></p><p>전날 알림을 보낸다.</p><p><strong>복약 알림</strong></p><p>정해진 시간에 알린다.</p>",
+  };
+  const featuresEvidence = {
+    features: {
+      quotes: [],
+      items: [
+        { title: "예약 알림", quotes: ["예약 전날에도 알려주세요."] },
+        { title: "복약 알림", quotes: ["복약 시간에 맞춰 알려주세요."] },
+      ],
+    },
+  };
+
+  it("does not highlight features before the evidence panel for that section is opened", () => {
     render(
       <ProposalTemplate
-        doc={{
-          ...baseDoc,
-          features: "<p><strong>예약 알림</strong></p><p>전날 알림을 보낸다.</p><p><strong>복약 알림</strong></p><p>정해진 시간에 알린다.</p>",
-        }}
+        doc={featuresDoc}
         title="테스트 기획서"
         dateLabel="2026. 9. 7."
-        evidenceItems={{
-          features: {
-            quotes: [],
-            items: [
-              { title: "예약 알림", quotes: ["예약 전날에도 알려주세요."] },
-              { title: "복약 알림", quotes: ["복약 시간에 맞춰 알려주세요."] },
-            ],
-          },
-        }}
+        evidenceItems={featuresEvidence}
+        // activeEvidenceKey를 아예 안 주거나 다른 섹션을 가리키면 "원문 보기"를
+        // 아직 안 누른 상태와 같다 — 이때는 색이 보이면 안 된다.
       />
     );
 
-    const reservationBlock = screen.getByText("예약 알림").closest("div.border-l-\\[3px\\]");
-    const medicationBlock = screen.getByText("복약 알림").closest("div.border-l-\\[3px\\]");
-    expect(reservationBlock).not.toBeNull();
-    expect(medicationBlock).not.toBeNull();
-    // 서로 다른 기능은 서로 다른 테두리 색을 써야 한다(근거 패널과 같은 팔레트·순서).
-    expect(reservationBlock!.className).not.toBe(medicationBlock!.className);
-    expect(reservationBlock!.className).toContain("border-amber-500");
-    expect(medicationBlock!.className).toContain("border-sky-500");
+    expect(screen.getByText("예약 알림")).toBeInTheDocument();
+    expect(document.querySelector(".bg-amber-100")).toBeNull();
+    expect(document.querySelector(".bg-sky-100")).toBeNull();
   });
 
-  it("falls back to plain rendering for features without per-item evidence", () => {
+  it("highlights each feature with a different background color once its evidence panel is active", () => {
+    render(
+      <ProposalTemplate
+        doc={featuresDoc}
+        title="테스트 기획서"
+        dateLabel="2026. 9. 7."
+        evidenceItems={featuresEvidence}
+        activeEvidenceKey="features"
+      />
+    );
+
+    const reservationBlock = screen.getByText("예약 알림").closest("div.rounded-lg");
+    const medicationBlock = screen.getByText("복약 알림").closest("div.rounded-lg");
+    expect(reservationBlock).not.toBeNull();
+    expect(medicationBlock).not.toBeNull();
+    // 서로 다른 기능은 서로 다른 배경색을 써야 한다(근거 패널과 같은 팔레트·순서).
+    expect(reservationBlock!.className).not.toBe(medicationBlock!.className);
+    expect(reservationBlock!.className).toContain("bg-amber-100");
+    expect(medicationBlock!.className).toContain("bg-sky-100");
+  });
+
+  it("falls back to plain rendering for features without per-item evidence even when active", () => {
     render(
       <ProposalTemplate
         doc={{ ...baseDoc, features: "<p><strong>예약 알림</strong></p><p>전날 알림을 보낸다.</p>" }}
         title="테스트 기획서"
         dateLabel="2026. 9. 7."
+        activeEvidenceKey="features"
       />
     );
 
     expect(screen.getByText("예약 알림")).toBeInTheDocument();
-    expect(document.querySelector("div.border-l-\\[3px\\]")).toBeNull();
+    expect(document.querySelector("div.rounded-lg")).toBeNull();
   });
 });

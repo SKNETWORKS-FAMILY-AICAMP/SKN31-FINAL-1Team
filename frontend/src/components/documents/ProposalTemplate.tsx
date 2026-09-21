@@ -203,11 +203,16 @@ function splitFeatureGroups(sanitizedHtml: string): string[] | null {
 // 5번 주요 기능 전용 — 기능별 근거(items)가 있을 때만 기능마다 다른 색 테두리를
 // 붙인다. items가 없으면(아직 항목별 근거가 없는 다른 섹션과 동일한 상황) 기존
 // RichText와 똑같이 렌더링해 동작이 하나도 안 바뀐다.
-function ColoredFeatureList({ html, items }: { html: string; items?: ProposalEvidenceItem[] }) {
+function ColoredFeatureList({ html, items, active }: {
+  html: string; items?: ProposalEvidenceItem[];
+  // "원문 보기"를 눌러 이 섹션의 근거 패널이 열려 있을 때만 색을 보여준다.
+  // 눌러보기 전에는 다른 섹션과 똑같이 색 없는 기본 형태를 유지한다.
+  active: boolean;
+}) {
   const sanitized = sanitizeRestrictedHtml(normalizeLegacyPlainText(html));
   const groups = useMemo(
-    () => (items && items.length > 0 ? splitFeatureGroups(sanitized) : null),
-    [sanitized, items],
+    () => (active && items && items.length > 0 ? splitFeatureGroups(sanitized) : null),
+    [sanitized, items, active],
   );
 
   if (!html) return <p className="leading-relaxed">-</p>;
@@ -218,7 +223,7 @@ function ColoredFeatureList({ html, items }: { html: string; items?: ProposalEvi
       {groups.map((groupHtml, index) => (
         <div
           key={index}
-          className={`mb-3 border-l-[3px] pl-3 last:mb-0 ${EVIDENCE_GROUP_PALETTE[index % EVIDENCE_GROUP_PALETTE.length].border}`}
+          className={`mb-2 rounded-lg p-3 last:mb-0 ${EVIDENCE_GROUP_PALETTE[index % EVIDENCE_GROUP_PALETTE.length].card}`}
         >
           <div
             className="leading-relaxed [&_p]:mb-2 [&_p:last-child]:mb-0 [&_strong]:font-bold [&_ul]:list-disc [&_ul]:pl-5 [&_li]:mb-1"
@@ -336,7 +341,11 @@ export function ProposalTemplate({
             minHeightClass="min-h-28"
           />
         ) : (
-          <ColoredFeatureList html={doc.features} items={sectionEvidenceItems("features")} />
+          <ColoredFeatureList
+            html={doc.features}
+            items={sectionEvidenceItems("features")}
+            active={activeEvidenceKey === "features"}
+          />
         )}
       </Section>
 
