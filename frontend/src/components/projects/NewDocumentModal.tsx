@@ -192,9 +192,11 @@ export function NewDocumentModal({
       } else {
         const formData = new FormData();
         formData.append("file", file);
-        const result = await apiFetch<{ content: string; filename: string }>(
+        // 문서 파일(최대 10MB)도 Vercel 프록시의 4.5MB 본문 제한에 걸려 6MB PDF가 413이었다 —
+        // 음성 파일과 같은 방식으로 프록시를 거치지 않고 백엔드로 직접 올린다.
+        const result = await directUploadFetch<{ content: string; filename: string }>(
           "/api/meetings/notes/parse-file/",
-          { method: "POST", body: formData }
+          formData
         );
         setContent(result.content);
       }
