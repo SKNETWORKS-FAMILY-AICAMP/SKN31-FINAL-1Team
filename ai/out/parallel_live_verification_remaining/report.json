@@ -1,0 +1,157 @@
+[
+  {
+    "case_id": "complete_retail_mvp",
+    "strategy": "parallel",
+    "run": 1,
+    "elapsed_seconds": 93.007,
+    "required_recall": 1.0,
+    "missing_required": [],
+    "matched_forbidden": [],
+    "blocking_rule_issues": [],
+    "passed": true,
+    "stage_timeline": [
+      {
+        "label": "콘텐츠·기술 결정 병렬 생성 중…",
+        "elapsed_seconds": 0.265
+      },
+      {
+        "label": "목록형 섹션 조립 중…",
+        "elapsed_seconds": 92.99
+      },
+      {
+        "label": "섹션 병합 및 근거 매칭 중…",
+        "elapsed_seconds": 92.997
+      }
+    ],
+    "llm_calls": [
+      {
+        "context": "run technical-decisions proposal_id=BENCH-complete_retail_mvp-parallel-1",
+        "model": "gpt-5",
+        "duration_seconds": 36.881,
+        "attempt_count": 1,
+        "input_tokens": 3480,
+        "output_tokens": 3310,
+        "total_tokens": 6790,
+        "success": true,
+        "error_type": null
+      },
+      {
+        "context": "run content-plan proposal_id=BENCH-complete_retail_mvp-parallel-1",
+        "model": "gpt-5",
+        "duration_seconds": 92.72,
+        "attempt_count": 2,
+        "input_tokens": 18267,
+        "output_tokens": 8833,
+        "total_tokens": 27100,
+        "success": true,
+        "error_type": null
+      }
+    ],
+    "plan_path": "out/parallel_live_verification_remaining/complete_retail_mvp__parallel__1.plan.json",
+    "fact_index_path": "out/parallel_live_verification_remaining/complete_retail_mvp__parallel__1.facts.json"
+  },
+  {
+    "case_id": "scenario_flow",
+    "strategy": "parallel",
+    "run": 1,
+    "elapsed_seconds": 52.644,
+    "required_recall": 0.75,
+    "missing_required": [
+      "login_unresolved"
+    ],
+    "matched_forbidden": [],
+    "blocking_rule_issues": [],
+    "passed": false,
+    "stage_timeline": [
+      {
+        "label": "콘텐츠·기술 결정 병렬 생성 중…",
+        "elapsed_seconds": 0.001
+      },
+      {
+        "label": "목록형 섹션 조립 중…",
+        "elapsed_seconds": 52.63
+      },
+      {
+        "label": "섹션 병합 및 근거 매칭 중…",
+        "elapsed_seconds": 52.633
+      }
+    ],
+    "llm_calls": [
+      {
+        "context": "run technical-decisions proposal_id=BENCH-scenario_flow-parallel-1",
+        "model": "gpt-5",
+        "duration_seconds": 22.653,
+        "attempt_count": 1,
+        "input_tokens": 2724,
+        "output_tokens": 1827,
+        "total_tokens": 4551,
+        "success": true,
+        "error_type": null
+      },
+      {
+        "context": "run content-plan proposal_id=BENCH-scenario_flow-parallel-1",
+        "model": "gpt-5",
+        "duration_seconds": 52.624,
+        "attempt_count": 1,
+        "input_tokens": 6592,
+        "output_tokens": 4779,
+        "total_tokens": 11371,
+        "success": true,
+        "error_type": null
+      }
+    ],
+    "plan_path": "out/parallel_live_verification_remaining/scenario_flow__parallel__1.plan.json",
+    "fact_index_path": "out/parallel_live_verification_remaining/scenario_flow__parallel__1.facts.json"
+  },
+  {
+    "case_id": "unseen_domain",
+    "strategy": "parallel",
+    "run": 1,
+    "elapsed_seconds": 116.36,
+    "required_recall": 1.0,
+    "missing_required": [],
+    "matched_forbidden": [],
+    "blocking_rule_issues": [],
+    "passed": true,
+    "stage_timeline": [
+      {
+        "label": "콘텐츠·기술 결정 병렬 생성 중…",
+        "elapsed_seconds": 0.001
+      },
+      {
+        "label": "목록형 섹션 조립 중…",
+        "elapsed_seconds": 116.34
+      },
+      {
+        "label": "섹션 병합 및 근거 매칭 중…",
+        "elapsed_seconds": 116.352
+      }
+    ],
+    "llm_calls": [
+      {
+        "context": "run technical-decisions proposal_id=BENCH-unseen_domain-parallel-1",
+        "model": "gpt-5",
+        "duration_seconds": 57.171,
+        "attempt_count": 1,
+        "input_tokens": 3708,
+        "output_tokens": 4623,
+        "total_tokens": 8331,
+        "success": true,
+        "error_type": null
+      },
+      {
+        "context": "run content-plan proposal_id=BENCH-unseen_domain-parallel-1",
+        "model": "gpt-5",
+        "duration_seconds": 116.33,
+        "attempt_count": 3,
+        "input_tokens": 33036,
+        "output_tokens": 11347,
+        "total_tokens": 44383,
+        "success": true,
+        "error_type": null
+      }
+    ],
+    "plan_path": "out/parallel_live_verification_remaining/unseen_domain__parallel__1.plan.json",
+    "fact_index_path": "out/parallel_live_verification_remaining/unseen_domain__parallel__1.facts.json"
+  }
+]

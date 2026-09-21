@@ -4,7 +4,7 @@ from meeting_analysis.node import _merge_extractions
 from meeting_analysis.schemas import MeetingExtraction
 from meeting_analysis.validators.evidence import verify_and_mark
 from plan_draft import agent
-from plan_draft.list_builder import build_user_citation_sources
+from plan_draft.list_builder import build_user_citation_sources, collect_core_goal_evidence
 from plan_draft.prompts import _build_generation_payload
 from plan_draft.schemas import NarrativeSection, PlanSections, SECTION_SPEC
 
@@ -45,11 +45,32 @@ def test_quote_verification_and_payload_preserve_context():
     assert report.verified_count == 2
     data["user_signals"][1]["context_flag"] = "질문을 결정으로 쓰지 않음"
     sources = _build_generation_payload(data)["user_sources_for_citation"]
+    purpose_signals = _build_generation_payload(data)["service_purpose_signals"]
     assert len(sources) == 2
+    assert [item["content"] for item in purpose_signals] == ["주목적은 트렌드 분석이다."]
     assert sources[1]["statement_status"] == "question"
     assert sources[1]["quote"] == "최저가 추천인가요?"
     assert sources[1]["context_flag"]
     assert build_user_citation_sources({}) == []
+
+
+def test_service_purpose_is_core_goal_evidence_before_implementation_goals():
+    data = {
+        "user_signals": [signal("수명 주기와 리세일 지수를 제공하는 것이 주목적이다.")],
+        "project": {"goals": [{
+            "content": "수집을 자동화한다.",
+            "evidence": {"quote": "수집을 자동화한다."},
+            "evidence_status": "verified",
+        }]},
+    }
+    verify_and_mark(
+        data,
+        "수명 주기와 리세일 지수를 제공하는 것이 주목적이다. 수집을 자동화한다.",
+    )
+
+    evidence = collect_core_goal_evidence(data)
+
+    assert evidence[0].quote == "수명 주기와 리세일 지수를 제공하는 것이 주목적이다."
 
 
 def test_multiple_quotes_warnings_and_regeneration(monkeypatch):

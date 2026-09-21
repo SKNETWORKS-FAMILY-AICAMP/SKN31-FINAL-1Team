@@ -1,0 +1,107 @@
+[
+  {
+    "case_id": "vague_meeting",
+    "strategy": "indexed",
+    "run": 1,
+    "elapsed_seconds": 199.121,
+    "required_recall": 1.0,
+    "missing_required": [],
+    "matched_forbidden": [],
+    "blocking_rule_issues": [],
+    "passed": true,
+    "stage_timeline": [
+      {
+        "label": "회의록 사실·결정 정리 중…",
+        "elapsed_seconds": 0.179
+      },
+      {
+        "label": "전체 기획서 작성 중…",
+        "elapsed_seconds": 98.5
+      },
+      {
+        "label": "목록형 섹션 조립 중…",
+        "elapsed_seconds": 199.112
+      },
+      {
+        "label": "섹션 병합 및 근거 매칭 중…",
+        "elapsed_seconds": 199.113
+      }
+    ],
+    "plan_path": "out/final_acceptance_retry/vague_meeting__indexed__1.plan.json",
+    "fact_index_path": "out/final_acceptance_retry/vague_meeting__indexed__1.facts.json"
+  },
+  {
+    "case_id": "unseen_domain",
+    "strategy": "indexed",
+    "run": 1,
+    "elapsed_seconds": 247.517,
+    "required_recall": 0.5,
+    "missing_required": [
+      "completion_rule",
+      "auth_scope"
+    ],
+    "matched_forbidden": [],
+    "blocking_rule_issues": [
+      "rejected_as_feature",
+      "non_confirmed_as_decision"
+    ],
+    "passed": false,
+    "stage_timeline": [
+      {
+        "label": "회의록 사실·결정 정리 중…",
+        "elapsed_seconds": 0.001
+      },
+      {
+        "label": "전체 기획서 작성 중…",
+        "elapsed_seconds": 142.564
+      },
+      {
+        "label": "목록형 섹션 조립 중…",
+        "elapsed_seconds": 247.505
+      },
+      {
+        "label": "섹션 병합 및 근거 매칭 중…",
+        "elapsed_seconds": 247.51
+      }
+    ],
+    "plan_path": "out/final_acceptance_retry/unseen_domain__indexed__1.plan.json",
+    "fact_index_path": "out/final_acceptance_retry/unseen_domain__indexed__1.facts.json"
+  },
+  {
+    "case_id": "musinsa_long",
+    "strategy": "indexed",
+    "run": 1,
+    "elapsed_seconds": 473.129,
+    "required_recall": 0.75,
+    "missing_required": [
+      "resale_priority"
+    ],
+    "matched_forbidden": [
+      "subtitle_postprocess_confirmed"
+    ],
+    "blocking_rule_issues": [
+      "non_confirmed_as_decision"
+    ],
+    "passed": false,
+    "stage_timeline": [
+      {
+        "label": "회의록 사실·결정 정리 중…",
+        "elapsed_seconds": 0.001
+      },
+      {
+        "label": "전체 기획서 작성 중…",
+        "elapsed_seconds": 297.183
+      },
+      {
+        "label": "목록형 섹션 조립 중…",
+        "elapsed_seconds": 473.054
+      },
+      {
+        "label": "섹션 병합 및 근거 매칭 중…",
+        "elapsed_seconds": 473.083
+      }
+    ],
+    "plan_path": "out/final_acceptance_retry/musinsa_long__indexed__1.plan.json",
+    "fact_index_path": "out/final_acceptance_retry/musinsa_long__indexed__1.facts.json"
+  }
+]

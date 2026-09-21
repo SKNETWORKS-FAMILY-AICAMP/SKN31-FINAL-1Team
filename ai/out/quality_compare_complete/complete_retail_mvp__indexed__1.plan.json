@@ -1,0 +1,461 @@
+{
+  "proposal_id": "BENCH-complete_retail_mvp-indexed-1",
+  "meeting_id": "BENCH-complete_retail_mvp",
+  "status": "draft",
+  "sections": [
+    {
+      "no": 1,
+      "key": "overview",
+      "title": "프로젝트 개요",
+      "section_type": "narrative",
+      "content_html": "<p>리테일링크는 소상공인 리테일 매장의 재고·발주 업무를 간소화해 품절과 과재고를 줄이는 재고 운영 서비스다. 바코드 기반 입출고와 간단한 발주 추천, 핵심 현황 대시보드를 중심으로 매장 운영 시점을 지원한다.</p><p>기준 데이터는 매장별 판매·입출고·재고 기록이며, 발주 추천과 임계치 알림의 근거로 사용된다. 보조 데이터는 POS 연동(A사)로 확보한 판매 이력이며, 수기 입력 대비 정확도와 효율을 보완한다.</p><p>현재 회의에서는 6개의 MVP 기능과 바코드 스캔 방식, 기술 스택 및 성능·디자인 기준을 최종 확정했다. 이후 단계에서는 A사 외 POS 벤더 연동을 2차 개발로 확대한다.</p>",
+      "items": [],
+      "source_fields": [
+        "plan_source_text"
+      ],
+      "evidence": [
+        {
+          "quote": "리테일링크 MVP 기능 범위 확정 회의",
+          "status": "verified"
+        },
+        {
+          "quote": "MVP 기능은 바코드 입출고 등록, 재고 임계치 알림, 발주서 자동 생성, 거래처 관리, 대시보드, 권한 관리 총 6개로 확정한다.",
+          "status": "verified"
+        },
+        {
+          "quote": "POS 연동은 A사 API 1곳만 MVP에 포함하며, 나머지 벤더는 2차 개발로 이관한다.",
+          "status": "verified"
+        },
+        {
+          "quote": "2차 사용자는 매장 파트타임 직원이며, 입출고 등록 정도만 수행한다.",
+          "status": "verified"
+        }
+      ],
+      "features": [],
+      "groups": [],
+      "needs_input": "",
+      "is_incomplete": false,
+      "edited_by_pm": false,
+      "review": {
+        "state": "pending",
+        "comment": null,
+        "reject_type": null
+      }
+    },
+    {
+      "no": 2,
+      "key": "problem",
+      "title": "핵심 목표",
+      "section_type": "narrative",
+      "content_html": "<p>소상공인 매장에서 반복되는 품절과 과재고·폐기를 줄여, 누구나 일정하고 신뢰 가능한 재고·발주 결정을 내리게 한다. 사장 부재 시에도 직원이 일관되게 상태를 파악하고 발주 판단을 이어갈 수 있도록 한다.</p><p>모바일 중심의 바코드 입출고와 간단한 통계 기반 발주 추천, 임계치 알림, 대시보드로 즉시 실행 가능한 운영 결정을 돕는다. POS(A사) 우선 연동과 확정된 기술 스택으로 3개월 내 구현 가능 범위의 MVP를 제공한다.</p>",
+      "items": [],
+      "source_fields": [
+        "plan_source_text"
+      ],
+      "evidence": [
+        {
+          "quote": "첫째, 발주 시점을 놓쳐 잘 팔리는 품목이 품절되는 일이 월 평균 4회 발생한다.",
+          "status": "verified"
+        },
+        {
+          "quote": "둘째, 감으로 발주해 과재고가 쌓이고 유통기한 경과로 폐기 손실이 발생한다.",
+          "status": "verified"
+        },
+        {
+          "quote": "사장이 매장을 비운 시간대에는 직원이 재고 상태를 파악할 수 없어 발주 판단 자체가 불가능한 구조도 확인됐다.",
+          "status": "verified"
+        },
+        {
+          "quote": "최근 4주 평균 판매량 기반 추천 수량 계산으로 대체하기로 합의했다.",
+          "status": "verified"
+        },
+        {
+          "quote": "POS 연동은 A사 API 1곳만 MVP에 포함하며, 나머지 벤더는 2차 개발로 이관한다.",
+          "status": "verified"
+        }
+      ],
+      "features": [],
+      "groups": [],
+      "needs_input": "",
+      "is_incomplete": false,
+      "edited_by_pm": false,
+      "review": {
+        "state": "pending",
+        "comment": null,
+        "reject_type": null
+      }
+    },
+    {
+      "no": 3,
+      "key": "goals",
+      "title": "세부 목표 및 문제 정의",
+      "section_type": "list",
+      "content_html": "<p><strong>품절(Stockout) 빈도 감소</strong></p><p><strong>문제:</strong> 발주 시점을 놓쳐 잘 팔리는 품목 품절이 월 평균 4회 발생해 매출 기회 손실이 크다.</p><p><strong>추진 목표:</strong> 임계치 기반 경고와 최근 판매량을 반영한 발주 추천으로 적시에 재고를 보충한다.</p><p><strong>과재고·폐기 손실 축소</strong></p><p><strong>문제:</strong> 감에 의존한 발주로 과재고가 쌓이고 유통기한 경과로 폐기 손실이 발생한다.</p><p><strong>추진 목표:</strong> 대시보드와 간단 집계를 통해 수요 수준을 가늠하고 불필요한 발주를 줄인다.</p><p><strong>부재 시에도 지속 가능한 운영</strong></p><p><strong>문제:</strong> 사장 부재 시간대에는 직원이 재고 상태를 파악하지 못해 발주 판단이 멈춘다.</p><p><strong>추진 목표:</strong> 직원이 모바일로 입출고와 현황을 확인하고 필요한 조치를 이어가도록 한다.</p><p><strong>도입 장벽 최소화</strong></p><p><strong>문제:</strong> 전용 스캐너 구매 비용은 소상공인에게 초기 도입 장벽이 된다.</p><p><strong>추진 목표:</strong> 스마트폰 카메라 기반 바코드 스캔과 POS 1사 우선 연동으로 비용과 복잡도를 낮춘다.</p>",
+      "items": [
+        "품절(Stockout) 빈도 감소\n문제: 발주 시점을 놓쳐 잘 팔리는 품목 품절이 월 평균 4회 발생해 매출 기회 손실이 크다.\n추진 목표: 임계치 기반 경고와 최근 판매량을 반영한 발주 추천으로 적시에 재고를 보충한다.",
+        "과재고·폐기 손실 축소\n문제: 감에 의존한 발주로 과재고가 쌓이고 유통기한 경과로 폐기 손실이 발생한다.\n추진 목표: 대시보드와 간단 집계를 통해 수요 수준을 가늠하고 불필요한 발주를 줄인다.",
+        "부재 시에도 지속 가능한 운영\n문제: 사장 부재 시간대에는 직원이 재고 상태를 파악하지 못해 발주 판단이 멈춘다.\n추진 목표: 직원이 모바일로 입출고와 현황을 확인하고 필요한 조치를 이어가도록 한다.",
+        "도입 장벽 최소화\n문제: 전용 스캐너 구매 비용은 소상공인에게 초기 도입 장벽이 된다.\n추진 목표: 스마트폰 카메라 기반 바코드 스캔과 POS 1사 우선 연동으로 비용과 복잡도를 낮춘다."
+      ],
+      "source_fields": [
+        "plan_source_text"
+      ],
+      "evidence": [
+        {
+          "quote": "첫째, 발주 시점을 놓쳐 잘 팔리는 품목이 품절되는 일이 월 평균 4회 발생한다.",
+          "status": "verified"
+        },
+        {
+          "quote": "최근 4주 평균 판매량 기반 추천 수량 계산으로 대체하기로 합의했다.",
+          "status": "verified"
+        },
+        {
+          "quote": "둘째, 감으로 발주해 과재고가 쌓이고 유통기한 경과로 폐기 손실이 발생한다.",
+          "status": "verified"
+        },
+        {
+          "quote": "사장이 매장을 비운 시간대에는 직원이 재고 상태를 파악할 수 없어 발주 판단 자체가 불가능한 구조도 확인됐다.",
+          "status": "verified"
+        },
+        {
+          "quote": "1차 타깃은 매장 1~3개를 직접 운영하는 소상공인 사장으로, 연령대는 40~50대이며 PC보다 모바일 사용 비중이 높다.",
+          "status": "verified"
+        },
+        {
+          "quote": "스캐너 구매 비용이 발생하면 소상공인 대상 서비스에서 초기 도입 장벽이 커진다.",
+          "status": "verified"
+        },
+        {
+          "quote": "브라우저의 BarcodeDetector API를 쓰면 스마트폰 카메라만으로 바코드 인식이 가능하다.",
+          "status": "verified"
+        }
+      ],
+      "features": [],
+      "groups": [],
+      "needs_input": "",
+      "is_incomplete": false,
+      "edited_by_pm": false,
+      "review": {
+        "state": "pending",
+        "comment": null,
+        "reject_type": null
+      }
+    },
+    {
+      "no": 4,
+      "key": "users",
+      "title": "대상 사용자",
+      "section_type": "narrative",
+      "content_html": "<p><strong>소상공인 사장</strong></p><p>매장 1~3개를 운영하며 40~50대 비중이 높고 모바일 사용이 많다. 재고 현황 파악과 발주 결정을 책임진다.</p><p>모바일로 바코드 입출고를 기록하고, 임계치 알림과 대시보드를 통해 발주 시점을 판단하며 발주서를 생성한다. 거래처 정보를 관리해 발주 실행을 마무리한다.</p><p><strong>매장 직원(파트타이머)</strong></p><p>사장 부재 시 매장 운영을 보조하며 현장 입출고 등록을 수행한다.</p><p>사장의 지시에 따라 바코드로 입출고를 기록하고, 재고 수량을 최신으로 유지한다.</p>",
+      "items": [],
+      "source_fields": [
+        "plan_source_text"
+      ],
+      "evidence": [
+        {
+          "quote": "1차 타깃은 매장 1~3개를 직접 운영하는 소상공인 사장으로, 연령대는 40~50대이며 PC보다 모바일 사용 비중이 높다.",
+          "status": "verified"
+        },
+        {
+          "quote": "2차 사용자는 매장 파트타임 직원이며, 입출고 등록 정도만 수행한다.",
+          "status": "verified"
+        }
+      ],
+      "features": [],
+      "groups": [],
+      "needs_input": "",
+      "is_incomplete": false,
+      "edited_by_pm": false,
+      "review": {
+        "state": "pending",
+        "comment": null,
+        "reject_type": null
+      }
+    },
+    {
+      "no": 5,
+      "key": "features",
+      "title": "주요 기능",
+      "section_type": "narrative",
+      "content_html": "<p><strong>MVP 기능 6개</strong></p><p><strong>바코드 입출고 등록</strong></p><p>스마트폰 카메라로 상품 바코드를 스캔해 입출고 수량을 입력하면, 시스템이 인식 결과를 저장해 재고를 갱신한다. iOS 사파리 환경에서는 ZXing을 폴백으로 사용해 동일한 흐름을 보장한다.</p><p><strong>재고 임계치 알림</strong></p><p>사용자가 품목별 임계 수량을 설정하면, 시스템이 현재 재고가 임계치 이하로 내려갔을 때 알림을 제공한다.</p><p><strong>발주서 자동 생성</strong></p><p>최근 4주 평균 판매량과 현재 재고·발주 단위를 기준으로 추천 발주 수량을 계산해 품목별 발주서를 생성한다. 예측 모델 기반 기능은 제외하고 단순 집계 방식으로 제공한다.</p><p><strong>거래처 관리</strong></p><p>거래처 기본 정보를 등록·수정·조회하여 발주서에 선택할 수 있도록 관리한다.</p><p><strong>대시보드</strong></p><p>주요 품목의 재고 상태, 임계치 도달 항목, 최근 판매 동향 요약을 한 화면에서 제공해 발주 결정을 돕는다.</p><p><strong>권한 관리</strong></p><p>사장과 직원 역할을 구분해 메뉴 접근과 실행 가능한 작업 범위를 설정한다.</p><p><strong>별도 연동 1건</strong></p><p><strong>POS 연동(A사)</strong></p><p>A사 POS API와 연동해 판매 데이터를 수집·동기화하고, 수기 입력 부담을 줄이며 발주 추천의 근거로 활용한다. 다른 POS 벤더 연동은 2차 개발로 이관한다.</p>",
+      "items": [
+        "바코드 입출고 등록",
+        "재고 임계치 알림",
+        "발주서 자동 생성",
+        "거래처 관리",
+        "대시보드",
+        "권한 관리",
+        "POS 연동(A사)"
+      ],
+      "source_fields": [
+        "plan_source_text"
+      ],
+      "evidence": [
+        {
+          "quote": "바코드 스캔은 웹 카메라 API(BarcodeDetector) 방식으로 구현하며, iOS 사파리 대응을 위한 ZXing 폴백을 필수로 포함한다.",
+          "status": "verified"
+        },
+        {
+          "quote": "박서연이 제안한 MVP 기능은 총 6개다. ①바코드 입출고 등록 ②재고 임계치 알림 ③발주서 자동 생성 ④거래처 관리 ⑤대시보드 ⑥권한 관리.",
+          "status": "verified"
+        },
+        {
+          "quote": "최근 4주 평균 판매량 기반 추천 수량 계산으로 대체하기로 합의했다.",
+          "status": "verified"
+        },
+        {
+          "quote": "매출 예측 기능은 MVP 범위에서 제외하고, 최근 4주 평균 판매량 기반 추천 수량 계산으로 대체한다.",
+          "status": "verified"
+        },
+        {
+          "quote": "POS 연동은 A사 API 1곳만 MVP에 포함하며, 나머지 벤더는 2차 개발로 이관한다.",
+          "status": "verified"
+        }
+      ],
+      "features": [
+        {
+          "group": "mvp",
+          "title": "바코드 입출고 등록",
+          "description": "스마트폰 카메라로 상품 바코드를 스캔해 입출고 수량을 입력하면, 시스템이 인식 결과를 저장해 재고를 갱신한다. iOS 사파리 환경에서는 ZXing을 폴백으로 사용해 동일한 흐름을 보장한다.",
+          "source_indices": [],
+          "evidence": [
+            {
+              "quote": "바코드 스캔은 웹 카메라 API(BarcodeDetector) 방식으로 구현하며, iOS 사파리 대응을 위한 ZXing 폴백을 필수로 포함한다."
+            },
+            {
+              "quote": "박서연이 제안한 MVP 기능은 총 6개다. ①바코드 입출고 등록 ②재고 임계치 알림 ③발주서 자동 생성 ④거래처 관리 ⑤대시보드 ⑥권한 관리."
+            }
+          ],
+          "review_questions": []
+        },
+        {
+          "group": "mvp",
+          "title": "재고 임계치 알림",
+          "description": "사용자가 품목별 임계 수량을 설정하면, 시스템이 현재 재고가 임계치 이하로 내려갔을 때 알림을 제공한다.",
+          "source_indices": [],
+          "evidence": [
+            {
+              "quote": "박서연이 제안한 MVP 기능은 총 6개다. ①바코드 입출고 등록 ②재고 임계치 알림 ③발주서 자동 생성 ④거래처 관리 ⑤대시보드 ⑥권한 관리."
+            }
+          ],
+          "review_questions": []
+        },
+        {
+          "group": "mvp",
+          "title": "발주서 자동 생성",
+          "description": "최근 4주 평균 판매량과 현재 재고·발주 단위를 기준으로 추천 발주 수량을 계산해 품목별 발주서를 생성한다. 예측 모델 기반 기능은 제외하고 단순 집계 방식으로 제공한다.",
+          "source_indices": [],
+          "evidence": [
+            {
+              "quote": "최근 4주 평균 판매량 기반 추천 수량 계산으로 대체하기로 합의했다."
+            },
+            {
+              "quote": "매출 예측 기능은 MVP 범위에서 제외하고, 최근 4주 평균 판매량 기반 추천 수량 계산으로 대체한다."
+            }
+          ],
+          "review_questions": []
+        },
+        {
+          "group": "mvp",
+          "title": "거래처 관리",
+          "description": "거래처 기본 정보를 등록·수정·조회하여 발주서에 선택할 수 있도록 관리한다.",
+          "source_indices": [],
+          "evidence": [
+            {
+              "quote": "박서연이 제안한 MVP 기능은 총 6개다. ①바코드 입출고 등록 ②재고 임계치 알림 ③발주서 자동 생성 ④거래처 관리 ⑤대시보드 ⑥권한 관리."
+            }
+          ],
+          "review_questions": []
+        },
+        {
+          "group": "mvp",
+          "title": "대시보드",
+          "description": "주요 품목의 재고 상태, 임계치 도달 항목, 최근 판매 동향 요약을 한 화면에서 제공해 발주 결정을 돕는다.",
+          "source_indices": [],
+          "evidence": [
+            {
+              "quote": "박서연이 제안한 MVP 기능은 총 6개다. ①바코드 입출고 등록 ②재고 임계치 알림 ③발주서 자동 생성 ④거래처 관리 ⑤대시보드 ⑥권한 관리."
+            }
+          ],
+          "review_questions": []
+        },
+        {
+          "group": "mvp",
+          "title": "권한 관리",
+          "description": "사장과 직원 역할을 구분해 메뉴 접근과 실행 가능한 작업 범위를 설정한다.",
+          "source_indices": [],
+          "evidence": [
+            {
+              "quote": "박서연이 제안한 MVP 기능은 총 6개다. ①바코드 입출고 등록 ②재고 임계치 알림 ③발주서 자동 생성 ④거래처 관리 ⑤대시보드 ⑥권한 관리."
+            }
+          ],
+          "review_questions": []
+        },
+        {
+          "group": "integration",
+          "title": "POS 연동(A사)",
+          "description": "A사 POS API와 연동해 판매 데이터를 수집·동기화하고, 수기 입력 부담을 줄이며 발주 추천의 근거로 활용한다. 다른 POS 벤더 연동은 2차 개발로 이관한다.",
+          "source_indices": [],
+          "evidence": [
+            {
+              "quote": "POS 연동은 A사 API 1곳만 MVP에 포함하며, 나머지 벤더는 2차 개발로 이관한다."
+            }
+          ],
+          "review_questions": []
+        }
+      ],
+      "groups": [],
+      "needs_input": "",
+      "is_incomplete": false,
+      "edited_by_pm": false,
+      "review": {
+        "state": "pending",
+        "comment": null,
+        "reject_type": null
+      }
+    },
+    {
+      "no": 6,
+      "key": "tech_scope",
+      "title": "기술 스택 및 제약사항",
+      "section_type": "list",
+      "content_html": "<p><strong>기술 구성</strong></p><ul><li>프론트엔드는 React, 백엔드는 Spring Boot, 데이터베이스는 MySQL, 인프라는 AWS를 사용한다.</li><li>바코드 스캔은 브라우저 BarcodeDetector API를 기본으로, iOS 사파리 대응을 위한 ZXing 폴백을 포함한다.</li><li>POS는 A사 API만 MVP 범위에서 연동한다.</li><li>모바일 우선 반응형으로 UI를 설계한다.</li></ul><p><strong>핵심 제약</strong></p><ul><li>주요 화면 응답 시간은 3초 이내를 기준으로 한다.</li><li>동시 접속자 수는 500명을 처리 기준으로 한다.</li><li>디자인 필수 가이드는 본문 폰트 16px 이상, 주요 버튼 터치 영역 44px 이상, 주요 액션 버튼은 하단 배치한다.</li></ul>",
+      "items": [
+        "프론트엔드는 React, 백엔드는 Spring Boot, 데이터베이스는 MySQL, 인프라는 AWS를 사용한다.",
+        "바코드 스캔은 브라우저 BarcodeDetector API를 기본으로, iOS 사파리 대응을 위한 ZXing 폴백을 포함한다.",
+        "POS는 A사 API만 MVP 범위에서 연동한다.",
+        "모바일 우선 반응형으로 UI를 설계한다.",
+        "주요 화면 응답 시간은 3초 이내를 기준으로 한다.",
+        "동시 접속자 수는 500명을 처리 기준으로 한다.",
+        "디자인 필수 가이드는 본문 폰트 16px 이상, 주요 버튼 터치 영역 44px 이상, 주요 액션 버튼은 하단 배치한다."
+      ],
+      "source_fields": [
+        "plan_source_text"
+      ],
+      "evidence": [
+        {
+          "quote": "기술 스택은 React + Spring Boot + MySQL + AWS로 확정하고 Next.js는 채택하지 않는다.",
+          "status": "verified"
+        },
+        {
+          "quote": "바코드 스캔은 웹 카메라 API(BarcodeDetector) 방식으로 구현하며, iOS 사파리 대응을 위한 ZXing 폴백을 필수로 포함한다.",
+          "status": "verified"
+        },
+        {
+          "quote": "POS 연동은 A사 API 1곳만 MVP에 포함하며, 나머지 벤더는 2차 개발로 이관한다.",
+          "status": "verified"
+        },
+        {
+          "quote": "최민아: 매장 내 모바일 사용 비중이 높으므로 모바일 우선 반응형으로 설계한다.",
+          "status": "verified"
+        },
+        {
+          "quote": "성능 기준은 주요 화면 응답 3초 이내, 동시 접속 500명으로 한다.",
+          "status": "verified"
+        },
+        {
+          "quote": "본문 폰트 16px 이상, 주요 버튼 터치 영역 44px 이상, 주요 액션 버튼 하단 배치를 디자인 필수 가이드로 적용한다.",
+          "status": "verified"
+        }
+      ],
+      "features": [],
+      "groups": [
+        {
+          "subtitle": "기술 구성",
+          "items": [
+            "프론트엔드는 React, 백엔드는 Spring Boot, 데이터베이스는 MySQL, 인프라는 AWS를 사용한다.",
+            "바코드 스캔은 브라우저 BarcodeDetector API를 기본으로, iOS 사파리 대응을 위한 ZXing 폴백을 포함한다.",
+            "POS는 A사 API만 MVP 범위에서 연동한다.",
+            "모바일 우선 반응형으로 UI를 설계한다."
+          ]
+        },
+        {
+          "subtitle": "핵심 제약",
+          "items": [
+            "주요 화면 응답 시간은 3초 이내를 기준으로 한다.",
+            "동시 접속자 수는 500명을 처리 기준으로 한다.",
+            "디자인 필수 가이드는 본문 폰트 16px 이상, 주요 버튼 터치 영역 44px 이상, 주요 액션 버튼은 하단 배치한다."
+          ]
+        }
+      ],
+      "needs_input": "",
+      "is_incomplete": false,
+      "edited_by_pm": false,
+      "review": {
+        "state": "pending",
+        "comment": null,
+        "reject_type": null
+      }
+    },
+    {
+      "no": 7,
+      "key": "decisions",
+      "title": "최종 결정사항",
+      "section_type": "list",
+      "content_html": "<p><strong>범위 관련 결정</strong></p><ul><li>MVP 기능 범위를 바코드 입출고 등록, 재고 임계치 알림, 발주서 자동 생성, 거래처 관리, 대시보드, 권한 관리로 확정한다.</li><li>POS 연동은 A사 API 1곳만 MVP에 포함하고, 나머지 POS 벤더는 2차 개발로 이관한다.</li><li>MVP 대상 사용자는 소상공인 사장과 매장 직원으로 한정하고 프랜차이즈 본사 관리자는 제외한다.</li><li>3개월 내 소화 가능한 최대 범위는 확정 기능 6개와 POS 연동 1건이며, 추가 기능 요청은 기존 기능 제외를 전제로만 논의한다.</li></ul><p><strong>기술 관련 결정</strong></p><ul><li>바코드 스캔은 웹 카메라 API(BarcodeDetector)로 구현하고 iOS 사파리 대응을 위한 ZXing 폴백을 필수 포함한다.</li><li>기술 스택을 React + Spring Boot + MySQL + AWS로 확정하고 Next.js는 채택하지 않는다.</li></ul><p><strong>기능 관련 결정</strong></p><ul><li>매출 예측 기능은 제외하고 최근 4주 평균 판매량 기반의 추천 수량 계산으로 발주서를 생성한다.</li></ul><p><strong>비기능 관련 결정</strong></p><ul><li>주요 화면 응답 시간 3초 이내, 동시 접속 500명을 비기능 성능 기준으로 적용한다.</li><li>디자인 필수 가이드는 본문 폰트 16px 이상, 버튼 터치 영역 44px 이상, 주요 액션 버튼 하단 배치로 한다.</li></ul>",
+      "items": [
+        "[범위] MVP 기능 범위를 바코드 입출고 등록, 재고 임계치 알림, 발주서 자동 생성, 거래처 관리, 대시보드, 권한 관리로 확정한다.",
+        "[기술] 바코드 스캔은 웹 카메라 API(BarcodeDetector)로 구현하고 iOS 사파리 대응을 위한 ZXing 폴백을 필수 포함한다.",
+        "[기능] 매출 예측 기능은 제외하고 최근 4주 평균 판매량 기반의 추천 수량 계산으로 발주서를 생성한다.",
+        "[범위] POS 연동은 A사 API 1곳만 MVP에 포함하고, 나머지 POS 벤더는 2차 개발로 이관한다.",
+        "[기술] 기술 스택을 React + Spring Boot + MySQL + AWS로 확정하고 Next.js는 채택하지 않는다.",
+        "[비기능 요구사항] 주요 화면 응답 시간 3초 이내, 동시 접속 500명을 비기능 성능 기준으로 적용한다.",
+        "[비기능 요구사항] 디자인 필수 가이드는 본문 폰트 16px 이상, 버튼 터치 영역 44px 이상, 주요 액션 버튼 하단 배치로 한다.",
+        "[범위] MVP 대상 사용자는 소상공인 사장과 매장 직원으로 한정하고 프랜차이즈 본사 관리자는 제외한다.",
+        "[범위] 3개월 내 소화 가능한 최대 범위는 확정 기능 6개와 POS 연동 1건이며, 추가 기능 요청은 기존 기능 제외를 전제로만 논의한다."
+      ],
+      "source_fields": [
+        "plan_source_text"
+      ],
+      "evidence": [
+        {
+          "quote": "MVP 기능은 바코드 입출고 등록, 재고 임계치 알림, 발주서 자동 생성, 거래처 관리, 대시보드, 권한 관리 총 6개로 확정한다.",
+          "status": "verified"
+        },
+        {
+          "quote": "바코드 스캔은 웹 카메라 API(BarcodeDetector) 방식으로 구현하며, iOS 사파리 대응을 위한 ZXing 폴백을 필수로 포함한다.",
+          "status": "verified"
+        },
+        {
+          "quote": "매출 예측 기능은 MVP 범위에서 제외하고, 최근 4주 평균 판매량 기반 추천 수량 계산으로 대체한다.",
+          "status": "verified"
+        },
+        {
+          "quote": "POS 연동은 A사 API 1곳만 MVP에 포함하며, 나머지 벤더는 2차 개발로 이관한다.",
+          "status": "verified"
+        },
+        {
+          "quote": "기술 스택은 React + Spring Boot + MySQL + AWS로 확정하고 Next.js는 채택하지 않는다.",
+          "status": "verified"
+        },
+        {
+          "quote": "성능 기준은 주요 화면 응답 3초 이내, 동시 접속 500명으로 한다.",
+          "status": "verified"
+        },
+        {
+          "quote": "본문 폰트 16px 이상, 주요 버튼 터치 영역 44px 이상, 주요 액션 버튼 하단 배치를 디자인 필수 가이드로 적용한다.",
+          "status": "verified"
+        },
+        {
+          "quote": "MVP 대상 사용자는 소상공인 사장과 매장 직원으로 한정하고, 프랜차이즈 본사 관리자는 제외한다.",
+          "status": "verified"
+        },
+        {
+          "quote": "김도현: 오늘 확정한 기능 6개와 POS 연동 1건이 3개월 내 소화 가능한 최대치다. 추가 기능 요청은 기존 기능 제외를 전제로만 논의한다.",
+          "status": "verified"
+        }
+      ],
+      "features": [],
+      "groups": [],
+      "needs_input": "",
+      "is_incomplete": false,
+      "edited_by_pm": false,
+      "review": {
+        "state": "pending",
+        "comment": null,
+        "reject_type": null
+      }
+    }
+  ],
+  "unresolved": []
+}

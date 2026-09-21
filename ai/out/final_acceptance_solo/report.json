@@ -1,0 +1,37 @@
+[
+  {
+    "case_id": "musinsa_long",
+    "strategy": "indexed",
+    "run": 1,
+    "elapsed_seconds": 582.135,
+    "required_recall": 0.75,
+    "missing_required": [
+      "resale_priority"
+    ],
+    "matched_forbidden": [
+      "storage_as_feature"
+    ],
+    "blocking_rule_issues": [],
+    "passed": false,
+    "stage_timeline": [
+      {
+        "label": "회의록 사실·결정 정리 중…",
+        "elapsed_seconds": 0.145
+      },
+      {
+        "label": "전체 기획서 작성 중…",
+        "elapsed_seconds": 441.76
+      },
+      {
+        "label": "목록형 섹션 조립 중…",
+        "elapsed_seconds": 582.066
+      },
+      {
+        "label": "섹션 병합 및 근거 매칭 중…",
+        "elapsed_seconds": 582.092
+      }
+    ],
+    "plan_path": "out/final_acceptance_solo/musinsa_long__indexed__1.plan.json",
+    "fact_index_path": "out/final_acceptance_solo/musinsa_long__indexed__1.facts.json"
+  }
+]

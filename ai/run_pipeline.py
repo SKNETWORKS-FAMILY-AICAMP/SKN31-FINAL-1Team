@@ -69,7 +69,7 @@ def main() -> None:
         print("...(생략)...")
 
     print("\n" + "=" * 70)
-    print("2단계: 구조화 JSON → 기획서 (LLM 호출)")
+    print("2단계: 회의록 원문 → 기획서 섹션 병렬 생성 (LLM 호출)")
     print("=" * 70)
     t1 = time.time()
     doc = generate_plan(structured, proposal_id="TEST-DEMO")

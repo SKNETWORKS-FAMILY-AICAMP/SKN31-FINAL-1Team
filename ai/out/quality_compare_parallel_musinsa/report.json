@@ -1,0 +1,35 @@
+[
+  {
+    "case_id": "musinsa_long",
+    "strategy": "parallel_audit",
+    "run": 1,
+    "elapsed_seconds": 210.468,
+    "required_recall": 0.5,
+    "missing_required": [
+      "main_purpose",
+      "resale_priority"
+    ],
+    "matched_forbidden": [],
+    "blocking_rule_issues": [
+      "non_confirmed_as_decision",
+      "non_confirmed_as_decision"
+    ],
+    "passed": false,
+    "stage_timeline": [
+      {
+        "label": "전체 기획서 작성과 사실 검증을 병렬 진행 중…",
+        "elapsed_seconds": 0.137
+      },
+      {
+        "label": "목록형 섹션 조립 중…",
+        "elapsed_seconds": 210.399
+      },
+      {
+        "label": "섹션 병합 및 근거 매칭 중…",
+        "elapsed_seconds": 210.423
+      }
+    ],
+    "plan_path": "out/quality_compare_parallel_musinsa/musinsa_long__parallel_audit__1.plan.json",
+    "fact_index_path": "out/quality_compare_parallel_musinsa/musinsa_long__parallel_audit__1.facts.json"
+  }
+]

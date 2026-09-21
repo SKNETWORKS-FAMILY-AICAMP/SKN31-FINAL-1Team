@@ -1,0 +1,389 @@
+{
+  "proposal_id": "BENCH-vague_meeting-parallel-1",
+  "meeting_id": "BENCH-vague_meeting",
+  "status": "draft",
+  "sections": [
+    {
+      "no": 1,
+      "key": "overview",
+      "title": "프로젝트 개요",
+      "section_type": "narrative",
+      "content_html": "<p>리테일링크는 소매 매장의 재고 현황을 한눈에 파악하고 발주와 알림을 연계해 재고 운영 결정을 돕는 업무 지원 서비스다. 대시보드와 알림, 발주서 관리를 연결해 점주와 직원이 일관된 정보로 일상 업무를 처리하도록 한다.</p><p>기준 데이터는 매장별 재고 현황과 발주서 정보로, 운영 판단의 근거가 되는 핵심 상태를 담는다. 보조 데이터는 재고 감소 알림과 사용자 권한 정보로, 주의가 필요한 이벤트 전달과 정보 접근 통제를 보완한다.</p><p>현재는 화면 설계 초안을 바탕으로 핵심 화면과 기능 범위를 정리하는 단계이며, 대시보드에 재고 현황과 알림 목록을 포함하고 발주서는 기본 양식 1개로 시작한다. 다음 단계에서는 알림 기준과 발송 채널, 직원 권한 범위를 확정하고 세부 동작을 검토한다.</p>",
+      "items": [],
+      "source_fields": [
+        "plan_source_text"
+      ],
+      "evidence": [
+        {
+          "quote": "대시보드에 뭘 넣을지 얘기했는데 이것저것 나왔음.",
+          "status": "verified"
+        },
+        {
+          "quote": "재고 현황이랑 알림 목록은 확실히 넣기로 함.",
+          "status": "verified"
+        },
+        {
+          "quote": "발주서 양식은 거래처마다 다를 수 있다고 함.",
+          "status": "verified"
+        },
+        {
+          "quote": "대시보드에 재고 현황, 알림 목록 포함",
+          "status": "verified"
+        },
+        {
+          "quote": "직원 권한 관련해서, 직원이 어디까지 볼 수 있게 할지 얘기했는데 매입가는 안 보이게 해야 한다는 의견이 있었음.",
+          "status": "verified"
+        },
+        {
+          "quote": "지난번에 정한 화면 설계 보면서 얘기 시작함. 몇 개는 수정이 필요할 것 같다고 함.",
+          "status": "verified"
+        },
+        {
+          "quote": "발주서 기본 양식 1개로 시작",
+          "status": "verified"
+        },
+        {
+          "quote": "알림 기준은 보류",
+          "status": "verified"
+        }
+      ],
+      "features": [],
+      "groups": [],
+      "needs_input": "",
+      "is_incomplete": false,
+      "edited_by_pm": false,
+      "review": {
+        "state": "pending",
+        "comment": null,
+        "reject_type": null
+      }
+    },
+    {
+      "no": 2,
+      "key": "problem",
+      "title": "핵심 목표",
+      "section_type": "narrative",
+      "content_html": "<p>재고 상태와 발주 시점을 제때 파악하지 못해 발생하는 운영 불일치를 줄여, 사용자가 일관되고 신뢰할 수 있는 재고·발주 결정을 내리도록 한다. 경보성 이벤트와 핵심 지표를 한곳에서 확인해 놓침과 과잉을 예방하는 상태에 도달한다.</p><p>대시보드에서 재고 현황과 알림 목록을 통합 제공하고, 기본 발주서 양식으로 거래처 대응을 시작한 뒤 필요에 따라 확장한다. 알림 임계값과 발송 채널을 합리적으로 정의해 경보 전달의 신뢰성과 비용 효율을 함께 확보한다.</p><p><strong>PM 확인 사항</strong></p><ul><li>비용을 고려한 문자 발송의 포함 여부를 1차 범위에서 결정해야 하는가?</li></ul>",
+      "items": [],
+      "source_fields": [
+        "plan_source_text"
+      ],
+      "evidence": [
+        {
+          "quote": "재고 현황이랑 알림 목록은 확실히 넣기로 함.",
+          "status": "verified"
+        },
+        {
+          "quote": "알림 기능 관련해서 얘기가 좀 길어졌음.",
+          "status": "verified"
+        },
+        {
+          "quote": "대시보드에 재고 현황, 알림 목록 포함",
+          "status": "verified"
+        },
+        {
+          "quote": "발주서 기본 양식 1개로 시작",
+          "status": "verified"
+        },
+        {
+          "quote": "알림을 어디로 보낼지도 얘기 나왔는데 앱 푸시가 좋겠다는 말이 있었고 문자도 얘기됐음. 근데 비용 문제가 있어서 확인이 필요하다고 함.",
+          "status": "verified"
+        }
+      ],
+      "features": [],
+      "groups": [],
+      "needs_input": "비용을 고려한 문자 발송의 포함 여부를 1차 범위에서 결정해야 하는가?",
+      "is_incomplete": false,
+      "edited_by_pm": false,
+      "review": {
+        "state": "pending",
+        "comment": null,
+        "reject_type": null
+      }
+    },
+    {
+      "no": 3,
+      "key": "goals",
+      "title": "세부 목표 및 문제 정의",
+      "section_type": "list",
+      "content_html": "<p><strong>재고 가시성 일원화</strong></p><p><strong>문제:</strong> 핵심 재고 정보를 여러 화면과 논의로 흩어 보며 일관된 판단이 어렵다.</p><p><strong>추진 목표:</strong> 대시보드에서 재고 현황을 기본으로 제공하고 알림 목록을 함께 보여 일상 점검의 단일 진입점을 만든다.</p><p><strong>경보 체계 정립</strong></p><p><strong>문제:</strong> 재고 감소 알림의 임계 기준과 채널이 정해지지 않아 경보 품질과 비용 영향이 불확실하다.</p><p><strong>추진 목표:</strong> 알림 임계 기준과 1차 발송 채널을 명확히 정의해 적시에 과도하지 않은 경보를 보장한다.</p><p><strong>발주 프로세스 표준화 시작</strong></p><p><strong>문제:</strong> 거래처마다 발주서 양식이 달라 업무 복잡도가 높아질 수 있다.</p><p><strong>추진 목표:</strong> 기본 발주서 양식 1개로 시작해 운영을 정착시키고, 필요 시 거래처별 확장을 단계적으로 검토한다.</p><p><strong>권한 분리와 민감 정보 보호</strong></p><p><strong>문제:</strong> 직원 접근 범위가 정해지지 않아 매입가 등 민감 정보 노출 위험이 있다.</p><p><strong>추진 목표:</strong> 역할 기반 권한을 정의하고 직원에게는 매입가 등 민감 정보를 비공개로 설정한다.</p>",
+      "items": [
+        "재고 가시성 일원화\n문제: 핵심 재고 정보를 여러 화면과 논의로 흩어 보며 일관된 판단이 어렵다.\n추진 목표: 대시보드에서 재고 현황을 기본으로 제공하고 알림 목록을 함께 보여 일상 점검의 단일 진입점을 만든다.",
+        "경보 체계 정립\n문제: 재고 감소 알림의 임계 기준과 채널이 정해지지 않아 경보 품질과 비용 영향이 불확실하다.\n추진 목표: 알림 임계 기준과 1차 발송 채널을 명확히 정의해 적시에 과도하지 않은 경보를 보장한다.",
+        "발주 프로세스 표준화 시작\n문제: 거래처마다 발주서 양식이 달라 업무 복잡도가 높아질 수 있다.\n추진 목표: 기본 발주서 양식 1개로 시작해 운영을 정착시키고, 필요 시 거래처별 확장을 단계적으로 검토한다.",
+        "권한 분리와 민감 정보 보호\n문제: 직원 접근 범위가 정해지지 않아 매입가 등 민감 정보 노출 위험이 있다.\n추진 목표: 역할 기반 권한을 정의하고 직원에게는 매입가 등 민감 정보를 비공개로 설정한다."
+      ],
+      "source_fields": [
+        "plan_source_text"
+      ],
+      "evidence": [
+        {
+          "quote": "대시보드에 뭘 넣을지 얘기했는데 이것저것 나왔음.",
+          "status": "verified"
+        },
+        {
+          "quote": "대시보드에 재고 현황, 알림 목록 포함",
+          "status": "verified"
+        },
+        {
+          "quote": "알림 기능 관련해서 얘기가 좀 길어졌음. 재고가 얼마나 줄었을 때 알려줄지를 정해야 하는데, 품목마다 다르다는 의견이랑 그냥 일괄로 하자는 의견이 갈렸음.",
+          "status": "verified"
+        },
+        {
+          "quote": "알림을 어디로 보낼지도 얘기 나왔는데 앱 푸시가 좋겠다는 말이 있었고 문자도 얘기됐음. 근데 비용 문제가 있어서 확인이 필요하다고 함.",
+          "status": "verified"
+        },
+        {
+          "quote": "발주서 양식은 거래처마다 다를 수 있다고 함. 일단 기본 양식 하나 만들고 나중에 늘리는 쪽으로 얘기됨.",
+          "status": "verified"
+        },
+        {
+          "quote": "발주서 기본 양식 1개로 시작",
+          "status": "verified"
+        },
+        {
+          "quote": "직원 권한 관련해서, 직원이 어디까지 볼 수 있게 할지 얘기했는데 매입가는 안 보이게 해야 한다는 의견이 있었음.",
+          "status": "verified"
+        }
+      ],
+      "features": [],
+      "groups": [],
+      "needs_input": "",
+      "is_incomplete": false,
+      "edited_by_pm": false,
+      "review": {
+        "state": "pending",
+        "comment": null,
+        "reject_type": null
+      }
+    },
+    {
+      "no": 4,
+      "key": "users",
+      "title": "대상 사용자",
+      "section_type": "narrative",
+      "content_html": "<p><strong>확인된 사용자</strong></p><p><strong>직원</strong></p><p>일선 운영을 수행하며 제한된 정보로 재고 상태를 확인하고 필요 작업을 지원한다.</p><p>대시보드에서 자신의 권한 범위 내 재고 정보를 확인하고, 발주 작성 보조 등 지정된 업무만 수행한다.</p><p><strong>제안 사용자</strong></p><p><strong>점주/관리자</strong></p><p>매장 운영을 총괄하며 재고 현황을 확인하고 알림을 검토해 발주 시점을 판단하고 거래처에 발주한다.</p><p>대시보드에서 재고 현황과 알림 목록을 확인하고, 기본 발주서 양식으로 발주를 작성·관리한다.</p><p><strong>PM 확인 사항</strong></p><ul><li>점주/관리자를 서비스 대상 사용자로 정의할지 확인이 필요합니다.</li></ul>",
+      "items": [],
+      "source_fields": [
+        "plan_source_text"
+      ],
+      "evidence": [
+        {
+          "quote": "직원 권한 관련해서, 직원이 어디까지 볼 수 있게 할지 얘기했는데 매입가는 안 보이게 해야 한다는 의견이 있었음.",
+          "status": "verified"
+        },
+        {
+          "quote": "대시보드에 재고 현황, 알림 목록 포함",
+          "status": "verified"
+        },
+        {
+          "quote": "발주서 기본 양식 1개로 시작",
+          "status": "verified"
+        }
+      ],
+      "features": [],
+      "groups": [],
+      "needs_input": "점주/관리자를 서비스 대상 사용자로 정의할지 확인이 필요합니다.",
+      "is_incomplete": false,
+      "edited_by_pm": false,
+      "review": {
+        "state": "pending",
+        "comment": null,
+        "reject_type": null
+      }
+    },
+    {
+      "no": 5,
+      "key": "features",
+      "title": "주요 기능",
+      "section_type": "narrative",
+      "content_html": "<p><strong>재고 대시보드</strong></p><p>사용자는 대시보드에서 매장 재고 현황을 기본으로 확인하고, 동일 화면에서 알림 목록을 함께 확인한다.</p><p><strong>알림 설정 및 수신</strong></p><p>재고가 감소했을 때 알림을 제공하며, 임계 기준은 품목별 개별 설정 또는 일괄 기준 중 선택해 운영하고 발송 채널은 앱 푸시 또는 문자 중 선택해 제공한다.</p><p><strong>기본 발주서 양식</strong></p><p>거래처별 차이가 있음을 감안하되 초기에는 기본 발주서 양식 1개로 발주 작성과 전달을 지원한다.</p><p><strong>직원 권한 관리</strong></p><p>역할에 따라 접근 범위를 구분하고 직원에게는 매입가 등 민감 정보가 보이지 않도록 설정한다.</p><p><strong>PM 확인 사항</strong></p><ul><li>1차 릴리스에서 임계 기준은 일괄 기준으로 시작하고 품목별은 후속으로 미룰지 결정이 필요한가?</li></ul>",
+      "items": [
+        "재고 대시보드",
+        "알림 설정 및 수신",
+        "기본 발주서 양식",
+        "직원 권한 관리"
+      ],
+      "source_fields": [
+        "plan_source_text"
+      ],
+      "evidence": [
+        {
+          "quote": "대시보드에 재고 현황, 알림 목록 포함",
+          "status": "verified"
+        },
+        {
+          "quote": "알림 기능 관련해서 얘기가 좀 길어졌음. 재고가 얼마나 줄었을 때 알려줄지를 정해야 하는데, 품목마다 다르다는 의견이랑 그냥 일괄로 하자는 의견이 갈렸음.",
+          "status": "verified"
+        },
+        {
+          "quote": "알림을 어디로 보낼지도 얘기 나왔는데 앱 푸시가 좋겠다는 말이 있었고 문자도 얘기됐음. 근데 비용 문제가 있어서 확인이 필요하다고 함.",
+          "status": "verified"
+        },
+        {
+          "quote": "발주서 양식은 거래처마다 다를 수 있다고 함. 일단 기본 양식 하나 만들고 나중에 늘리는 쪽으로 얘기됨.",
+          "status": "verified"
+        },
+        {
+          "quote": "발주서 기본 양식 1개로 시작",
+          "status": "verified"
+        },
+        {
+          "quote": "직원 권한 관련해서, 직원이 어디까지 볼 수 있게 할지 얘기했는데 매입가는 안 보이게 해야 한다는 의견이 있었음.",
+          "status": "verified"
+        }
+      ],
+      "features": [
+        {
+          "group": "mvp",
+          "title": "재고 대시보드",
+          "description": "사용자는 대시보드에서 매장 재고 현황을 기본으로 확인하고, 동일 화면에서 알림 목록을 함께 확인한다.",
+          "source_indices": [],
+          "evidence": [
+            {
+              "quote": "대시보드에 재고 현황, 알림 목록 포함"
+            }
+          ],
+          "review_questions": []
+        },
+        {
+          "group": "mvp",
+          "title": "알림 설정 및 수신",
+          "description": "재고가 감소했을 때 알림을 제공하며, 임계 기준은 품목별 개별 설정 또는 일괄 기준 중 선택해 운영하고 발송 채널은 앱 푸시 또는 문자 중 선택해 제공한다.",
+          "source_indices": [],
+          "evidence": [
+            {
+              "quote": "알림 기능 관련해서 얘기가 좀 길어졌음. 재고가 얼마나 줄었을 때 알려줄지를 정해야 하는데, 품목마다 다르다는 의견이랑 그냥 일괄로 하자는 의견이 갈렸음."
+            },
+            {
+              "quote": "알림을 어디로 보낼지도 얘기 나왔는데 앱 푸시가 좋겠다는 말이 있었고 문자도 얘기됐음. 근데 비용 문제가 있어서 확인이 필요하다고 함."
+            }
+          ],
+          "review_questions": [
+            "1차 릴리스에서 임계 기준은 일괄 기준으로 시작하고 품목별은 후속으로 미룰지 결정이 필요한가?",
+            "문자 발송은 비용 확인 전까지 제외하고 앱 푸시만 제공할지 확정이 필요한가?"
+          ]
+        },
+        {
+          "group": "mvp",
+          "title": "기본 발주서 양식",
+          "description": "거래처별 차이가 있음을 감안하되 초기에는 기본 발주서 양식 1개로 발주 작성과 전달을 지원한다.",
+          "source_indices": [],
+          "evidence": [
+            {
+              "quote": "발주서 양식은 거래처마다 다를 수 있다고 함. 일단 기본 양식 하나 만들고 나중에 늘리는 쪽으로 얘기됨."
+            },
+            {
+              "quote": "발주서 기본 양식 1개로 시작"
+            }
+          ],
+          "review_questions": []
+        },
+        {
+          "group": "mvp",
+          "title": "직원 권한 관리",
+          "description": "역할에 따라 접근 범위를 구분하고 직원에게는 매입가 등 민감 정보가 보이지 않도록 설정한다.",
+          "source_indices": [],
+          "evidence": [
+            {
+              "quote": "직원 권한 관련해서, 직원이 어디까지 볼 수 있게 할지 얘기했는데 매입가는 안 보이게 해야 한다는 의견이 있었음."
+            }
+          ],
+          "review_questions": [
+            "직원에게 숨길 정보 범위를 매입가로 한정할지, 관련 지표(마진 등)까지 포함할지 확정이 필요한가?"
+          ]
+        }
+      ],
+      "groups": [],
+      "needs_input": "1차 릴리스에서 임계 기준은 일괄 기준으로 시작하고 품목별은 후속으로 미룰지 결정이 필요한가?",
+      "is_incomplete": false,
+      "edited_by_pm": false,
+      "review": {
+        "state": "pending",
+        "comment": null,
+        "reject_type": null
+      }
+    },
+    {
+      "no": 6,
+      "key": "tech_scope",
+      "title": "기술 스택 및 제약사항",
+      "section_type": "list",
+      "content_html": "<p><strong>핵심 제약</strong></p><ul><li>개발 일정이 빠듯하고 현재 인원으로 수행 여력이 부족한 제약이 있음.</li><li>성능에 대해 ‘너무 느리지 않게’라는 최소 요구가 존재함.</li></ul><p><strong>PM 확인 사항</strong></p><ul><li>알림 전달 채널을 앱 푸시/문자로 할지, 문자 발송 비용 이슈 포함해 최종 조합을 어떻게 정할지?</li><li>서버 관련 정리 문서의 공유 시점과 주요 결정 사항을 언제 어떻게 확정할지?</li></ul>",
+      "items": [
+        "개발 일정이 빠듯하고 현재 인원으로 수행 여력이 부족한 제약이 있음.",
+        "성능에 대해 ‘너무 느리지 않게’라는 최소 요구가 존재함."
+      ],
+      "source_fields": [
+        "plan_source_text"
+      ],
+      "evidence": [
+        {
+          "quote": "개발 쪽에서 일정이 빠듯하다는 얘기를 계속 함.",
+          "status": "verified"
+        },
+        {
+          "quote": "지금 인원으로는 어렵다는 뉘앙스였음.",
+          "status": "verified"
+        },
+        {
+          "quote": "속도는 너무 느리지 않게 해달라고 요청함.",
+          "status": "verified"
+        }
+      ],
+      "features": [],
+      "groups": [
+        {
+          "subtitle": "핵심 제약",
+          "items": [
+            "개발 일정이 빠듯하고 현재 인원으로 수행 여력이 부족한 제약이 있음.",
+            "성능에 대해 ‘너무 느리지 않게’라는 최소 요구가 존재함."
+          ]
+        }
+      ],
+      "needs_input": "알림 전달 채널을 앱 푸시/문자로 할지, 문자 발송 비용 이슈 포함해 최종 조합을 어떻게 정할지?\n서버 관련 정리 문서의 공유 시점과 주요 결정 사항을 언제 어떻게 확정할지?",
+      "is_incomplete": false,
+      "edited_by_pm": false,
+      "review": {
+        "state": "pending",
+        "comment": null,
+        "reject_type": null
+      }
+    },
+    {
+      "no": 7,
+      "key": "decisions",
+      "title": "최종 결정사항",
+      "section_type": "list",
+      "content_html": "<p><strong>범위 관련 결정</strong></p><ul><li>발주서는 기본 양식 1개로 시작한다.</li></ul><p><strong>기능 관련 결정</strong></p><ul><li>대시보드에는 재고 현황과 알림 목록을 포함한다.</li></ul><p><strong>PM 확인 사항</strong></p><ul><li>성능(응답 시간 등)에 대한 구체적이고 검증 가능한 기준을 설정할지?</li></ul>",
+      "items": [
+        "[범위] 발주서는 기본 양식 1개로 시작한다.",
+        "[기능] 대시보드에는 재고 현황과 알림 목록을 포함한다."
+      ],
+      "source_fields": [
+        "plan_source_text"
+      ],
+      "evidence": [
+        {
+          "quote": "- 발주서 기본 양식 1개로 시작",
+          "status": "verified"
+        },
+        {
+          "quote": "- 대시보드에 재고 현황, 알림 목록 포함",
+          "status": "verified"
+        }
+      ],
+      "features": [],
+      "groups": [],
+      "needs_input": "성능(응답 시간 등)에 대한 구체적이고 검증 가능한 기준을 설정할지?",
+      "is_incomplete": false,
+      "edited_by_pm": false,
+      "review": {
+        "state": "pending",
+        "comment": null,
+        "reject_type": null
+      }
+    }
+  ],
+  "unresolved": []
+}

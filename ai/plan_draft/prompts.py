@@ -115,6 +115,16 @@ def _build_generation_payload(
         "meeting_source_text": structured.get("plan_source_text") or "",
         "validation_notes": structured.get("validation_notes") or [],
         "project": project,
+        # 회의록 구조화 단계가 프로젝트의 주목적을 별도 신호로 잡은 경우
+        # project.problem만 보여주면 구현 화제에 밀려 핵심 목표에서 누락될
+        # 수 있습니다. 검증된 목적 신호를 problem 전용 근거로 명시합니다.
+        "service_purpose_signals": [
+            item for item in (structured.get("user_signals") or [])
+            if isinstance(item, dict)
+            and item.get("kind") == "service_purpose"
+            and item.get("statement_status") == "stated"
+            and item.get("evidence_status") == "verified"
+        ],
         "users": (
             structured.get("users")
             or []

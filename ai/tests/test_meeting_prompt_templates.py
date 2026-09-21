@@ -56,6 +56,14 @@ def test_extraction_template_has_expected_version():
     template = load_extraction_template()
     assert template["metadata"]["version"] == "2.10"
 
+
+def test_decision_reconciliation_preserves_roles_and_late_priority_consensus():
+    prompt = build_decision_system_prompt()
+
+    assert "각 구성요소의 역할" in prompt
+    assert "A를 우선으로 하고 부족한 부분은 B로" in prompt
+    assert "후속 합의" in prompt
+
 def test_extraction_template_has_scenario_rules():
     """시나리오는 스키마에 있는데 규칙이 없어 가짜 흐름이 생기던 문제."""
     template = load_extraction_template()

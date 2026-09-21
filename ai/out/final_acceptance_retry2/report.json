@@ -1,0 +1,69 @@
+[
+  {
+    "case_id": "unseen_domain",
+    "strategy": "indexed",
+    "run": 1,
+    "elapsed_seconds": 222.014,
+    "required_recall": 1.0,
+    "missing_required": [],
+    "matched_forbidden": [
+      "engagement_score_feature"
+    ],
+    "blocking_rule_issues": [],
+    "passed": false,
+    "stage_timeline": [
+      {
+        "label": "회의록 사실·결정 정리 중…",
+        "elapsed_seconds": 0.133
+      },
+      {
+        "label": "전체 기획서 작성 중…",
+        "elapsed_seconds": 129.88
+      },
+      {
+        "label": "목록형 섹션 조립 중…",
+        "elapsed_seconds": 221.995
+      },
+      {
+        "label": "섹션 병합 및 근거 매칭 중…",
+        "elapsed_seconds": 222.002
+      }
+    ],
+    "plan_path": "out/final_acceptance_retry2/unseen_domain__indexed__1.plan.json",
+    "fact_index_path": "out/final_acceptance_retry2/unseen_domain__indexed__1.facts.json"
+  },
+  {
+    "case_id": "musinsa_long",
+    "strategy": "indexed",
+    "run": 1,
+    "elapsed_seconds": 370.665,
+    "required_recall": 0.5,
+    "missing_required": [
+      "storage_split",
+      "resale_priority"
+    ],
+    "matched_forbidden": [],
+    "blocking_rule_issues": [],
+    "passed": false,
+    "stage_timeline": [
+      {
+        "label": "회의록 사실·결정 정리 중…",
+        "elapsed_seconds": 0.001
+      },
+      {
+        "label": "전체 기획서 작성 중…",
+        "elapsed_seconds": 169.454
+      },
+      {
+        "label": "목록형 섹션 조립 중…",
+        "elapsed_seconds": 370.585
+      },
+      {
+        "label": "섹션 병합 및 근거 매칭 중…",
+        "elapsed_seconds": 370.621
+      }
+    ],
+    "plan_path": "out/final_acceptance_retry2/musinsa_long__indexed__1.plan.json",
+    "fact_index_path": "out/final_acceptance_retry2/musinsa_long__indexed__1.facts.json"
+  }
+]

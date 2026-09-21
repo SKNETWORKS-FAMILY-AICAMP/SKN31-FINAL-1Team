@@ -1,0 +1,56 @@
+[
+  {
+    "case_id": "musinsa_long",
+    "strategy": "parallel",
+    "run": 1,
+    "elapsed_seconds": 126.399,
+    "required_recall": 0.5,
+    "missing_required": [
+      "storage_split",
+      "resale_priority"
+    ],
+    "matched_forbidden": [],
+    "blocking_rule_issues": [],
+    "passed": false,
+    "stage_timeline": [
+      {
+        "label": "콘텐츠·기술 결정 병렬 생성 중…",
+        "elapsed_seconds": 0.142
+      },
+      {
+        "label": "목록형 섹션 조립 중…",
+        "elapsed_seconds": 126.281
+      },
+      {
+        "label": "섹션 병합 및 근거 매칭 중…",
+        "elapsed_seconds": 126.345
+      }
+    ],
+    "llm_calls": [
+      {
+        "context": "run technical-decisions proposal_id=BENCH-musinsa_long-parallel-1",
+        "model": "gpt-5",
+        "duration_seconds": 48.555,
+        "attempt_count": 1,
+        "input_tokens": 19311,
+        "output_tokens": 3766,
+        "total_tokens": 23077,
+        "success": true,
+        "error_type": null
+      },
+      {
+        "context": "run content-plan proposal_id=BENCH-musinsa_long-parallel-1",
+        "model": "gpt-5",
+        "duration_seconds": 126.129,
+        "attempt_count": 2,
+        "input_tokens": 50094,
+        "output_tokens": 9165,
+        "total_tokens": 59259,
+        "success": true,
+        "error_type": null
+      }
+    ],
+    "plan_path": "out/parallel_live_verification_run2/musinsa_long__parallel__1.plan.json",
+    "fact_index_path": "out/parallel_live_verification_run2/musinsa_long__parallel__1.facts.json"
+  }
+]

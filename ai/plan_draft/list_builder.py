@@ -714,13 +714,28 @@ def collect_core_goal_evidence(
     화면에서 읽기 어려울 정도로 근거가 많아지는 것을 방지하기
     위해 최대 4개까지만 반환합니다.
     """
+    # 프로젝트 주목적을 별도 신호로 추출한 경우 개별 구현 목표보다 먼저
+    # 보여줍니다. 이 신호가 있는데 project.goals만 우선하면 장문 회의의
+    # 구현 화제가 핵심 목적을 밀어내는 문제가 생깁니다.
+    purpose_evidence = []
+    for item in structured.get("user_signals") or []:
+        if (
+            isinstance(item, dict)
+            and item.get("kind") == "service_purpose"
+            and item.get("statement_status") == "stated"
+            and item.get("evidence_status") == VERIFIED
+        ):
+            quote = _evidence_quote(item)
+            if quote:
+                purpose_evidence.append(VerifiedEvidence(quote=quote, status=VERIFIED))
+
     goal_evidence = collect_source_evidence(
         structured,
         ["project.goals"],
     )
 
-    if goal_evidence:
-        return _dedupe_evidence(goal_evidence)[:4]
+    if purpose_evidence or goal_evidence:
+        return _dedupe_evidence(purpose_evidence + goal_evidence)[:4]
 
     fallback_evidence = collect_source_evidence(
         structured,

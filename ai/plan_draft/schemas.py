@@ -9,9 +9,9 @@
 | 2    | problem    | 핵심 목표                    | LLM       |
 | 3    | goals      | 세부 목표 및 문제 정의       | LLM + 코드 검증 |
 | 4    | users      | 대상 사용자                  | LLM       |
-| 5    | features   | 주요 기능                    | 코드      |
-| 6    | tech_scope | 기술 스택 및 제약사항        | 코드      |
-| 7    | decisions  | 최종 결정사항                | 코드      |
+| 5    | features   | 주요 기능                    | LLM + 코드 근거 검증 |
+| 6    | tech_scope | 기술 스택 및 제약사항        | LLM + 코드 근거 검증 |
+| 7    | decisions  | 최종 결정사항                | LLM + 코드 근거 검증 |
 
 ## PlanSections는 LLM이 생성하는 다음 결과를 담습니다.
 
@@ -23,8 +23,10 @@
     구조화 배열:
         goals
 
-주요 기능은 노드 1의 검증된 functional 요구사항을
-feature_name 기준으로 코드가 조립합니다.
+원문 직접 생성 경로에서는 먼저 사실·결정 인덱스를 만들고, 그 인덱스와 원문을
+함께 읽어 1~7번 전체를 한 번에 작성한 뒤 각 인용을 코드가 원문과 대조합니다.
+매우 긴 원문만 인덱스 추출을 구간별로 병렬 실행하며, 기존 구조화 입력 경로는
+호환용으로 유지합니다.
 
 ## 스키마가 두 개인 이유
 
@@ -198,6 +200,15 @@ class Feature(BaseModel):
         description=(
             "이 기능을 작성할 때 참고한 feature_sources_for_citation의 "
             "번호들. 여러 항목을 묶었으면 전부 나열합니다."
+        ),
+    )
+
+    evidence: list[Evidence] = Field(
+        default_factory=list,
+        description=(
+            "원문 직접 생성 경로에서 이 기능을 뒷받침하는 회의록의 연속된 "
+            "원문 인용. 요약하거나 서로 떨어진 발언을 합치지 않습니다. "
+            "기존 구조화 경로에서는 source_indices를 계속 사용할 수 있습니다."
         ),
     )
 

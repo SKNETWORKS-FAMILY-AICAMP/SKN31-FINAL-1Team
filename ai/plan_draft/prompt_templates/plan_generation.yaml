@@ -44,7 +44,7 @@ output_contract:
     - decisions
 
 common_rules:
-  - overview·problem 섹션은 입력 JSON의 project와 users만 근거로 씁니다. users는 아래 enrichment_rules에 따라 user_sources_for_citation도 참고합니다.
+  - overview·problem 섹션은 입력 JSON의 project와 users만 근거로 씁니다. 단, problem은 검증된 service_purpose_signals를 프로젝트 주목적 근거로 반드시 함께 사용합니다. users는 아래 enrichment_rules에 따라 user_sources_for_citation도 참고합니다.
   - >-
     functional_requirements·feature_decisions는 features(5번) 작성에만 씁니다.
     overview·problem·users를 쓸 때는 이 두 필드를 보지 않습니다 — 문제와
@@ -117,12 +117,14 @@ section_rules:
       - project.problem
       - project.problem_items
       - project.goals
+      - service_purpose_signals
     length:
       sentences: 2
       target_chars: "100~150"
       max_chars: 180
     rules:
       - 프로젝트가 해결해야 하는 구체적인 문제와 도달하려는 상태를 2문장으로 작성합니다.
+      - service_purpose_signals가 있으면 그 주목적과 결과 지표를 구현 기능보다 우선해 반드시 포함합니다.
       - 첫 문장은 누구의 어떤 문제를 줄이기 위해 어떤 서비스를 구축하는지 설명합니다.
       - 둘째 문장은 입력에서 확인되는 핵심 접근 방식과 제공하려는 가치를 요약합니다.
       - 두 문장이 같은 내용을 되풀이하지 않게 합니다.

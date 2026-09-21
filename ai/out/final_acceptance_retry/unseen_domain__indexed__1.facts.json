@@ -1,0 +1,559 @@
+{
+  "facts": [
+    {
+      "topic": "회의 목적",
+      "status": "confirmed",
+      "content": "1차 범위 기능 확정과 구현 방식 최종 결정, 기술 스택 결정",
+      "evidence": [
+        {
+          "quote": "사내 교육 과정 운영 시스템의 1차 범위에 포함할 기능을 확정하고, 기획팀 제안에 대해 개발팀이 구현 방식을 검토해 최종 결정한다."
+        }
+      ],
+      "section_candidates": [
+        "overview",
+        "decisions"
+      ],
+      "source_order": 1
+    },
+    {
+      "topic": "문제",
+      "status": "confirmed",
+      "content": "담당자 다수가 스프레드시트로 신청·이수 현황을 관리 중",
+      "evidence": [
+        {
+          "quote": "사내 교육 담당자 9명을 인터뷰했고, 이 중 7명이 수강 신청과 이수 현황을 스프레드시트로 관리하고 있었다."
+        }
+      ],
+      "section_candidates": [
+        "problem"
+      ],
+      "source_order": 2
+    },
+    {
+      "topic": "문제",
+      "status": "confirmed",
+      "content": "정원 마감 후에도 신청이 계속 들어와 과정당 평균 12건 수동 취소 안내 발생",
+      "evidence": [
+        {
+          "quote": "정원이 마감된 뒤에도 신청이 계속 들어와 담당자가 수동으로 취소 안내를 보내는 일이 과정당 평균 12건 발생한다."
+        }
+      ],
+      "section_candidates": [
+        "problem"
+      ],
+      "source_order": 3
+    },
+    {
+      "topic": "문제",
+      "status": "confirmed",
+      "content": "이수 기준 확인을 수동으로 해 수료 처리가 평균 5일 지연",
+      "evidence": [
+        {
+          "quote": "이수 기준을 충족했는지 확인하는 작업을 사람이 직접 해서 수료 처리가 평균 5일 늦어진다."
+        }
+      ],
+      "section_candidates": [
+        "problem"
+      ],
+      "source_order": 4
+    },
+    {
+      "topic": "문제",
+      "status": "confirmed",
+      "content": "팀장 부재 시 결재가 멈춰 승인 대기 상태 발생",
+      "evidence": [
+        {
+          "quote": "팀장이 부재한 기간에는 결재가 멈춰 구성원이 신청 승인 여부를 알 수 없는 상태로 대기하는 문제도 확인됐다."
+        }
+      ],
+      "section_candidates": [
+        "problem"
+      ],
+      "source_order": 5
+    },
+    {
+      "topic": "목표",
+      "status": "confirmed",
+      "content": "정원 초과에 따른 수동 취소 안내 업무 제거",
+      "evidence": [
+        {
+          "quote": "정원 초과 신청으로 발생하는 수동 취소 안내 업무를 없앤다."
+        }
+      ],
+      "section_candidates": [
+        "goals"
+      ],
+      "source_order": 6
+    },
+    {
+      "topic": "목표",
+      "status": "confirmed",
+      "content": "이수 기준 확인 자동화로 수료 지연 축소",
+      "evidence": [
+        {
+          "quote": "이수 기준 확인을 자동화해 수료 처리 지연을 줄인다."
+        }
+      ],
+      "section_candidates": [
+        "goals"
+      ],
+      "source_order": 7
+    },
+    {
+      "topic": "목표",
+      "status": "confirmed",
+      "content": "팀장 부재해도 신청 승인 절차 지속",
+      "evidence": [
+        {
+          "quote": "팀장이 부재해도 신청 승인 절차가 멈추지 않게 한다."
+        }
+      ],
+      "section_candidates": [
+        "goals"
+      ],
+      "source_order": 8
+    },
+    {
+      "topic": "사용자",
+      "status": "confirmed",
+      "content": "1차 사용자: 교육 신청 사내 구성원; 짧게 접속해 신청·진행 상황 확인 위주",
+      "evidence": [
+        {
+          "quote": "1차 사용자는 교육을 신청하는 사내 구성원이며, 대부분 업무 중 짧게 접속해 신청과 진행 상황 확인만 수행한다."
+        }
+      ],
+      "section_candidates": [
+        "users"
+      ],
+      "source_order": 9
+    },
+    {
+      "topic": "사용자",
+      "status": "confirmed",
+      "content": "2차 사용자: 교육 담당자; 과정 개설과 수료 확정 업무, 장시간 사용",
+      "evidence": [
+        {
+          "quote": "2차 사용자는 교육 담당자로, 과정 개설과 수료 확정을 담당하며 하루 여러 차례 장시간 사용한다."
+        }
+      ],
+      "section_candidates": [
+        "users"
+      ],
+      "source_order": 10
+    },
+    {
+      "topic": "사용자 범위",
+      "status": "confirmed",
+      "content": "외부 강사는 1차 대상에서 제외",
+      "evidence": [
+        {
+          "quote": "1차 대상 사용자는 사내 구성원과 교육 담당자로 한정하고, 외부 강사는 제외한다."
+        }
+      ],
+      "section_candidates": [
+        "users",
+        "decisions"
+      ],
+      "source_order": 11
+    },
+    {
+      "topic": "1차 기능 목록",
+      "status": "proposed",
+      "content": "과정 개설, 수강 신청, 승인 결재, 이수 판정, 진행 현황 조회 (5개)",
+      "evidence": [
+        {
+          "quote": "강다인이 제안한 1차 기능은 총 5개다. ①과정 개설 ②수강 신청 ③승인 결재 ④이수 판정 ⑤진행 현황 조회."
+        }
+      ],
+      "section_candidates": [
+        "features"
+      ],
+      "source_order": 12
+    },
+    {
+      "topic": "1차 기능 목록",
+      "status": "confirmed",
+      "content": "과정 개설, 수강 신청, 승인 결재, 이수 판정, 진행 현황 조회로 확정",
+      "evidence": [
+        {
+          "quote": "1차 기능은 과정 개설, 수강 신청, 승인 결재, 이수 판정, 진행 현황 조회 총 5개로 확정한다."
+        }
+      ],
+      "section_candidates": [
+        "features",
+        "decisions"
+      ],
+      "source_order": 13
+    },
+    {
+      "topic": "승인 결재 방식",
+      "status": "proposed",
+      "content": "초기 기획안은 팀장 1인 승인",
+      "evidence": [
+        {
+          "quote": "강다인: 초기 기획안은 팀장 1인 승인 방식이었다."
+        }
+      ],
+      "section_candidates": [
+        "features"
+      ],
+      "source_order": 14
+    },
+    {
+      "topic": "승인 결재 방식",
+      "status": "confirmed",
+      "content": "대리 승인자 지정 가능하며 대리 승인 내역 별도 기록",
+      "evidence": [
+        {
+          "quote": "승인 결재는 대리 승인자를 지정할 수 있는 방식으로 구현하며, 대리 승인 내역을 별도로 기록한다."
+        }
+      ],
+      "section_candidates": [
+        "features",
+        "decisions"
+      ],
+      "source_order": 15
+    },
+    {
+      "topic": "승인 결재 방식(단일 승인자)",
+      "status": "rejected",
+      "content": "팀장 1인 승인 방식은 채택하지 않음",
+      "evidence": [
+        {
+          "quote": "승인 결재는 대리 승인자를 지정할 수 있는 방식으로 구현하며, 대리 승인 내역을 별도로 기록한다."
+        }
+      ],
+      "section_candidates": [
+        "decisions"
+      ],
+      "source_order": 16
+    },
+    {
+      "topic": "승인 결재 작업량",
+      "status": "confirmed",
+      "content": "대리 승인자 지정 화면과 권한 검증 포함 작업량 3~4일",
+      "evidence": [
+        {
+          "quote": "대리 승인자 지정 화면과 권한 검증까지 포함하면 작업량은 3~4일 수준이다."
+        }
+      ],
+      "section_candidates": [
+        "tech_scope"
+      ],
+      "source_order": 17
+    },
+    {
+      "topic": "이수 판정 기준",
+      "status": "proposed",
+      "content": "학습 몰입도 점수 반영 제안",
+      "evidence": [
+        {
+          "quote": "강다인: 이수 판정에 학습 몰입도 점수를 반영하면 좋겠다."
+        }
+      ],
+      "section_candidates": [
+        "features"
+      ],
+      "source_order": 18
+    },
+    {
+      "topic": "이수 판정 기준(몰입도)",
+      "status": "rejected",
+      "content": "학습 몰입도 점수는 1차 범위에서 제외",
+      "evidence": [
+        {
+          "quote": "학습 몰입도 점수는 1차 범위에서 제외하고, 출석률 80퍼센트 이상과 과제 제출 완료를 이수 기준으로 삼는다."
+        }
+      ],
+      "section_candidates": [
+        "decisions"
+      ],
+      "source_order": 19
+    },
+    {
+      "topic": "이수 판정 기준",
+      "status": "proposed",
+      "content": "출석률과 과제 제출 여부로 판정 제안",
+      "evidence": [
+        {
+          "quote": "문태경: 점수 대신 출석률과 과제 제출 여부로 판정하는 방식은 어떤가."
+        }
+      ],
+      "section_candidates": [
+        "features"
+      ],
+      "source_order": 20
+    },
+    {
+      "topic": "이수 판정 기준",
+      "status": "confirmed",
+      "content": "출석률 80% 이상과 과제 제출 완료로 이수 판정",
+      "evidence": [
+        {
+          "quote": "출석률 80퍼센트 이상과 과제 제출 완료를 이수 기준으로 삼기로 합의했다."
+        }
+      ],
+      "section_candidates": [
+        "features",
+        "decisions"
+      ],
+      "source_order": 21
+    },
+    {
+      "topic": "이수 판정 데이터 수집 가능",
+      "status": "confirmed",
+      "content": "출석률과 과제 제출 데이터는 이미 수집 중이라 구현 가능",
+      "evidence": [
+        {
+          "quote": "오현수: 두 값은 이미 수집하므로 구현 가능하다."
+        }
+      ],
+      "section_candidates": [
+        "tech_scope"
+      ],
+      "source_order": 22
+    },
+    {
+      "topic": "사내 계정 연동 제약",
+      "status": "confirmed",
+      "content": "사내 인증 서버가 두 종류이며 규격이 달라 3개월 내 둘 다 연동 불가",
+      "evidence": [
+        {
+          "quote": "사내 인증 서버가 두 종류로 나뉘어 있고 규격이 서로 달라 3개월 안에 둘 다 붙이는 것은 불가능하다."
+        }
+      ],
+      "section_candidates": [
+        "tech_scope",
+        "problem"
+      ],
+      "source_order": 23
+    },
+    {
+      "topic": "사내 계정 연동",
+      "status": "confirmed",
+      "content": "통합 인증 서버 한 곳만 1차에 포함, 나머지는 2차로 이관",
+      "evidence": [
+        {
+          "quote": "사내 계정 연동은 통합 인증 서버 한 곳만 1차에 포함하며, 나머지 한 곳은 2차 개발로 이관한다."
+        }
+      ],
+      "section_candidates": [
+        "tech_scope",
+        "decisions"
+      ],
+      "source_order": 24
+    },
+    {
+      "topic": "기술 스택",
+      "status": "proposed",
+      "content": "프론트엔드 Vue, 백엔드 FastAPI, DB PostgreSQL, 인프라 사내 온프레미스 제안",
+      "evidence": [
+        {
+          "quote": "오현수: 프론트엔드 Vue, 백엔드 FastAPI, DB PostgreSQL, 인프라 사내 온프레미스를 제안한다."
+        }
+      ],
+      "section_candidates": [
+        "tech_scope"
+      ],
+      "source_order": 25
+    },
+    {
+      "topic": "기술 스택",
+      "status": "confirmed",
+      "content": "Vue, FastAPI, PostgreSQL, 사내 온프레미스로 확정",
+      "evidence": [
+        {
+          "quote": "기술 스택은 Vue와 FastAPI와 PostgreSQL과 사내 온프레미스로 확정하고 Nuxt는 채택하지 않는다."
+        }
+      ],
+      "section_candidates": [
+        "tech_scope",
+        "decisions"
+      ],
+      "source_order": 26
+    },
+    {
+      "topic": "Nuxt 채택 여부",
+      "status": "rejected",
+      "content": "Nuxt는 채택하지 않음",
+      "evidence": [
+        {
+          "quote": "Nuxt 도입을 검토했으나 로그인 후 사용하는 내부 시스템이라 검색 노출 요구가 없어 채택하지 않기로 했다."
+        }
+      ],
+      "section_candidates": [
+        "tech_scope",
+        "decisions"
+      ],
+      "source_order": 27
+    },
+    {
+      "topic": "자료 미리보기",
+      "status": "confirmed",
+      "content": "사내 문서 뷰어 연동, 구버전 브라우저에는 다운로드 대체 제공",
+      "evidence": [
+        {
+          "quote": "과정 자료 미리보기는 사내 문서 뷰어 연동으로 구현하되, 사내 표준 브라우저의 구버전에서는 뷰어가 열리지 않아 다운로드 방식을 대체 경로로 넣어야 한다."
+        }
+      ],
+      "section_candidates": [
+        "features",
+        "tech_scope",
+        "decisions"
+      ],
+      "source_order": 28
+    },
+    {
+      "topic": "성능 기준",
+      "status": "confirmed",
+      "content": "주요 화면 응답 2초 이내",
+      "evidence": [
+        {
+          "quote": "신청이 몰리는 시간대가 정해져 있으므로 주요 화면 응답 2초 이내를 기준으로 한다."
+        }
+      ],
+      "section_candidates": [
+        "tech_scope",
+        "decisions"
+      ],
+      "source_order": 29
+    },
+    {
+      "topic": "동시 접속 기준",
+      "status": "confirmed",
+      "content": "동시 접속 1200명 처리",
+      "evidence": [
+        {
+          "quote": "동시 접속은 전사 인원을 감안해 1200명 처리로 설정했다."
+        }
+      ],
+      "section_candidates": [
+        "tech_scope",
+        "decisions"
+      ],
+      "source_order": 30
+    },
+    {
+      "topic": "알림 채널",
+      "status": "confirmed",
+      "content": "사내 메신저로 안내, B사 연동 규격 준수",
+      "evidence": [
+        {
+          "quote": "안내는 사내 메신저로 보내며 B사 연동 규격을 따른다."
+        }
+      ],
+      "section_candidates": [
+        "tech_scope",
+        "features"
+      ],
+      "source_order": 31
+    },
+    {
+      "topic": "신청 처리 기록 저장",
+      "status": "confirmed",
+      "content": "처리 전후 단계, 처리 시각, 처리자 계정을 저장",
+      "evidence": [
+        {
+          "quote": "신청 처리 기록에 처리 전 단계와 처리 후 단계, 처리 시각과 처리자 계정을 남긴다."
+        }
+      ],
+      "section_candidates": [
+        "tech_scope",
+        "features",
+        "decisions"
+      ],
+      "source_order": 32
+    },
+    {
+      "topic": "정원 및 신청 인원 데이터",
+      "status": "confirmed",
+      "content": "과정별 정원·현재 신청 인원을 별도 컬럼으로 관리하고 신청 이력과 대사",
+      "evidence": [
+        {
+          "quote": "과정별 정원과 현재 신청 인원은 별도 컬럼으로 관리하고 신청 이력과 대사한다."
+        }
+      ],
+      "section_candidates": [
+        "tech_scope"
+      ],
+      "source_order": 33
+    },
+    {
+      "topic": "디자인 가이드",
+      "status": "confirmed",
+      "content": "신청 완료까지 3단계를 넘지 않게 설계",
+      "evidence": [
+        {
+          "quote": "문태경: 업무 중 짧게 쓰는 사용자가 많으므로 신청 완료까지 3단계를 넘지 않게 설계한다."
+        }
+      ],
+      "section_candidates": [
+        "features",
+        "tech_scope",
+        "decisions"
+      ],
+      "source_order": 34
+    },
+    {
+      "topic": "디자인 가이드",
+      "status": "confirmed",
+      "content": "본문 폰트 최소 14px, 진행 상태는 문자 표기 병행",
+      "evidence": [
+        {
+          "quote": "본문 폰트는 최소 14px로 하고, 진행 상태는 색상만이 아니라 문자로도 표시한다."
+        }
+      ],
+      "section_candidates": [
+        "tech_scope",
+        "decisions"
+      ],
+      "source_order": 35
+    },
+    {
+      "topic": "리소스 및 기간",
+      "status": "confirmed",
+      "content": "백엔드 2명, 프론트엔드 1명 투입; 개발 기간 3개월",
+      "evidence": [
+        {
+          "quote": "투입 가능 인력은 백엔드 2명, 프론트엔드 1명으로 총 3명이며 개발 기간은 3개월이다."
+        }
+      ],
+      "section_candidates": [
+        "tech_scope"
+      ],
+      "source_order": 36
+    },
+    {
+      "topic": "범위 관리 원칙",
+      "status": "confirmed",
+      "content": "기능 추가 요청은 기존 기능 제외를 전제로만 논의",
+      "evidence": [
+        {
+          "quote": "윤세진: 오늘 확정한 기능 5개와 인증 연동 1건이 3개월 안에 소화 가능한 최대치다. 추가 기능 요청은 기존 기능 제외를 전제로만 논의한다."
+        }
+      ],
+      "section_candidates": [
+        "decisions"
+      ],
+      "source_order": 37
+    },
+    {
+      "topic": "미결정 항목",
+      "status": "unresolved",
+      "content": "과정 개설 화면의 상세 항목 구성은 교육팀 확인 후 다음 회의로 이월",
+      "evidence": [
+        {
+          "quote": "과정 개설 화면의 상세 항목 구성은 교육팀 확인이 필요해 다음 회의로 넘긴다."
+        }
+      ],
+      "section_candidates": [
+        "features",
+        "decisions"
+      ],
+      "source_order": 38
+    }
+  ],
+  "missing_areas": [
+    "과정 개설 상세 항목"
+  ]
+}

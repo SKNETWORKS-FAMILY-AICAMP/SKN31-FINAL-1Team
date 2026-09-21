@@ -1,0 +1,570 @@
+{
+  "facts": [
+    {
+      "topic": "회의 목적",
+      "status": "confirmed",
+      "content": "MVP 출시 범위 기능을 확정하고, 개발팀이 구현 가능성과 방식을 검토해 최종 결정하며 기술 스택을 이번 회의에서 확정한다.",
+      "evidence": [
+        {
+          "quote": "MVP 출시 범위에 포함할 기능을 확정하고, 기획팀이 제안한 기능에 대해 개발팀이 구현 가능성과 방식을 검토하여 최종 결정한다. 기술 스택도 이번 회의에서 확정한다."
+        }
+      ],
+      "section_candidates": [
+        "overview",
+        "goals",
+        "decisions"
+      ],
+      "source_order": 1
+    },
+    {
+      "topic": "사용자 리서치 현황",
+      "status": "confirmed",
+      "content": "소상공인 12명 인터뷰 중 11명이 엑셀 또는 수기 장부로 재고 관리 중이다.",
+      "evidence": [
+        {
+          "quote": "사전 사용자 인터뷰(소상공인 12명)를 진행했고, 이 중 11명이 엑셀 또는 수기 장부로 재고를 관리하고 있었다."
+        }
+      ],
+      "section_candidates": [
+        "problem",
+        "users"
+      ],
+      "source_order": 2
+    },
+    {
+      "topic": "문제 정의-품절 발생",
+      "status": "confirmed",
+      "content": "발주 시점을 놓쳐 잘 팔리는 품목의 품절이 월 평균 4회 발생한다.",
+      "evidence": [
+        {
+          "quote": "가장 많이 언급된 문제는 두 가지였다. 첫째, 발주 시점을 놓쳐 잘 팔리는 품목이 품절되는 일이 월 평균 4회 발생한다."
+        }
+      ],
+      "section_candidates": [
+        "problem"
+      ],
+      "source_order": 3
+    },
+    {
+      "topic": "문제 정의-과재고 및 폐기",
+      "status": "confirmed",
+      "content": "감으로 발주해 과재고가 쌓이고 유통기한 경과로 폐기 손실이 발생한다.",
+      "evidence": [
+        {
+          "quote": "둘째, 감으로 발주해 과재고가 쌓이고 유통기한 경과로 폐기 손실이 발생한다."
+        }
+      ],
+      "section_candidates": [
+        "problem"
+      ],
+      "source_order": 4
+    },
+    {
+      "topic": "문제 정의-부재 시 재고 파악 불가",
+      "status": "confirmed",
+      "content": "사장이 매장을 비운 시간대에는 직원이 재고 상태를 파악할 수 없어 발주 판단이 불가능하다.",
+      "evidence": [
+        {
+          "quote": "사장이 매장을 비운 시간대에는 직원이 재고 상태를 파악할 수 없어 발주 판단 자체가 불가능한 구조도 확인됐다."
+        }
+      ],
+      "section_candidates": [
+        "problem",
+        "users"
+      ],
+      "source_order": 5
+    },
+    {
+      "topic": "대상 사용자-1차 타깃",
+      "status": "confirmed",
+      "content": "매장 1~3개를 직접 운영하는 40~50대 소상공인 사장, 모바일 사용 비중이 높다.",
+      "evidence": [
+        {
+          "quote": "1차 타깃은 매장 1~3개를 직접 운영하는 소상공인 사장으로, 연령대는 40~50대이며 PC보다 모바일 사용 비중이 높다."
+        }
+      ],
+      "section_candidates": [
+        "users"
+      ],
+      "source_order": 6
+    },
+    {
+      "topic": "대상 사용자-2차 사용자",
+      "status": "confirmed",
+      "content": "매장 파트타임 직원은 입출고 등록 정도만 수행한다.",
+      "evidence": [
+        {
+          "quote": "2차 사용자는 매장 파트타임 직원이며, 입출고 등록 정도만 수행한다."
+        }
+      ],
+      "section_candidates": [
+        "users"
+      ],
+      "source_order": 7
+    },
+    {
+      "topic": "대상 사용자-프랜차이즈 본사",
+      "status": "rejected",
+      "content": "프랜차이즈 본사 관리자는 MVP 범위에서 제외한다.",
+      "evidence": [
+        {
+          "quote": "한지민 기획자가 프랜차이즈 본사 관리자를 포함할지 문의했으나, 요구사항과 계약 구조가 완전히 달라 MVP 범위에서 제외하기로 정리했다."
+        }
+      ],
+      "section_candidates": [
+        "users",
+        "decisions"
+      ],
+      "source_order": 8
+    },
+    {
+      "topic": "MVP 기능-초기 제안 6개",
+      "status": "proposed",
+      "content": "바코드 입출고 등록, 재고 임계치 알림, 발주서 자동 생성, 거래처 관리, 대시보드, 권한 관리.",
+      "evidence": [
+        {
+          "quote": "박서연이 제안한 MVP 기능은 총 6개다. ①바코드 입출고 등록 ②재고 임계치 알림 ③발주서 자동 생성 ④거래처 관리 ⑤대시보드 ⑥권한 관리."
+        }
+      ],
+      "section_candidates": [
+        "features"
+      ],
+      "source_order": 9
+    },
+    {
+      "topic": "바코드 스캔-초기 기획안",
+      "status": "proposed",
+      "content": "전용 바코드 스캐너 연동 방식.",
+      "evidence": [
+        {
+          "quote": "박서연: 초기 기획안은 전용 바코드 스캐너 연동 방식이었다."
+        }
+      ],
+      "section_candidates": [
+        "features",
+        "tech_scope"
+      ],
+      "source_order": 10
+    },
+    {
+      "topic": "바코드 스캔-브라우저 API 방안",
+      "status": "proposed",
+      "content": "스마트폰 카메라와 브라우저의 BarcodeDetector API 사용 제안.",
+      "evidence": [
+        {
+          "quote": "이준호: 스캐너 구매 비용이 발생하면 소상공인 대상 서비스에서 초기 도입 장벽이 커진다. 브라우저의 BarcodeDetector API를 쓰면 스마트폰 카메라만으로 바코드 인식이 가능하다."
+        }
+      ],
+      "section_candidates": [
+        "tech_scope",
+        "features"
+      ],
+      "source_order": 11
+    },
+    {
+      "topic": "바코드 스캔-iOS 대응 필요",
+      "status": "confirmed",
+      "content": "iOS 사파리 지원이 불완전하여 ZXing 폴백 포함 필요, 작업량 2~3일.",
+      "evidence": [
+        {
+          "quote": "최민아: 해당 API는 안드로이드 크롬에서는 정상 동작하나 iOS 사파리에서는 지원이 불완전하다. ZXing 라이브러리를 폴백으로 함께 넣어야 하며, 작업량은 2~3일 수준이다."
+        }
+      ],
+      "section_candidates": [
+        "tech_scope",
+        "decisions"
+      ],
+      "source_order": 12
+    },
+    {
+      "topic": "바코드 스캔-최종 방식 확정",
+      "status": "confirmed",
+      "content": "웹 카메라 방식으로 확정하고 ZXing 폴백을 필수 요구사항에 포함한다.",
+      "evidence": [
+        {
+          "quote": "김도현: 웹 카메라 방식으로 확정하되 폴백 처리를 필수 요구사항에 포함한다."
+        },
+        {
+          "quote": "2. 바코드 스캔은 웹 카메라 API(BarcodeDetector) 방식으로 구현하며, iOS 사파리 대응을 위한 ZXing 폴백을 필수로 포함한다."
+        }
+      ],
+      "section_candidates": [
+        "decisions",
+        "features",
+        "tech_scope"
+      ],
+      "source_order": 13
+    },
+    {
+      "topic": "바코드 스캔-전용 스캐너 방식",
+      "status": "rejected",
+      "content": "전용 바코드 스캐너 연동 방식은 채택하지 않는다.",
+      "evidence": [
+        {
+          "quote": "박서연: 초기 기획안은 전용 바코드 스캐너 연동 방식이었다."
+        },
+        {
+          "quote": "김도현: 웹 카메라 방식으로 확정하되 폴백 처리를 필수 요구사항에 포함한다."
+        }
+      ],
+      "section_candidates": [
+        "decisions",
+        "tech_scope"
+      ],
+      "source_order": 14
+    },
+    {
+      "topic": "발주 추천-매출 예측 필요 제안",
+      "status": "proposed",
+      "content": "발주서 자동 생성 시 발주 수량 추천을 위해 매출 예측이 필요하다는 제안.",
+      "evidence": [
+        {
+          "quote": "박서연: 발주서 자동 생성 시 발주 수량을 추천하려면 매출 예측이 필요하다."
+        }
+      ],
+      "section_candidates": [
+        "features",
+        "tech_scope"
+      ],
+      "source_order": 15
+    },
+    {
+      "topic": "발주 추천-예측 모델 제약",
+      "status": "confirmed",
+      "content": "예측 모델에는 최소 6개월 판매 데이터가 필요하고 신규 가입 고객은 데이터가 없으며 부정확한 예측은 신뢰도에 타격을 줄 수 있다.",
+      "evidence": [
+        {
+          "quote": "이준호: 예측 모델은 최소 6개월치 판매 데이터가 필요하나 신규 가입 고객은 데이터가 없다. 부정확한 예측을 믿고 발주했다가 손실이 발생하면 서비스 신뢰도에 더 큰 타격이 된다."
+        }
+      ],
+      "section_candidates": [
+        "problem",
+        "tech_scope"
+      ],
+      "source_order": 16
+    },
+    {
+      "topic": "발주 추천-대안 제시",
+      "status": "proposed",
+      "content": "최근 일정 기간의 평균 판매량을 보여주는 방식 제안.",
+      "evidence": [
+        {
+          "quote": "정우성: '예측' 대신 최근 일정 기간의 평균 판매량을 보여주는 방식은 어떤가."
+        }
+      ],
+      "section_candidates": [
+        "features",
+        "tech_scope"
+      ],
+      "source_order": 17
+    },
+    {
+      "topic": "발주 추천-대안 구현 가능",
+      "status": "confirmed",
+      "content": "최근 평균 판매량 기반 계산은 단순 집계로 구현 가능하다.",
+      "evidence": [
+        {
+          "quote": "이준호: 단순 집계이므로 구현 가능하다."
+        }
+      ],
+      "section_candidates": [
+        "tech_scope"
+      ],
+      "source_order": 18
+    },
+    {
+      "topic": "발주 추천-최종 대체안 확정",
+      "status": "confirmed",
+      "content": "최근 4주 평균 판매량 기반 추천 수량 계산으로 대체하기로 합의했다.",
+      "evidence": [
+        {
+          "quote": "최근 4주 평균 판매량 기반 추천 수량 계산으로 대체하기로 합의했다."
+        },
+        {
+          "quote": "3. 매출 예측 기능은 MVP 범위에서 제외하고, 최근 4주 평균 판매량 기반 추천 수량 계산으로 대체한다."
+        }
+      ],
+      "section_candidates": [
+        "decisions",
+        "features"
+      ],
+      "source_order": 19
+    },
+    {
+      "topic": "매출 예측 기능",
+      "status": "rejected",
+      "content": "매출 예측 기능은 MVP 범위에서 제외한다.",
+      "evidence": [
+        {
+          "quote": "3. 매출 예측 기능은 MVP 범위에서 제외하고, 최근 4주 평균 판매량 기반 추천 수량 계산으로 대체한다."
+        }
+      ],
+      "section_candidates": [
+        "decisions",
+        "features"
+      ],
+      "source_order": 20
+    },
+    {
+      "topic": "POS 연동 필요성",
+      "status": "confirmed",
+      "content": "POS 연동이 없으면 판매 데이터를 수기 입력해야 해 기존 엑셀 방식과 차별점이 줄어든다.",
+      "evidence": [
+        {
+          "quote": "최민아: POS 연동이 없으면 판매 데이터를 수기 입력해야 하므로 기존 엑셀 방식과 차별점이 사라진다."
+        }
+      ],
+      "section_candidates": [
+        "problem",
+        "features"
+      ],
+      "source_order": 21
+    },
+    {
+      "topic": "POS 연동-벤더 제약",
+      "status": "confirmed",
+      "content": "국내 POS 벤더 파편화와 규격 상이로 3개월 내 전체 연동은 불가능하며 점유율 높은 A사 1곳만 우선 연동하면 가능하다.",
+      "evidence": [
+        {
+          "quote": "이준호: 국내 POS 벤더가 파편화되어 있고 API 규격이 제각각이라 3개월 내 전체 연동은 불가능하다. 점유율이 가장 높은 A사 1곳만 우선 연동하면 기간 내 가능하다."
+        }
+      ],
+      "section_candidates": [
+        "tech_scope"
+      ],
+      "source_order": 22
+    },
+    {
+      "topic": "POS 연동-범위 확정",
+      "status": "confirmed",
+      "content": "A사 API 1곳만 MVP에 포함하고 나머지 벤더는 2차 개발로 이관한다.",
+      "evidence": [
+        {
+          "quote": "김도현: A사만 MVP에 포함하고 나머지 벤더는 2차 개발로 이관한다."
+        },
+        {
+          "quote": "4. POS 연동은 A사 API 1곳만 MVP에 포함하며, 나머지 벤더는 2차 개발로 이관한다."
+        }
+      ],
+      "section_candidates": [
+        "decisions",
+        "features",
+        "tech_scope"
+      ],
+      "source_order": 23
+    },
+    {
+      "topic": "기술 스택 제안",
+      "status": "proposed",
+      "content": "프론트엔드 React, 백엔드 Spring Boot, DB MySQL, 인프라 AWS 제안. 팀원 전원이 사용 경험이 있다.",
+      "evidence": [
+        {
+          "quote": "이준호: 프론트엔드 React, 백엔드 Spring Boot, DB MySQL, 인프라 AWS를 제안한다. 팀원 전원이 사용 경험이 있어 학습 비용이 없다."
+        }
+      ],
+      "section_candidates": [
+        "tech_scope"
+      ],
+      "source_order": 24
+    },
+    {
+      "topic": "Next.js 채택 여부",
+      "status": "rejected",
+      "content": "Next.js는 로그인 후 사용하는 화면이 대부분이고 SEO 요구가 없어 채택하지 않는다.",
+      "evidence": [
+        {
+          "quote": "최민아: Next.js 검토를 제안했으나, 로그인 후 사용하는 화면이 대부분이고 SEO 요구가 없어 채택하지 않기로 했다."
+        },
+        {
+          "quote": "5. 기술 스택은 React + Spring Boot + MySQL + AWS로 확정하고 Next.js는 채택하지 않는다."
+        }
+      ],
+      "section_candidates": [
+        "decisions",
+        "tech_scope"
+      ],
+      "source_order": 25
+    },
+    {
+      "topic": "기술 스택 확정",
+      "status": "confirmed",
+      "content": "React + Spring Boot + MySQL + AWS로 확정한다.",
+      "evidence": [
+        {
+          "quote": "5. 기술 스택은 React + Spring Boot + MySQL + AWS로 확정하고 Next.js는 채택하지 않는다."
+        }
+      ],
+      "section_candidates": [
+        "decisions",
+        "tech_scope"
+      ],
+      "source_order": 26
+    },
+    {
+      "topic": "성능 기준-응답 속도",
+      "status": "confirmed",
+      "content": "주요 화면 응답 3초 이내.",
+      "evidence": [
+        {
+          "quote": "김도현: 매장에서 바쁜 시간대에 사용하는 서비스이므로 응답 속도가 중요하다. 주요 화면 응답 3초 이내를 기준으로 한다."
+        },
+        {
+          "quote": "6. 성능 기준은 주요 화면 응답 3초 이내, 동시 접속 500명으로 한다."
+        }
+      ],
+      "section_candidates": [
+        "tech_scope",
+        "decisions"
+      ],
+      "source_order": 27
+    },
+    {
+      "topic": "성능 기준-동시 접속",
+      "status": "confirmed",
+      "content": "동시 접속 500명 처리.",
+      "evidence": [
+        {
+          "quote": "동시 접속은 초기 목표 고객 수를 감안해 500명 처리로 설정했다."
+        },
+        {
+          "quote": "6. 성능 기준은 주요 화면 응답 3초 이내, 동시 접속 500명으로 한다."
+        }
+      ],
+      "section_candidates": [
+        "tech_scope",
+        "decisions"
+      ],
+      "source_order": 28
+    },
+    {
+      "topic": "모바일 우선 반응형",
+      "status": "confirmed",
+      "content": "매장 내 모바일 사용 비중이 높으므로 모바일 우선 반응형으로 설계한다.",
+      "evidence": [
+        {
+          "quote": "최민아: 매장 내 모바일 사용 비중이 높으므로 모바일 우선 반응형으로 설계한다."
+        }
+      ],
+      "section_candidates": [
+        "tech_scope",
+        "features"
+      ],
+      "source_order": 29
+    },
+    {
+      "topic": "디자인 가이드-타이포 및 터치",
+      "status": "confirmed",
+      "content": "본문 폰트 최소 16px, 주요 버튼 터치 영역 44px 이상 적용.",
+      "evidence": [
+        {
+          "quote": "정우성: 40~50대 사용자 비중을 고려해 본문 폰트 최소 16px, 주요 버튼 터치 영역 44px 이상을 적용해야 한다."
+        },
+        {
+          "quote": "7. 본문 폰트 16px 이상, 주요 버튼 터치 영역 44px 이상, 주요 액션 버튼 하단 배치를 디자인 필수 가이드로 적용한다."
+        }
+      ],
+      "section_candidates": [
+        "tech_scope",
+        "decisions"
+      ],
+      "source_order": 30
+    },
+    {
+      "topic": "디자인 가이드-버튼 배치",
+      "status": "confirmed",
+      "content": "한 손 조작이 많아 주요 액션 버튼은 화면 하단에 배치한다.",
+      "evidence": [
+        {
+          "quote": "한 손으로 조작하는 상황이 많으므로 주요 액션 버튼은 화면 하단에 배치한다."
+        },
+        {
+          "quote": "7. 본문 폰트 16px 이상, 주요 버튼 터치 영역 44px 이상, 주요 액션 버튼 하단 배치를 디자인 필수 가이드로 적용한다."
+        }
+      ],
+      "section_candidates": [
+        "tech_scope",
+        "decisions"
+      ],
+      "source_order": 31
+    },
+    {
+      "topic": "일정 및 리소스",
+      "status": "current_state",
+      "content": "백엔드 2명, 프론트엔드 1명, 디자인 1명 투입 가능. 개발 기간 3개월.",
+      "evidence": [
+        {
+          "quote": "투입 가능 인력은 백엔드 2명, 프론트엔드 1명, 디자인 1명으로 총 4명이며 개발 기간은 3개월이다."
+        }
+      ],
+      "section_candidates": [
+        "overview",
+        "tech_scope"
+      ],
+      "source_order": 32
+    },
+    {
+      "topic": "범위 상한-기능 추가 정책",
+      "status": "confirmed",
+      "content": "확정한 기능 6개와 POS 연동 1건이 3개월 내 최대치이며, 추가 기능 요청은 기존 기능 제외를 전제로만 논의한다.",
+      "evidence": [
+        {
+          "quote": "김도현: 오늘 확정한 기능 6개와 POS 연동 1건이 3개월 내 소화 가능한 최대치다. 추가 기능 요청은 기존 기능 제외를 전제로만 논의한다."
+        },
+        {
+          "quote": "9. 기능 추가 요청은 기존 기능 제외를 전제로만 논의한다."
+        }
+      ],
+      "section_candidates": [
+        "decisions",
+        "tech_scope"
+      ],
+      "source_order": 33
+    },
+    {
+      "topic": "MVP 기능 6개 확정",
+      "status": "confirmed",
+      "content": "바코드 입출고 등록, 재고 임계치 알림, 발주서 자동 생성, 거래처 관리, 대시보드, 권한 관리로 확정.",
+      "evidence": [
+        {
+          "quote": "1. MVP 기능은 바코드 입출고 등록, 재고 임계치 알림, 발주서 자동 생성, 거래처 관리, 대시보드, 권한 관리 총 6개로 확정한다."
+        }
+      ],
+      "section_candidates": [
+        "decisions",
+        "features"
+      ],
+      "source_order": 34
+    },
+    {
+      "topic": "MVP 대상 사용자 범위 확정",
+      "status": "confirmed",
+      "content": "소상공인 사장과 매장 직원으로 한정하고 프랜차이즈 본사 관리자는 제외한다.",
+      "evidence": [
+        {
+          "quote": "8. MVP 대상 사용자는 소상공인 사장과 매장 직원으로 한정하고, 프랜차이즈 본사 관리자는 제외한다."
+        }
+      ],
+      "section_candidates": [
+        "decisions",
+        "users"
+      ],
+      "source_order": 35
+    }
+  ],
+  "missing_areas": [
+    "data_model",
+    "analytics",
+    "security",
+    "privacy",
+    "pricing",
+    "onboarding",
+    "error_handling",
+    "logging",
+    "localization",
+    "testing_strategy",
+    "rollout_plan",
+    "support_process",
+    "backup_dr",
+    "monitoring_alerting"
+  ]
+}

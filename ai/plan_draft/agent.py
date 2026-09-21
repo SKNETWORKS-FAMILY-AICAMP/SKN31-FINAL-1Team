@@ -1,12 +1,11 @@
 """
 노드 ② 기획서 생성 — 실행.
 
-[1] 서술형 3개와 조건부 목표 생성             LLM
-[2] 목록형 3개 섹션 조립                    코드
-[2-1] 주요 기능 조립                         코드
-[3] 섹션 정렬과 병합                       코드
-[4] is_incomplete 판정                     코드
-[5] unresolved 전달                        코드
+[1] 원문 사실·결정 인덱스 생성               LLM (장문만 청크 병렬)
+[2] 1~7번 전체 기획서 단일 생성              LLM
+[3] 원문 인용 검증·결정적 렌더링              코드
+[4] 섹션 정합성·is_incomplete 판정            코드
+[5] unresolved 전달                           코드
 
 실패 처리:
   _call()이 노드②의 유일한 LLM 호출 지점이다(run()·regenerate_section()
@@ -17,8 +16,11 @@
   다른 안내문을 고르는 부분은 별도 작업 — shared/errors.py 참고.)
 """
 import logging
+import time
 from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime, timezone
 from html import escape
+from typing import Literal
 
 from openai import APIError
 
@@ -27,6 +29,7 @@ try:
 except ImportError:  # 구버전 instructor 호환
     from instructor.exceptions import InstructorRetryException
 
+from shared import llm_instrumentation
 from shared.errors import NodeGenerationError
 from shared.llm_client import build_chat_kwargs, get_client, traceable
 from shared.retry_config import MAX_RETRIES, MAX_TOKENS, MODEL, TEMPERATURE
@@ -51,6 +54,64 @@ from .schemas import (
 logger = logging.getLogger(__name__)
 
 ALLOWED_TAGS = {"p", "ul", "li", "strong"}
+FACT_INDEX_CHUNK_CHARS = 60_000
+FULL_SOURCE_GENERATION_CHARS = 120_000
+
+
+def _split_source_for_index(source: str, limit: int = FACT_INDEX_CHUNK_CHARS) -> list[str]:
+    """문단 경계를 우선해 긴 회의록을 사실 색인용 구간으로 나눕니다."""
+    paragraphs = [part.strip() for part in source.split("\n\n") if part.strip()]
+    if not paragraphs:
+        return [source.strip()] if source.strip() else []
+    chunks: list[str] = []
+    current: list[str] = []
+    current_len = 0
+    for paragraph in paragraphs:
+        if len(paragraph) > limit:
+            if current:
+                chunks.append("\n\n".join(current))
+                current, current_len = [], 0
+            chunks.extend(
+                paragraph[start:start + limit]
+                for start in range(0, len(paragraph), limit)
+            )
+            continue
+        extra = len(paragraph) + (2 if current else 0)
+        if current and current_len + extra > limit:
+            chunks.append("\n\n".join(current))
+            current, current_len = [], 0
+        current.append(paragraph)
+        current_len += extra
+    if current:
+        chunks.append("\n\n".join(current))
+    return chunks
+
+
+def _build_planning_fact_index(source: str, proposal_id: str):
+    chunks = _split_source_for_index(source)
+    if not chunks:
+        return context_writer.PlanningFactIndex()
+    if len(chunks) == 1:
+        indexes = [_call(
+            context_writer.fact_index_system_prompt(),
+            context_writer.fact_index_messages(chunks[0]),
+            context_writer.PlanningFactIndex,
+            context=f"run fact-index proposal_id={proposal_id}",
+        )]
+    else:
+        with ThreadPoolExecutor(max_workers=min(4, len(chunks))) as executor:
+            futures = [
+                executor.submit(
+                    _call,
+                    context_writer.fact_index_system_prompt(),
+                    context_writer.fact_index_messages(chunk, no, len(chunks)),
+                    context_writer.PlanningFactIndex,
+                    context=f"run fact-index {no}/{len(chunks)} proposal_id={proposal_id}",
+                )
+                for no, chunk in enumerate(chunks, start=1)
+            ]
+            indexes = [future.result() for future in futures]
+    return context_writer.merge_verified_fact_indexes(indexes, source)
 
 # 2026-09-16: 서술형 섹션(1·2·4번)의 원본이 완전히 비어 있는데도 LLM이
 # 다른 프로젝트 정보로 추정해 내용을 채운 경우 붙이는 표시입니다.
@@ -171,21 +232,37 @@ def _call(system: str, messages: list[dict], response_model, context: str = ""):
     모델 계열(gpt-4o / gpt-5)에 맞게 처리한다.
 
     context: 로그에 남길 짧은 설명(예: "run" 또는 재생성 대상 section_key).
-    어떤 호출이 실패했는지 로그만 보고 알 수 있게 하기 위함이다.
+    어떤 호출이 실패했는지 로그만 보고 알 수 있게 하기 위함이다. 회의록
+    원문이나 API 키는 절대 담지 않는다 — 계측 로그도 이 값을 그대로
+    쓰므로 이 계약이 깨지면 계측 로그도 함께 깨진다.
+
+    계측(llm_instrumentation): 프롬프트·모델·max_tokens·retry 설정에는
+    전혀 관여하지 않는다. hooks는 instructor가 실제 API를 시도할 때마다
+    호출하는 관찰용 콜백이라 재시도 횟수나 응답 내용에 영향을 주지 않는다.
     """
+    started_at = datetime.now(timezone.utc)
+    start_perf = time.perf_counter()
+    call_hooks, attempt_counter = llm_instrumentation.make_call_hooks()
     try:
         client = get_client(MODEL)
-        return client.chat.completions.create(
-            **build_chat_kwargs(
-                model=MODEL,
-                messages=[{"role": "system", "content": system}] + messages,
-                response_model=response_model,
-                max_tokens=MAX_TOKENS,
-                max_retries=MAX_RETRIES,
-                temperature=TEMPERATURE,
-            )
+        call_kwargs = build_chat_kwargs(
+            model=MODEL,
+            messages=[{"role": "system", "content": system}] + messages,
+            response_model=response_model,
+            max_tokens=MAX_TOKENS,
+            max_retries=MAX_RETRIES,
+            temperature=TEMPERATURE,
         )
+        if call_hooks is not None:
+            call_kwargs["hooks"] = call_hooks
+        result = client.chat.completions.create(**call_kwargs)
     except InstructorRetryException as e:
+        llm_instrumentation.record_call(llm_instrumentation.build_metrics(
+            context=context or "run", model=MODEL, started_at=started_at,
+            start_perf=start_perf,
+            attempt_count=attempt_counter.count or getattr(e, "n_attempts", None),
+            success=False, result=e, error_type="InstructorRetryException",
+        ))
         logger.exception(
             "노드② 기획서 생성 실패(%s) — 재시도 %s회 모두 스키마 검증 실패",
             context or "run", e.n_attempts,
@@ -200,6 +277,11 @@ def _call(system: str, messages: list[dict], response_model, context: str = ""):
         ) from e
     except RuntimeError as e:
         # get_client()가 OPENAI_API_KEY 미설정 시 던지는 예외.
+        llm_instrumentation.record_call(llm_instrumentation.build_metrics(
+            context=context or "run", model=MODEL, started_at=started_at,
+            start_perf=start_perf, attempt_count=attempt_counter.count or None,
+            success=False, error_type="RuntimeError",
+        ))
         logger.exception(
             "노드② 기획서 생성 실패(%s) — 설정 오류", context or "run",
         )
@@ -211,6 +293,11 @@ def _call(system: str, messages: list[dict], response_model, context: str = ""):
             original=e,
         ) from e
     except APIError as e:
+        llm_instrumentation.record_call(llm_instrumentation.build_metrics(
+            context=context or "run", model=MODEL, started_at=started_at,
+            start_perf=start_perf, attempt_count=attempt_counter.count or None,
+            success=False, error_type="APIError",
+        ))
         logger.exception(
             "노드② 기획서 생성 실패(%s) — OpenAI API 호출 오류", context or "run",
         )
@@ -222,6 +309,11 @@ def _call(system: str, messages: list[dict], response_model, context: str = ""):
             original=e,
         ) from e
     except Exception as e:
+        llm_instrumentation.record_call(llm_instrumentation.build_metrics(
+            context=context or "run", model=MODEL, started_at=started_at,
+            start_perf=start_perf, attempt_count=attempt_counter.count or None,
+            success=False, error_type=type(e).__name__,
+        ))
         logger.exception(
             "노드② 기획서 생성 실패(%s) — 알 수 없는 오류", context or "run",
         )
@@ -231,6 +323,13 @@ def _call(system: str, messages: list[dict], response_model, context: str = ""):
             node="plan_draft",
             original=e,
         ) from e
+    else:
+        llm_instrumentation.record_call(llm_instrumentation.build_metrics(
+            context=context or "run", model=MODEL, started_at=started_at,
+            start_perf=start_perf, attempt_count=attempt_counter.count or 1,
+            success=True, result=result,
+        ))
+        return result
 
 
 def _source_is_empty(structured: dict, source_fields: list[str]) -> bool:
@@ -265,6 +364,8 @@ def run(
     proposal_id: str,
     glossary_text: str = "",
     on_stage=None,
+    generation_strategy: Literal["parallel", "hybrid", "indexed", "direct"] = "parallel",
+    on_fact_index=None,
 ) -> PlanDocument:
     # on_stage: 있으면 각 내부 단계 시작 시 사람이 읽을 라벨(str)로 호출한다(선택,
     # develop 2026-09-15 — "기획서 초안 생성 중…" 하나로 뭉뚱그려져 있던 걸 세분화).
@@ -272,23 +373,31 @@ def run(
         if on_stage:
             on_stage(label)
 
-    # [1] 서술형 섹션과 세부 목표를 생성합니다.
-    _stage("기획서 초안 작성 중…")
     source = structured.get("plan_source_text") or ""
     contextual = bool(source.strip())
+    if generation_strategy not in {"parallel", "hybrid", "indexed", "direct"}:
+        raise ValueError(f"지원하지 않는 기획서 생성 전략: {generation_strategy}")
     messages = build_messages(structured, glossary_text)
     technical_draft = None
-    if contextual:
-        # 1~5번과 6~7번은 모두 전체 회의록을 직접 읽되 서로 독립적으로
-        # 작성합니다. 두 GPT-5 호출을 병렬 실행해 원문 기반 작성 범위를
-        # 넓혀도 응답 시간이 직렬로 합산되지 않게 합니다.
+    whole_contextual = contextual and generation_strategy in {"indexed", "direct", "parallel"}
+    if contextual and generation_strategy == "parallel":
+        # 2026-09-21 인수인계 문서(PLAN_GENERATION_HANDOFF) 기준 운영 기본
+        # 경로. 회의록 원문을 두 개의 독립된 LLM 호출로 나눠 동시에 실행한다
+        # — 호출 A(1~5번: 개요·목표·세부목표·사용자·주요기능), 호출 B(6~7번:
+        # 기술·최종 결정). 둘 다 원문 전체를 직접 읽으며, 구조화 노드나 별도
+        # 사실 인덱스 LLM에 의존하지 않는다. 전체 단일 호출(WholePlanDraft)은
+        # 기술·최종 결정이 다른 섹션에 밀려 누락되는 문제가 있었고, 사실
+        # 인덱스 선행 호출(indexed)은 시간이 배로 들면서도 필수 결정을
+        # 놓쳤다 — 그래서 관심사가 다른 두 호출로 쪼개고 병렬로 시간을
+        # 합산하지 않는다.
+        _stage("콘텐츠·기술 결정 병렬 생성 중…")
         with ThreadPoolExecutor(max_workers=2) as executor:
             content_future = executor.submit(
                 _call,
-                context_writer.system_prompt(glossary_text),
-                messages[-1:],
-                context_writer.ContextPlan,
-                context=f"run content proposal_id={proposal_id}",
+                context_writer.content_plan_system_prompt(glossary_text),
+                context_writer.content_plan_messages(source),
+                context_writer.ContentPlanDraft,
+                context=f"run content-plan proposal_id={proposal_id}",
             )
             technical_future = executor.submit(
                 _call,
@@ -297,9 +406,65 @@ def run(
                 context_writer.TechnicalDecisionPlan,
                 context=f"run technical-decisions proposal_id={proposal_id}",
             )
-            result = content_future.result()
+            content_draft = content_future.result()
             technical_draft = technical_future.result()
-    else:
+        if on_fact_index:
+            on_fact_index(context_writer.PlanningFactIndex())
+        result = content_draft.context
+        feature_draft = content_draft.features
+    elif contextual and generation_strategy == "hybrid":
+        # 회의록 구조화 노드가 이미 검증한 사실·결정·근거를 탐색 지도로
+        # 재사용합니다. 1~5번의 서술·의미 묶기만 LLM에 맡기고, 누락되면
+        # 하류 요구사항까지 흔들리는 6~7번은 코드가 구조화 결과에서
+        # 결정적으로 조립합니다. 별도 사실 인덱스 LLM은 호출하지 않습니다.
+        #
+        # 2026-09-21: 운영 기본값이 아니다(평가용으로만 남겨둔다). 이 경로는
+        # structured에 project/users/requirements/decisions 같은 구조화
+        # 데이터가 미리 채워져 있어야 하고, 빈 값이면 모든 섹션이 비게
+        # 된다 — PLAN_GENERATION_HANDOFF 문서 2절 참고. 웹 경로는 더 이상
+        # 이 값을 쓰지 않는다.
+        _stage("기획서 핵심 섹션 작성 중…")
+        result = _call(
+            build_system_prompt(glossary_text),
+            messages,
+            PlanSections,
+            context=f"run hybrid-plan proposal_id={proposal_id}",
+        )
+        if on_fact_index:
+            on_fact_index(context_writer.PlanningFactIndex())
+    elif whole_contextual:
+        whole_draft = None
+        if generation_strategy == "indexed":
+            _stage("회의록 사실·결정 정리 중…")
+            fact_index = _build_planning_fact_index(source, proposal_id)
+        elif generation_strategy == "direct":
+            # 비교 실험용 경로입니다. 운영 기본값은 parallel이며 바뀌지 않습니다.
+            # 단일 호출이 짧고 정돈된 회의록에서 충분한지 같은 평가 기준으로
+            # 측정하기 위해 빈 탐색 지도와 전체 원문만 전달합니다.
+            fact_index = context_writer.PlanningFactIndex()
+        else:
+            raise ValueError(f"지원하지 않는 기획서 생성 전략: {generation_strategy}")
+        if on_fact_index:
+            on_fact_index(fact_index)
+        if whole_draft is None:
+            _stage("전체 기획서 작성 중…")
+            whole_draft = _call(
+                context_writer.whole_plan_system_prompt(glossary_text),
+                context_writer.whole_plan_messages(
+                    source,
+                    fact_index,
+                    include_full_source=len(source) <= FULL_SOURCE_GENERATION_CHARS,
+                ),
+                context_writer.WholePlanDraft,
+                context=f"run whole-plan proposal_id={proposal_id}",
+            )
+        if generation_strategy == "indexed":
+            whole_draft = context_writer.filter_nonfinal_outputs(whole_draft, fact_index)
+        result = whole_draft.context
+        feature_draft = whole_draft.features
+        technical_draft = whole_draft.technical
+    elif not contextual:
+        _stage("기획서 초안 작성 중…")
         result = _call(
             build_system_prompt(glossary_text),
             messages,
@@ -314,13 +479,13 @@ def run(
             "goals": result.goals,
             "users": result.users,
         }
-        if contextual
+        if whole_contextual
         else {s.key: s for s in result.sections}
     )
 
     # ── [2] 목록형 3개 조립 ──────────────────────────────────
     _stage("목록형 섹션 조립 중…")
-    if contextual:
+    if whole_contextual:
         tech_section, decision_section = context_writer.render_technical_sections(
             technical_draft,
             source,
@@ -342,7 +507,7 @@ def run(
     _stage("섹션 병합 및 근거 매칭 중…")
     sections: list[PlanSection] = []
     for spec in SECTION_SPEC:
-        if contextual and spec["key"] in {"overview", "problem", "goals", "users"}:
+        if whole_contextual and spec["key"] in {"overview", "problem", "goals", "users"}:
             sections.append(context_writer.render_section(by_key[spec["key"]], source, spec))
             continue
         if spec["type"] == SectionType.LIST:
@@ -359,6 +524,10 @@ def run(
         # 쏟아지는 문제가 실측으로 확인됐습니다. 이제 LLM이 검증된
         # functional_requirements·feature_decisions를 직접 묶어 쓴
         # result.features를 그대로 씁니다(schemas.py PlanSections.features).
+        if spec["key"] == "features" and whole_contextual:
+            sections.append(context_writer.render_features(list(feature_draft.features), source))
+            continue
+
         if spec["key"] == "features":
             feats = list(result.features)
             unverified_titles, flagged_titles = _mark_unverified_features(feats, structured)
@@ -468,6 +637,11 @@ def run(
         ))
 
     sections.sort(key=lambda s: s.no)
+    if whole_contextual and technical_draft is not None:
+        sections = context_writer.reconcile_sections(
+            sections,
+            technical_draft.decisions,
+        )
 
     return PlanDocument(
         proposal_id=proposal_id,
