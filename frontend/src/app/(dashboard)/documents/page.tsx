@@ -1509,6 +1509,7 @@ export default function DocumentsPage() {
               isPM={isPM}
               currentUserId={user?.id}
               busy={busy}
+              projectName={project?.name}
               specGenStartedAt={specGenStartedAt}
               specGenStage={specGenStage}
               onGenerateSpec={() => handleGenerateSpec(selectedNote)}
@@ -1853,14 +1854,14 @@ function ReqExtractProgressBar({ stage, startedAt }: { stage: string; startedAt:
 }
 
 function NoteDetail({
-  note, spec, reqDef, activeTab, isPM, currentUserId, busy,
+  note, spec, reqDef, activeTab, isPM, currentUserId, busy, projectName,
   onGenerateSpec, specGenStartedAt, specGenStage, onSaveNoteContent, onSaveSpec, onSavePeriod, onSubmitReview, onApprove, onReject,
   onCreateReqDef, onExtractItems, reqExtractStage, reqExtractStartedAt, onAddItem, onUpdateItem, onDeleteItem, onReqDefStatusChange,
   onGenerateTasks, taskAssignments, onRejectReqDef,
   taskDrafts, taskDraftsReqDefId, setTaskDrafts, scheduleSummary, packageSplits, planReview, planBriefing, generatingTasks, generatingStage, generatingStartedAt, confirmingTasks, onConfirmTasks, onCancelTaskDrafts,
   members, reassigningTaskId, onReassignTask, approvingAllTasks, onApproveAllTasks,
 }: {
-  note: NoteDto; spec: SpecDto | null; reqDef: ReqDefDto | null; activeTab: PipelineTab; isPM: boolean; currentUserId: string | undefined; busy: string | null;
+  note: NoteDto; spec: SpecDto | null; reqDef: ReqDefDto | null; activeTab: PipelineTab; isPM: boolean; currentUserId: string | undefined; busy: string | null; projectName: string | undefined;
   onGenerateSpec: () => void;
   specGenStartedAt: number | null;
   specGenStage: string;
@@ -2008,6 +2009,14 @@ function NoteDetail({
             작성자 {note.created_by_name || "알 수 없음"}
             {String(note.created_by) === currentUserId && <span className="text-primary font-medium"> (나)</span>}
           </p>
+          {/* 2026-09-22 (사용자 요청): 여러 프로젝트를 오갈 때 지금 보고 있는 문서가
+              어느 프로젝트 소속인지 헤더에서 바로 보여야 함 — 이 페이지는 항상 프로젝트
+              하나로 스코프되어 있어(fetchAll 참고) note.project와 project.id가 같다. */}
+          {projectName && (
+            <p className="text-xs text-muted-foreground mt-0.5">
+              프로젝트 {projectName}
+            </p>
+          )}
           {/* 프로젝트 기간 — 기획서 검토요청 시점에 필수 입력이라(handleSubmitReview 참고) 기획서가
               하나라도 생성된 뒤엔 항상 값이 있다. 탭과 무관하게(기획서/요구사항정의서/업무배분) 공통
               헤더에 표시 — 사용자 요청으로 업무배분 화면 상단에서 바로 보여야 함. */}

@@ -310,6 +310,7 @@ export default function TasksPage() {
                 projectId={currentProjectId}
                 initialTasks={filteredTasks}
                 members={members}
+                projectNameById={projectNameById}
                 onTaskChange={(taskId, patch) => queryClient.setQueryData<Task[]>(["tasks"], prev => prev?.map(t => t.id === taskId ? { ...t, ...patch } : t))}
               />
             ) : (
@@ -462,7 +463,7 @@ export default function TasksPage() {
               <Pagination page={page} totalPages={totalPages} onChange={setPage} />
             </div>
           ) : (
-            <WbsBoardView tasks={filteredTasks} onRowClick={setSelectedTaskForDetail} />
+            <WbsBoardView tasks={filteredTasks} onRowClick={setSelectedTaskForDetail} projectNameById={projectNameById} />
           )}
         </>
       )}
@@ -517,7 +518,7 @@ export default function TasksPage() {
  * 업무보드(WBS) 뷰 — 상단에는 상태별 카운트/전체 진행률 요약 바를, 아래에는 업무별 표를 그린다.
  * Git 상태 배지/예상 소요시간/난이도는 heyzzabi2 시절 필드로 이 프로젝트 백엔드엔 없어서 제외했다.
  */
-function WbsBoardView({ tasks, onRowClick }: { tasks: Task[]; onRowClick: (task: Task) => void }) {
+function WbsBoardView({ tasks, onRowClick, projectNameById }: { tasks: Task[]; onRowClick: (task: Task) => void; projectNameById: Map<string, string> }) {
   const total = tasks.length;
   const counts = STATUSES.reduce((acc, s) => {
     acc[s.id] = tasks.filter(t => t.status_code === s.id).length;
@@ -558,6 +559,7 @@ function WbsBoardView({ tasks, onRowClick }: { tasks: Task[]; onRowClick: (task:
         <table className="w-full text-sm text-left">
           <thead className="text-xs text-muted-foreground uppercase bg-black/5 dark:bg-white/5">
             <tr>
+              <th className="px-6 py-4 font-bold">프로젝트명</th>
               <th className="px-6 py-4 font-bold">업무명</th>
               <th className="px-6 py-4 font-bold">담당자</th>
               <th className="px-6 py-4 font-bold">상태</th>
@@ -567,7 +569,7 @@ function WbsBoardView({ tasks, onRowClick }: { tasks: Task[]; onRowClick: (task:
           </thead>
           <tbody className="divide-y divide-black/5 dark:divide-white/5">
             {tasks.length === 0 ? (
-              <tr><td colSpan={5} className="px-6 py-12 text-center text-muted-foreground">조건에 맞는 업무가 없습니다.</td></tr>
+              <tr><td colSpan={6} className="px-6 py-12 text-center text-muted-foreground">조건에 맞는 업무가 없습니다.</td></tr>
             ) : (
               pagedTasks.map(task => {
                 const statusInfo = STATUSES.find(s => s.id === task.status_code) || STATUSES[0];
@@ -578,6 +580,9 @@ function WbsBoardView({ tasks, onRowClick }: { tasks: Task[]; onRowClick: (task:
                     onClick={() => onRowClick(task)}
                     className="hover:bg-black/5 dark:hover:bg-white/5 transition-colors cursor-pointer"
                   >
+                    <td className="px-6 py-4 text-[13px] font-semibold text-primary">
+                      {task.project != null ? projectNameById.get(String(task.project)) ?? "-" : "-"}
+                    </td>
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-1.5">
                         <span className="font-bold">{task.title}</span>

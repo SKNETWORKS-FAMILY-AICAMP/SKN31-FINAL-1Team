@@ -74,7 +74,7 @@ function AssigneeBadge({ task, members, onAssign, readOnly }: { task: any; membe
   );
 }
 
-function SortableTask({ task, members, onAssign, onClick, isPM, onApprove, onReject, processing, currentUserId }: any) {
+function SortableTask({ task, members, onAssign, onClick, isPM, onApprove, onReject, processing, currentUserId, projectNameById }: any) {
   // 칸반 카드를 드래그해 상태를 바꾸는 것도 "내 업무" 아니면 PM만 — 예전엔 아무 카드나 아무나 옮길 수 있었다.
   const canManage = isPM || String(task.assigned_user) === String(currentUserId);
   // 승인대기/반려 상태는 드래그로 옮길 수 없다 — 승인/반려 버튼으로만 상태가 바뀐다.
@@ -109,6 +109,9 @@ function SortableTask({ task, members, onAssign, onClick, isPM, onApprove, onRej
         isDragging && "opacity-50 border-primary shadow-lg ring-2 ring-primary/20"
       )}
     >
+      {task.project != null && projectNameById?.get(String(task.project)) && (
+        <div className="text-[11px] font-bold text-primary mb-1">{projectNameById.get(String(task.project))}</div>
+      )}
       <div className="flex justify-between items-start mb-2">
         <div className="flex items-center gap-1.5">
           {overdue && (
@@ -155,7 +158,7 @@ function SortableTask({ task, members, onAssign, onClick, isPM, onApprove, onRej
   );
 }
 
-function KanbanColumn({ column, tasks, members, onAssign, onCardClick, isPM, onApprove, onReject, processing, currentUserId }: any) {
+function KanbanColumn({ column, tasks, members, onAssign, onCardClick, isPM, onApprove, onReject, processing, currentUserId, projectNameById }: any) {
   const { setNodeRef } = useSortable({
     id: column.id,
     data: { type: "Column", column },
@@ -191,6 +194,7 @@ function KanbanColumn({ column, tasks, members, onAssign, onCardClick, isPM, onA
               onReject={onReject}
               processing={processing}
               currentUserId={currentUserId}
+              projectNameById={projectNameById}
             />
           ))}
           {tasks.length === 0 && (
@@ -202,7 +206,7 @@ function KanbanColumn({ column, tasks, members, onAssign, onCardClick, isPM, onA
   );
 }
 
-export function KanbanBoard({ initialTasks, members = [], onTaskChange }: { projectId?: string; initialTasks: any[]; members?: any[]; onTaskChange?: (taskId: number, patch: Record<string, any>) => void }) {
+export function KanbanBoard({ initialTasks, members = [], onTaskChange, projectNameById }: { projectId?: string; initialTasks: any[]; members?: any[]; onTaskChange?: (taskId: number, patch: Record<string, any>) => void; projectNameById?: Map<string, string> }) {
   const { user } = useAuth();
   const isPM = user?.role === "PM";
   const [tasks, setTasks] = useState(initialTasks);
@@ -350,13 +354,14 @@ export function KanbanBoard({ initialTasks, members = [], onTaskChange }: { proj
                   onReject={(t: any) => setRejectTarget(t)}
                   processing={processing}
                   currentUserId={user?.id}
+                  projectNameById={projectNameById}
                 />
               ))}
             </SortableContext>
           </div>
         </div>
         <DragOverlay>
-          {activeTask ? <SortableTask task={activeTask} members={members} onAssign={handleAssign} onClick={() => {}} isPM={isPM} processing={processing} currentUserId={user?.id} /> : null}
+          {activeTask ? <SortableTask task={activeTask} members={members} onAssign={handleAssign} onClick={() => {}} isPM={isPM} processing={processing} currentUserId={user?.id} projectNameById={projectNameById} /> : null}
         </DragOverlay>
       </DndContext>
 
