@@ -2607,27 +2607,31 @@ function TaskDraftReview({
                   )}
                   {d.is_task_header ? (
                     // 2026-09-22 (사용자 요청): Subtask로 쪼개진 Task 자신은 배정 대상이
-                    // 아니라 담당자·적합도·일정 칸이 없다 — 그 하위 Subtask들을 묶는
-                    // 제목만 보여준다(estimated_hours는 하위 Subtask 합계, services.py에서
-                    // 계산해 내려줌).
+                    // 아니라 담당자·적합도·일정 칸이 없다. 처음엔 시간 합계 배지+설명
+                    // 문장을 같이 보여줬는데 한 줄이 너무 무거워 보인다는 피드백 —
+                    // "Task" 배지 하나로 줄이고, 대신 Subtask 쪽에도 짝이 되는 배지를
+                    // 넣어서 상/하위 관계를 배지만으로 구분되게 했다.
                     <tr className="align-top bg-black/[0.015] dark:bg-white/[0.015]">
                       <td className="px-4 py-3" colSpan={4}>
                         <div className="flex items-center gap-1.5">
-                          <span className="font-semibold">{d.title}</span>
-                          <span className="shrink-0 text-[10px] px-1.5 py-0.5 rounded-full bg-black/5 dark:bg-white/5 text-muted-foreground font-semibold">
-                            {d.estimated_hours ?? "-"}h 합계
+                          <span className="shrink-0 text-[10px] px-1.5 py-0.5 rounded-full bg-primary/10 text-primary font-semibold">
+                            Task
                           </span>
-                          <span className="text-xs text-muted-foreground">하위 업무로 배정됨 — 이 Task 자체엔 담당자·일정 없음</span>
+                          <span className="font-semibold">{d.title}</span>
                         </div>
                       </td>
                     </tr>
                   ) : (
                     <tr className="align-top">
                       <td className="px-4 py-3">
-                        {/* Subtask는 들여쓰기+화살표로 표시한다 — Epic으로 이미 실제
+                        {/* Subtask는 들여쓰기+배지로 표시한다 — Epic으로 이미 실제
                             소속이 묶인 상태라 인접이 우연이 아니다. */}
                         <div className={cn("flex items-start gap-1", isSubtask && "pl-5")}>
-                          {isSubtask && <span className="text-muted-foreground/60 text-xs mt-0.5 shrink-0">↳</span>}
+                          {isSubtask && (
+                            <span className="shrink-0 mt-0.5 text-[10px] px-1.5 py-0.5 rounded-full bg-black/5 dark:bg-white/5 text-muted-foreground font-semibold">
+                              Subtask
+                            </span>
+                          )}
                           <TaskTitleCell
                             title={d.title}
                             estimatedHours={d.estimated_hours}
