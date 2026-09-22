@@ -458,15 +458,24 @@ export default function DocumentsPage() {
         : projects[0];
       setProject(current ?? null);
       if (current) {
-        const [noteList, reqDefList] = await Promise.all([
+        // 2026-09-22 (사용자 리포트 — 탭 깜빡임 수정): taskAssignments를 project?.id에
+        // 걸린 별도 useEffect로 뒤늦게(한 렌더 더 지나서) 불러오면, 이미 업무배분까지
+        // 끝난 문서를 새로고침으로 열었을 때 "아직 확정된 업무가 없다"는 낡은 값으로
+        // 단계가 잘못 판정돼 기획서 탭이 잠깐 보이다가 업무배분 탭으로 튀는 깜빡임이
+        // 생겼다 — notes/reqDefs와 같은 Promise.all로 한 번에 받아서 첫 렌더부터
+        // 최종 단계가 맞게 잡히게 한다.
+        const [noteList, reqDefList, assignmentList] = await Promise.all([
           apiFetch<NoteDto[]>(`/api/meetings/notes/?project=${current.id}`),
           apiFetch<ReqDefDto[]>("/api/requirements/").catch(() => []),
+          apiFetch<TaskAssignmentDto[]>("/api/tasks/assignments/").catch(() => []),
         ]);
         setNotes(noteList);
         setReqDefs(reqDefList);
+        setTaskAssignments(assignmentList);
       } else {
         setNotes([]);
         setReqDefs([]);
+        setTaskAssignments([]);
       }
     } catch (err: any) {
       setError(err.message || "목록을 불러오지 못했습니다.");
@@ -575,10 +584,9 @@ export default function DocumentsPage() {
   // 다른 카드의 파이프라인 점이 같이 바뀜). req_item ID는 프로젝트를 넘나들어도 겹치지
   // 않으므로, 선택된 노트와 무관하게 전체를 한 번에 가져오면 각자 자기 reqDef.items로
   // 걸러지는 기존 필터링 로직(hasConfirmedTasksFor/tasksForReqDef)이 그대로 정확해진다.
-  useEffect(() => {
-    fetchTaskAssignments();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [project?.id]);
+  // (2026-09-22: 최초/프로젝트 전환 시 fetchAll이 taskAssignments까지 같이 받아오므로
+  // project?.id에 걸어 따로 다시 부르던 effect는 제거 — 아래 fetchTaskAssignments는
+  // 배분 확정/재배정 후 최신화용으로 그 자리에서 직접 호출된다.)
   // reqDef/taskAssignments를 아는 채로 stageOf/stepDone을 호출하기 위한 헬퍼 —
   // 요구사항정의서 승인·업무배분 확정까지 반영해 "지금 이 문서가 실제로 어디까지
   // 왔는지" 정확히 판단한다(documentPipeline.ts 참고).
@@ -617,22 +625,32 @@ export default function DocumentsPage() {
     const stageKey = `${spec?.status_info?.code_id ?? ""}|${reqDef?.status_info?.code_id ?? ""}|${hasConfirmedTasks}`;
     const prevKey = lastStageKeyRef.current[selectedNote.id];
     lastStageKeyRef.current[selectedNote.id] = stageKey;
-    if (prevKey !== undefined && prevKey !== stageKey && stepDone(spec, activeTab, reqDef, hasConfirmedTasks)) {
+    if (prevKey === undefined) {
+      // 2026-09-22 (사용자 리포트 — 탭 깜빡임 수정): 이 노트를 이번 세션에서 처음
+      // 보는 시점(새로고침으로 ?note=가 복원됐거나 방금 목록에서 클릭) — activeTab의
+      // 기본값(useState("proposal"))이 실제 단계와 다를 수 있으므로, selectNote와
+      // 동일한 기준으로 지금 실제 도달한 단계를 곧바로 반영한다. 예전엔 여기서 아무것도
+      // 안 하고 넘어가서, 업무배분까지 끝난 문서를 열어도 기획서 탭이 먼저 보였다가
+      // (기본값) 아래 분기로 뒤늦게 넘어가는 깜빡임이 있었다.
+      setActiveTab(stageOf(spec, reqDef, hasConfirmedTasks));
+      return;
+    }
+    if (prevKey !== stageKey && stepDone(spec, activeTab, reqDef, hasConfirmedTasks)) {
       setActiveTab(stageOf(spec, reqDef, hasConfirmedTasks));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedNote?.id, selectedNote?.spec_documents[0]?.status_code, reqDefs, taskAssignments]);
 
-  // 2026-09-22 (사용자 요청): 기획서가 생성되면 상단의 원본 회의록은 더 볼 일이
-  // 없어지고(참고자료는 우측 근거 패널로 대체) 중앙 콘텐츠를 넓게 봐야 하니, 문서
-  // 목록 패널과 앱 좌측 메인 내비게이션까지 둘 다 기본으로 접어둔다. 기획서가 아직
-  // 없는 문서를 열면 다시 펼쳐서 원래 기본값으로 돌아간다 — "그 문서를 열었을 때의
-  // 기본값"이라 사용자가 수동으로 펼치거나 접어도 다른 문서로 옮겨가면 새로 평가된다.
+  // 2026-09-22 (사용자 재확인 — 문서 목록 패널은 이제 자동으로 안 접음): 기획서가
+  // 생성되면 상단의 원본 회의록은 더 볼 일이 없어지고(참고자료는 우측 근거 패널로
+  // 대체) 중앙 콘텐츠를 넓게 봐야 하니, 앱 좌측 메인 내비게이션만 기본으로 접어둔다.
+  // "문서 목록" 패널까지 같이 접는 건 처음엔 해봤는데(9/22 초안) 문서를 계속 오갈
+  // 목록 자체가 안 보이는 게 오히려 불편하다는 재확인을 받아 뺐다 — 문서 목록은
+  // 사용자가 접기 버튼으로 직접 접지 않는 한 항상 펼쳐진 채 유지된다.
   useEffect(() => {
     if (!selectedNote) return;
     const spec = selectedNote.spec_documents[0] ?? null;
     const hasSpec = !!spec;
-    setListCollapsed(hasSpec);
     setAppSidebarOpen(!hasSpec);
   }, [selectedNote?.id, selectedNote?.spec_documents[0]?.status_code]);
 
