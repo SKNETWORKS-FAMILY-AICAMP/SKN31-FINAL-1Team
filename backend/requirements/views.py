@@ -5,7 +5,6 @@ import json
 import html
 import re
 from django.db import transaction
-from django.db.models import Q
 from django.shortcuts import get_object_or_404
 from django.http import Http404
 from django.utils import timezone
@@ -20,14 +19,12 @@ from drf_spectacular.utils import (
     OpenApiResponse,
 )
 
-from requirements.models import RequirementDefinition, RequirementItem, RequirementExtractionJob, RequirementValidationReport
+from requirements.models import RequirementDefinition, RequirementItem, RequirementExtractionJob
 from requirements.serializers import (
     RequirementDefinitionSerializer,
     RequirementDefinitionCreateSerializer,
     RequirementItemSerializer,
-    RequirementValidationReportSerializer,
 )
-from requirements.services import validate_requirement_definition, apply_requirement_validation
 from meetings.models import SpecDocument
 from common.models import CommonCode
 from users.permissions import IsPMUser, IsOwnerOrPM  # PM 권한 검증
@@ -613,61 +610,6 @@ class RequirementDefinitionRejectView(APIView):
             )
 
         return Response({"message": "요구사항 정의서가 반려되었습니다.", "data": RequirementDefinitionSerializer(req_def).data})
-
-
-class RequirementDefinitionValidateView(APIView):
-    """기획서와 요구사항정의서를 비교 평가한다."""
-    permission_classes = [permissions.IsAuthenticated]
-
-    def get(self, request, req_def_id):
-        req_def = get_object_or_404(RequirementDefinition.objects.select_related('spec__meeting'), pk=req_def_id)
-        is_pm = request.user.is_staff or request.user.groups.filter(name='PM').exists()
-        if req_def.spec.meeting.created_by_id != request.user.id and not is_pm:
-            return Response({'detail': '작성자 또는 PM만 보고서를 조회할 수 있습니다.'}, status=status.HTTP_403_FORBIDDEN)
-        report = RequirementValidationReport.objects.filter(
-            Q(requirement_definition=req_def) | Q(applied_definition=req_def)
-        ).order_by('-created_at').first()
-        if report is None:
-            return Response({'detail': '저장된 검증 보고서가 없습니다.'}, status=status.HTTP_404_NOT_FOUND)
-        return Response(RequirementValidationReportSerializer(report).data)
-
-    def post(self, request, req_def_id):
-        req_def = get_object_or_404(
-            RequirementDefinition.objects.select_related('spec__meeting').prefetch_related('items'),
-            pk=req_def_id,
-        )
-        is_pm = request.user.is_staff or request.user.groups.filter(name='PM').exists()
-        if req_def.spec.meeting.created_by_id != request.user.id and not is_pm:
-            return Response({'detail': '작성자 또는 PM만 검증할 수 있습니다.'}, status=status.HTTP_403_FORBIDDEN)
-        try:
-            report = validate_requirement_definition(req_def, request.user)
-        except Exception as exc:
-            return Response({'detail': f'요구사항정의서 검증 중 오류가 발생했습니다: {exc}'}, status=status.HTTP_502_BAD_GATEWAY)
-        return Response(RequirementValidationReportSerializer(report).data, status=status.HTTP_201_CREATED)
-
-
-class RequirementValidationReportApplyView(APIView):
-    """AI 보완안을 원본을 보존한 새 요구사항정의서 버전으로 만든다."""
-    permission_classes = [permissions.IsAuthenticated]
-
-    def post(self, request, report_id):
-        report = get_object_or_404(
-            RequirementValidationReport.objects.select_related(
-                'requirement_definition__spec__meeting', 'applied_definition'
-            ), pk=report_id,
-        )
-        meeting = report.requirement_definition.spec.meeting
-        is_pm = request.user.is_staff or request.user.groups.filter(name='PM').exists()
-        if meeting.created_by_id != request.user.id and not is_pm:
-            return Response({'detail': '작성자 또는 PM만 적용할 수 있습니다.'}, status=status.HTTP_403_FORBIDDEN)
-        try:
-            revised = apply_requirement_validation(report)
-        except ValueError as exc:
-            return Response({'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
-        return Response({
-            'message': '보완사항을 적용한 새 요구사항정의서 버전을 생성했습니다.',
-            'requirement_definition': RequirementDefinitionSerializer(revised).data,
-        })
 
 
 class RequirementExtractView(APIView):

@@ -32,12 +32,6 @@ import {
   type BareStatus, type PipelineTab,
 } from "@/lib/documentPipeline";
 
-// 2026-09-18: plan_review(AI 품질 검증·자동 보완)가 기획서 생성 직후 자동으로
-// 실행되면서, 방금 생성된 기획서 내용을 검증 모델의 revised_document로 바로
-// 덮어쓰는 문제가 있어 잠시 꺼둔다. false인 동안은 기획서 생성만 완료되고
-// 검증·자동 적용 단계는 건너뛴다.
-const AUTO_VALIDATE_SPEC_ENABLED = false;
-
 // ── Django 응답 shape ──────────────────────────────────────────
 type SpecStatusCode = "PROPOSAL_DRAFT" | "PROPOSAL_PENDING_REVIEW" | "PROPOSAL_APPROVED" | "PROPOSAL_REJECTED";
 
@@ -65,18 +59,6 @@ type SpecDto = {
   review_comment: string | null;
   created_at: string;
   updated_at: string;
-};
-
-type SpecValidationReportDto = {
-  report_id: number;
-  spec: number;
-  scores: Record<"accuracy" | "completeness" | "consistency" | "traceability", number>;
-  overall_score: number;
-  summary: string;
-  strengths: string[];
-  critical_issues: string[];
-  section_reviews: { section_key: string; section_title: string; score: number; verdict: string; evidence: string[]; findings: string[]; recommendation: string }[];
-  applied_spec: number | null;
 };
 
 type ReqItemDto = {
@@ -123,27 +105,6 @@ type ReqDefDto = {
   updated_at: string;
 };
 
-type ReqValidationReportDto = {
-  report_id: number;
-  requirement_definition: number;
-  scores: Record<"accuracy" | "completeness" | "consistency" | "testability", number>;
-  overall_score: number;
-  summary: string;
-  strengths: string[];
-  critical_issues: string[];
-  item_reviews: { req_code: string; score: number; verdict: string; findings: string[]; recommendation: string }[];
-  applied_definition: number | null;
-};
-
-const specReportNeedsRevision = (report: SpecValidationReportDto) =>
-  report.critical_issues.length > 0 || report.section_reviews.some(section =>
-    section.verdict !== "pass" || section.findings.length > 0 || section.recommendation.trim().length > 0
-  );
-
-const reqReportNeedsRevision = (report: ReqValidationReportDto) =>
-  report.critical_issues.length > 0 || report.item_reviews.some(item =>
-    item.verdict !== "pass" || item.findings.length > 0 || item.recommendation.trim().length > 0
-  );
 
 type NoteDto = {
   id: number;
@@ -479,8 +440,6 @@ export default function DocumentsPage() {
   const [error, setError] = useState("");
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [errorToast, setErrorToast] = useState<string | null>(null);
-  const [validationReport, setValidationReport] = useState<SpecValidationReportDto | null>(null);
-  const [reqValidationReport, setReqValidationReport] = useState<ReqValidationReportDto | null>(null);
 
   const fetchAll = async (preferredProjectId?: number) => {
     setLoading(true);
@@ -727,25 +686,7 @@ export default function DocumentsPage() {
 
         // SUCCESS
         await refetchNote(note.id);
-        const createdSpec = job.result?.created_spec;
-        if (createdSpec && AUTO_VALIDATE_SPEC_ENABLED) {
-          setSpecGenStage("회의록 대비 품질 검증 중…");
-          try {
-            const report = await apiFetch<SpecValidationReportDto>(`/api/meetings/specs/${createdSpec.id}/validate/`, { method: "POST" });
-            if (specReportNeedsRevision(report)) {
-              setSpecGenStage("보완사항 자동 적용 중…");
-              await apiFetch(`/api/meetings/spec-validation-reports/${report.report_id}/apply/`, { method: "POST" });
-              await refetchNote(note.id);
-              setToastMessage("기획서 검증 및 보완 버전 생성이 완료되었습니다");
-            } else {
-              setToastMessage("기획서 생성 및 품질 검증이 완료되었습니다");
-            }
-          } catch (validationError: any) {
-            setErrorToast(validationError.message || "기획서는 생성됐지만 품질 검증에 실패했습니다.");
-          }
-        } else {
-          setToastMessage("기획서 생성이 완료되었습니다");
-        }
+        setToastMessage("기획서 생성이 완료되었습니다");
         stop();
       };
       await poll();
@@ -796,18 +737,6 @@ export default function DocumentsPage() {
       await refetchNote(note.id);
     } catch (err: any) {
       setErrorToast(err.message || "저장에 실패했습니다.");
-    } finally {
-      setBusy(null);
-    }
-  };
-
-  const handleViewSpecReport = async (spec: SpecDto) => {
-    setBusy(`${spec.meeting}-view-spec-report`);
-    try {
-      const report = await apiFetch<SpecValidationReportDto>(`/api/meetings/specs/${spec.id}/validate/`);
-      setValidationReport(report);
-    } catch (err: any) {
-      setErrorToast(err.message || "검증 보고서를 불러오지 못했습니다.");
     } finally {
       setBusy(null);
     }
@@ -951,29 +880,7 @@ export default function DocumentsPage() {
         // SUCCESS
         const allReqDefs = await apiFetch<ReqDefDto[]>("/api/requirements/");
         setReqDefs(allReqDefs);
-        const createdReqDef = allReqDefs.find(item => item.spec === spec.id);
-        if (createdReqDef) {
-          setReqExtractStage("기획서 대비 품질 검증 중…");
-          try {
-            const report = await apiFetch<ReqValidationReportDto>(
-              `/api/requirements/definitions/${createdReqDef.id}/validate/`, { method: "POST" }
-            );
-            if (reqReportNeedsRevision(report)) {
-              setReqExtractStage("보완사항 자동 적용 중…");
-              const applied = await apiFetch<{ requirement_definition: ReqDefDto }>(
-                `/api/requirements/validation-reports/${report.report_id}/apply/`, { method: "POST" }
-              );
-              setReqDefs(prev => [applied.requirement_definition, ...prev]);
-              setToastMessage("요구사항정의서 검증 및 보완 버전 생성이 완료되었습니다");
-            } else {
-              setToastMessage("요구사항 정의서 생성 및 품질 검증이 완료되었습니다");
-            }
-          } catch (validationError: any) {
-            setErrorToast(validationError.message || "요구사항정의서는 생성됐지만 품질 검증에 실패했습니다.");
-          }
-        } else {
-          setToastMessage("요구사항 정의서가 생성되었습니다");
-        }
+        setToastMessage("요구사항 정의서가 생성되었습니다");
         stop();
       };
       await poll();
@@ -981,20 +888,6 @@ export default function DocumentsPage() {
       if (reqExtractSeqRef.current !== seq) return;
       setErrorToast(err.message || "요구사항 정의서 생성에 실패했습니다.");
       stop();
-    }
-  };
-
-  const handleViewReqReport = async (reqDef: ReqDefDto) => {
-    setBusy(`reqdef-${reqDef.id}-view-report`);
-    try {
-      const report = await apiFetch<ReqValidationReportDto>(
-        `/api/requirements/definitions/${reqDef.id}/validate/`
-      );
-      setReqValidationReport(report);
-    } catch (err: any) {
-      setErrorToast(err.message || "검증 보고서를 불러오지 못했습니다.");
-    } finally {
-      setBusy(null);
     }
   };
 
@@ -1611,7 +1504,6 @@ export default function DocumentsPage() {
               specGenStartedAt={specGenStartedAt}
               specGenStage={specGenStage}
               onGenerateSpec={() => handleGenerateSpec(selectedNote)}
-              onViewSpecReport={(spec) => handleViewSpecReport(spec)}
               onSaveNoteContent={(content) => handleSaveNoteContent(selectedNote, content)}
               onSaveSpec={(spec, doc) => handleSaveSpec(selectedNote, spec, doc)}
               onSavePeriod={(spec, period) => handleSavePeriod(selectedNote, spec, period)}
@@ -1620,7 +1512,6 @@ export default function DocumentsPage() {
               onReject={(spec) => setRejectTarget({ kind: "spec", specId: spec.id })}
               onCreateReqDef={(spec) => handleCreateReqDef(selectedNote, spec)}
               onExtractItems={handleExtractItems}
-              onViewReqReport={handleViewReqReport}
               reqExtractStage={reqExtractStage}
               reqExtractStartedAt={reqExtractStartedAt}
               onAddItem={handleAddItem}
@@ -1720,18 +1611,6 @@ export default function DocumentsPage() {
             </div>
           </div>
         </div>
-      )}
-      {validationReport && (
-        <SpecValidationModal
-          report={validationReport}
-          onClose={() => setValidationReport(null)}
-        />
-      )}
-      {reqValidationReport && (
-        <RequirementValidationModal
-          report={reqValidationReport}
-          onClose={() => setReqValidationReport(null)}
-        />
       )}
       <Toast message={toastMessage} onDismiss={() => setToastMessage(null)} />
       <Toast message={errorToast} variant="error" onDismiss={() => setErrorToast(null)} />
@@ -1967,15 +1846,14 @@ function ReqExtractProgressBar({ stage, startedAt }: { stage: string; startedAt:
 
 function NoteDetail({
   note, spec, reqDef, activeTab, isPM, currentUserId, busy,
-  onGenerateSpec, onViewSpecReport, specGenStartedAt, specGenStage, onSaveNoteContent, onSaveSpec, onSavePeriod, onSubmitReview, onApprove, onReject,
-  onCreateReqDef, onExtractItems, onViewReqReport, reqExtractStage, reqExtractStartedAt, onAddItem, onUpdateItem, onDeleteItem, onReqDefStatusChange,
+  onGenerateSpec, specGenStartedAt, specGenStage, onSaveNoteContent, onSaveSpec, onSavePeriod, onSubmitReview, onApprove, onReject,
+  onCreateReqDef, onExtractItems, reqExtractStage, reqExtractStartedAt, onAddItem, onUpdateItem, onDeleteItem, onReqDefStatusChange,
   onGenerateTasks, taskAssignments, onRejectReqDef,
   taskDrafts, taskDraftsReqDefId, setTaskDrafts, scheduleSummary, packageSplits, planReview, planBriefing, generatingTasks, generatingStage, generatingStartedAt, confirmingTasks, onConfirmTasks, onCancelTaskDrafts,
   members, reassigningTaskId, onReassignTask, approvingAllTasks, onApproveAllTasks,
 }: {
   note: NoteDto; spec: SpecDto | null; reqDef: ReqDefDto | null; activeTab: PipelineTab; isPM: boolean; currentUserId: string | undefined; busy: string | null;
   onGenerateSpec: () => void;
-  onViewSpecReport: (spec: SpecDto) => void;
   specGenStartedAt: number | null;
   specGenStage: string;
   onSaveNoteContent: (content: string) => void;
@@ -1986,7 +1864,6 @@ function NoteDetail({
   onReject: (spec: SpecDto) => void;
   onCreateReqDef: (spec: SpecDto) => void;
   onExtractItems: (specId: number, reqDefId: number) => void;
-  onViewReqReport: (reqDef: ReqDefDto) => void;
   reqExtractStage: string;
   reqExtractStartedAt: number | null;
   onAddItem: (reqDefId: number, item: { req_code: string; req_name: string; description: string; order: number; priority_code: string | null }) => void;
@@ -2032,13 +1909,6 @@ function NoteDetail({
     : tasksForReqDef.filter(t => String(t.assigned_user) === currentUserId);
 
   const busyKey = (action: string) => `${note.id}-${action}`;
-  // 기획서 생성 job은 끝났지만 자동 품질 검증 API를 기다리는 구간. 이때 이미
-  // 기획서 본문이 화면에 나타나므로 별도 표시가 없으면 작업이 끝난 것처럼 보인다.
-  const autoSpecValidating = busy === busyKey("generate") && (
-    specGenStage.includes("품질 검증") || specGenStage.includes("보완사항 자동 적용")
-  );
-  const viewingSpecReport = busy === busyKey("view-spec-report");
-
   const [rawDraft, setRawDraft] = useState(note.content ?? "");
   useEffect(() => { setRawDraft(note.content ?? ""); }, [note.id, note.content]);
   const rawDirty = rawDraft !== (note.content ?? "");
@@ -2407,7 +2277,6 @@ function NoteDetail({
             busy={busy}
             onCreate={() => onCreateReqDef(spec!)}
             onExtract={onExtractItems}
-            onViewReport={onViewReqReport}
             reqExtractStage={reqExtractStage}
             reqExtractStartedAt={reqExtractStartedAt}
             onAddItem={onAddItem}
@@ -2977,74 +2846,6 @@ function TaskAssignmentList({
 // "예상 필요 인원" 박스 / 업무 일정(Gantt) 공통으로 쓰는 접었다 펼 수 있는 섹션 — 버튼이
 // 아니라 제목 자체를 클릭하게(사용자 요청) 만들고, 다른 화면의 펼침형 행(TaskTitleCell 등)과
 // 동일하게 ChevronDown이 접힌 상태에서 -90도 회전하는 방식으로 통일한다.
-function SpecValidationModal({ report, onClose }: {
-  report: SpecValidationReportDto; onClose: () => void;
-}) {
-  const scoreLabels = { accuracy: "정확성", completeness: "완전성", consistency: "일관성", traceability: "추적가능성" } as const;
-  return (
-    <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/65 backdrop-blur-sm p-4">
-      <div className="bg-background border border-border rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col">
-        <div className="flex items-center justify-between p-5 border-b border-border">
-          <div>
-            <h3 className="text-lg font-bold">회의록 대비 기획서 비교검토 보고서</h3>
-            <p className="text-xs text-muted-foreground mt-1">종합 점수 {report.overall_score}점 · 보고서 #{report.report_id}</p>
-          </div>
-          <button onClick={onClose} className="p-2 rounded-lg hover:bg-black/5 dark:hover:bg-white/5"><X className="w-5 h-5" /></button>
-        </div>
-        <div className="p-5 overflow-y-auto space-y-5">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            {(Object.keys(scoreLabels) as (keyof typeof scoreLabels)[]).map(key => (
-              <div key={key} className="rounded-xl border border-border p-3 bg-black/5 dark:bg-white/5">
-                <p className="text-xs text-muted-foreground">{scoreLabels[key]}</p>
-                <p className="text-2xl font-bold mt-1">{report.scores[key]}<span className="text-xs font-normal text-muted-foreground"> / 100</span></p>
-              </div>
-            ))}
-          </div>
-          <div className="rounded-xl border border-border p-4"><p className="font-semibold mb-1">총평</p><p className="text-sm text-muted-foreground whitespace-pre-wrap">{report.summary}</p></div>
-          {report.critical_issues.length > 0 && <div className="rounded-xl border border-red-500/20 bg-red-500/5 p-4"><p className="font-semibold text-red-400 mb-2">우선 보완사항</p><ul className="text-sm space-y-1 list-disc pl-5">{report.critical_issues.map((v, i) => <li key={i}>{v}</li>)}</ul></div>}
-          <div className="space-y-3">
-            {report.section_reviews.map(section => (
-              <div key={section.section_key} className="rounded-xl border border-border p-4">
-                <div className="flex items-center justify-between"><p className="font-semibold">{section.section_title}</p><span className="text-sm font-bold">{section.score}점</span></div>
-                {section.findings.length > 0 && <ul className="mt-2 text-sm text-muted-foreground list-disc pl-5 space-y-1">{section.findings.map((v, i) => <li key={i}>{v}</li>)}</ul>}
-                {section.recommendation && <p className="mt-3 text-sm"><span className="font-semibold text-cyan-500">보완 제안</span> {section.recommendation}</p>}
-                {section.evidence.length > 0 && <details className="mt-2 text-xs text-muted-foreground"><summary className="cursor-pointer">회의록 근거 보기</summary><ul className="list-disc pl-5 mt-1">{section.evidence.map((v, i) => <li key={i}>{v}</li>)}</ul></details>}
-              </div>
-            ))}
-          </div>
-        </div>
-        <div className="p-5 border-t border-border flex justify-end gap-3">
-          {report.applied_spec && <span className="mr-auto text-xs font-semibold text-emerald-500">보완사항이 새 버전에 자동 적용되었습니다.</span>}
-          <button onClick={onClose} className="px-4 py-2.5 rounded-xl border border-border text-sm font-semibold">닫기</button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function RequirementValidationModal({ report, onClose }: {
-  report: ReqValidationReportDto; onClose: () => void;
-}) {
-  const scoreLabels = { accuracy: "정확성", completeness: "완전성", consistency: "일관성", testability: "테스트 가능성" } as const;
-  return (
-    <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/65 backdrop-blur-sm p-4">
-      <div className="bg-background border border-border rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col">
-        <div className="flex items-center justify-between p-5 border-b border-border">
-          <div><h3 className="text-lg font-bold">기획서 대비 요구사항정의서 품질검토 보고서</h3><p className="text-xs text-muted-foreground mt-1">종합 점수 {report.overall_score}점 · 보고서 #{report.report_id}</p></div>
-          <button onClick={onClose} className="p-2 rounded-lg hover:bg-black/5 dark:hover:bg-white/5"><X className="w-5 h-5" /></button>
-        </div>
-        <div className="p-5 overflow-y-auto space-y-5">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">{(Object.keys(scoreLabels) as (keyof typeof scoreLabels)[]).map(key => <div key={key} className="rounded-xl border border-border p-3 bg-black/5 dark:bg-white/5"><p className="text-xs text-muted-foreground">{scoreLabels[key]}</p><p className="text-2xl font-black mt-1">{report.scores[key]}</p></div>)}</div>
-          <div><p className="font-semibold mb-1">종합 의견</p><p className="text-sm text-muted-foreground">{report.summary}</p></div>
-          {report.critical_issues.length > 0 && <div className="rounded-xl border border-red-500/20 bg-red-500/5 p-4"><p className="font-semibold text-red-400 mb-2">우선 보완사항</p><ul className="text-sm space-y-1 list-disc pl-5">{report.critical_issues.map((value, index) => <li key={index}>{value}</li>)}</ul></div>}
-          <div className="space-y-2">{report.item_reviews.map((item, index) => <div key={`${item.req_code}-${index}`} className="rounded-xl border border-border p-4"><div className="flex justify-between gap-3"><p className="font-semibold font-mono text-sm">{item.req_code}</p><span className="text-xs font-bold">{item.score}점</span></div>{item.findings.length > 0 && <ul className="mt-2 text-sm text-muted-foreground list-disc pl-5">{item.findings.map((value, i) => <li key={i}>{value}</li>)}</ul>}{item.recommendation && <p className="mt-2 text-sm"><span className="font-semibold text-cyan-500">보완 제안</span> {item.recommendation}</p>}</div>)}</div>
-        </div>
-        <div className="p-5 border-t border-border flex justify-end items-center gap-3">{report.applied_definition && <span className="mr-auto text-xs font-semibold text-emerald-500">보완사항이 새 버전에 자동 적용되었습니다.</span>}<button onClick={onClose} className="px-4 py-2.5 rounded-xl border border-border text-sm font-semibold">닫기</button></div>
-      </div>
-    </div>
-  );
-}
-
 function CollapsibleSection({
   title, defaultOpen = true, children,
 }: {
@@ -3397,7 +3198,7 @@ function GanttSection({ items, title }: { items: GanttItem[]; title: string }) {
 }
 
 function RequirementSection({
-  spec, reqDef, isPM, canGenerate, busy, onCreate, onExtract, onViewReport, reqExtractStage, reqExtractStartedAt, onAddItem, onUpdateItem, onDeleteItem, onStatusChange,
+  spec, reqDef, isPM, canGenerate, busy, onCreate, onExtract, reqExtractStage, reqExtractStartedAt, onAddItem, onUpdateItem, onDeleteItem, onStatusChange,
   onGenerateTasks, generatingTasks, generatingStage, generatingStartedAt, onRejectClick, tasksAlreadyAssigned, hasUnconfirmedDraft,
 }: {
   spec: SpecDto; reqDef: ReqDefDto | null; isPM: boolean;
@@ -3408,7 +3209,6 @@ function RequirementSection({
   busy: string | null;
   onCreate: () => void;
   onExtract: (specId: number, reqDefId: number) => void;
-  onViewReport: (reqDef: ReqDefDto) => void;
   reqExtractStage: string;
   reqExtractStartedAt: number | null;
   onAddItem: (reqDefId: number, item: { req_code: string; req_name: string; description: string; order: number; priority_code: string | null }) => void;
@@ -3471,12 +3271,6 @@ function RequirementSection({
   };
 
   const creating = busy === `${spec.id}-create-reqdef`;
-  // 최초 생성 직후 자동 검증 중에는 reqDef가 이미 렌더링된다. 생성 버튼은 사라지기
-  // 때문에 품질 검증 버튼 자체가 현재 진행 상태를 이어서 보여줘야 한다.
-  const autoReqValidating = creating && (
-    reqExtractStage.includes("품질 검증") || reqExtractStage.includes("보완사항 자동 적용")
-  );
-  const viewingReqReport = busy === `reqdef-${reqDef?.id}-view-report`;
   const extracting = reqDef && busy === `reqdef-${reqDef.id}-extract`;
   const addingItem = reqDef && busy === `reqdef-${reqDef.id}-additem`;
   const reqStatus = reqDef?.status_info?.code_id ?? null;

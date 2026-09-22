@@ -177,29 +177,6 @@ class SpecDocument(models.Model):
         return f"[{self.spec_id}] {self.title}"
 
 
-class SpecValidationReport(models.Model):
-    """회의록 원문과 기획서를 비교한 AI 품질 검토 결과."""
-    report_id = models.AutoField(primary_key=True)
-    spec = models.ForeignKey(SpecDocument, on_delete=models.CASCADE, related_name='validation_reports')
-    scores = models.JSONField(default=dict)
-    summary = models.TextField(blank=True)
-    strengths = models.JSONField(default=list)
-    critical_issues = models.JSONField(default=list)
-    section_reviews = models.JSONField(default=list)
-    revised_document = models.JSONField(default=dict)
-    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True)
-    applied_spec = models.OneToOneField(
-        SpecDocument, on_delete=models.SET_NULL, null=True, blank=True,
-        related_name='applied_validation_report',
-    )
-    created_at = models.DateTimeField(auto_now_add=True)
-    applied_at = models.DateTimeField(null=True, blank=True)
-
-    class Meta:
-        db_table = 'spec_validation_report'
-        ordering = ['-created_at']
-
-
 class MeetingAnalysisJob(models.Model):
     """
     "기획서 생성"(회의록 AI 분석 → 기획서 초안 생성)이 순차 LLM 호출 2번(노드①
