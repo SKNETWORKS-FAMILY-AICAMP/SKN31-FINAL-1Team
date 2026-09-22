@@ -66,31 +66,6 @@ class RequirementDefinition(models.Model):
         return f"[{self.id}] {self.title} ({self.version}) - {status_str}"
 
 
-class RequirementValidationReport(models.Model):
-    """기획서와 요구사항정의서를 비교한 AI 품질 검토 결과."""
-    report_id = models.AutoField(primary_key=True)
-    requirement_definition = models.ForeignKey(
-        RequirementDefinition, on_delete=models.CASCADE, related_name='validation_reports'
-    )
-    scores = models.JSONField(default=dict)
-    summary = models.TextField(blank=True)
-    strengths = models.JSONField(default=list)
-    critical_issues = models.JSONField(default=list)
-    item_reviews = models.JSONField(default=list)
-    revised_items = models.JSONField(default=list)
-    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True)
-    applied_definition = models.OneToOneField(
-        RequirementDefinition, on_delete=models.SET_NULL, null=True, blank=True,
-        related_name='applied_validation_report',
-    )
-    created_at = models.DateTimeField(auto_now_add=True)
-    applied_at = models.DateTimeField(null=True, blank=True)
-
-    class Meta:
-        db_table = 'requirement_validation_report'
-        ordering = ['-created_at']
-
-
 class RequirementItem(models.Model):
     """
     3단계 - 요구사항 상세 항목 (requirement_item)

@@ -182,16 +182,18 @@ erDiagram
 
 ---
 
-## 7. AI 에이전트 티어 (`ai/`, 13개 모듈 — 초기 설계 문서는 7개만 서술)
+## 7. AI 에이전트 티어 (`ai/`, 11개 모듈 — 초기 설계 문서는 7개만 서술)
+
+`plan_review`/`requirement_review`(AI 품질감사·재작성안 자동 적용)는 2026-09-22
+전체 제거 — 검토요청 버튼 활성화가 이 검증 LLM 호출이 끝날 때까지 막혀 있던
+문제로, 프론트 버튼도 이미 지워둔 상태라 백엔드/AI 모듈까지 함께 정리했다.
 
 | 모듈 | 역할 | 비고 |
 |---|---|---|
 | `meeting_analysis` | 회의록 → 구조화 JSON | 판단 난이도 높아 STRONG_MODEL(gpt-5 계열) |
 | `plan_draft` | 구조화 JSON → 기획서 7섹션 | DEFAULT_MODEL |
-| `plan_review` | **AI 품질감사**: 기획서 채점 + 재작성안 | 초기 설계에 없던 모듈, PM이 온디맨드 트리거 |
 | `project_scale` | 프로젝트 규모/복잡도 판단 | 초기 설계에 없던 모듈 |
 | `requirement_draft` | 기획서 → 요구사항 목록 | DEFAULT_MODEL |
-| `requirement_review` | **AI 품질감사**: 요구사항정의서 채점 + 재작성안 | 초기 설계에 없던 모듈 |
 | `task_generation` | 요구사항 → Task 단위 분해 | DEFAULT_MODEL |
 | `assignee_mapping` | 재직+스킬 기반 후보 필터링 | 초기 설계에 없던 모듈(결정적 코드 위주) |
 | `assignment_ranking` | 패키지 분할 여부 판단 + 후보 질적 적합도 판단 | 초기 설계에 없던 모듈, LLM은 판단 입력만 |

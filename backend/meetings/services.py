@@ -4,18 +4,13 @@ import re
 import html
 
 from django.contrib.auth import get_user_model
-from django.utils import timezone
-from django.db import transaction
-from django.db.models import Max
 
-from meetings.models import MeetingNote, SpecDocument, SpecValidationReport
+from meetings.models import MeetingNote, SpecDocument
 from meetings.serializers import MeetingNoteSerializer, SpecDocumentSerializer
 from projects.models import PipelineHistory
-from common.models import CommonCode
 
 from plan_draft.agent import run as generate_plan
 from plan_draft.list_builder import build_feature_citation_sources
-from plan_review.agent import run as review_plan
 
 User = get_user_model()
 
@@ -334,49 +329,3 @@ def _normalize_plan_html(value: str) -> str:
     return ''.join(blocks)
 
 
-def validate_spec_document(spec: SpecDocument, actor) -> SpecValidationReport:
-    document = {field: getattr(spec, field) or "" for field in PLAN_FIELDS}
-    result = review_plan(spec.meeting.content or "", document)
-    data = result.model_dump(mode='json')
-    return SpecValidationReport.objects.create(
-        spec=spec, scores=data['scores'], summary=data['summary'],
-        strengths=data['strengths'], critical_issues=data['critical_issues'],
-        section_reviews=data['section_reviews'], revised_document=data['revised_document'],
-        created_by=actor,
-    )
-
-
-@transaction.atomic
-def apply_spec_validation(report: SpecValidationReport) -> SpecDocument:
-    """검토 당시 원본은 보존하고 보완된 새 버전을 만든다. 중복 적용은 멱등적이다."""
-    report = SpecValidationReport.objects.select_for_update().select_related('spec', 'applied_spec').get(pk=report.pk)
-    if report.applied_spec_id:
-        return report.applied_spec
-    source = report.spec
-    next_version = (SpecDocument.objects.filter(meeting=source.meeting).aggregate(v=Max('version'))['v'] or 0) + 1
-    values = {
-        field: _normalize_plan_html((report.revised_document or {}).get(field, getattr(source, field)))
-        for field in PLAN_FIELDS
-    }
-    for field in ('period_start', 'period_end', 'background', 'target_scope'):
-        values[field] = getattr(source, field)
-    report_evidence = {}
-    for section in report.section_reviews or []:
-        field = section.get('section_key')
-        evidence = section.get('evidence') or []
-        if field in PLAN_FIELDS and evidence:
-            report_evidence[field] = "\n".join(f"- {quote}" for quote in evidence)
-    values['evidence_data'] = json.dumps(report_evidence, ensure_ascii=False) if report_evidence else None
-    values.update(
-        title=f"{source.title.rsplit(' (v', 1)[0]} (v{next_version})",
-        version=next_version,
-        parent_spec=source,
-        status_code=CommonCode.objects.filter(
-            group_id='PROPOSAL_STATUS', code_id='PROPOSAL_DRAFT'
-        ).first(),
-    )
-    revised = SpecDocument.objects.create(meeting=source.meeting, **values)
-    report.applied_spec = revised
-    report.applied_at = timezone.now()
-    report.save(update_fields=['applied_spec', 'applied_at'])
-    return revised

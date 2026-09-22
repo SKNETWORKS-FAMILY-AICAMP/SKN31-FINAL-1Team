@@ -12,7 +12,7 @@
 
 from rest_framework import serializers
 from drf_spectacular.utils import extend_schema_field
-from meetings.models import MeetingNote, SpecDocument, SpecValidationReport
+from meetings.models import MeetingNote, SpecDocument
 from common.models import CommonCode
 
 class CommonCodeSimpleSerializer(serializers.ModelSerializer):
@@ -78,23 +78,6 @@ class SpecDocumentSerializer(serializers.ModelSerializer):
         return super().create(validated_data)
 
 
-class SpecValidationReportSerializer(serializers.ModelSerializer):
-    overall_score = serializers.SerializerMethodField()
-
-    class Meta:
-        model = SpecValidationReport
-        fields = [
-            'report_id', 'spec', 'scores', 'overall_score', 'summary', 'strengths',
-            'critical_issues', 'section_reviews', 'revised_document',
-            'applied_spec', 'created_at', 'applied_at',
-        ]
-        read_only_fields = fields
-
-    def get_overall_score(self, obj):
-        values = [v for v in (obj.scores or {}).values() if isinstance(v, (int, float))]
-        return round(sum(values) / len(values)) if values else 0
-
-
 class MeetingNoteSerializer(serializers.ModelSerializer):
     """
     회의록(MeetingNote) 목록 및 상세 조회용 Serializer
@@ -104,7 +87,7 @@ class MeetingNoteSerializer(serializers.ModelSerializer):
     id = serializers.ReadOnlyField(source='pk')
     created_by_name = serializers.CharField(source='created_by.username', read_only=True)
     status_display = serializers.CharField(source='get_status_display', read_only=True)
-    # 품질 검증 적용 시 같은 회의록에 여러 기획서 버전이 생긴다. 모델의 created_at
+    # 재생성 등으로 같은 회의록에 여러 기획서 버전이 생길 수 있다. 모델의 created_at
     # 정렬에만 의존하면 DB의 timestamp 정밀도에 따라 v1/v2 순서가 같아질 수 있고,
     # 프론트가 배열 첫 항목(v1)을 계속 표시하게 된다. 최신 버전을 명시적으로 먼저 보낸다.
     spec_documents = serializers.SerializerMethodField()

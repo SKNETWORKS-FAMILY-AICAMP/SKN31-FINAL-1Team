@@ -2,7 +2,6 @@
 import threading
 from django.shortcuts import get_object_or_404
 from django.db import close_old_connections
-from django.db.models import Q
 from django.utils import timezone
 from rest_framework import status, permissions, generics, parsers
 from rest_framework.views import APIView
@@ -15,14 +14,13 @@ from docx.text.paragraph import Paragraph
 
 from pypdf import PdfReader
 
-from meetings.models import MeetingNote, SpecDocument, MeetingAnalysisJob, SpecValidationReport
+from meetings.models import MeetingNote, SpecDocument, MeetingAnalysisJob
 from meetings.serializers import (
     MeetingNoteSerializer,
     MeetingNoteCreateSerializer,
     SpecDocumentSerializer,
-    SpecValidationReportSerializer,
 )
-from meetings.services import run_meeting_analysis, validate_spec_document, apply_spec_validation
+from meetings.services import run_meeting_analysis
 from common.models import CommonCode
 from users.permissions import IsPMUser, IsOwnerOrPM  # IsOwnerOrPM 추가
 from notifications.services import notify_user, notify_all_pms
@@ -326,56 +324,6 @@ class SpecDocumentReviewView(APIView):
         spec.save()
         
         return Response(SpecDocumentSerializer(spec).data, status=status.HTTP_200_OK)
-
-
-class SpecDocumentValidateView(APIView):
-    """회의록 원문과 기획서를 비교 평가하고 저장된 보고서를 반환한다."""
-    permission_classes = [permissions.IsAuthenticated]
-
-    def get(self, request, pk):
-        """현재 버전이 직접 검증됐거나 검증 적용으로 생성된 경우의 최신 보고서."""
-        spec = get_object_or_404(SpecDocument.objects.select_related('meeting'), pk=pk)
-        is_pm = request.user.is_staff or request.user.groups.filter(name='PM').exists()
-        if spec.meeting.created_by_id != request.user.id and not is_pm:
-            return Response({'detail': '작성자 또는 PM만 보고서를 조회할 수 있습니다.'}, status=status.HTTP_403_FORBIDDEN)
-        report = SpecValidationReport.objects.filter(
-            Q(spec=spec) | Q(applied_spec=spec)
-        ).order_by('-created_at').first()
-        if report is None:
-            return Response({'detail': '저장된 검증 보고서가 없습니다.'}, status=status.HTTP_404_NOT_FOUND)
-        return Response(SpecValidationReportSerializer(report).data)
-
-    def post(self, request, pk):
-        spec = get_object_or_404(SpecDocument.objects.select_related('meeting'), pk=pk)
-        is_pm = request.user.is_staff or request.user.groups.filter(name='PM').exists()
-        if spec.meeting.created_by_id != request.user.id and not is_pm:
-            return Response({'detail': '작성자 또는 PM만 검증할 수 있습니다.'}, status=status.HTTP_403_FORBIDDEN)
-        try:
-            report = validate_spec_document(spec, request.user)
-        except Exception as exc:
-            return Response(
-                {'detail': f'기획서 검증 중 오류가 발생했습니다: {exc}'},
-                status=status.HTTP_502_BAD_GATEWAY,
-            )
-        return Response(SpecValidationReportSerializer(report).data, status=status.HTTP_201_CREATED)
-
-
-class SpecValidationReportApplyView(APIView):
-    """보고서의 보완안을 원본을 보존한 새 기획서 버전으로 생성한다."""
-    permission_classes = [permissions.IsAuthenticated]
-
-    def post(self, request, report_id):
-        report = get_object_or_404(
-            SpecValidationReport.objects.select_related('spec__meeting', 'applied_spec'), pk=report_id
-        )
-        is_pm = request.user.is_staff or request.user.groups.filter(name='PM').exists()
-        if report.spec.meeting.created_by_id != request.user.id and not is_pm:
-            return Response({'detail': '작성자 또는 PM만 적용할 수 있습니다.'}, status=status.HTTP_403_FORBIDDEN)
-        revised = apply_spec_validation(report)
-        return Response({
-            'message': '보완사항을 적용한 새 기획서 버전을 생성했습니다.',
-            'spec': SpecDocumentSerializer(revised).data,
-        })
 
 
 class SpecDocumentSubmitReviewView(APIView):
