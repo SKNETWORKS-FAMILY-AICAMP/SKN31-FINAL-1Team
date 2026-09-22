@@ -1,6 +1,7 @@
 import { useMemo, useRef, useState } from "react";
 import DOMPurify from "isomorphic-dompurify";
 import type { ProposalDoc } from "@/lib/documentTemplates";
+import { stripPmReviewNotes } from "@/lib/htmlToPlainText";
 import { EVIDENCE_GROUP_PALETTE } from "./EvidencePanel";
 
 // 섹션별 근거자료 — 각 섹션(1~7번) 바로 아래에 개별로 붙는다(사용자 요청, 문서 맨 아래에
@@ -76,6 +77,7 @@ function normalizeLegacyPlainText(value: string): string {
   flush();
   return blocks.join("");
 }
+
 
 // 2026-09-16: "직접 수정" 모드가 raw HTML을 그대로 담은 textarea라 <p>/<strong>
 // 태그가 글자 그대로 보이는 문제(사용자 보고) — 게시판 글쓰기처럼 툴바(굵게/목록)로
@@ -163,7 +165,7 @@ function RichText({ html }: { html: string }) {
   return (
     <div
       className="leading-relaxed [&_p]:mb-2 [&_p:last-child]:mb-0 [&_strong]:font-bold [&_ul]:list-disc [&_ul]:pl-5 [&_li]:mb-1"
-      dangerouslySetInnerHTML={{ __html: sanitizeRestrictedHtml(normalizeLegacyPlainText(html)) }}
+      dangerouslySetInnerHTML={{ __html: stripPmReviewNotes(sanitizeRestrictedHtml(normalizeLegacyPlainText(html))) }}
     />
   );
 }
@@ -209,7 +211,7 @@ function ColoredFeatureList({ html, items, active }: {
   // 눌러보기 전에는 다른 섹션과 똑같이 색 없는 기본 형태를 유지한다.
   active: boolean;
 }) {
-  const sanitized = sanitizeRestrictedHtml(normalizeLegacyPlainText(html));
+  const sanitized = stripPmReviewNotes(sanitizeRestrictedHtml(normalizeLegacyPlainText(html)));
   const groups = useMemo(
     () => (active && items && items.length > 0 ? splitFeatureGroups(sanitized) : null),
     [sanitized, items, active],

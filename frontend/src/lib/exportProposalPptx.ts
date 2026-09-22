@@ -1,5 +1,5 @@
 import type { ProposalDoc } from "@/lib/documentTemplates";
-import { htmlToPlainText } from "@/lib/htmlToPlainText";
+import { htmlToPlainText, stripPmReviewNotes } from "@/lib/htmlToPlainText";
 
 // FR-05-009: 기획서는 PPTX 형식으로 다운로드 가능해야 함
 // ProposalDoc은 documentTemplates.ts에 정의된 단일 기획서 스키마이므로, AI가 채운 내용이든
@@ -25,7 +25,7 @@ export async function exportProposalPptx(doc: ProposalDoc, title: string) {
   const addSectionSlide = (heading: string, bodyText: string) => {
     const slide = pptx.addSlide();
     slide.addText(heading, { x: 0.5, y: 0.4, w: 9, h: 0.6, fontSize: 24, bold: true, color: ACCENT });
-    slide.addText(htmlToPlainText(bodyText) || "-", { x: 0.5, y: 1.2, w: 9, h: 4, fontSize: 14, color: TITLE_COLOR, valign: "top" });
+    slide.addText(htmlToPlainText(stripPmReviewNotes(bodyText)) || "-", { x: 0.5, y: 1.2, w: 9, h: 4, fontSize: 14, color: TITLE_COLOR, valign: "top" });
     return slide;
   };
 

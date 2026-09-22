@@ -187,4 +187,61 @@ describe("ProposalTemplate (read mode)", () => {
     expect(screen.getByText("예약 알림")).toBeInTheDocument();
     expect(document.querySelector("div.rounded-lg")).toBeNull();
   });
+
+  it("hides the PM 확인 사항 block from a plain section in read mode", () => {
+    render(
+      <ProposalTemplate
+        doc={{
+          ...baseDoc,
+          techStackConstraints:
+            "<p>React와 Node.js를 사용한다.</p><p><strong>PM 확인 사항</strong></p><ul><li>인증 방식을 확정해 주세요.</li></ul>",
+        }}
+        title="테스트 기획서"
+        dateLabel="2026. 9. 7."
+      />
+    );
+
+    expect(screen.getByText("React와 Node.js를 사용한다.")).toBeInTheDocument();
+    expect(screen.queryByText("PM 확인 사항")).not.toBeInTheDocument();
+    expect(screen.queryByText("인증 방식을 확정해 주세요.")).not.toBeInTheDocument();
+  });
+
+  it("hides the PM 확인 사항 block from the colored feature list too", () => {
+    render(
+      <ProposalTemplate
+        doc={{
+          ...baseDoc,
+          features:
+            "<p><strong>예약 알림</strong></p><p>전날 알림을 보낸다.</p><p><strong>PM 확인 사항</strong></p><ul><li>알림 시각을 확정해 주세요.</li></ul>",
+        }}
+        title="테스트 기획서"
+        dateLabel="2026. 9. 7."
+        evidenceItems={{ features: { quotes: [], items: [{ title: "예약 알림", quotes: ["예약 전날에도 알려주세요."] }] } }}
+        activeEvidenceKey="features"
+      />
+    );
+
+    expect(screen.getByText("예약 알림")).toBeInTheDocument();
+    expect(screen.queryByText("PM 확인 사항")).not.toBeInTheDocument();
+    expect(screen.queryByText("알림 시각을 확정해 주세요.")).not.toBeInTheDocument();
+  });
+
+  it("still shows the PM 확인 사항 block while directly editing (직접 수정 모드)", () => {
+    render(
+      <ProposalTemplate
+        doc={{
+          ...baseDoc,
+          techStackConstraints:
+            "<p>React와 Node.js를 사용한다.</p><p><strong>PM 확인 사항</strong></p><ul><li>인증 방식을 확정해 주세요.</li></ul>",
+        }}
+        title="테스트 기획서"
+        dateLabel="2026. 9. 7."
+        editable
+        onChange={vi.fn()}
+      />
+    );
+
+    expect(screen.getByText("PM 확인 사항")).toBeInTheDocument();
+    expect(screen.getByText("인증 방식을 확정해 주세요.")).toBeInTheDocument();
+  });
 });
