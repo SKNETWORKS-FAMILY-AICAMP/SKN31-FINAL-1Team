@@ -245,7 +245,10 @@ export function NewDocumentModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
+    // 2026-09-22 (사용자 리포트): 우측 근거 패널(EvidencePanel, z-[120])이 열려있는
+    // 상태에서 "새 회의록 / 문서"를 열면 이 모달이 z-50이라 패널 뒤/위에 어색하게
+    // 겹쳐 보였다 — 이 모달은 항상 최상단이어야 하므로 그보다 높은 z-index를 준다.
+    <div className="fixed inset-0 z-[130] flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
       <div className="bg-background rounded-2xl shadow-2xl w-full max-w-3xl border border-border flex flex-col max-h-[95vh]">
         <div className="flex justify-between items-center p-5 border-b border-border shrink-0">
           <div>
