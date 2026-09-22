@@ -12,7 +12,8 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { NewDocumentModal } from "@/components/projects/NewDocumentModal";
-import { ProposalTemplate, type ProposalEvidence } from "@/components/documents/ProposalTemplate";
+import { ProposalTemplate, type ProposalEvidence, type ProposalEvidenceEntries, type ProposalEvidenceItem } from "@/components/documents/ProposalTemplate";
+import { EvidencePanel } from "@/components/documents/EvidencePanel";
 import { exportProposalPptx } from "@/lib/exportProposalPptx";
 import { exportReqSpecExcel } from "@/lib/exportReqSpecExcel";
 import { exportReqSpecPptx } from "@/lib/exportReqSpecPptx";
@@ -29,6 +30,12 @@ import {
   PIPELINE_STEPS, PIPELINE_TAB_LABEL,
   type BareStatus, type PipelineTab,
 } from "@/lib/documentPipeline";
+
+// 2026-09-18: plan_review(AI 품질 검증·자동 보완)가 기획서 생성 직후 자동으로
+// 실행되면서, 방금 생성된 기획서 내용을 검증 모델의 revised_document로 바로
+// 덮어쓰는 문제가 있어 잠시 꺼둔다. false인 동안은 기획서 생성만 완료되고
+// 검증·자동 적용 단계는 건너뛴다.
+const AUTO_VALIDATE_SPEC_ENABLED = false;
 
 // ── Django 응답 shape ──────────────────────────────────────────
 type SpecStatusCode = "PROPOSAL_DRAFT" | "PROPOSAL_PENDING_REVIEW" | "PROPOSAL_APPROVED" | "PROPOSAL_REJECTED";
@@ -47,6 +54,7 @@ type SpecDto = {
   tech_stack: string | null;
   final_decisions: string | null;
   evidence_data: string | null;
+  evidence_items: string | null;
   period_start: string | null;
   period_end: string | null;
   status_code: string | null;
@@ -698,7 +706,7 @@ export default function DocumentsPage() {
         // SUCCESS
         await refetchNote(note.id);
         const createdSpec = job.result?.created_spec;
-        if (createdSpec) {
+        if (createdSpec && AUTO_VALIDATE_SPEC_ENABLED) {
           setSpecGenStage("회의록 대비 품질 검증 중…");
           try {
             const report = await apiFetch<SpecValidationReportDto>(`/api/meetings/specs/${createdSpec.id}/validate/`, { method: "POST" });
@@ -1867,9 +1875,10 @@ function StageTracker({ stages, current }: { stages: string[]; current: number }
   );
 }
 
-// 정확한 총 소요시간을 알 방법이 없어(순차 LLM 호출 여러 개), "지금까지 걸린
-// 시간이 전체 진행률의 몇 %인지"로 총 예상시간을 역산해 남은 시간을 추정한다 —
-// 대략적인 값이라는 걸 명확히 하려고 "약"을 붙인다.
+// 2026-09-22 (사용자 요청): "남은 시간"은 순차 LLM 호출 여러 개의 총 소요시간을
+// 정확히 알 방법이 없어 진행률로 역산한 추정치일 뿐이라 오차가 커서(사용자 실측
+// 사례: 경과 1:28인데 남은 시간 13:12로 표시) 신뢰도가 낮다는 지적 — 아예 없애고
+// 경과 시간과 진행률만 보여준다.
 function ProgressTimeline({
   stages, stage, pctFn, startedAt,
 }: {
@@ -1881,8 +1890,6 @@ function ProgressTimeline({
   const current = currentStageIndex(stages, stage);
   const elapsedSec = useElapsedSeconds(startedAt);
   const pct = pctFn(stage, elapsedSec);
-  const estimatedTotalSec = pct > 5 ? elapsedSec / (pct / 100) : null;
-  const remainingSec = estimatedTotalSec != null ? Math.max(0, estimatedTotalSec - elapsedSec) : null;
 
   return (
     <div className="flex flex-col gap-1.5 w-80 shrink-0">
@@ -1891,12 +1898,6 @@ function ProgressTimeline({
         <span className="font-bold text-cyan-500">{pct}%</span>
         <span>·</span>
         <span>경과 {formatDuration(elapsedSec)}</span>
-        {remainingSec != null && (
-          <>
-            <span>·</span>
-            <span>남은 시간 약 {formatDuration(remainingSec)}</span>
-          </>
-        )}
       </div>
     </div>
   );
@@ -2032,6 +2033,12 @@ function NoteDetail({
   const [editDraft, setEditDraft] = useState<ProposalDoc | null>(null);
   useEffect(() => { setEditMode(false); setEditDraft(null); }, [note.id]);
   const editSaving = busy === busyKey("save-spec");
+  const [evidenceTarget, setEvidenceTarget] = useState<{ noteId: number; sectionKey: keyof ProposalEvidence; quotes: string[]; items?: ProposalEvidenceItem[] } | null>(null);
+  const [evidencePanelWidth, setEvidencePanelWidth] = useState(560);
+  const evidencePanelOpen = evidenceTarget?.noteId === note.id;
+  const showEvidence = (sectionKey: keyof ProposalEvidence, quotes: string[], items?: ProposalEvidenceItem[]) => {
+    setEvidenceTarget({ noteId: note.id, sectionKey, quotes, items });
+  };
 
   const [periodDraft, setPeriodDraft] = useState({ start: spec?.period_start ?? "", end: spec?.period_end ?? "" });
   useEffect(() => {
@@ -2071,7 +2078,10 @@ function NoteDetail({
   useEffect(() => { setProposalRefOpen(true); }, [note.id]);
 
   return (
-    <div className="space-y-5">
+    <div
+      className={cn("space-y-5 transition-[padding] duration-300", evidencePanelOpen && "xl:pr-[var(--evidence-panel-width)]")}
+      style={{ "--evidence-panel-width": `${evidencePanelWidth}px` } as React.CSSProperties}
+    >
       <div className="flex items-center justify-between">
         <div>
           {/* 이 헤더는 note.title(회의록 제목) 바로 위라서 항상 회의록 번호로 고정한다 —
@@ -2180,14 +2190,16 @@ function NoteDetail({
       </p>
       <div className="border border-border rounded-xl overflow-hidden bg-black/10 dark:bg-black/30 p-4 flex flex-col items-center gap-3">
         {parsedContent ? (
-          <div className="w-full max-w-[840px] max-h-[1190px] overflow-y-auto bg-white dark:bg-white">
+          <div className="doc-scroll w-full max-w-[840px] max-h-[1190px] overflow-y-auto bg-white dark:bg-white">
             <div id="print-area">
               <ProposalTemplate
                 doc={parsedContent}
                 title={note.title} dateLabel={dateLabel}
                 editable={editMode} onChange={setEditDraft}
                 periodEditable={periodEditable} onPeriodChange={handlePeriodChange}
-                evidence={parseProposalEvidence(spec?.evidence_data ?? null)}
+                evidenceItems={parseEvidenceItems(spec?.evidence_items ?? null)}
+                activeEvidenceKey={evidencePanelOpen ? evidenceTarget.sectionKey : undefined}
+                onViewEvidence={showEvidence}
               />
             </div>
           </div>
@@ -2197,6 +2209,16 @@ function NoteDetail({
           </div>
         )}
       </div>
+
+      <EvidencePanel
+        open={evidencePanelOpen}
+        onClose={() => setEvidenceTarget(null)}
+        fullText={note.content ?? ""}
+        targetQuotes={evidencePanelOpen ? evidenceTarget.quotes : []}
+        targetGroups={evidencePanelOpen ? evidenceTarget.items : undefined}
+        width={evidencePanelWidth}
+        onWidthChange={setEvidencePanelWidth}
+      />
 
       <div className="flex flex-wrap justify-end items-center gap-3 pt-2">
         {spec && (
@@ -3018,9 +3040,9 @@ function CollapsibleSection({
 }
 
 // SpecDocument.evidence_data(JSON 문자열)를 ProposalTemplate의 섹션별 근거 prop 형태로
-// 정규화한다. 백엔드가 어느 명명 규칙으로 저장하든(스네이크케이스 원본 필드명이든, 프론트와
-// 동일한 카멜케이스든) 받아들이도록 두 가지 키 형태를 모두 매핑한다 — 포맷이 확정되면
-// 필요 없는 쪽은 정리해도 된다.
+// 원문 보기 패널이 사용할 섹션별 인용문을 정규화한다. 백엔드가 어느 명명 규칙으로
+// 저장하든(스네이크케이스 원본 필드명이든, 프론트와 동일한 카멜케이스든) 받아들이도록
+// 두 가지 키 형태를 모두 매핑한다 — 포맷이 확정되면 필요 없는 쪽은 정리해도 된다.
 const EVIDENCE_KEY_ALIASES: Record<string, keyof ProposalEvidence> = {
   overview: "projectOverview", projectOverview: "projectOverview",
   problem_definition: "problemDefinition", problemDefinition: "problemDefinition",
@@ -3031,17 +3053,29 @@ const EVIDENCE_KEY_ALIASES: Record<string, keyof ProposalEvidence> = {
   final_decisions: "finalDecisions", finalDecisions: "finalDecisions",
 };
 
-function parseProposalEvidence(raw: string | null): ProposalEvidence {
+export function parseEvidenceItems(raw: string | null): ProposalEvidenceEntries {
   if (!raw || !raw.trim()) return {};
   try {
     const parsed = JSON.parse(raw);
     if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
-    const result: ProposalEvidence = {};
+    const result: ProposalEvidenceEntries = {};
     for (const [key, value] of Object.entries(parsed as Record<string, unknown>)) {
       const mappedKey = EVIDENCE_KEY_ALIASES[key];
-      if (mappedKey && value != null && String(value).trim()) {
-        result[mappedKey] = String(value);
-      }
+      if (!mappedKey || !value || typeof value !== "object" || Array.isArray(value)) continue;
+      const entry = value as Record<string, unknown>;
+      const quotes = Array.isArray(entry.quotes)
+        ? entry.quotes.filter((quote): quote is string => typeof quote === "string" && quote.trim().length > 0)
+        : [];
+      const items = Array.isArray(entry.items)
+        ? entry.items.flatMap((item): ProposalEvidenceItem[] => {
+            if (!item || typeof item !== "object" || Array.isArray(item)) return [];
+            const candidate = item as Record<string, unknown>;
+            if (typeof candidate.title !== "string" || !candidate.title.trim() || !Array.isArray(candidate.quotes)) return [];
+            const itemQuotes = candidate.quotes.filter((quote): quote is string => typeof quote === "string" && quote.trim().length > 0);
+            return itemQuotes.length > 0 ? [{ title: candidate.title.trim(), quotes: itemQuotes }] : [];
+          })
+        : undefined;
+      if (quotes.length > 0 || (items && items.length > 0)) result[mappedKey] = { quotes, items };
     }
     return result;
   } catch {

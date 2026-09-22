@@ -104,7 +104,7 @@ def build_reason_batch_prompt(items: List[Dict[str, Any]]) -> str:
 작성하라. 결과는 unit_id로 원본과 매칭해야 한다 — 입력받은 unit_id 전부에 대해
 빠짐없이 반환하라.
 
-[업무 · 확정된 담당자 목록]
+[업무 확정된 담당자 목록]
 {json.dumps(payload, ensure_ascii=False, indent=2)}
 """
 

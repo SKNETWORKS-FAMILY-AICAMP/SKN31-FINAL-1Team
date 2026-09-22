@@ -1,0 +1,76 @@
+{
+  "version": 1,
+  "description": "문장 일치가 아니라 반드시 포함/제외할 의미 앵커를 평가한다.",
+  "cases": [
+    {
+      "case_id": "complete_retail_mvp",
+      "source_file": "meeting_note_1_complete.md",
+      "required": [
+        {"id": "six_mvp_features", "section": "features", "term_groups": [["바코드"], ["재고 임계치"], ["발주서"], ["거래처"], ["대시보드"], ["권한"]]},
+        {"id": "sales_forecast_replaced", "section": "decisions", "term_groups": [["매출 예측"], ["제외", "대체"], ["4주", "최근 4주"]]},
+        {"id": "pos_scope", "section": "decisions", "term_groups": [["A사"], ["MVP", "1차"], ["2차"]]},
+        {"id": "confirmed_users", "section": "users", "term_groups": [["소상공인", "사장"], ["직원"]]}
+      ],
+      "forbidden": [
+        {"id": "franchise_as_target", "section": "users", "term_groups": [["프랜차이즈"], ["확인된 사용자", "대상 사용자"]]},
+        {"id": "nextjs_adopted", "section": "decisions", "term_groups": [["Next.js를 채택한다", "Next.js를 사용한다"]]}
+      ]
+    },
+    {
+      "case_id": "vague_meeting",
+      "source_file": "meeting_note_2_vague.md",
+      "required": [
+        {"id": "basic_order_form", "section": "decisions", "term_groups": [["발주서"], ["기본 양식", "양식 1개"]]},
+        {"id": "dashboard_confirmed", "section": "decisions", "term_groups": [["재고 현황"], ["알림 목록"]]},
+        {"id": "notification_unresolved", "section": "decisions", "area": "all", "term_groups": [["알림"], ["보류", "확인", "미결정"]]}
+      ],
+      "forbidden": [
+        {"id": "purchase_price_permission_confirmed", "section": "decisions", "term_groups": [["매입가"], ["확정", "제외한다", "숨긴다"]]},
+        {"id": "push_channel_confirmed", "section": "decisions", "term_groups": [["앱 푸시"], ["사용한다", "확정"]]}
+      ]
+    },
+    {
+      "case_id": "scenario_flow",
+      "source_file": "meeting_note_4_scenario.md",
+      "required": [
+        {"id": "five_step_order", "section": "decisions", "term_groups": [["발주서"], ["5단계"]]},
+        {"id": "batch_receiving", "section": "features", "term_groups": [["입고"], ["연속", "여러 상품"], ["일괄 저장"]]},
+        {"id": "two_touch_notification", "section": "decisions", "term_groups": [["알림"], ["두 번", "2번", "2회"], ["발주"]]},
+        {"id": "login_unresolved", "section": "decisions", "area": "all", "term_groups": [["로그인 유지"], ["다음 회의", "확인", "미결정"]]}
+      ],
+      "forbidden": [
+        {"id": "onboarding_confirmed", "section": "features", "term_groups": [["온보딩"], ["제공", "구현"]]}
+      ]
+    },
+    {
+      "case_id": "unseen_domain",
+      "source_file": "meeting_note_5_unseen.md",
+      "required": [
+        {"id": "five_learning_features", "section": "features", "term_groups": [["과정 개설"], ["수강 신청"], ["승인"], ["이수"], ["진행 현황"]]},
+        {"id": "completion_rule", "section": "decisions", "term_groups": [["출석률 80", "80퍼센트"], ["과제 제출"]]},
+        {"id": "auth_scope", "section": "decisions", "term_groups": [["통합 인증 서버"], ["한 곳", "1곳"], ["2차"]]},
+        {"id": "external_instructor_excluded", "section": "decisions", "term_groups": [["외부 강사"], ["제외"]]}
+      ],
+      "forbidden": [
+        {"id": "engagement_score_feature", "section": "features", "term_groups": [["몰입도"], ["점수"]]},
+        {"id": "nuxt_adopted", "section": "decisions", "term_groups": [["Nuxt를 채택한다", "Nuxt를 사용한다"]]}
+      ]
+    },
+    {
+      "case_id": "musinsa_long",
+      "source_file": "meeting_musinsa_long.txt",
+      "required": [
+        {"id": "main_purpose", "section": "problem", "term_groups": [["트렌드"], ["수명 주기"], ["리세일", "리셀"]]},
+        {"id": "storage_split", "section": "decisions", "term_groups": [["S3", "오브젝트 스토리지"], ["RDS"], ["원본", "원문 데이터"], ["핵심", "서비스 데이터"]]},
+        {"id": "dictionary_tables", "section": "decisions", "term_groups": [["대표 용어"], ["동의어", "유사어"], ["테이블"], ["링크", "연결"]]},
+        {"id": "resale_priority", "section": "decisions", "term_groups": [["크림", "KREAM"], ["우선"], ["유즈드"], ["보완", "채운"]]}
+      ],
+      "forbidden": [
+        {"id": "subtitle_postprocess_confirmed", "section": "features", "term_groups": [["자막", "전사"], ["오타"], ["후처리", "교정"]]},
+        {"id": "top2_as_final_decision", "section": "decisions", "term_groups": [["Top2", "탑2", "상위 2"], ["확정", "부여한다"]]},
+        {"id": "snapshot_schema_decided", "section": "decisions", "term_groups": [["스냅샷"], ["단일 테이블", "하나의 테이블"], ["확정", "통합한다"]]},
+        {"id": "storage_as_feature", "section": "features", "term_groups": [["원본", "근거 문장"], ["저장", "보존", "적재"], ["RDS", "오브젝트 스토리지"]]}
+      ]
+    }
+  ]
+}

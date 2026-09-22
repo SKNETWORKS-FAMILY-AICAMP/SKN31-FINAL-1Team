@@ -64,10 +64,6 @@ langchain-core==1.6.0
 langchain-openai==1.6.0
 langchain-protocol==0.0.18
 langchain-text-splitters==1.1.2
-langgraph==1.2.11
-langgraph-checkpoint==4.2.0
-langgraph-prebuilt==1.1.0
-langgraph-sdk==0.4.3
 langsmith==0.11.1
 lxml==6.1.2
 markdown-it-py==4.2.0

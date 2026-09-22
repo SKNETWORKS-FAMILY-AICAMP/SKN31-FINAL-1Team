@@ -25,13 +25,17 @@ evidence 매칭 실패에는 두 가지 원인이 있습니다.
   "근거를 다시 찾아봐"라고 시키면 모델은 더 그럴듯한 인용을 만들어냅니다.
 """
 
+import difflib
 import re
 from dataclasses import dataclass, field
 
 # evidence를 가진 항목들이 들어 있는 경로.
 # project는 단일 객체라 별도 처리합니다.
 ARRAY_PATHS = [
+    "project.problem_items",
+    "project.goals",
     "users",
+    "user_signals",
     "requirements.functional",
     "requirements.non_functional",
     "requirements.data",
@@ -48,6 +52,36 @@ _PUNCT = r"[.,!?~·…\"'\u201c\u201d\u2018\u2019()\[\]{}:;\-]"
 
 VERIFIED = "verified"
 UNVERIFIED = "unverified"
+
+# 2차 매칭(유사도) 통과 기준. normalize()로 공백·문장부호를 지운 뒤
+# 비교합니다. 2026-09-16: 실측(실제 회의록 재실행)에서 노드 1이 원문
+# "깔끔하게"를 근거 quote에 "깔끗하게"로 한 글자 잘못 옮겨 적어, 내용은
+# 맞게 뽑았는데도 이 결정 하나가 unverified로 빠지고 하류(plan_draft)에서
+# 조용히 사라지는 사례를 확인했습니다. 이런 한두 글자 오차(경우 B)까지
+# 구제하되, 완전히 다른 문장(경우 A, 진짜 할루시네이션)은 걸러야 하므로
+# 임계값을 보수적으로 높게 잡았습니다. 오탐(지어낸 내용이 통과)이
+# 보이면 올리고, 미탐(멀쩡한 인용이 계속 unverified)이 보이면 내리세요.
+_SIMILARITY_THRESHOLD = 0.92
+
+# 2026-09-16: 유사도만으로는 부정어 하나 차이를 못 잡습니다. 실측(Codex
+# 재현)에서 "외부 서버에 전송하지 않는다"의 "하지 않"만 지운 "전송한다"가
+# 문장이 길수록(70자 이상) 편집거리 비중이 작아져 ratio 0.96까지 나와
+# verified로 통과했습니다 — 뜻이 반대인데 근거로 인정되는 심각한 오탐입니다.
+#
+# 완벽한 해법은 의미 이해(LLM 재확인)뿐인데, 그건 이 모듈이 절대 LLM을
+# 부르지 않는다는 원칙(모듈 docstring 참고)에 어긋납니다. 대신 한국어
+# 부정 표현 중 다른 단어에 잘 안 섞이는 것들(있다/없다의 "없", "-지
+# 않다"의 "않", "못하다"의 "못")의 등장 횟수가 quote와 source 구간에서
+# 다르면, ratio가 아무리 높아도 무조건 거부합니다. "안"과 "아니"는
+# "제안", "방안"처럼 무관한 단어에 흔히 섞여 있어 오탐이 너무 많을
+# 것으로 보여 제외했습니다 — 이 셋만으로는 모든 부정 표현을 못 잡지만
+# (예: "안 한다"), 실측된 사례는 잡습니다.
+_NEGATION_MARKERS = ("않", "없", "못")
+
+
+def _negation_signature(text: str) -> tuple[int, ...]:
+    """부정 표현 등장 횟수를 센 서명. 다르면 의미가 반대일 가능성이 큽니다."""
+    return tuple(text.count(marker) for marker in _NEGATION_MARKERS)
 
 
 def normalize(text: str) -> str:
@@ -88,6 +122,65 @@ class EvidenceReport:
         return self.verified_count / self.checked
 
 
+def _fuzzy_verified(quote: str, source: str) -> bool:
+    """
+    quote가 source 어딘가와 근사 일치하는지 봅니다. 둘 다 normalize()를
+    거친 문자열이어야 합니다.
+
+    source 전체와 quote를 통째로 비교하면(O(n*m)) 회의록 길이에서 느려질
+    뿐 아니라, source 여기저기 흩어진 글자들이 우연히 겹쳐 실제로는
+    존재하지 않는 내용을 통과시킬 위험도 있습니다. 대신 먼저 최장 공통
+    부분열로 source에서 quote와 제일 겹치는 위치를 찾고, 그 주변
+    (quote 길이만큼)만 잘라내 그 구간과만 유사도를 비교합니다 — 실제로
+    한 곳에 뭉쳐 있는 인용만 통과시키기 위해서입니다.
+    """
+    if not quote:
+        return False
+
+    matcher = difflib.SequenceMatcher(None, source, quote, autojunk=False)
+    match = matcher.find_longest_match(0, len(source), 0, len(quote))
+
+    if match.size == 0:
+        return False
+
+    window_start = max(0, match.a - match.b)
+    window_end = min(len(source), window_start + len(quote) + 10)
+    window = source[window_start:window_end]
+
+    if _negation_signature(window) != _negation_signature(quote):
+        return False
+
+    ratio = difflib.SequenceMatcher(None, window, quote, autojunk=False).ratio()
+    return ratio >= _SIMILARITY_THRESHOLD
+
+
+def is_quote_verified(quote: str, source_text: str) -> bool:
+    """
+    quote가 source_text(원문, 정규화 전) 안에서 확인되는지 반환합니다.
+
+    verify_and_mark()의 검사 로직(정규화 후 부분 문자열 매칭 → 실패하면
+    유사도 매칭)을 그대로 재사용할 수 있게 뽑아냈습니다. 노드①의 구조화
+    항목 전체를 훑는 verify_and_mark()와 달리, 인용문 하나만 원문과
+    대조하면 되는 호출부(예: plan_draft.fact_check — 완성된 기획서
+    문장이 회의록과 모순되는지 검토할 때, LLM이 댄 인용을 그대로
+    믿지 않고 원문에 실제 있는지 다시 확인)를 위한 것입니다.
+
+    같은 검증 로직을 호출부마다 다시 구현하면 기준이 갈릴 위험이
+    있습니다(_evidence_key 관련 주석 — plan_draft/list_builder.py —
+    참고). 새로 근거를 검증해야 하는 곳은 이 함수를 재사용하세요.
+    """
+    if not quote or not quote.strip():
+        return False
+
+    source = normalize(source_text)
+    normalized_quote = normalize(quote)
+
+    if normalized_quote and normalized_quote in source:
+        return True
+
+    return _fuzzy_verified(normalized_quote, source)
+
+
 def _get(data: dict, path: str):
     """'requirements.functional' 같은 점 경로로 값을 꺼냅니다."""
     cur = data
@@ -106,7 +199,6 @@ def verify_and_mark(data: dict, meeting_raw_text: str) -> EvidenceReport:
     반환하는 리포트는 통과율 집계와 실패 원인 분석에 씁니다.
     """
     report = EvidenceReport()
-    source = normalize(meeting_raw_text)
 
     def check(
         item: dict, path: str, content: str,
@@ -115,18 +207,9 @@ def verify_and_mark(data: dict, meeting_raw_text: str) -> EvidenceReport:
         quote = (item.get(evidence_key) or {}).get("quote", "")
         report.checked += 1
 
-        # 1차: 정규화 후 부분 문자열 매칭
-        if quote and normalize(quote) in source:
+        if is_quote_verified(quote, meeting_raw_text):
             item[status_key] = VERIFIED
             return
-
-        # 2차: 유사도 매칭 (미도입)
-        # 어미·조사가 바뀐 인용(경우 B)을 구제하기 위한 안전장치입니다.
-        # 알고리즘과 임계값 모두 미확정이므로 일단 끕니다.
-        # 1차만으로 몇 %가 걸러지는지 실측한 뒤 도입 여부를 정하세요.
-        # if similarity(quote, meeting_raw_text) >= THRESHOLD:
-        #     item[status_key] = VERIFIED
-        #     return
 
         item[status_key] = UNVERIFIED
         report.unverified.append(
@@ -152,6 +235,29 @@ def verify_and_mark(data: dict, meeting_raw_text: str) -> EvidenceReport:
             evidence_key="problem_evidence",
             status_key="problem_evidence_status",
         )
+
+        # 2026-09-17: background_evidence_extra는 quote가 여러 개 담긴
+        # 리스트라 check()(단일 quote 전용)를 그대로 못 씁니다. 항목마다
+        # 따로 검증하고 상태를 병렬 리스트(background_evidence_extra_status)에
+        # 담습니다 — background_evidence(단일)의 상태 저장 방식과는
+        # 다르지만, 리스트 필드이므로 리스트로 상태를 매깁니다.
+        extra_quotes = project.get("background_evidence_extra") or []
+        extra_statuses: list[str] = []
+        for idx, extra in enumerate(extra_quotes):
+            quote = (extra or {}).get("quote", "")
+            report.checked += 1
+            if is_quote_verified(quote, meeting_raw_text):
+                extra_statuses.append(VERIFIED)
+                continue
+            extra_statuses.append(UNVERIFIED)
+            report.unverified.append(
+                UnverifiedItem(
+                    path=f"project.background_evidence_extra[{idx}]",
+                    content=project.get("background", ""),
+                    quote=quote,
+                )
+            )
+        project["background_evidence_extra_status"] = extra_statuses
 
     # 배열 영역
     for base in ARRAY_PATHS:
