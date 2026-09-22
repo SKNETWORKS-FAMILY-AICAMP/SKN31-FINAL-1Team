@@ -68,8 +68,14 @@ constraints: |
     어떤 API/라이브러리 연동이 필요한지, 실패·예외 상황엔 어떤 대체 동작이
     필요한지, 어떤 데이터를 어디로 전달·저장해야 하는지.
   - 예시:
-    나쁜 예: "사용자는 스마트폰 카메라로 상품 바코드를 인식하여 입출고를
+    나쁜 예 1: "사용자는 스마트폰 카메라로 상품 바코드를 인식하여 입출고를
              등록할 수 있어야 한다." (기능 재서술 — 금지)
+    나쁜 예 2: "상품 바코드를 인식하여 입출고를 등록해야 한다. OOO 라이브러리를
+             사용한다." (원문 문장의 어미만 "-한다"→"-해야 한다"로 바꾸고
+             기술명 한 줄만 덧붙인 것 — 이것도 재서술이다. 문장 앞부분이
+             원문과 거의 같으면, 뒤에 새 정보를 추가했어도 통과시키지 마라.
+             무엇을 입력받아 어떻게 처리해 어디로 전달하는지 자체를
+             새로 서술해야 한다.)
     좋은 예: "카메라 API를 통해 실시간으로 바코드를 인식하고, 인식된 코드값을
              입출고 등록 로직에 전달해야 한다. 인식 실패 대응 방식은
              후속 정의가 필요하다." (구현에 필요한 기술 동작 — 이렇게)
@@ -258,3 +264,139 @@ few_shot_examples:
           priority: "High"
           source: "baseline_default"
           review_status: "검토대기"
+
+  - description: >
+      기능요구사항 — 분석·산출형 기능의 description 작성 예시. "지수를
+      계산할 수 있어야 한다"처럼 기능명을 그대로 재서술하지 않고, 입력
+      데이터 범위·산출 로직의 역할·후속 로직 전달·데이터 부족 시 예외까지
+      구체화한다. 이런 산출·집계형 기능일수록 기획서 문구를 그대로 옮기기
+      쉬우므로 이 패턴을 특히 주의한다.
+    input:
+      project_id: "PJT-EXAMPLE"
+      title: "소상공인 재고관리 서비스"
+      goal: "소상공인이 재고를 쉽게 등록하고 발주 시점을 놓치지 않도록 돕는다"
+      overview: ""
+      background: ""
+      target_users: ""
+      key_features: "재고 소진 예측 지수 산출. 최근 4주 판매량과 현재 재고를 기반으로 상품별 소진 예측 지수를 계산해 발주 우선순위에 활용한다."
+      tech_stack: ""
+      final_decisions: ""
+      problem_definition: ""
+      user_scenarios: ""
+      requirements:
+        - req_id: "REQ-04"
+          content: "상품별 재고 소진 예측 지수를 계산할 수 있어야 한다"
+    output:
+      requirements:
+        - id: "FR-04-001"
+          category_1: "기능"
+          category_2: "발주 관리"
+          title: "재고 소진 예측 지수 산출"
+          description: "최근 4주간 일별 판매량과 현재 재고 수량을 입력으로 받아 상품별 소진 예측 지수를 배치로 계산하고, 그 결과를 발주 우선순위 산정 로직에 전달해야 한다. 판매 이력이 4주 미만인 신상품의 처리 방식은 후속 정의가 필요하다."
+          related_feature: "재고 소진 예측 지수 산출"
+          input_output: "입력: 상품별 최근 4주 일별 판매량, 현재 재고 수량. 처리: 소진 예측 지수 배치 계산. 출력: 상품별 예측 지수 값을 발주 우선순위 로직에 전달"
+          acceptance_criteria: "4주 이상 판매 이력이 있는 상품에 대해 지수가 산출되고 발주 우선순위 로직이 그 값을 참조하는지로 확인한다. 산출 주기와 지수 산식의 세부 기준은 후속 정의 필요"
+          note: "기획서 key_features 근거. 신상품(판매 이력 4주 미만) 처리 방식은 미정 — 후속 확정 필요"
+          type: "기능"
+          priority: "High"
+          source: "requirement_text"
+          review_status: "검토완료"
+
+  - description: >
+      기능요구사항 — 대시보드/집계형 기능. 화면 설명을 그대로 베끼지 않고,
+      무엇을 어떤 기준으로 집계해 보여주는지와 갱신 주기처럼 원문에 없는
+      부분을 후속 정의로 구분하는 걸 보여주는 예시.
+    input:
+      project_id: "PJT-EXAMPLE"
+      title: "소상공인 재고관리 서비스"
+      goal: "소상공인이 재고를 쉽게 등록하고 발주 시점을 놓치지 않도록 돕는다"
+      overview: ""
+      background: ""
+      target_users: ""
+      key_features: "발주 현황 대시보드. 매장별 발주 진행 상태와 재고 부족 상품을 한눈에 볼 수 있는 대시보드를 제공한다."
+      tech_stack: ""
+      final_decisions: ""
+      problem_definition: ""
+      user_scenarios: ""
+      requirements:
+        - req_id: "REQ-05"
+          content: "매장별 발주 진행 상태와 재고 부족 상품을 대시보드로 볼 수 있어야 한다"
+    output:
+      requirements:
+        - id: "FR-05-001"
+          category_1: "기능"
+          category_2: "발주 관리"
+          title: "발주 현황 대시보드"
+          description: "발주 상태(대기/승인/입고완료)별 건수와 재고 부족 임계치 이하 상품 목록을 매장 단위로 집계해 표시해야 한다. 데이터 갱신 주기(실시간/배치)는 후속 정의가 필요하다."
+          related_feature: "발주 현황 대시보드"
+          input_output: "입력: 매장별 발주 상태 데이터, 상품별 재고 수량과 부족 임계치. 처리: 상태별 건수 집계, 임계치 이하 상품 필터링. 출력: 매장 단위 집계 화면"
+          acceptance_criteria: "매장을 선택하면 발주 상태별 건수와 재고 부족 상품 목록이 표시되는지로 확인한다. 갱신 주기 기준은 후속 정의 필요"
+          note: "기획서 key_features 근거. 실시간/배치 갱신 여부는 원문에 없어 미정 — 후속 확정 필요"
+          type: "기능"
+          priority: "Medium"
+          source: "requirement_text"
+          review_status: "검토완료"
+
+  - description: >
+      기능요구사항 — [기능요구사항(FR) 분해 규칙]의 broad_scope_judgement
+      적용 예시. 명시적 CRUD/연동/역할 언급은 없지만, 기능명 하나가 서로
+      다른 처리 단계(알림/문서생성/재고반영)를 아우르고 있어 독립적으로
+      구현·검증 가능한 단위로 분리한다. 분리 근거는 원문 내용에서 찾아
+      note에 구체적으로 남긴다 — 원문에 없는 세부 동작을 지어내
+      분리 사유로 삼지 않는다.
+    input:
+      project_id: "PJT-EXAMPLE"
+      title: "소상공인 재고관리 서비스"
+      goal: "소상공인이 재고를 쉽게 등록하고 발주 시점을 놓치지 않도록 돕는다"
+      overview: ""
+      background: ""
+      target_users: ""
+      key_features: "재고 운영 자동화. 발주 시점 알림부터 발주서 자동 생성, 입고 후 재고 반영까지 하나의 흐름으로 자동화한다."
+      tech_stack: ""
+      final_decisions: ""
+      problem_definition: ""
+      user_scenarios: ""
+      requirements:
+        - req_id: "REQ-06"
+          content: "발주 시점 알림, 발주서 자동 생성, 입고 후 재고 반영을 자동화된 흐름으로 처리할 수 있어야 한다"
+    output:
+      requirements:
+        - id: "FR-06-001"
+          category_1: "기능"
+          category_2: "발주 관리"
+          title: "발주 시점 알림"
+          description: "재고가 발주 기준선 이하로 떨어진 상품을 감지해 담당자에게 알림을 전달해야 한다. 알림 채널과 기준선 산정 방식은 후속 정의가 필요하다."
+          related_feature: "재고 운영 자동화"
+          input_output: "입력: 상품별 재고 수량, 발주 기준선. 처리: 기준선 이하 감지. 출력: 담당자 알림"
+          acceptance_criteria: "재고가 기준선 이하로 떨어진 상품에 대해 알림이 발생하는지로 확인한다"
+          note: "broad_scope_judgement: '재고 운영 자동화' 하나의 기능명 아래 알림·발주서생성·재고반영이 서로 다른 처리 단계로 원문에 명시되어 있어 구현 단위별로 분리함"
+          type: "기능"
+          priority: "High"
+          source: "requirement_text"
+          review_status: "검토완료"
+        - id: "FR-06-002"
+          category_1: "기능"
+          category_2: "발주 관리"
+          title: "발주서 자동 생성"
+          description: "발주 알림이 발생한 상품에 대해 발주 수량과 거래처 정보를 채운 발주서를 자동으로 생성해야 한다. 발주 수량 산정 로직은 후속 정의가 필요하다."
+          related_feature: "재고 운영 자동화"
+          input_output: "입력: 발주 알림이 발생한 상품, 거래처 정보. 처리: 발주 수량 산정 및 발주서 생성. 출력: 발주서 문서"
+          acceptance_criteria: "발주 알림 발생 시 상품·거래처 정보가 채워진 발주서가 생성되는지로 확인한다"
+          note: "broad_scope_judgement: 위 FR-06-001과 같은 원문 근거로 분리 — 알림과 문서 생성은 서로 다른 산출물을 가진 별개 구현 단위"
+          type: "기능"
+          priority: "High"
+          source: "requirement_text"
+          review_status: "검토완료"
+        - id: "FR-06-003"
+          category_1: "기능"
+          category_2: "발주 관리"
+          title: "입고 후 재고 반영"
+          description: "발주한 상품이 입고되면 입고 수량을 해당 상품의 재고 수량에 반영해야 한다. 입고 확인 방식(수기/스캔)은 후속 정의가 필요하다."
+          related_feature: "재고 운영 자동화"
+          input_output: "입력: 입고 확인 정보, 발주서. 처리: 입고 수량 재고 반영. 출력: 갱신된 재고 수량"
+          acceptance_criteria: "입고 확인 시 해당 상품의 재고 수량이 입고 수량만큼 증가하는지로 확인한다"
+          note: "broad_scope_judgement: 위 FR-06-001/002와 같은 원문 근거로 분리 — 재고 반영은 알림·문서생성과 독립적으로 검증 가능한 단위"
+          type: "기능"
+          priority: "High"
+          source: "requirement_text"
+          review_status: "검토완료"
