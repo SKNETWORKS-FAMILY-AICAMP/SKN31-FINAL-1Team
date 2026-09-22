@@ -177,7 +177,7 @@ def _apply_context_flag(text: str, item: dict) -> str:
 #
 # 위 _mark_if_unverified·_apply_context_flag는 본문 문장 뒤에 괄호로
 # 경고를 이어붙인다. 1~5번은 이미 본문을 깨끗하게 두고 섹션 하단
-# "PM 확인 사항"으로 모으도록 바꿨는데(context_writer.py, feature_renderer.py
+# "PM 확인 사항"으로 모으도록 바꿨는데(generator.py, feature_renderer.py
 # 참고), 6·7번은 code 조립 섹션이라 아직 옛 방식이 남아 있었다 — 실측
 # (무신사 회의록 웹 테스트)에서 6번 본문에 "(원문 확인 필요 — 근거보다
 # 과도하게 확정적으로 서술: ...)"가 그대로 섞여 나와 기획서가 완성된

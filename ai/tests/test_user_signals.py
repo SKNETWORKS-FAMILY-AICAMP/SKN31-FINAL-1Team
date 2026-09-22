@@ -5,7 +5,7 @@ from meeting_analysis.schemas import MeetingExtraction
 from meeting_analysis.validators.evidence import verify_and_mark
 from plan_draft import agent
 from plan_draft.list_builder import build_user_citation_sources, collect_core_goal_evidence
-from plan_draft.prompts import _build_generation_payload
+from plan_draft.legacy_prompts import _build_generation_payload
 from plan_draft.schemas import NarrativeSection, PlanSections, SECTION_SPEC
 
 

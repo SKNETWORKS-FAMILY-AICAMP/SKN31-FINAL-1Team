@@ -9,11 +9,11 @@ from plan_draft import list_builder
 from plan_draft.list_builder import (
     collect_feature_evidence,
 )
-from plan_draft.prompt_loader import (
+from plan_draft.load_prompts import (
     build_plan_system_prompt,
     load_plan_template,
 )
-from plan_draft.prompts import (
+from plan_draft.legacy_prompts import (
     _build_generation_payload,
 )
 from plan_draft.schemas import Feature, PlanSections

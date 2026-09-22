@@ -1,5 +1,11 @@
 """
-노드 2 기획서 생성 프롬프트 연결 모듈.
+노드 2 기획서 생성 프롬프트 연결 모듈 — 레거시.
+
+2026-09-22: 운영 기본 경로는 더 이상 이 모듈을 쓰지 않는다(기본 전략이
+parallel로 바뀌면서 generator.py의 프롬프트 함수가 실제 경로가 됐다). 이
+모듈은 회의록 원문 없이 이미 구조화된 데이터(project/users/requirements/
+decisions)가 있을 때만 쓰는 hybrid 전략, 그리고 그 데이터도 없는 완전
+비맥락 경로에서만 호출된다 — agent.py의 "hybrid"·"not contextual" 분기 참고.
 
 실제 프롬프트 규칙과 퓨샷 예시는 다음 YAML 파일에서 관리합니다.
 
@@ -10,7 +16,7 @@
     prompt_templates/plan_generation_fewshots.yaml
 
 YAML 읽기와 검증:
-    prompt_loader.py
+    load_prompts.py
 
 이 파일은 agent.py에서 사용하는 공개 이름을 유지하고,
 구조화 JSON을 실제 LLM 입력 메시지로 조립합니다.
@@ -19,7 +25,7 @@ YAML 읽기와 검증:
 import json
 
 from .list_builder import build_feature_citation_sources, build_user_citation_sources
-from .prompt_loader import (
+from .load_prompts import (
     build_plan_fewshot_messages,
     build_plan_system_prompt,
     build_regenerate_prompt,

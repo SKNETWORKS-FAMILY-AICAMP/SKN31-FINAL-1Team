@@ -89,7 +89,7 @@ from .eligibility import (
     assess_meeting,
 )
 from .fact_check import check_facts
-from .prompts import (
+from .extract_prompts import (
     build_decision_system_prompt,
     build_messages,
     build_system_prompt,

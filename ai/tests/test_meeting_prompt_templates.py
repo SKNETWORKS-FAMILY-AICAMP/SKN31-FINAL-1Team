@@ -8,13 +8,13 @@ import json
 
 import pytest
 
-from meeting_analysis.prompt_loader import (
+from meeting_analysis.load_prompts import (
     build_extraction_fewshot_messages,
     build_extraction_system_prompt,
     load_extraction_fewshots,
     load_extraction_template,
 )
-from meeting_analysis.prompts import (
+from meeting_analysis.extract_prompts import (
     build_decision_system_prompt,
     build_messages,
     build_system_prompt,
@@ -507,7 +507,7 @@ def test_extraction_template_constraint_categories_match_schema():
     Constraint.type은 "일정 / 기술 / 범위 / 인력 / 기타"인데 프롬프트
     categories에는 기술이 없어, 기술 성격의 제약이 나올 자리가 없었습니다.
     """
-    from meeting_analysis.prompt_loader import load_extraction_template
+    from meeting_analysis.load_prompts import load_extraction_template
 
     categories = load_extraction_template()["constraint_rules"]["categories"]
 

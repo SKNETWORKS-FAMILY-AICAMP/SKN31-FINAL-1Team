@@ -35,9 +35,9 @@ from shared.llm_client import build_chat_kwargs, get_client, traceable
 from shared.retry_config import MAX_RETRIES, MAX_TOKENS, MODEL, TEMPERATURE
 
 from . import list_builder
-from . import context_writer
+from . import generator
 from .feature_renderer import render_features
-from .prompts import (
+from .legacy_prompts import (
     REGENERATE_PROMPT,
     build_messages,
     build_regenerate_messages,
@@ -90,12 +90,12 @@ def _split_source_for_index(source: str, limit: int = FACT_INDEX_CHUNK_CHARS) ->
 def _build_planning_fact_index(source: str, proposal_id: str):
     chunks = _split_source_for_index(source)
     if not chunks:
-        return context_writer.PlanningFactIndex()
+        return generator.PlanningFactIndex()
     if len(chunks) == 1:
         indexes = [_call(
-            context_writer.fact_index_system_prompt(),
-            context_writer.fact_index_messages(chunks[0]),
-            context_writer.PlanningFactIndex,
+            generator.fact_index_system_prompt(),
+            generator.fact_index_messages(chunks[0]),
+            generator.PlanningFactIndex,
             context=f"run fact-index proposal_id={proposal_id}",
         )]
     else:
@@ -103,15 +103,15 @@ def _build_planning_fact_index(source: str, proposal_id: str):
             futures = [
                 executor.submit(
                     _call,
-                    context_writer.fact_index_system_prompt(),
-                    context_writer.fact_index_messages(chunk, no, len(chunks)),
-                    context_writer.PlanningFactIndex,
+                    generator.fact_index_system_prompt(),
+                    generator.fact_index_messages(chunk, no, len(chunks)),
+                    generator.PlanningFactIndex,
                     context=f"run fact-index {no}/{len(chunks)} proposal_id={proposal_id}",
                 )
                 for no, chunk in enumerate(chunks, start=1)
             ]
             indexes = [future.result() for future in futures]
-    return context_writer.merge_verified_fact_indexes(indexes, source)
+    return generator.merge_verified_fact_indexes(indexes, source)
 
 # 2026-09-16: 서술형 섹션(1·2·4번)의 원본이 완전히 비어 있는데도 LLM이
 # 다른 프로젝트 정보로 추정해 내용을 채운 경우 붙이는 표시입니다.
@@ -394,22 +394,22 @@ def run(
         with ThreadPoolExecutor(max_workers=2) as executor:
             content_future = executor.submit(
                 _call,
-                context_writer.content_plan_system_prompt(glossary_text),
-                context_writer.content_plan_messages(source),
-                context_writer.ContentPlanDraft,
+                generator.content_plan_system_prompt(glossary_text),
+                generator.content_plan_messages(source),
+                generator.ContentPlanDraft,
                 context=f"run content-plan proposal_id={proposal_id}",
             )
             technical_future = executor.submit(
                 _call,
-                context_writer.technical_decision_system_prompt(glossary_text),
-                context_writer.technical_decision_messages(source),
-                context_writer.TechnicalDecisionPlan,
+                generator.technical_decision_system_prompt(glossary_text),
+                generator.technical_decision_messages(source),
+                generator.TechnicalDecisionPlan,
                 context=f"run technical-decisions proposal_id={proposal_id}",
             )
             content_draft = content_future.result()
             technical_draft = technical_future.result()
         if on_fact_index:
-            on_fact_index(context_writer.PlanningFactIndex())
+            on_fact_index(generator.PlanningFactIndex())
         result = content_draft.context
         feature_draft = content_draft.features
     elif contextual and generation_strategy == "hybrid":
@@ -431,7 +431,7 @@ def run(
             context=f"run hybrid-plan proposal_id={proposal_id}",
         )
         if on_fact_index:
-            on_fact_index(context_writer.PlanningFactIndex())
+            on_fact_index(generator.PlanningFactIndex())
     elif whole_contextual:
         whole_draft = None
         if generation_strategy == "indexed":
@@ -441,7 +441,7 @@ def run(
             # 비교 실험용 경로입니다. 운영 기본값은 parallel이며 바뀌지 않습니다.
             # 단일 호출이 짧고 정돈된 회의록에서 충분한지 같은 평가 기준으로
             # 측정하기 위해 빈 탐색 지도와 전체 원문만 전달합니다.
-            fact_index = context_writer.PlanningFactIndex()
+            fact_index = generator.PlanningFactIndex()
         else:
             raise ValueError(f"지원하지 않는 기획서 생성 전략: {generation_strategy}")
         if on_fact_index:
@@ -449,17 +449,17 @@ def run(
         if whole_draft is None:
             _stage("전체 기획서 작성 중…")
             whole_draft = _call(
-                context_writer.whole_plan_system_prompt(glossary_text),
-                context_writer.whole_plan_messages(
+                generator.whole_plan_system_prompt(glossary_text),
+                generator.whole_plan_messages(
                     source,
                     fact_index,
                     include_full_source=len(source) <= FULL_SOURCE_GENERATION_CHARS,
                 ),
-                context_writer.WholePlanDraft,
+                generator.WholePlanDraft,
                 context=f"run whole-plan proposal_id={proposal_id}",
             )
         if generation_strategy == "indexed":
-            whole_draft = context_writer.filter_nonfinal_outputs(whole_draft, fact_index)
+            whole_draft = generator.filter_nonfinal_outputs(whole_draft, fact_index)
         result = whole_draft.context
         feature_draft = whole_draft.features
         technical_draft = whole_draft.technical
@@ -486,7 +486,7 @@ def run(
     # ── [2] 목록형 3개 조립 ──────────────────────────────────
     _stage("목록형 섹션 조립 중…")
     if whole_contextual:
-        tech_section, decision_section = context_writer.render_technical_sections(
+        tech_section, decision_section = generator.render_technical_sections(
             technical_draft,
             source,
         )
@@ -508,7 +508,7 @@ def run(
     sections: list[PlanSection] = []
     for spec in SECTION_SPEC:
         if whole_contextual and spec["key"] in {"overview", "problem", "goals", "users"}:
-            sections.append(context_writer.render_section(by_key[spec["key"]], source, spec))
+            sections.append(generator.render_section(by_key[spec["key"]], source, spec))
             continue
         if spec["type"] == SectionType.LIST:
             sections.append(list_sections[spec["key"]])
@@ -525,7 +525,7 @@ def run(
         # functional_requirements·feature_decisions를 직접 묶어 쓴
         # result.features를 그대로 씁니다(schemas.py PlanSections.features).
         if spec["key"] == "features" and whole_contextual:
-            sections.append(context_writer.render_features(list(feature_draft.features), source))
+            sections.append(generator.render_features(list(feature_draft.features), source))
             continue
 
         if spec["key"] == "features":
@@ -638,7 +638,7 @@ def run(
 
     sections.sort(key=lambda s: s.no)
     if whole_contextual and technical_draft is not None:
-        sections = context_writer.reconcile_sections(
+        sections = generator.reconcile_sections(
             sections,
             technical_draft.decisions,
         )
@@ -681,13 +681,13 @@ def regenerate_section(
     source = structured.get("plan_source_text") or ""
     if source.strip() and section_key in {"overview", "problem", "goals", "users"}:
         result = _call(
-            context_writer.system_prompt()
+            generator.system_prompt()
             + f"\n재생성: sections/features 대신 key={section_key}인 섹션 객체 하나만 출력합니다.",
             build_regenerate_messages(structured, section_key, reject_type, comment),
-            context_writer.SECTION_MODELS[section_key],
+            generator.SECTION_MODELS[section_key],
             context=f"regenerate_section={section_key}",
         )
-        return context_writer.render_section(result, source, spec)
+        return generator.render_section(result, source, spec)
 
     if section_key not in {
         "overview",

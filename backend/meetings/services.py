@@ -57,7 +57,7 @@ def _build_evidence_items(plan_dict: dict, structured: dict) -> dict:
     이미 원문 인용 번호를 들고 있어 유일하게 항목 단위 연결이 가능하기
     때문이다(build_feature_citation_sources 참고). 다른 섹션(1~4·6·7번)은
     문단·목표·사용자·결정 단위 근거가 아직 섹션 전체로 뭉쳐서 나온다
-    (plan_draft.context_writer.render_section·list_builder가 evidence를
+    (plan_draft.generator.render_section·list_builder가 evidence를
     섹션 하나의 dict/list로 모으기 때문) — 그래서 지금은 섹션 전체 인용문
     목록만 담는다. 항목 단위로 더 쪼개려면 그 렌더링 함수들을 먼저 고쳐야
     한다.

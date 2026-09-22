@@ -13,7 +13,7 @@ import copy
 
 import pytest
 
-from plan_draft.prompt_loader import (
+from plan_draft.load_prompts import (
     PromptTemplateError,
     _validate_fewshots_template,
     load_plan_fewshots,

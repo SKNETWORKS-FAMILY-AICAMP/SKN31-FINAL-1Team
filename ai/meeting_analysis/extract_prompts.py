@@ -17,7 +17,7 @@ YAML 파일에서 관리합니다.
     build_messages
 """
 
-from .prompt_loader import (
+from .load_prompts import (
     build_extraction_fewshot_messages,
     build_extraction_system_prompt,
 )

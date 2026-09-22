@@ -3,7 +3,7 @@
 from pathlib import Path
 import json
 
-from plan_draft.context_writer import PlanningFact, PlanningFactIndex
+from plan_draft.generator import PlanningFact, PlanningFactIndex
 from plan_draft.quality_gate import evaluate_golden, inspect_plan, load_golden_cases
 from plan_draft.schemas import Feature, PlanDocument, PlanSection, SectionType, VerifiedEvidence
 from shared.schemas_base import Evidence

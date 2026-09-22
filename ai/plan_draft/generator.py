@@ -12,7 +12,7 @@ from pydantic import BaseModel, Field, field_validator
 from meeting_analysis.validators.evidence import is_quote_verified
 from shared.schemas_base import Evidence
 from .feature_renderer import render_features as render_feature_html
-from .prompt_loader import load_plan_template
+from .load_prompts import load_plan_template
 from .schemas import Feature, PlanSection, SectionType, TechScopeGroup, VerifiedEvidence
 
 

@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Literal
 
 from meeting_analysis.validators.evidence import is_quote_verified
-from .context_writer import PlanningFactIndex
+from .generator import PlanningFactIndex
 from .schemas import PlanDocument, PlanSection
 
 

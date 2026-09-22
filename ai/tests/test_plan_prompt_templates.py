@@ -15,13 +15,13 @@ import json
 
 import pytest
 
-from meeting_analysis.prompt_loader import (
+from meeting_analysis.load_prompts import (
     build_extraction_fewshot_messages,
     build_extraction_system_prompt,
     load_extraction_fewshots,
     load_extraction_template,
 )
-from meeting_analysis.prompts import (
+from meeting_analysis.extract_prompts import (
     build_messages,
     build_system_prompt,
 )
