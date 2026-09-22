@@ -11,6 +11,7 @@ import {
   UserIcon, CalendarIcon, FileSpreadsheet, PanelLeftClose, PanelLeft, Maximize2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useSidebar } from "@/components/layout/SidebarContext";
 import { NewDocumentModal } from "@/components/projects/NewDocumentModal";
 import { ProposalTemplate, type ProposalEvidence, type ProposalEvidenceEntries, type ProposalEvidenceItem } from "@/components/documents/ProposalTemplate";
 import { EvidencePanel } from "@/components/documents/EvidencePanel";
@@ -419,6 +420,7 @@ const isNoteDeletable = (note: NoteDto, currentUserId: string | undefined, isPM:
 export default function DocumentsPage() {
   const { user } = useAuth();
   const isPM = user?.role === "PM";
+  const { setIsOpen: setAppSidebarOpen } = useSidebar();
 
   const [project, setProject] = useState<ProjectDto | null>(null);
   const [notes, setNotes] = useState<NoteDto[]>([]);
@@ -563,6 +565,13 @@ export default function DocumentsPage() {
   // 참고) 사용자가 초안이 복원된 걸 못 보고 "사라졌다"고 오인하는 문제가 실제로
   // 있었다. 실패해도 에러 토스트로 방해하지 않는다 — "업무 배분 실행"을 다시 누르면
   // 되므로 조용히 무시.
+  // 2026-09-22 (사용자 리포트로 재수정): 새로고침 직후엔 useAuth(사용자 정보)와
+  // notes 목록(GET /api/meetings/notes/)이 둘 다 비동기로 늦게 채워진다 — 이 effect가
+  // selectedNoteId에만 의존해서, 새로고침 때 selectedNoteId는 URL에서 즉시 채워지지만
+  // isPM/selectedNote는 그 뒤에 따로 값이 잡혀도(같은 selectedNoteId라 재실행 트리거가
+  // 없음) 복원이 영영 실행되지 않았다(실제 재현: 업무배분 실행 후 새로고침하면 초안이
+  // 사라지고 다시 눌러야 함). isPM과 selectedNote(참조가 안정적인 useMemo라 값이 실제로
+  // 채워질 때만 바뀜)를 의존성에 추가해 둘 다 늦게 확정돼도 다시 시도하게 한다.
   useEffect(() => {
     if (!isPM || !selectedNote) return;
     const noteId = selectedNote.id;
@@ -591,7 +600,7 @@ export default function DocumentsPage() {
     })();
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedNoteId]);
+  }, [selectedNoteId, isPM, selectedNote]);
   // 업무배분 탭을 열었을 때 이미 배분된 업무가 있으면 보여준다(재배분 직후뿐 아니라
   // 문서를 다시 열었을 때도). 2026-09-11: 예전엔 selectedNote.project로 매번 "선택된
   // 노트의 프로젝트"만 좁혀서 가져왔는데, 문서 목록 카드마다 표시하는 미니 파이프라인도
@@ -647,6 +656,19 @@ export default function DocumentsPage() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedNote?.id, selectedNote?.spec_documents[0]?.status_code, reqDefs, taskAssignments]);
+
+  // 2026-09-22 (사용자 요청): 기획서가 생성되면 상단의 원본 회의록은 더 볼 일이
+  // 없어지고(참고자료는 우측 근거 패널로 대체) 중앙 콘텐츠를 넓게 봐야 하니, 문서
+  // 목록 패널과 앱 좌측 메인 내비게이션까지 둘 다 기본으로 접어둔다. 기획서가 아직
+  // 없는 문서를 열면 다시 펼쳐서 원래 기본값으로 돌아간다 — "그 문서를 열었을 때의
+  // 기본값"이라 사용자가 수동으로 펼치거나 접어도 다른 문서로 옮겨가면 새로 평가된다.
+  useEffect(() => {
+    if (!selectedNote) return;
+    const spec = selectedNote.spec_documents[0] ?? null;
+    const hasSpec = !!spec;
+    setListCollapsed(hasSpec);
+    setAppSidebarOpen(!hasSpec);
+  }, [selectedNote?.id, selectedNote?.spec_documents[0]?.status_code]);
 
   const replaceNote = (updated: NoteDto) => {
     setNotes(prev => prev.map(n => (n.id === updated.id ? updated : n)));
@@ -2035,7 +2057,14 @@ function NoteDetail({
   const editSaving = busy === busyKey("save-spec");
   const [evidenceTarget, setEvidenceTarget] = useState<{ noteId: number; sectionKey: keyof ProposalEvidence; quotes: string[]; items?: ProposalEvidenceItem[] } | null>(null);
   const [evidencePanelWidth, setEvidencePanelWidth] = useState(560);
-  const evidencePanelOpen = evidenceTarget?.noteId === note.id;
+  // 2026-09-22 (사용자 요청): 기획서가 생성되고 나면(스테이터스 무관 — DRAFT부터
+  // 즉시) 상단 원본 회의록 대신 우측 근거 패널을 기본으로 열어둔다 — 특정 섹션
+  // 근거를 고른 게 아니므로 하이라이트 없이 원문 전체만 보여준다(evidenceTarget과
+  // 분리해서, 왼쪽 카드에 "이 섹션이 활성" 표시가 잘못 붙지 않게 한다).
+  const [autoEvidenceOpen, setAutoEvidenceOpen] = useState(false);
+  useEffect(() => { setAutoEvidenceOpen(!!spec); }, [note.id, spec?.id]);
+  const targetedEvidenceOpen = evidenceTarget?.noteId === note.id;
+  const evidencePanelOpen = targetedEvidenceOpen || autoEvidenceOpen;
   const showEvidence = (sectionKey: keyof ProposalEvidence, quotes: string[], items?: ProposalEvidenceItem[]) => {
     setEvidenceTarget({ noteId: note.id, sectionKey, quotes, items });
   };
@@ -2143,6 +2172,10 @@ function NoteDetail({
           직접수정 중이던 초안, 항목 추가 폼)가 통째로 날아간다 — 항상 mount해두고 CSS로만
           숨겨서 안 보이는 탭의 상태도 그대로 유지되게 한다(heyzzabi2와 동일한 이유). */}
       <div className={cn("space-y-5", activeTab !== "proposal" && "hidden")}>
+      {/* 2026-09-22 (사용자 요청): 기획서가 생성되면(rawLocked=!!spec) 원본은 더 이상
+          이 자리에서 볼 일이 없다 — 우측 근거 패널(자동으로 열림, 위 autoEvidenceOpen
+          참고)로 대체한다. 기획서 생성 전(작성 중)에는 그대로 여기서 편집한다. */}
+      {!rawLocked && (
       <div className="text-sm">
         <div className="flex items-center justify-between mb-2">
           <button
@@ -2152,13 +2185,8 @@ function NoteDetail({
           >
             <ChevronDown className={cn("w-4 h-4 transition-transform shrink-0", !rawNoteOpen && "-rotate-90")} />
             원본 회의록 / 메모
-            {rawLocked && (
-              <span className="flex items-center gap-1 text-[11px] text-muted-foreground/70">
-                <Lock className="w-3 h-3" /> 기획서 생성 후에는 수정할 수 없습니다
-              </span>
-            )}
           </button>
-          {!rawLocked && canEditRaw && rawDirty && (
+          {canEditRaw && rawDirty && (
             <button
               onClick={() => onSaveNoteContent(rawDraft)}
               disabled={rawSaving}
@@ -2172,17 +2200,18 @@ function NoteDetail({
         {rawNoteOpen && (
           <textarea
             value={rawDraft}
-            onChange={e => !rawLocked && canEditRaw && setRawDraft(e.target.value)}
-            readOnly={rawLocked || !canEditRaw}
+            onChange={e => canEditRaw && setRawDraft(e.target.value)}
+            readOnly={!canEditRaw}
             placeholder="내용이 없습니다."
-            title={!rawLocked && !canEditRaw ? "다른 사용자가 시작한 회의록입니다. 작성자 본인만 수정할 수 있습니다." : undefined}
+            title={!canEditRaw ? "다른 사용자가 시작한 회의록입니다. 작성자 본인만 수정할 수 있습니다." : undefined}
             className={cn(
               "w-full h-48 bg-black/5 dark:bg-white/5 border border-border rounded-xl p-4 whitespace-pre-wrap overflow-y-auto text-muted-foreground resize-none focus:outline-none transition-all",
-              (rawLocked || !canEditRaw) ? "cursor-default" : "focus:ring-2 focus:ring-primary/40"
+              !canEditRaw ? "cursor-default" : "focus:ring-2 focus:ring-primary/40"
             )}
           />
         )}
       </div>
+      )}
 
       <p className="text-sm text-muted-foreground font-semibold flex items-center gap-2">
         기획서
@@ -2198,7 +2227,7 @@ function NoteDetail({
                 editable={editMode} onChange={setEditDraft}
                 periodEditable={periodEditable} onPeriodChange={handlePeriodChange}
                 evidenceItems={parseEvidenceItems(spec?.evidence_items ?? null)}
-                activeEvidenceKey={evidencePanelOpen ? evidenceTarget.sectionKey : undefined}
+                activeEvidenceKey={targetedEvidenceOpen ? evidenceTarget.sectionKey : undefined}
                 onViewEvidence={showEvidence}
               />
             </div>
@@ -2212,10 +2241,10 @@ function NoteDetail({
 
       <EvidencePanel
         open={evidencePanelOpen}
-        onClose={() => setEvidenceTarget(null)}
+        onClose={() => { setEvidenceTarget(null); setAutoEvidenceOpen(false); }}
         fullText={note.content ?? ""}
-        targetQuotes={evidencePanelOpen ? evidenceTarget.quotes : []}
-        targetGroups={evidencePanelOpen ? evidenceTarget.items : undefined}
+        targetQuotes={targetedEvidenceOpen ? evidenceTarget.quotes : []}
+        targetGroups={targetedEvidenceOpen ? evidenceTarget.items : undefined}
         width={evidencePanelWidth}
         onWidthChange={setEvidencePanelWidth}
       />
