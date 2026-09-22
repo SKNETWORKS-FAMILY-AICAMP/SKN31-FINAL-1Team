@@ -17,6 +17,7 @@ type ProjectDto = { id: number; name: string };
 
 type HistoryItem = {
   id: number;
+  project_name: string | null;
   step_type: string;
   step_type_display: string;
   title: string;
@@ -224,6 +225,12 @@ export default function HistoryPage() {
                   <Icon className="w-4 h-4" />
                 </div>
                 <div className="flex-1 min-w-0">
+                  {/* 2026-09-22 (사용자 요청): "전체 보기"로 여러 프로젝트 이력이 섞여 보일 때
+                      항목마다 어느 프로젝트인지 바로 구분되어야 함 — 업무관리 칸반 카드와
+                      동일한 스타일(파란색, 제목 위)로 표시. */}
+                  {item.project_name && (
+                    <div className="text-[11px] font-bold text-primary mb-0.5">{item.project_name}</div>
+                  )}
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="font-semibold text-sm">{item.title}</span>
                     <span className="text-[11px] text-muted-foreground shrink-0">· {item.step_type_display}</span>
