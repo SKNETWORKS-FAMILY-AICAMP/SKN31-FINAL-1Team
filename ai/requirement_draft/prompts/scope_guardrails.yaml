@@ -62,3 +62,20 @@ guardrails:
     example_domain: >
       재고관리 — final_decisions에 [범위] 태그로 '매출 예측 제외'가 명시된
       경우, 매출 예측 관련 FR을 만들지 않는다.
+
+  - id: "cross_field_feature_derivation"
+    rule: >
+      key_features(주요 기능)에 이름이 없어도, target_users의 구체적 사용자
+      행동 묘사나 tech_stack/데이터 요구의 구체적 설계 내용, final_decisions의
+      [기능]/[기술] 태그 항목에 실행 가능한 기능·기술 내용이 있으면 그 자체로
+      새 FR/NFR을 도출할 근거가 된다. key_features 목록에 없다는 이유만으로
+      건너뛰지 않는다.
+    action: >
+      해당 근거 필드(target_users/tech_stack/final_decisions 등)를
+      related_feature와 note에 명시하고, key_features에는 없었다는 점도
+      note에 남겨 PM이 기획서 갱신 필요 여부를 판단할 수 있게 한다.
+    example_domain: >
+      재고관리 — key_features에는 "바코드 입출고 등록"만 있지만 target_users에
+      "사장은 앱 최초 실행 시 온보딩 화면을 보고, 이후에는 바로 로그인 화면으로
+      진입한다"는 구체적 행동이 있으면, key_features에 없어도 이를 근거로
+      "초기 진입 화면 분기" FR을 별도로 도출한다.
