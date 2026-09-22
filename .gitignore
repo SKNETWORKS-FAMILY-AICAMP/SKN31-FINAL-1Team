@@ -44,4 +44,4 @@ ai/plan_document_output.json
 ai/check_node2.py
 ai/check_recall.py
 ai/test_db_meeting_to_plan.py
-/tests
+ai/tests
