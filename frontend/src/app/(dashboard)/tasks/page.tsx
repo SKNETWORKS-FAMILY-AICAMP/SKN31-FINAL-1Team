@@ -2,7 +2,8 @@
 
 import { useState, useEffect, useMemo } from "react";
 import { useAuth } from "@/lib/auth";
-import { FolderKanban, Search, LayoutGrid, Loader2, ChevronLeft, ChevronRight, ClipboardList, AlertTriangle, CheckCircle2, XCircle, X, MessageSquare, RotateCcw } from "lucide-react";
+import { FolderKanban, Search, LayoutGrid, Loader2, ClipboardList, AlertTriangle, CheckCircle2, XCircle, X, MessageSquare, RotateCcw } from "lucide-react";
+import { Pagination } from "@/components/ui/Pagination";
 import { cn } from "@/lib/utils";
 import { useSearchParams } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -59,6 +60,8 @@ export default function TasksPage() {
 
   // 일반유저는 "내 업무"가 기본값 — 전체 업무 조회는 PM만 필요하다는 판단
   const [filterScope, setFilterScope] = useState<"ME" | "ALL">("ME");
+  // null = "전체 보기" — 특정 프로젝트를 고르면 그 프로젝트 업무만 남긴다.
+  const [projectFilter, setProjectFilter] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<"KANBAN" | "LIST" | "WBS">("LIST");
   const [processingId, setProcessingId] = useState<number | null>(null);
   const [page, setPage] = useState(1);
@@ -102,6 +105,12 @@ export default function TasksPage() {
     queryFn: () => apiFetch<any[]>("/api/users/"),
   });
   const currentProjectId = projectsData?.[0] ? String(projectsData[0].id) : null;
+  // 회의록이 프로젝트별로 다 섞여서 보여 어떤 업무가 어느 프로젝트인지 구분이 안 된다는
+  // 요청 — 검색창 옆에 프로젝트 선택 드롭다운을 두고, 카드에도 프로젝트명을 표시한다.
+  const projectNameById = useMemo(
+    () => new Map((projectsData ?? []).map((p: any) => [String(p.id), p.name as string])),
+    [projectsData]
+  );
   // 칸반 담당자 드롭다운엔 실제로 업무를 받을 수 있는 사람만 — PM(is_staff)은 배정 대상이
   // 아니고, 온보딩 전이라 이름이 비어있는 계정도 빈 옵션으로 보이니 제외한다.
   const members: Member[] = useMemo(
@@ -176,6 +185,9 @@ export default function TasksPage() {
     if (statusFilter) {
       filtered = filtered.filter(t => t.status_code === statusFilter);
     }
+    if (projectFilter) {
+      filtered = filtered.filter(t => String(t.project) === projectFilter);
+    }
     if (search.trim()) {
       const q = search.toLowerCase();
       filtered = filtered.filter(t =>
@@ -184,10 +196,10 @@ export default function TasksPage() {
       );
     }
     return filtered;
-  }, [tasks, filterScope, search, user, statusFilter]);
+  }, [tasks, filterScope, search, user, statusFilter, projectFilter]);
 
   // 탭·검색어가 바뀌면 목록이 통째로 달라지므로 페이지를 1로 되돌린다
-  useEffect(() => { setPage(1); }, [filterScope, search, viewMode, statusFilter]);
+  useEffect(() => { setPage(1); }, [filterScope, search, viewMode, statusFilter, projectFilter]);
   const totalPages = Math.max(1, Math.ceil(filteredTasks.length / PAGE_SIZE));
   // 위 리셋 대상이 아닌 다른 이유로 목록이 줄어들 수도 있으므로(다른 화면에서 상태 변경 후 재조회 등),
   // 지금 페이지가 범위를 넘으면 마지막 페이지로 당겨서 빈 화면이 뜨지 않게 한다
@@ -222,6 +234,16 @@ export default function TasksPage() {
         </div>
 
         <div className="flex items-center gap-4">
+          <select
+            value={projectFilter ?? ""}
+            onChange={e => setProjectFilter(e.target.value || null)}
+            className="px-4 py-2.5 bg-card border border-transparent hover:border-black/10 dark:hover:border-white/10 rounded-xl text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-primary/40 focus:bg-background transition-all shadow-sm"
+          >
+            <option value="">전체 보기</option>
+            {(projectsData ?? []).map((p: any) => (
+              <option key={p.id} value={String(p.id)}>{p.name}</option>
+            ))}
+          </select>
           <div className="relative group">
             <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground group-focus-within:text-primary transition-colors" />
             <input
@@ -330,18 +352,20 @@ export default function TasksPage() {
                           className="hover:bg-black/5 dark:hover:bg-white/5 transition-colors group relative cursor-pointer"
                         >
                           <td className="px-6 py-4">
+                            {task.project != null && projectNameById.get(String(task.project)) && (
+                              <div className="text-[11px] font-bold text-primary mb-0.5">{projectNameById.get(String(task.project))}</div>
+                            )}
                             <div className="font-bold mb-1">{task.title}</div>
                             {task.description && <div className="text-xs text-muted-foreground line-clamp-1 max-w-md">{task.description}</div>}
                           </td>
                           <td className="px-6 py-4" onClick={e => e.stopPropagation()}>
-                            {/* 2026-09-16 (재수정): 배분 승인/반려는 "PM이 검토하는 것"이 아니라
-                                "PM이 배정한 업무를 담당자 본인이 받아들일지 정하는 것"이다 —
-                                기획서/요구사항정의서 승인(PM이 문서를 검토)과는 성격이 다르다는
-                                지적으로, PM이 아니라 담당자 본인에게 승인/반려 버튼을 준다.
-                                CANCELLED(반려/취소)는 반려 사유 입력으로만 바뀌어야 하므로
-                                드롭다운으로는 못 바꾸게 막는다. */}
+                            {/* 2026-09-18 (사용자 재확인): PENDING_APPROVAL(배분승인대기)은 PM
+                                개별 승인 전이라 여기서도 발견/승인이 가능해야 한다(팀 결정 —
+                                칸반/승인함만으론 발견성이 떨어진다는 지적). PM에게는 승인/반려
+                                버튼을, 일반유저에게는 대기 배지를 보여준다. CANCELLED(반려/취소)는
+                                반려 사유 입력으로만 바뀌어야 하므로 드롭다운으로는 못 바꾸게 막는다. */}
                             {task.status_code === "PENDING_APPROVAL" ? (
-                              String(task.assigned_user) === String(user?.id) ? (
+                              isPM ? (
                                 <div className="flex items-center gap-1.5">
                                   <button
                                     onClick={() => handleApprove(task.id)}
@@ -364,11 +388,14 @@ export default function TasksPage() {
                                 </span>
                               )
                             ) : task.status_code === "CANCELLED" ? (
-                              // 2026-09-16 (다시 수정): 승인/반려가 담당자 권한이 되면서, 담당자가
-                              // 반려하면 그 반려 응답을 받는 쪽은 PM이다 — "재승인 요청"은 반려를
-                              // 받은 PM이 다시 검토 대상으로 되돌리는(재배정 또는 재고 요청) 액션이라
-                              // PM 전용으로 되돌린다. 담당자 본인은 이미 반려로 의사표시를 했으니 배지만 본다.
-                              isPM ? (
+                              // 2026-09-16: CANCELLED로 한 번 반려되면 되돌릴 화면 경로가 아예
+                              // 없었다(사용자 리포트 — 담당자 계정으로 보니 "취소됨"만 뜨고 재승인
+                              // 받을 방법이 없음). 반려도 PM 권한이니(TaskStatusUpdateView 참고),
+                              // "재승인 요청"은 PM이 스스로에게 다시 봐달라고 요청하는 게 아니라
+                              // 반려당한 담당자 본인이 "다시 검토해주세요"라고 요청하는 액션이라는
+                              // 지적으로 담당자 본인 전용으로 뒀다 — PM은 배지만 본다(반려는
+                              // 여전히 PM 권한 그대로).
+                              String(task.assigned_user) === String(user?.id) ? (
                                 <div className="flex items-center gap-1.5">
                                   <span className={cn("inline-block text-xs font-bold px-2.5 py-1.5 rounded-lg", statusInfo.bg, statusInfo.color)}>
                                     {statusLabel}
@@ -376,7 +403,7 @@ export default function TasksPage() {
                                   <button
                                     onClick={() => handleReopen(task.id)}
                                     disabled={processingId === task.id}
-                                    title="배분승인대기 상태로 되돌려 담당자에게 다시 수락/반려를 요청합니다"
+                                    title="배분승인대기 상태로 되돌려 PM에게 다시 검토를 요청합니다"
                                     className="inline-flex items-center gap-1 px-2 py-1.5 rounded-lg text-xs font-bold bg-sky-500/10 text-sky-500 hover:bg-sky-500/20 transition-colors disabled:opacity-50"
                                   >
                                     <RotateCcw className="w-3.5 h-3.5" /> 재승인 요청
@@ -591,36 +618,3 @@ function WbsBoardView({ tasks, onRowClick }: { tasks: Task[]; onRowClick: (task:
   );
 }
 
-function Pagination({ page, totalPages, onChange }: { page: number; totalPages: number; onChange: (page: number) => void }) {
-  if (totalPages <= 1) return null;
-  return (
-    <div className="flex items-center justify-center gap-1.5 py-4">
-      <button
-        onClick={() => onChange(Math.max(1, page - 1))}
-        disabled={page === 1}
-        className="p-2 rounded-lg bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-      >
-        <ChevronLeft className="w-4 h-4" />
-      </button>
-      {Array.from({ length: totalPages }, (_, i) => i + 1).map(n => (
-        <button
-          key={n}
-          onClick={() => onChange(n)}
-          className={cn(
-            "w-8 h-8 rounded-lg text-sm font-bold transition-colors",
-            n === page ? "bg-primary text-primary-foreground" : "bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 text-muted-foreground"
-          )}
-        >
-          {n}
-        </button>
-      ))}
-      <button
-        onClick={() => onChange(Math.min(totalPages, page + 1))}
-        disabled={page === totalPages}
-        className="p-2 rounded-lg bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-      >
-        <ChevronRight className="w-4 h-4" />
-      </button>
-    </div>
-  );
-}

@@ -4,7 +4,9 @@ tests/test_assignee_mapping_filter.py
 assignee_mapping/rule_filter.filter_candidates — LLM 없는 순수 로직.
 
 2026-09-11: 직무(needed_roles) 게이트를 제거했다. 자격 판정은 "재직 중" + "필요
-스킬을 하나라도 보유" 두 조건뿐이다.
+스킬을 하나라도 보유" 두 조건뿐이다 — 단, 2026-09-18부터 PROJECT_MANAGER는 스킬
+매칭 여부와 무관하게 예외로 제외한다("PM은 개발 프로젝트에 참여하지 않는다"는
+팀 원칙; 위 게이트 제거 때 같이 빠졌던 걸 되살림).
 """
 
 from assignee_mapping.rule_filter import filter_candidates
@@ -51,6 +53,12 @@ def test_job_role_is_irrelevant():
     # 직무가 뭐든 스킬만 맞으면 후보다 — team_sizing 매핑이 비어도 배분이 안 죽는다
     result = filter_candidates([_profile(job_role="UIUX_DESIGNER", skills=["Django"])], TASKS)
     assert [p.employee_id for p in result] == ["EMP-001"]
+
+
+def test_excludes_project_manager():
+    # 2026-09-18: PM은 스킬이 겹쳐도 후보에서 무조건 빠져야 한다. PM은 개발 프로젝트에 참여하지 않는다" 팀 원칙).
+    result = filter_candidates([_profile(job_role="PROJECT_MANAGER", skills=["Django"])], TASKS)
+    assert result == []
 
 
 def test_needed_roles_arg_is_accepted_but_ignored():

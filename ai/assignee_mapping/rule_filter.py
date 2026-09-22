@@ -185,12 +185,16 @@ def filter_candidates(
     지표일 뿐이고 — assignee_recommend의 _fit_score도 직무를 안 본다 —, team_sizing의
     skill->role 매핑이 조금만 비어도 후보가 전원 탈락해 배분이 죽는 사고가 있었다
     (spec 108). 자격 판정은 "스킬을 실제로 갖고 있는가" 하나로 충분하다.
+
+    2026-09-18 :PM은 무조건 제외하는 규칙 추가
     """
     required_skills = {s for t in tasks for s in t.get("required_skills", [])}
     filtered = [
         p
         for p in raw_profiles
-        if p.is_active and (not required_skills or (required_skills & set(p.skills)))
+        if p.is_active
+        and p.job_role != "PROJECT_MANAGER"
+        and (not required_skills or (required_skills & set(p.skills)))
     ]
     if not filtered:
         logger.warning(

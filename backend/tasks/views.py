@@ -20,11 +20,8 @@ from tasks.serializers import (
     TaskStatusUpdateSerializer,
     _is_resigned,
 )
-# services.py에서 구현되어 있는 AI 로직 함수 임포트
-from tasks.services import run_assignee_mapping, run_task_generation
-from requirements.models import RequirementItem
-from projects.models import PipelineHistory, Project
-from notifications.services import notify_user, notify_all_pms
+from projects.models import PipelineHistory
+from notifications.services import notify_user
 
 User = get_user_model()
 
@@ -186,79 +183,6 @@ class TaskAssignmentDetailView(generics.RetrieveUpdateDestroyAPIView):
         ).exclude(status_code_id=TaskStatusCode.BACKLOG)
 
 
-class AutoTaskAssignView(APIView):
-    """
-    개발자 작업 상태(is_busy) 및 스킬 기반 업무 AI 자동 배정 API
-    POST /api/tasks/auto-assign/
-    """
-    permission_classes = [permissions.IsAuthenticated]
-
-    @extend_schema(
-        tags=['3단계 - 업무 배정'],
-        summary='업무 AI 자동 배정',
-        description='요구사항 항목(`req_item_id`)을 확인하여 가용한 개발자(`is_busy=False`)에게 업무를 자동 배정합니다. 배정 시 해당 개발자의 `is_busy` 상태가 `True`로 변경되며, `project_id` 포함 시 `PipelineHistory` 타임라인 이력이 기록됩니다.',
-        responses={
-            201: OpenApiResponse(
-                description='업무 자동 배정 완료',
-                response=TaskAssignmentSerializer
-            ),
-            400: OpenApiResponse(description='가용한 유저가 없거나 요청 값이 잘못됨'),
-            404: OpenApiResponse(description='요구사항 항목 또는 프로젝트를 찾을 수 없음')
-        }
-    )
-    @transaction.atomic
-    def post(self, request):
-        req_item_id = request.data.get('req_item_id')
-        project_id = request.data.get('project_id')
-        
-        req_item = get_object_or_404(RequirementItem, pk=req_item_id)
-
-        # 현재 작업 중이지 않은(is_busy=False) 개발자 선별 및 동시성 락 적용
-        available_users = User.objects.select_for_update().filter(is_active=True, is_busy=False)
-        
-        if not available_users.exists():
-            # 가용한 개발자가 없을 경우 전체 유저 중 무작위/첫 번째 유저 매핑
-            assigned_user = User.objects.filter(is_active=True).first()
-        else:
-            assigned_user = available_users.first()
-
-        if not assigned_user:
-            return Response({"error": "배정할 수 있는 유저가 시스템에 존재하지 않습니다."}, status=status.HTTP_400_BAD_REQUEST)
-
-        # 업무 생성
-        task = TaskAssignment.objects.create(
-            req_item=req_item,
-            assigned_user=assigned_user,
-            project_id=project_id or req_item.req_def.project_id,
-            title=f"[{req_item.req_code}] {req_item.req_name} 개발",
-            description=req_item.description,
-            status_code_id=TaskStatusCode.PENDING_APPROVAL,
-        )
-
-        # 개발자 작업중 상태 업데이트
-        assigned_user.is_busy = True
-        assigned_user.save()
-
-        notify_user(assigned_user, f"'{task.title}' 업무가 배정되었습니다.", type='info', link='/tasks')
-
-        # 파이프라인 이력 로그 생성
-        if project_id:
-            project = get_object_or_404(Project, pk=project_id)
-            PipelineHistory.objects.create(
-                project=project,
-                requirement=req_item.req_def,
-                task=task,
-                step_type='TASK_ASSIGNED',
-                title=f"업무 자동 배정: {task.title}",
-                description=f"담당자: {assigned_user.username} 사원 (승인 대기)",
-                actor=request.user
-            )
-
-        return Response({
-            "message": "개발자에게 업무가 성공적으로 자동 배정되었습니다.",
-            "task": TaskAssignmentSerializer(task).data
-        }, status=status.HTTP_201_CREATED)
-
 #tasks/views.py
 class TaskStatusUpdateView(APIView):
     """
@@ -273,9 +197,7 @@ class TaskStatusUpdateView(APIView):
         description=(
             '배정된 업무의 진행 상태(`status_code`) 및 담당자(`assigned_user_id`)를 변경합니다.\n'
             '- **담당자 변경**: PM만 수행할 수 있습니다.\n'
-            '- **배분 승인(`TASK_APPROVED`)/반려(`CANCELLED`)**: 해당 업무의 담당자 본인만 수행할 수 있습니다'
-            '(PM이 배정한 업무를 받아들일지 정하는 것이라 PM도 예외 없음).\n'
-            '- **그 외 상태 변경**(`IN_PROGRESS`, `DONE` 등): PM 또는 해당 업무의 담당자 본인(`assigned_user`)만 수행할 수 있습니다.\n'
+            '- **상태 변경**: PM 또는 해당 업무의 담당자 본인(`assigned_user`)만 수행할 수 있습니다.\n'
             '- 상태가 `DONE`으로 변경되면 담당 개발자의 `is_busy` 상태가 `False`로 해제됩니다.'
         ),
         parameters=[
@@ -373,16 +295,14 @@ class TaskStatusUpdateView(APIView):
                 )
 
             # ── 상태별 세부 권한 분기 ────────────────────────────────────
-            # 2026-09-16 (사용자 지적으로 재수정): 배분 승인/반려는 "PM이 검토하는 것"이
-            # 아니라 "PM이 배정한 업무를 담당자 본인이 맡을지 말지 정하는 것"이다 —
-            # 기획서/요구사항정의서 승인(PM이 문서 품질·방향을 검토)과는 성격이 다르다.
-            # A. 배분 승인(APPROVED)/반려(REJECTED)는 담당자 본인만 가능 — PM도 예외 없음
-            #    (담당자 재배정은 여전히 위 1번 블록에서 PM 전용으로 남아있다 — "누구에게
-            #    맡길지"는 PM 권한, "그 배정을 받아들일지"는 담당자 권한으로 분리).
+            # 2026-09-18 (사용자 재확인): 배분 승인/반려를 PM만 하도록 되돌린다 — 담당자
+            # 본인 전용으로 뒀던 적(9/16)도 있었지만, 이건 PM이 배분을 문서생성 화면에서
+            # 확정하는 액션이라는 결론으로 다시 PM 전용으로 좁힌다.
+            # A. 배분 승인(APPROVED)/반려(REJECTED)는 PM만 가능.
             if new_status in [TaskStatusCode.APPROVED, TaskStatusCode.REJECTED]:
-                if task.assigned_user_id != user.id:
+                if not is_pm:
                     return Response(
-                        {"error": "FORBIDDEN", "details": "업무 배정 수락 및 반려는 담당자 본인만 할 수 있습니다."},
+                        {"error": "FORBIDDEN", "details": "업무 배분 승인 및 반려는 PM 권한이 필요합니다."},
                         status=status.HTTP_403_FORBIDDEN
                     )
             # B. 기타 상태 변경(IN_PROGRESS, COMPLETED 등)은 PM 또는 담당자 본인만 가능
@@ -419,14 +339,12 @@ class TaskStatusUpdateView(APIView):
                         assigned_dev.save()
 
             # 알림 발송
-            # 2026-09-16: 배분 승인/반려는 이제 담당자 본인이 하는 액션이라, 담당자에게
-            # "네가 방금 한 일"을 알리는 건 의미가 없다 — 대신 PM에게 결과를 알린다.
             if new_status == TaskStatusCode.APPROVED and task.assigned_user:
-                notify_all_pms(f"{task.assigned_user.username}님이 '{task.title}' 업무 배정을 수락했습니다.", type='success', link='/approvals')
+                notify_user(task.assigned_user, f"'{task.title}' 업무가 승인되었습니다.", type='success', link='/tasks')
             elif new_status == TaskStatusCode.COMPLETED and task.assigned_user:
                 notify_user(task.assigned_user, f"'{task.title}' 업무가 완료되었습니다.", type='success', link='/tasks')
             elif new_status == TaskStatusCode.REJECTED and task.assigned_user:
-                notify_all_pms(f"{task.assigned_user.username}님이 '{task.title}' 업무 배정을 반려했습니다: {task.reject_reason}", type='error', link='/approvals')
+                notify_user(task.assigned_user, f"'{task.title}' 업무가 반려되었습니다: {task.reject_reason}", type='error', link='/tasks')
 
             # 파이프라인 히스토리 기록 (실제 상태가 변경된 경우)
             if task.project_id and new_status != old_status:
@@ -455,39 +373,3 @@ class TaskStatusUpdateView(APIView):
             "message": "업무 정보가 성공적으로 변경되었습니다.",
             "task": TaskAssignmentSerializer(task).data
         }, status=status.HTTP_200_OK)
-
-
-class AIAssigneeMappingView(APIView):
-    """
-    AI 담당자 매핑 API
-    POST /api/tasks/ai/assignee-mapping/ (또는 /api/ai/assignee-mapping/)
-    """
-    permission_classes = [permissions.IsAuthenticated]
-
-    @extend_schema(
-        tags=['3단계 - 업무 배정'],
-        summary='AI 담당자 매핑 추천',
-        description='AI 알고리즘을 활용하여 업무 요구사항에 가장 적합한 담당자 매핑 결과를 추천받습니다.',
-        responses={200: OpenApiResponse(description='AI 담당자 매핑 성공')}
-    )
-    def post(self, request):
-        result = run_assignee_mapping(request.data)
-        return Response(result, status=status.HTTP_200_OK)
-
-
-class AITaskGenerationView(APIView):
-    """
-    AI 업무 생성 API
-    POST /api/tasks/ai/task-generation/ (또는 /api/ai/task-generation/)
-    """
-    permission_classes = [permissions.IsAuthenticated]
-
-    @extend_schema(
-        tags=['3단계 - 업무 배정'],
-        summary='AI 업무 자동 생성',
-        description='요구사항 명세서를 바탕으로 AI가 구체적인 업무 목록을 자동 생성합니다.',
-        responses={200: OpenApiResponse(description='AI 업무 생성 성공')}
-    )
-    def post(self, request):
-        result = run_task_generation(request.data)
-        return Response(result, status=status.HTTP_200_OK)

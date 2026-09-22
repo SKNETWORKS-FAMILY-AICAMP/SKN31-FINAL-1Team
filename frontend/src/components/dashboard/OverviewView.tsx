@@ -10,7 +10,6 @@ import {
 import {
   GitPullRequest, AlertTriangle, CheckCircle2, Clock,
   Activity, Users, FolderKanban, Loader2, ArrowUpRight,
-  PlusCircle
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { formatDistanceToNow } from "date-fns";
@@ -273,20 +272,14 @@ export default function OverviewView() {
                   <span className="text-muted-foreground font-medium">({projectList.length}건)</span>
                 )}
               </h3>
-              {isPM && (
-                <Link
-                  href="/project/new"
-                  className="flex items-center gap-1.5 px-3 py-1.5 bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 rounded-lg text-xs font-semibold transition-colors"
-                >
-                  <PlusCircle className="w-4 h-4" /> 새 프로젝트
-                </Link>
-              )}
             </div>
             {projectList.length === 0 ? (
               <div className="py-10 text-center text-muted-foreground space-y-2">
                 <FolderKanban className="w-10 h-10 mx-auto opacity-20" />
                 <p className="text-sm">{isPM ? "아직 프로젝트가 없습니다." : "아직 참여 중인 프로젝트가 없습니다."}</p>
-                {isPM && (
+                {/* 2026-09-21 (사용자 재확인): 프로젝트 생성은 PM이 아니라 일반유저 권한 —
+                    PM은 회의록을 등록할 수 없으니 프로젝트도 직접 만들 필요가 없다. */}
+                {!isPM && (
                   <Link href="/project/new" className="inline-block mt-2 px-4 py-2 bg-primary text-white rounded-lg text-sm font-bold">
                     첫 프로젝트 만들기
                   </Link>
