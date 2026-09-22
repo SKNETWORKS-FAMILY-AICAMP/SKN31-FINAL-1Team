@@ -565,8 +565,8 @@ def generate_task_suggestions(spec_id: int, on_stage=None) -> dict:
 
 
 def _persist_assignments(req_def: RequirementDefinition, items: list, status_code_id: str) -> int:
-    """assignee_id가 있는 항목 + is_task_header 항목을 TaskAssignment로 저장한다.
-    반환값은 저장된 건수 중 실제 배정 단위 개수(헤더 제외).
+    """items를 TaskAssignment로 저장한다. 반환값은 저장된 건수 중 실제 배정
+    단위 개수(is_task_header 제외).
 
     2026-09-15: generate_task_suggestions(초안 자동저장, status=BACKLOG)와
     confirm_task_assignments(확정, status=PENDING_APPROVAL) 둘 다 이 함수를 쓴다 —
@@ -575,26 +575,32 @@ def _persist_assignments(req_def: RequirementDefinition, items: list, status_cod
     프론트가 start_date/end_date로 보냄) 두 모양을 다 받는다.
 
     2026-09-22: is_task_header=True인 항목(Subtask로 쪼개진 Task 자신 — 배정
-    대상은 아니지만 제목이 사라지지 않도록 표시용으로 저장, 사용자 요청)도
-    assignee_id 없이 저장한다. 일반 항목은 여전히 assignee_id가 없으면
-    (미배정/보류) 저장하지 않는다.
+    대상은 아니지만 제목이 사라지지 않도록 표시용으로 저장, 사용자 요청)은
+    BACKLOG(미리보기 단계)에서만 저장한다 — PENDING_APPROVAL 이후로 넘어가면
+    칸반보드·대시보드·"내 업무" 목록(dashboard/views.py, requirements/views.py
+    등, TaskAssignmentListCreateView를 거치지 않고 TaskAssignment를 직접
+    쿼리하는 곳이 여럿이라 전부 손보기엔 범위가 큼)에 담당자 없는 구조용 카드로
+    섞여 들어갈 위험이 있다. 미리보기 화면(documents/page.tsx) 목적(제목이 안
+    사라지게)은 BACKLOG 저장만으로 이미 충분하다.
 
-    헤더는 BACKLOG(미리보기 단계)에서만 저장한다 — PENDING_APPROVAL 이후로
-    넘어가면 칸반보드·대시보드·"내 업무" 목록(dashboard/views.py,
-    requirements/views.py 등, TaskAssignmentListCreateView를 거치지 않고
-    TaskAssignment를 직접 쿼리하는 곳이 여럿이라 전부 손보기엔 범위가 큼)에
-    담당자 없는 카드로 섞여 들어갈 위험이 있다. 미리보기 화면(documents/page.tsx)
-    목적(제목이 안 사라지게)은 BACKLOG 저장만으로 이미 충분하다.
+    2026-09-22 (사용자 요청): is_task_header가 아닌 일반 항목은 assignee_id가
+    없어도(미배정/AI 보류 추천) 저장한다 — 예전엔 여기서 건너뛰어서 PM이 확정을
+    누르면 미배정 업무가 흔적 없이 사라졌다. 프론트가 확정 전에 "N건 미배정
+    상태로 넘어갑니다" 확인을 받으므로, 여기서는 막지 않고 assigned_user_id=NULL로
+    저장한다 — 칸반보드/업무 목록이 이미 null 담당자를 안전하게 "미배정"으로
+    표시하고 재배정 가능하게 돼 있다(KanbanBoard.tsx, projects/[id]/page.tsx).
     """
     created_count = 0
     for item in items:
         is_header = item.get("is_task_header", False)
         if is_header and status_code_id != TaskStatusCode.BACKLOG:
             continue
-        # 2026-09-22: 표시용 Task 헤더 행은 담당자가 없는 게 정상이라 건너뛰지 않는다
-        # — 일반 배정 단위는 여전히 담당자가 없으면(미배정/보류) 저장하지 않는다.
-        if item.get("assignee_id") is None and not is_header:
-            continue
+        # 2026-09-22 (사용자 요청): 예전엔 담당자 없는 일반 항목을 조용히 건너뛰어서
+        # PM이 확정을 누르면 미배정 업무가 아무 흔적 없이 사라졌다 — 프론트가 확정
+        # 전에 "N건 미배정 상태로 넘어갑니다" 확인을 받으므로, 여기서는 막지 않고
+        # assigned_user_id=NULL로 그대로 저장한다. 칸반보드/업무 목록이 이미 null
+        # 담당자를 "미배정"으로 표시하고 재배정 가능하게 돼 있어(KanbanBoard.tsx,
+        # projects/[id]/page.tsx) 나중에 거기서 배정하면 된다.
 
         req_item = req_def.items.filter(req_code=item["source_req_id"]).first()
         if not req_item:

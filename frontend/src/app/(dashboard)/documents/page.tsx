@@ -417,7 +417,6 @@ export default function DocumentsPage() {
   const [specGenStage, setSpecGenStage] = useState("");
   const [confirmingTasks, setConfirmingTasks] = useState(false);
   const [reassigningTaskId, setReassigningTaskId] = useState<number | null>(null);
-  const [approvingAllTasks, setApprovingAllTasks] = useState(false);
   const [members, setMembers] = useState<Member[]>([]);
   const [loading, setLoading] = useState(true);
   // 2026-09-17: 문서를 골라 보고 있다가 새로고침(F5)하면 선택이 풀려서 목록 맨 위
@@ -1152,14 +1151,33 @@ export default function DocumentsPage() {
   };
 
   // PM이 검토·수정한 draft를 그대로 신뢰해 저장한다(재계산 없음) — confirm-tasks가
-  // 같은 요구사항정의서의 기존 배정을 지우고 새로 만들기 때문에, 취소된 draft(담당자를
-  // 미배정으로 바꾼 행)는 그냥 걸러서 보내도 되고 서버가 스킵해도 되지만, 여기서는
-  // 명시적으로 걸러서 보내 의도를 분명히 한다.
+  // 같은 요구사항정의서의 기존 배정을 지우고 새로 만든다.
+  //
+  // 2026-09-22 (사용자 요청): 예전엔 담당자 미배정 항목을 여기서 걸러서 아예 안
+  // 보냈는데, 그러면 확정 순간 그 업무가 흔적도 없이 사라졌다(BACKLOG 초안도
+  // 같이 지워지므로) — PM이 모르고 데이터를 잃는 셈이라 지적받음. 이제는
+  // is_task_header(표시용 Task 헤더 행)만 걸러서 보내고, 담당자 없는 일반
+  // 업무는 그대로 보낸다 — 백엔드가 assigned_user_id=NULL로 저장해 칸반보드
+  // 등에서 나중에 배정할 수 있게 남는다. 대신 미배정 건이 있으면 확정 직전에
+  // 얼마나 있는지, AI가 왜 미배정으로 뒀는지(hold_explanation)를 보여주고
+  // 확인을 받는다 — 무조건 확정으로 밀어붙이는 대신, 강제 배정 없이 "이 상태로
+  // 진행해도 되는지" PM 판단을 거치게 한다.
   const handleConfirmTasks = async (note: NoteDto, spec: SpecDto) => {
     if (!taskDrafts || taskDraftsReqDefId == null) return;
     if (!taskDrafts.some(d => d.assignee_id != null)) {
       setErrorToast("담당자가 배정된 업무가 없습니다. 최소 1건 이상 담당자를 지정해주세요.");
       return;
+    }
+    const unassigned = taskDrafts.filter(d => d.assignee_id == null && !d.is_task_header);
+    if (unassigned.length > 0) {
+      const preview = unassigned.slice(0, 5)
+        .map(d => `· ${d.title}${d.hold_explanation ? ` (${d.hold_explanation})` : ""}`)
+        .join("\n");
+      const more = unassigned.length > 5 ? `\n…외 ${unassigned.length - 5}건` : "";
+      const proceed = window.confirm(
+        `${unassigned.length}건이 담당자 미배정 상태로 확정됩니다 — 나중에 칸반보드에서 배정할 수 있습니다.\n\n${preview}${more}\n\n계속하시겠습니까?`
+      );
+      if (!proceed) return;
     }
     setConfirmingTasks(true);
     try {
@@ -1170,7 +1188,7 @@ export default function DocumentsPage() {
           body: JSON.stringify({
             req_def_id: taskDraftsReqDefId,
             assignments: taskDrafts
-              .filter(d => d.assignee_id != null)
+              .filter(d => !d.is_task_header)
               .map(d => ({
                 unit_id: d.unit_id,
                 source_req_id: d.source_req_id,
@@ -1229,26 +1247,6 @@ export default function DocumentsPage() {
     }
   };
 
-  // 2026-09-18 (사용자 요청): 배분 승인/반려를 담당자 본인 전용으로 좁혔던 정책(9/16)을
-  // 되돌려 PM도 다시 승인할 수 있게 했다(백엔드 TaskStatusUpdateView 권한 체크 참고) —
-  // 이 문서생성 화면에서 PENDING_APPROVAL 건 전체를 한 번에 TASK_APPROVED로 승인한다.
-  const handleApproveAllTasks = async (taskIds: number[]) => {
-    if (taskIds.length === 0) return;
-    setApprovingAllTasks(true);
-    try {
-      await Promise.all(taskIds.map(id => apiFetch(`/api/tasks/assignments/${id}/status/`, {
-        method: "PATCH",
-        body: JSON.stringify({ status_code: "TASK_APPROVED" }),
-      })));
-      setToastMessage(`업무 배분이 확정되었습니다 — ${taskIds.length}건`);
-      await fetchTaskAssignments();
-    } catch (err: any) {
-      setErrorToast(err.message || "업무 배분 확정에 실패했습니다.");
-    } finally {
-      setApprovingAllTasks(false);
-    }
-  };
-
   if (loading) {
     return <div className="flex items-center justify-center h-[60vh]"><Loader2 className="w-8 h-8 animate-spin text-primary" /></div>;
   }
@@ -1297,10 +1295,12 @@ export default function DocumentsPage() {
 
   return (
     <div className="w-full space-y-6 animate-in fade-in duration-500">
+      {/* 2026-09-22 (사용자 요청): 상단 공통 헤더(DashboardContent.tsx)가 이미
+          아이콘+"문서생성"을 보여줘서, 바로 아래 이 h1이 같은 문구를 또 반복해
+          중복으로 보였다 — h1은 빼고 설명 문구만 남긴다. */}
       <div className="flex items-center justify-between flex-wrap gap-4 print:hidden">
         <div>
-          <h1 className="text-xl font-bold">문서생성</h1>
-          <p className="text-sm text-muted-foreground mt-1">
+          <p className="text-sm text-muted-foreground">
             회의록을 기반으로 기획서를 작성하고 검토·승인합니다.
           </p>
         </div>
@@ -1505,6 +1505,7 @@ export default function DocumentsPage() {
               note={selectedNote}
               spec={activeSpec}
               reqDef={activeReqDef}
+              project={project}
               activeTab={activeTab}
               isPM={isPM}
               currentUserId={user?.id}
@@ -1546,8 +1547,6 @@ export default function DocumentsPage() {
               members={members}
               reassigningTaskId={reassigningTaskId}
               onReassignTask={(taskId, assigneeId) => handleReassignTask(selectedNote, taskId, assigneeId)}
-              approvingAllTasks={approvingAllTasks}
-              onApproveAllTasks={handleApproveAllTasks}
             />
           )}
         </div>
@@ -1854,14 +1853,14 @@ function ReqExtractProgressBar({ stage, startedAt }: { stage: string; startedAt:
 }
 
 function NoteDetail({
-  note, spec, reqDef, activeTab, isPM, currentUserId, busy, projectName,
+  note, spec, reqDef, project, activeTab, isPM, currentUserId, busy, projectName,
   onGenerateSpec, specGenStartedAt, specGenStage, onSaveNoteContent, onSaveSpec, onSavePeriod, onSubmitReview, onApprove, onReject,
   onCreateReqDef, onExtractItems, reqExtractStage, reqExtractStartedAt, onAddItem, onUpdateItem, onDeleteItem, onReqDefStatusChange,
   onGenerateTasks, taskAssignments, onRejectReqDef,
   taskDrafts, taskDraftsReqDefId, setTaskDrafts, scheduleSummary, packageSplits, planReview, planBriefing, generatingTasks, generatingStage, generatingStartedAt, confirmingTasks, onConfirmTasks, onCancelTaskDrafts,
-  members, reassigningTaskId, onReassignTask, approvingAllTasks, onApproveAllTasks,
+  members, reassigningTaskId, onReassignTask,
 }: {
-  note: NoteDto; spec: SpecDto | null; reqDef: ReqDefDto | null; activeTab: PipelineTab; isPM: boolean; currentUserId: string | undefined; busy: string | null; projectName: string | undefined;
+  note: NoteDto; spec: SpecDto | null; reqDef: ReqDefDto | null; project: ProjectDto | null; activeTab: PipelineTab; isPM: boolean; currentUserId: string | undefined; busy: string | null; projectName: string | undefined;
   onGenerateSpec: () => void;
   specGenStartedAt: number | null;
   specGenStage: string;
@@ -1898,8 +1897,6 @@ function NoteDetail({
   members: Member[];
   reassigningTaskId: number | null;
   onReassignTask: (taskId: number, assigneeId: number) => void;
-  approvingAllTasks: boolean;
-  onApproveAllTasks: (taskIds: number[]) => void;
 }) {
   const status = bareStatus(spec);
   const meta = STATUS_META[status];
@@ -1999,23 +1996,35 @@ function NoteDetail({
     >
       <div className="flex items-center justify-between">
         <div>
-          {/* 이 헤더는 note.title(회의록 제목) 바로 위라서 항상 회의록 번호로 고정한다 —
-              탭에 따라 기획서/요구사항정의서 번호로 바뀌면 "회의록" 제목 위에 다른 문서
-              번호가 떠서 헷갈린다는 피드백. 기획서/요구사항정의서 번호는 각 탭의 해당
-              내용 바로 옆에 따로 표시한다. */}
-          <p className="text-xs font-mono text-muted-foreground/70">회의록 번호 {note.id}</p>
-          <h2 className="font-bold text-lg">{note.title}</h2>
-          <p className="text-xs text-muted-foreground mt-0.5">
-            작성자 {note.created_by_name || "알 수 없음"}
-            {String(note.created_by) === currentUserId && <span className="text-primary font-medium"> (나)</span>}
-          </p>
-          {/* 2026-09-22 (사용자 요청): 여러 프로젝트를 오갈 때 지금 보고 있는 문서가
-              어느 프로젝트 소속인지 헤더에서 바로 보여야 함 — 이 페이지는 항상 프로젝트
-              하나로 스코프되어 있어(fetchAll 참고) note.project와 project.id가 같다. */}
-          {projectName && (
-            <p className="text-xs text-muted-foreground mt-0.5">
-              프로젝트 {projectName}
-            </p>
+          {/* 이 헤더는 기본적으로 note.title(회의록 제목) 바로 위라서 항상 회의록 번호로
+              고정한다 — 탭에 따라 기획서/요구사항정의서 번호로 바뀌면 "회의록" 제목 위에
+              다른 문서 번호가 떠서 헷갈린다는 피드백. 기획서/요구사항정의서 번호는 각 탭의
+              해당 내용 바로 옆에 따로 표시한다.
+              2026-09-22 (사용자 요청): 업무배분 탭만은 예외 — 이 시점엔 이미 회의록보다
+              "어느 프로젝트의 업무 배분인지"가 더 중요한 정보라, 회의록 번호/제목/작성자
+              대신 프로젝트 번호/이름을 보여준다. project가 아직 없으면(이론상 업무배분
+              탭까지 왔으면 항상 있어야 하지만 방어적으로) 회의록 정보로 폴백한다.
+              그 외 탭에서는 기존처럼 회의록 정보를 보여주되, 여러 프로젝트를 오갈 때 지금
+              보고 있는 문서가 어느 프로젝트 소속인지 알 수 있도록 프로젝트명을 보조로 병기한다. */}
+          {activeTab === "taskAssignment" && project ? (
+            <>
+              <p className="text-xs font-mono text-muted-foreground/70">프로젝트 번호 {project.id}</p>
+              <h2 className="font-bold text-lg">{project.name}</h2>
+            </>
+          ) : (
+            <>
+              <p className="text-xs font-mono text-muted-foreground/70">회의록 번호 {note.id}</p>
+              <h2 className="font-bold text-lg">{note.title}</h2>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                작성자 {note.created_by_name || "알 수 없음"}
+                {String(note.created_by) === currentUserId && <span className="text-primary font-medium"> (나)</span>}
+              </p>
+              {projectName && (
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  프로젝트 {projectName}
+                </p>
+              )}
+            </>
           )}
           {/* 프로젝트 기간 — 기획서 검토요청 시점에 필수 입력이라(handleSubmitReview 참고) 기획서가
               하나라도 생성된 뒤엔 항상 값이 있다. 탭과 무관하게(기획서/요구사항정의서/업무배분) 공통
@@ -2371,10 +2380,6 @@ function NoteDetail({
             reassigningTaskId={reassigningTaskId}
             onReassign={onReassignTask}
             scheduleTitle={note.title}
-            approvingAll={approvingAllTasks}
-            onApproveAll={() => onApproveAllTasks(
-              tasksForReqDef.filter(t => t.status_info?.code_id === "PENDING_APPROVAL").map(t => t.id)
-            )}
           />
         )}
       </div>
@@ -2475,19 +2480,22 @@ function TaskDraftReview({
   // 한때 "담당자순"(담당자별 날짜순) 토글도 있었으나, 인접한 업무가 실제로는
   // 무관한데 같은 담당자·비슷한 날짜라는 이유만으로 옆에 붙어 있어 같은 Epic인
   // 것처럼 오해를 낳았다(2026-09-22 사용자 리포트) — Epic 단위(업무순) 하나로
-  // 통일한다. Epic을 그 안 업무들의 최소 시작일 오름차순으로 배치하고, Epic
-  // 안에서는 시작일 오름차순으로 정렬한다.
+  // 통일한다.
+  //
+  // 2026-09-22 (사용자 요청): Epic 그룹 자체의 순서는 "최소 시작일"이 아니라
+  // epic_no(EPIC-001, 002...) 오름차순으로 배치한다 — epic_no는 실제 개발
+  // 순서를 보장하진 않지만(담당자 배정에 따라 매번 달라지는 시작일 기준보다)
+  // 고정돼서 안정적이라 목록이 매번 요동치지 않는다. Epic 안에서는 여전히
+  // 시작일 오름차순으로 정렬한다.
   const sortedDrafts = useMemo(() => {
     const byEpic = new Map<string, TaskDraft[]>();
     for (const d of drafts) {
       const key = d.epic_no || "";
       (byEpic.get(key) ?? byEpic.set(key, []).get(key)!).push(d);
     }
-    const epicGroups = [...byEpic.values()].sort((a, b) => {
-      const minStart = (items: TaskDraft[]) =>
-        items.reduce((min, d) => (d.start_date && (!min || d.start_date < min) ? d.start_date : min), "");
-      return (minStart(a) || "9999-12-31").localeCompare(minStart(b) || "9999-12-31");
-    });
+    const epicGroups = [...byEpic.entries()]
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .map(([, items]) => items);
     // 2026-09-22: Task 헤더는 담당자가 없어 start_date가 항상 비어있다 — 날짜만으로
     // 정렬하면 맨 뒤로 밀려 자기 Subtask들보다 아래에 나온다. 헤더를 같은 Epic 안에서
     // 먼저 오게 하고, 그 다음은 기존대로 날짜순.
@@ -2703,14 +2711,12 @@ function TaskDraftReview({
 // 이미 확정(TaskAssignment로 저장)된 목록 — 일반 사용자는 읽기 전용, PM은 담당자 드롭다운으로
 // 재배정할 수 있다(기존 PATCH /api/tasks/assignments/{id}/ 재사용).
 function TaskAssignmentList({
-  tasks, members, isPM, reassigningTaskId, onReassign, scheduleTitle, approvingAll, onApproveAll,
+  tasks, members, isPM, reassigningTaskId, onReassign, scheduleTitle,
 }: {
   tasks: TaskAssignmentDto[]; members: Member[]; isPM: boolean;
   reassigningTaskId: number | null;
   onReassign: (taskId: number, assigneeId: number) => void;
   scheduleTitle: string;
-  approvingAll: boolean;
-  onApproveAll: () => void;
 }) {
   const [expandedId, setExpandedId] = useState<number | null>(null);
   // 드롭박스를 바꾸는 즉시 저장되면 실수로 잘못 바꾸기 쉽다는 피드백 — 이 기능 전체가
@@ -2725,10 +2731,23 @@ function TaskAssignmentList({
       epicNo: t.epic_no, epicTitle: t.epic_title,
     }));
 
-  // 배분 확정 직후엔 전부 PENDING_APPROVAL("배분승인대기")로 시작해서, PM이 projects/[id]
-  // 칸반보드에서 개별 승인해야 TASK_APPROVED로 바뀐다(위 상태 배지 주석 참고). 하나라도
-  // 아직 승인 전이면 이 배치 전체가 "확정 전" 미리보기 단계임을 표시한다(사용자 요청).
-  const hasPendingApproval = tasks.some(t => t.status_info?.code_id === "PENDING_APPROVAL");
+  // 2026-09-22 (사용자 요청): 확정된 목록도 미리보기(TaskDraftReview)와 동일하게
+  // Epic 단위(업무순)로 정렬한다. Epic 그룹 순서는 epic_no(EPIC-001, 002...)
+  // 오름차순 — 시작일 기준보다 고정적이라 목록이 매번 안 흔들린다. Epic 안에서는
+  // 시작일 오름차순.
+  const sortedTasks = useMemo(() => {
+    const byEpic = new Map<string, TaskAssignmentDto[]>();
+    for (const t of tasks) {
+      const key = t.epic_no || "";
+      (byEpic.get(key) ?? byEpic.set(key, []).get(key)!).push(t);
+    }
+    const epicGroups = [...byEpic.entries()]
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .map(([, items]) => items);
+    const byDate = (a: TaskAssignmentDto, b: TaskAssignmentDto) =>
+      (a.start_date || "9999-12-31").localeCompare(b.start_date || "9999-12-31");
+    return epicGroups.flatMap(items => [...items].sort(byDate));
+  }, [tasks]);
 
   return (
     <div className="space-y-4">
@@ -2739,11 +2758,6 @@ function TaskAssignmentList({
         <GanttSection items={ganttItems} title={scheduleTitle} />
       </div>
       <div className="border border-border rounded-xl overflow-hidden overflow-x-auto">
-        {hasPendingApproval && (
-          <div className="px-4 py-2 text-xs font-bold text-center text-amber-600 dark:text-amber-400 bg-black/5 dark:bg-white/5 border-b border-border">
-            미리보기 (확정 전)
-          </div>
-        )}
         <table className="w-full text-sm text-left">
           <thead className="text-xs text-muted-foreground uppercase bg-black/5 dark:bg-white/5">
             <tr>
@@ -2755,8 +2769,19 @@ function TaskAssignmentList({
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
-            {tasks.map((t, idx) => (
+            {sortedTasks.map((t, idx) => {
+              // 2026-09-22: Epic이 바뀌는 지점에 구분 행을 넣는다(TaskDraftReview와 동일 패턴).
+              // 헤더가 이미 소속을 보여주므로 업무명 아래 epic_no/epic_title 반복 표시는 뺐다.
+              const showEpicHeader = t.epic_no !== sortedTasks[idx - 1]?.epic_no;
+              return (
               <Fragment key={t.id}>
+                {showEpicHeader && (
+                  <tr className="bg-primary/5">
+                    <td colSpan={5} className="px-4 py-2 text-xs font-bold text-primary">
+                      {t.epic_no} · {t.epic_title}
+                    </td>
+                  </tr>
+                )}
                 <tr className="align-top">
                   <td className="px-4 py-3 text-xs font-semibold text-muted-foreground">{idx + 1}</td>
                   <td className="px-4 py-3">
@@ -2767,7 +2792,6 @@ function TaskAssignmentList({
                       expanded={expandedId === t.id}
                       onToggleExpand={() => setExpandedId(v => v === t.id ? null : t.id)}
                     />
-                    {t.epic_title && <p className="text-xs text-muted-foreground mt-0.5 pl-4">{t.epic_no} · {t.epic_title}</p>}
                   </td>
                   <td className="px-4 py-3">
                     {/* 배분 확정(TASK_APPROVED) 이후에는 담당자 드롭박스 자체를 비활성화한다 —
@@ -2891,26 +2915,11 @@ function TaskAssignmentList({
                   />
                 )}
               </Fragment>
-            ))}
+              );
+            })}
           </tbody>
         </table>
       </div>
-      {/* 2026-09-18 (사용자 요청): 담당자 본인이 /approvals나 칸반보드에서 한 건씩 승인하지
-          않아도, 이 문서 화면에서 PM이 PENDING_APPROVAL 건 전체를 한 번에 확정할 수 있어야
-          한다 — 백엔드도 이제 PM 승인을 다시 허용한다. 전부 승인되면(hasPendingApproval=false)
-          이 버튼과 위 미리보기 배지가 함께 사라진다. */}
-      {isPM && hasPendingApproval && (
-        <div className="flex justify-end">
-          <button
-            onClick={onApproveAll}
-            disabled={approvingAll}
-            className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-bold hover:bg-primary/90 disabled:opacity-50"
-          >
-            {approvingAll ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
-            배분 확정
-          </button>
-        </div>
-      )}
     </div>
   );
 }
