@@ -152,6 +152,17 @@ class OverflowTests(SimpleTestCase):
         self.assertFalse(s["feasible"])
         self.assertLess(s["project_buffer_days"], 0)  # 음수 = 초과 일수
 
+    def test_projected_finish_date_not_clamped_to_project_period(self):
+        # 2026-09-22 버그: summary.projected_finish_date가 마지막 평일로
+        # 클램프돼 있으면, project_buffer_days(음수=초과)와 동시에 봤을 때
+        # "예상완료일은 종료일 이전인데 N일 초과"라는 모순된 값이 나온다.
+        # 실제 완료일은 프로젝트 기간을 넘겨서(평일 기준 연장) 나와야 한다.
+        res = schedule([_u("BIG", 1, 400)], WORKDAYS)  # plan_days = 80일
+        s = res["summary"]
+        self.assertEqual(s["projected_finish_date"], "2026-12-21")
+        self.assertLess(s["project_buffer_days"], 0)
+        self.assertGreater(s["projected_finish_date"], WORKDAYS[-1].isoformat())
+
     def test_no_workdays(self):
         res = schedule([_u("A", 1, 6)], [])
         self.assertIsNone(res["units"]["A"]["start_date"])
