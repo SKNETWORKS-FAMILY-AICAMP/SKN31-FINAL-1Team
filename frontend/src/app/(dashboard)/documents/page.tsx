@@ -1867,9 +1867,10 @@ function StageTracker({ stages, current }: { stages: string[]; current: number }
   );
 }
 
-// 정확한 총 소요시간을 알 방법이 없어(순차 LLM 호출 여러 개), "지금까지 걸린
-// 시간이 전체 진행률의 몇 %인지"로 총 예상시간을 역산해 남은 시간을 추정한다 —
-// 대략적인 값이라는 걸 명확히 하려고 "약"을 붙인다.
+// 2026-09-22 (사용자 요청): "남은 시간"은 순차 LLM 호출 여러 개의 총 소요시간을
+// 정확히 알 방법이 없어 진행률로 역산한 추정치일 뿐이라 오차가 커서(사용자 실측
+// 사례: 경과 1:28인데 남은 시간 13:12로 표시) 신뢰도가 낮다는 지적 — 아예 없애고
+// 경과 시간과 진행률만 보여준다.
 function ProgressTimeline({
   stages, stage, pctFn, startedAt,
 }: {
@@ -1881,8 +1882,6 @@ function ProgressTimeline({
   const current = currentStageIndex(stages, stage);
   const elapsedSec = useElapsedSeconds(startedAt);
   const pct = pctFn(stage, elapsedSec);
-  const estimatedTotalSec = pct > 5 ? elapsedSec / (pct / 100) : null;
-  const remainingSec = estimatedTotalSec != null ? Math.max(0, estimatedTotalSec - elapsedSec) : null;
 
   return (
     <div className="flex flex-col gap-1.5 w-80 shrink-0">
@@ -1891,12 +1890,6 @@ function ProgressTimeline({
         <span className="font-bold text-cyan-500">{pct}%</span>
         <span>·</span>
         <span>경과 {formatDuration(elapsedSec)}</span>
-        {remainingSec != null && (
-          <>
-            <span>·</span>
-            <span>남은 시간 약 {formatDuration(remainingSec)}</span>
-          </>
-        )}
       </div>
     </div>
   );
