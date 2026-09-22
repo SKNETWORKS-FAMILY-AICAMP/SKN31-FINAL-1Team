@@ -2056,7 +2056,10 @@ function NoteDetail({
   useEffect(() => { setEditMode(false); setEditDraft(null); }, [note.id]);
   const editSaving = busy === busyKey("save-spec");
   const [evidenceTarget, setEvidenceTarget] = useState<{ noteId: number; sectionKey: keyof ProposalEvidence; quotes: string[]; items?: ProposalEvidenceItem[] } | null>(null);
-  const [evidencePanelWidth, setEvidencePanelWidth] = useState(560);
+  // 2026-09-22 (사용자 요청): 기획서 생성 직후 자동으로 열리는 기본 상태에서 패널이
+  // 너무 넓어 보인다는 지적 — EvidencePanel이 허용하는 최소 폭(360, resizeFromPointer
+  // 참고)으로 기본값을 낮춘다. 사용자가 드래그로 늘리면 그 값은 그대로 유지된다.
+  const [evidencePanelWidth, setEvidencePanelWidth] = useState(360);
   // 2026-09-22 (사용자 요청): 기획서가 생성되고 나면(스테이터스 무관 — DRAFT부터
   // 즉시) 상단 원본 회의록 대신 우측 근거 패널을 기본으로 열어둔다 — 특정 섹션
   // 근거를 고른 게 아니므로 하이라이트 없이 원문 전체만 보여준다(evidenceTarget과
@@ -2108,7 +2111,11 @@ function NoteDetail({
 
   return (
     <div
-      className={cn("space-y-5 transition-[padding] duration-300", evidencePanelOpen && "xl:pr-[var(--evidence-panel-width)]")}
+      // 2026-09-22 (사용자 재확인): 근거 패널/우측 여백은 기획서 탭에서만 — 요구사항정의서·
+      // 업무배분 탭은 이 컨테이너를 그대로 공유해서 쓰기 때문에(탭 전환 시 상태 유지를
+      // 위해 전부 mount해두고 CSS로만 감춤), activeTab을 안 걸면 다른 탭을 볼 때도 우측이
+      // 패널 너비만큼 밀려서 잘려 보이는 문제가 있었다.
+      className={cn("space-y-5 transition-[padding] duration-300", evidencePanelOpen && activeTab === "proposal" && "xl:pr-[var(--evidence-panel-width)]")}
       style={{ "--evidence-panel-width": `${evidencePanelWidth}px` } as React.CSSProperties}
     >
       <div className="flex items-center justify-between">
@@ -2240,7 +2247,7 @@ function NoteDetail({
       </div>
 
       <EvidencePanel
-        open={evidencePanelOpen}
+        open={evidencePanelOpen && activeTab === "proposal"}
         onClose={() => { setEvidenceTarget(null); setAutoEvidenceOpen(false); }}
         fullText={note.content ?? ""}
         targetQuotes={targetedEvidenceOpen ? evidenceTarget.quotes : []}
