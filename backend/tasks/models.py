@@ -78,7 +78,16 @@ class TaskAssignment(models.Model):
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
         related_name='tasks',
+        null=True, blank=True,
         verbose_name="담당자",
+    )
+    # 2026-09-22: Subtask로 쪼개진 Task는 그 자체로 배정 단위가 아니라서(담당자·시간이
+    # Subtask들에 나뉘어 있음) assigned_user가 없다. 그런 표시용 행(하위 Subtask를
+    # 묶어 보여주기 위한 Task 헤더)인지, 아니면 그냥 아직 담당자 미배정인 실제
+    # 배정 단위인지를 assigned_user IS NULL만으로는 구분할 수 없어(둘 다 NULL) 이
+    # 플래그로 명시적으로 구분한다.
+    is_task_header = models.BooleanField(
+        default=False, verbose_name="Subtask를 묶는 표시용 Task 행인지(직접 배정 대상 아님)",
     )
     project = models.ForeignKey(
         'projects.Project',

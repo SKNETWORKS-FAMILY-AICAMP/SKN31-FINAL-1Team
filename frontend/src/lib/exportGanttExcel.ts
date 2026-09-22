@@ -1,4 +1,7 @@
-type GanttExportItem = { id: string; title: string; assigneeName: string; start: string; end: string };
+type GanttExportItem = {
+  id: string; title: string; assigneeName: string; start: string; end: string;
+  epicNo: string; epicTitle: string; // 2026-09-22: 화면(GanttChart)의 Epic 열과 동일하게 내보낸다
+};
 
 const DAY_MS = 86400000;
 
@@ -47,14 +50,16 @@ export async function exportGanttExcel(items: GanttExportItem[], scheduleTitle: 
   const rows = flattenByAssignee(items);
 
   const workbook = new ExcelJS.Workbook();
-  const sheet = workbook.addWorksheet("간트 차트", { views: [{ state: "frozen", xSplit: 2, ySplit: 2 }] });
+  const sheet = workbook.addWorksheet("간트 차트", { views: [{ state: "frozen", xSplit: 3, ySplit: 2 }] });
 
+  const EPIC_COL_WIDTH = 22;
   const TITLE_COL_WIDTH = 26;
   const NAME_COL_WIDTH = 12;
   const DAY_COL_WIDTH = 4;
-  sheet.getColumn(1).width = TITLE_COL_WIDTH;
-  sheet.getColumn(2).width = NAME_COL_WIDTH;
-  for (let i = 0; i < dayCount; i++) sheet.getColumn(i + 3).width = DAY_COL_WIDTH;
+  sheet.getColumn(1).width = EPIC_COL_WIDTH;
+  sheet.getColumn(2).width = TITLE_COL_WIDTH;
+  sheet.getColumn(3).width = NAME_COL_WIDTH;
+  for (let i = 0; i < dayCount; i++) sheet.getColumn(i + 4).width = DAY_COL_WIDTH;
 
   const THIN = { style: "thin" as const, color: { argb: "FFD0D5DD" } };
   const ALL_BORDERS = { top: THIN, left: THIN, bottom: THIN, right: THIN };
@@ -66,11 +71,13 @@ export async function exportGanttExcel(items: GanttExportItem[], scheduleTitle: 
   const monthRow = sheet.getRow(1);
   const dayRow = sheet.getRow(2);
 
-  monthRow.getCell(1).value = "작업명";
-  monthRow.getCell(2).value = "담당자";
+  monthRow.getCell(1).value = "Epic";
+  monthRow.getCell(2).value = "작업명";
+  monthRow.getCell(3).value = "담당자";
   sheet.mergeCells(1, 1, 2, 1);
   sheet.mergeCells(1, 2, 2, 2);
-  [1, 2].forEach(c => {
+  sheet.mergeCells(1, 3, 2, 3);
+  [1, 2, 3].forEach(c => {
     const cell = monthRow.getCell(c);
     cell.font = { bold: true };
     cell.fill = HEADER_FILL;
@@ -82,9 +89,9 @@ export async function exportGanttExcel(items: GanttExportItem[], scheduleTitle: 
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
-  let monthGroupStartCol = 3;
+  let monthGroupStartCol = 4;
   days.forEach((d, i) => {
-    const col = i + 3;
+    const col = i + 4;
     const isWeekend = d.getDay() === 0 || d.getDay() === 6;
     const isToday = d.getTime() === today.getTime();
     const isMonthStart = d.getDate() === 1;
@@ -121,13 +128,19 @@ export async function exportGanttExcel(items: GanttExportItem[], scheduleTitle: 
     const row = sheet.getRow(rowIndex);
     row.height = 20;
 
-    const titleCell = row.getCell(1);
+    const epicCell = row.getCell(1);
+    epicCell.value = [item.epicNo, item.epicTitle].filter(Boolean).join(" · ");
+    epicCell.font = { size: 9, color: { argb: "FF667085" } };
+    epicCell.alignment = { vertical: "middle", horizontal: "left", indent: 1 };
+    epicCell.border = ALL_BORDERS;
+
+    const titleCell = row.getCell(2);
     titleCell.value = item.title;
     titleCell.font = { bold: true, size: 9 };
     titleCell.alignment = { vertical: "middle", horizontal: "left", indent: 1 };
     titleCell.border = ALL_BORDERS;
 
-    const nameCell = row.getCell(2);
+    const nameCell = row.getCell(3);
     nameCell.value = item.assigneeName;
     nameCell.font = { size: 9 };
     nameCell.alignment = { vertical: "middle", horizontal: "left", indent: 1 };
@@ -136,7 +149,7 @@ export async function exportGanttExcel(items: GanttExportItem[], scheduleTitle: 
     const s = dayIndexOf(item.start);
     const e = dayIndexOf(item.end);
     for (let i = 0; i < dayCount; i++) {
-      const col = i + 3;
+      const col = i + 4;
       const cell = row.getCell(col);
       cell.border = ALL_BORDERS;
       const isWeekend = days[i].getDay() === 0 || days[i].getDay() === 6;

@@ -99,6 +99,13 @@ class TaskAssignmentListCreateView(generics.ListCreateAPIView):
         is_pm = getattr(self.request.user, 'is_staff', False) or self.request.user.groups.filter(name='PM').exists()
         if not (is_pm and status_param == TaskStatusCode.BACKLOG):
             qs = qs.exclude(status_code_id=TaskStatusCode.BACKLOG)
+        # 2026-09-22: Task 헤더 행(is_task_header=True, Subtask로 쪼개진 Task 자신을
+        # 표시만 하기 위한 행 — 담당자·진행률·상태 갱신 대상이 아님)은 칸반보드/
+        # 대시보드/"내 업무" 목록처럼 이 엔드포인트를 쓰는 화면에 섞여 들어가면
+        # 담당자 없는 카드로 보여 혼란을 준다. 이 목록에서는 항상 제외한다 —
+        # documents/page.tsx는 이 엔드포인트를 안 거치고 generate_task_suggestions/
+        # confirm_task_assignments 응답을 직접 쓰므로 헤더를 볼 수 있다.
+        qs = qs.exclude(is_task_header=True)
         if project_id:
             qs = qs.filter(req_item__req_def__spec__meeting__project_id=project_id)
         if assignee_id:

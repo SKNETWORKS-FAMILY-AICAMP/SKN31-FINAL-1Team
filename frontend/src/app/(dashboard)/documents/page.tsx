@@ -175,6 +175,9 @@ type TaskSuggestionDto = {
   feature_area: string | null; // 2026-09-11 (Phase 2): 같은 기능 묶음(WorkPackage) 라벨
   schedule_reason: string | null; // 2026-09-11 (Phase 4): 이 날짜에 놓인 이유(결정적)
   parent_task_id: string | null; // 2026-09-17: Subtask일 때만 원본 Task의 task_id(예: "TASK-001")
+  // 2026-09-22: Subtask로 쪼개진 Task 자신을 표시만 하기 위한 행 — 배정 대상이
+  // 아니라 assignee_id/날짜가 항상 비어있다.
+  is_task_header: boolean;
 };
 
 // 2026-09-10 (Phase 0): 남는 프로젝트 기간을 업무 사이 갭으로 숨기지 않고 PM에게
@@ -218,6 +221,7 @@ type TaskDraft = {
   feature_area: string | null; // 2026-09-11 (Phase 2)
   schedule_reason: string | null; // 2026-09-11 (Phase 4)
   parent_task_id: string | null; // 2026-09-17
+  is_task_header: boolean; // 2026-09-22
   start_date: string; // yyyy-mm-dd, <input type="date"> 용 — 없으면 빈 문자열
   end_date: string;
 };
@@ -262,13 +266,17 @@ const suggestionToDraft = (s: TaskSuggestionDto): TaskDraft => ({
   feature_area: s.feature_area,
   schedule_reason: s.schedule_reason,
   parent_task_id: s.parent_task_id,
+  is_task_header: s.is_task_header,
   start_date: toDateInput(s.suggested_start_date),
   end_date: toDateInput(s.suggested_end_date),
 });
 
 // 담당자별로 업무 막대를 배치하는 간트 차트에 넘길 공통 아이템 — heyzzabi2의 GanttItem과
 // 동일한 모양이라 draft/confirmed 둘 다 이걸로 변환해서 같은 GanttChart를 재사용한다.
-type GanttItem = { id: string; title: string; assigneeName: string; start: string; end: string };
+type GanttItem = {
+  id: string; title: string; assigneeName: string; start: string; end: string;
+  epicNo: string; epicTitle: string; // 2026-09-22: 간트에서도 어느 Epic 소속인지 보이게
+};
 
 const STATUS_META: Record<BareStatus, { label: string; className: string; icon: any }> = {
   DRAFT: { label: "초안", className: "bg-muted text-muted-foreground", icon: FileText },
@@ -481,7 +489,7 @@ export default function DocumentsPage() {
         name: u.first_name || u.last_name ? `${u.last_name ?? ""}${u.first_name ?? ""}` : (u.full_name || u.username || `#${u.id}`),
         jobRoleCode: u.job_role_info?.code_id ?? null,
       }))))
-      .catch(() => {});
+      .catch(() => { });
   }, []);
 
   // 2026-09-15: updated_at 기준 정렬이었으나, 카드에 보이는 날짜는 meeting_date(수동
@@ -1338,7 +1346,7 @@ export default function DocumentsPage() {
                     "w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 transition-colors",
                     done ? "bg-emerald-500 text-white"
                       : isDocStage ? "bg-primary text-primary-foreground ring-4 ring-primary/20"
-                      : "bg-black/10 dark:bg-white/10 text-muted-foreground"
+                        : "bg-black/10 dark:bg-white/10 text-muted-foreground"
                   )}>
                     {done ? <CheckCircle2 className="w-3 h-3" /> : locked ? <Lock className="w-3 h-3" /> : i + 1}
                   </span>
@@ -1377,106 +1385,106 @@ export default function DocumentsPage() {
             </button>
           ) : (
             <>
-          <div className="flex items-center justify-between gap-2 shrink-0">
-            <span className="text-sm font-bold text-muted-foreground pl-1">문서 목록</span>
-            <button
-              onClick={() => setListCollapsed(true)}
-              title="문서 목록 접기"
-              aria-label="문서 목록 접기"
-              className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-black/5 dark:hover:bg-white/5 transition-colors shrink-0"
-            >
-              <PanelLeftClose className="w-4 h-4" />
-            </button>
-          </div>
-          {!isPM && (
-            <button
-              onClick={() => setNewDocModalOpen(true)}
-              className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-bold hover:bg-primary/90 transition-colors shrink-0"
-            >
-              <Plus className="w-4 h-4" /> 새 회의록 / 문서
-            </button>
-          )}
+              <div className="flex items-center justify-between gap-2 shrink-0">
+                <span className="text-sm font-bold text-muted-foreground pl-1">문서 목록</span>
+                <button
+                  onClick={() => setListCollapsed(true)}
+                  title="문서 목록 접기"
+                  aria-label="문서 목록 접기"
+                  className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-black/5 dark:hover:bg-white/5 transition-colors shrink-0"
+                >
+                  <PanelLeftClose className="w-4 h-4" />
+                </button>
+              </div>
+              {!isPM && (
+                <button
+                  onClick={() => setNewDocModalOpen(true)}
+                  className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-bold hover:bg-primary/90 transition-colors shrink-0"
+                >
+                  <Plus className="w-4 h-4" /> 새 회의록 / 문서
+                </button>
+              )}
 
-          <div className="space-y-2 overflow-y-auto min-h-0 flex-1 pr-1 -mr-1">
-            {sortedNotes.length === 0 ? (
-              <p className="text-sm text-muted-foreground text-center py-10">
-                등록된 회의록이 없습니다.<br />회의록을 등록하세요.
-              </p>
-            ) : (
-              sortedNotes.map(note => {
-                const spec = note.spec_documents[0] ?? null;
-                const s = bareStatus(spec);
-                const meta = spec ? STATUS_META[s] : STATUS_META.DRAFT;
-                const Icon = meta.icon;
-                // 카드에 표시할 번호도 지금 이 문서가 어느 단계까지 왔는지에 맞춰 보여준다
-                // — 기획서 단계면 기획서 번호, 요구사항정의서 단계(기획서 승인 완료)로
-                // 넘어갔으면 요구사항정의서 번호, 아직 기획서도 없으면 회의록 번호.
-                const cardReqDef = spec ? reqDefs.find(r => r.spec === spec.id) ?? null : null;
-                const cardHasConfirmedTasks = hasConfirmedTasksFor(cardReqDef);
-                const cardStage = stageOf(spec, cardReqDef, cardHasConfirmedTasks);
-                const [numberLabel, numberValue] = !spec
-                  ? ["회의록 번호", note.id]
-                  : cardStage !== "proposal" && cardReqDef
-                  ? ["요구사항정의서 번호", cardReqDef.id]
-                  : ["기획서 번호", spec.id];
-                return (
-                  <div
-                    key={note.id}
-                    className={cn(
-                      "group w-full flex items-start gap-1 p-3 rounded-xl border transition-colors",
-                      selectedNote?.id === note.id
-                        ? "border-primary/50 bg-primary/5"
-                        : "border-transparent hover:bg-black/5 dark:hover:bg-white/5"
-                    )}
-                  >
-                    <button onClick={() => selectNote(note)} className="flex-1 min-w-0 text-left">
-                      <p className="text-[10px] font-mono text-muted-foreground/70">{numberLabel} {numberValue}</p>
-                      <p className="font-semibold text-sm truncate mb-1.5">{note.title}</p>
-                      {/* 미니 파이프라인 — 이 문서가 지금 3단계 중 어디에 있는지 한눈에 */}
-                      <div className="flex items-center gap-1 mb-1.5">
-                        {PIPELINE_STEPS.map((step, i) => (
-                          <Fragment key={step}>
-                            {i > 0 && <div className={cn("h-px w-3", stepDone(spec, PIPELINE_STEPS[i - 1], cardReqDef, cardHasConfirmedTasks) ? "bg-emerald-500/40" : "bg-black/10 dark:bg-white/10")} />}
-                            <div
-                              title={PIPELINE_TAB_LABEL[step]}
-                              className={cn(
-                                "w-1.5 h-1.5 rounded-full shrink-0",
-                                step === cardStage ? "bg-primary ring-2 ring-primary/25" : stepDone(spec, step, cardReqDef, cardHasConfirmedTasks) ? "bg-emerald-500" : "bg-black/10 dark:bg-white/15"
-                              )}
-                            />
-                          </Fragment>
-                        ))}
-                      </div>
-                      <span className={cn("inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold", spec ? meta.className : "bg-black/5 dark:bg-white/5 text-muted-foreground")}>
-                        <Icon className="w-3 h-3" /> {spec ? meta.label : "기획서 미생성"}
-                      </span>
-                      <p className="text-[11px] text-muted-foreground mt-1 flex items-center gap-1.5">
-                        {/* 2026-09-15: meeting_date(회의 날짜, 수동 입력값)를 보여주면 목록
+              <div className="space-y-2 overflow-y-auto min-h-0 flex-1 pr-1 -mr-1">
+                {sortedNotes.length === 0 ? (
+                  <p className="text-sm text-muted-foreground text-center py-10">
+                    등록된 회의록이 없습니다.<br />회의록을 등록하세요.
+                  </p>
+                ) : (
+                  sortedNotes.map(note => {
+                    const spec = note.spec_documents[0] ?? null;
+                    const s = bareStatus(spec);
+                    const meta = spec ? STATUS_META[s] : STATUS_META.DRAFT;
+                    const Icon = meta.icon;
+                    // 카드에 표시할 번호도 지금 이 문서가 어느 단계까지 왔는지에 맞춰 보여준다
+                    // — 기획서 단계면 기획서 번호, 요구사항정의서 단계(기획서 승인 완료)로
+                    // 넘어갔으면 요구사항정의서 번호, 아직 기획서도 없으면 회의록 번호.
+                    const cardReqDef = spec ? reqDefs.find(r => r.spec === spec.id) ?? null : null;
+                    const cardHasConfirmedTasks = hasConfirmedTasksFor(cardReqDef);
+                    const cardStage = stageOf(spec, cardReqDef, cardHasConfirmedTasks);
+                    const [numberLabel, numberValue] = !spec
+                      ? ["회의록 번호", note.id]
+                      : cardStage !== "proposal" && cardReqDef
+                        ? ["요구사항정의서 번호", cardReqDef.id]
+                        : ["기획서 번호", spec.id];
+                    return (
+                      <div
+                        key={note.id}
+                        className={cn(
+                          "group w-full flex items-start gap-1 p-3 rounded-xl border transition-colors",
+                          selectedNote?.id === note.id
+                            ? "border-primary/50 bg-primary/5"
+                            : "border-transparent hover:bg-black/5 dark:hover:bg-white/5"
+                        )}
+                      >
+                        <button onClick={() => selectNote(note)} className="flex-1 min-w-0 text-left">
+                          <p className="text-[10px] font-mono text-muted-foreground/70">{numberLabel} {numberValue}</p>
+                          <p className="font-semibold text-sm truncate mb-1.5">{note.title}</p>
+                          {/* 미니 파이프라인 — 이 문서가 지금 3단계 중 어디에 있는지 한눈에 */}
+                          <div className="flex items-center gap-1 mb-1.5">
+                            {PIPELINE_STEPS.map((step, i) => (
+                              <Fragment key={step}>
+                                {i > 0 && <div className={cn("h-px w-3", stepDone(spec, PIPELINE_STEPS[i - 1], cardReqDef, cardHasConfirmedTasks) ? "bg-emerald-500/40" : "bg-black/10 dark:bg-white/10")} />}
+                                <div
+                                  title={PIPELINE_TAB_LABEL[step]}
+                                  className={cn(
+                                    "w-1.5 h-1.5 rounded-full shrink-0",
+                                    step === cardStage ? "bg-primary ring-2 ring-primary/25" : stepDone(spec, step, cardReqDef, cardHasConfirmedTasks) ? "bg-emerald-500" : "bg-black/10 dark:bg-white/15"
+                                  )}
+                                />
+                              </Fragment>
+                            ))}
+                          </div>
+                          <span className={cn("inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold", spec ? meta.className : "bg-black/5 dark:bg-white/5 text-muted-foreground")}>
+                            <Icon className="w-3 h-3" /> {spec ? meta.label : "기획서 미생성"}
+                          </span>
+                          <p className="text-[11px] text-muted-foreground mt-1 flex items-center gap-1.5">
+                            {/* 2026-09-15: meeting_date(회의 날짜, 수동 입력값)를 보여주면 목록
                             정렬 기준(등록일=created_at)과 화면에 보이는 날짜가 달라서 "최신순인데
                             맨 위가 옛날 날짜"로 보이는 혼란이 있었다 — 정렬 기준과 같은 날짜를 표시. */}
-                        <span>{new Date(note.created_at).toLocaleDateString("ko-KR")}</span>
-                        <span className="text-muted-foreground/60">·</span>
-                        <span className="truncate">작성자 {note.created_by_name || "알 수 없음"}</span>
-                      </p>
-                    </button>
-                    {isNoteDeletable(note, user?.id, isPM) ? (
-                      <button
-                        onClick={() => setDeleteTarget({ id: note.id, title: note.title })}
-                        title="문서 삭제"
-                        className="shrink-0 p-1.5 rounded-lg opacity-0 group-hover:opacity-100 transition-all text-muted-foreground hover:text-red-400 hover:bg-red-500/10"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    ) : (
-                      <div title="검토 요청 중이거나 승인된 문서는 삭제할 수 없습니다" className="shrink-0 p-1.5 text-muted-foreground/40">
-                        <Lock className="w-3.5 h-3.5" />
+                            <span>{new Date(note.created_at).toLocaleDateString("ko-KR")}</span>
+                            <span className="text-muted-foreground/60">·</span>
+                            <span className="truncate">작성자 {note.created_by_name || "알 수 없음"}</span>
+                          </p>
+                        </button>
+                        {isNoteDeletable(note, user?.id, isPM) ? (
+                          <button
+                            onClick={() => setDeleteTarget({ id: note.id, title: note.title })}
+                            title="문서 삭제"
+                            className="shrink-0 p-1.5 rounded-lg opacity-0 group-hover:opacity-100 transition-all text-muted-foreground hover:text-red-400 hover:bg-red-500/10"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        ) : (
+                          <div title="검토 요청 중이거나 승인된 문서는 삭제할 수 없습니다" className="shrink-0 p-1.5 text-muted-foreground/40">
+                            <Lock className="w-3.5 h-3.5" />
+                          </div>
+                        )}
                       </div>
-                    )}
-                  </div>
-                );
-              })
-            )}
-          </div>
+                    );
+                  })
+                )}
+              </div>
             </>
           )}
         </div>
@@ -2049,184 +2057,184 @@ function NoteDetail({
           직접수정 중이던 초안, 항목 추가 폼)가 통째로 날아간다 — 항상 mount해두고 CSS로만
           숨겨서 안 보이는 탭의 상태도 그대로 유지되게 한다(heyzzabi2와 동일한 이유). */}
       <div className={cn("space-y-5", activeTab !== "proposal" && "hidden")}>
-      {/* 2026-09-22 (사용자 요청): 기획서가 생성되면(rawLocked=!!spec) 원본은 더 이상
+        {/* 2026-09-22 (사용자 요청): 기획서가 생성되면(rawLocked=!!spec) 원본은 더 이상
           이 자리에서 볼 일이 없다 — 우측 근거 패널(자동으로 열림, 위 autoEvidenceOpen
           참고)로 대체한다. 기획서 생성 전(작성 중)에는 그대로 여기서 편집한다. */}
-      {!rawLocked && (
-      <div className="text-sm">
-        <div className="flex items-center justify-between mb-2">
-          <button
-            type="button"
-            onClick={() => setRawNoteOpen(v => !v)}
-            className="flex items-center gap-1.5 text-muted-foreground font-medium hover:text-foreground transition-colors"
-          >
-            <ChevronDown className={cn("w-4 h-4 transition-transform shrink-0", !rawNoteOpen && "-rotate-90")} />
-            원본 회의록 / 메모
-          </button>
-          {canEditRaw && rawDirty && (
-            <button
-              onClick={() => onSaveNoteContent(rawDraft)}
-              disabled={rawSaving}
-              className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-primary/10 text-primary text-xs font-semibold hover:bg-primary/20 disabled:opacity-50 transition-colors"
-            >
-              {rawSaving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
-              저장
-            </button>
+        {!rawLocked && (
+          <div className="text-sm">
+            <div className="flex items-center justify-between mb-2">
+              <button
+                type="button"
+                onClick={() => setRawNoteOpen(v => !v)}
+                className="flex items-center gap-1.5 text-muted-foreground font-medium hover:text-foreground transition-colors"
+              >
+                <ChevronDown className={cn("w-4 h-4 transition-transform shrink-0", !rawNoteOpen && "-rotate-90")} />
+                원본 회의록 / 메모
+              </button>
+              {canEditRaw && rawDirty && (
+                <button
+                  onClick={() => onSaveNoteContent(rawDraft)}
+                  disabled={rawSaving}
+                  className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-primary/10 text-primary text-xs font-semibold hover:bg-primary/20 disabled:opacity-50 transition-colors"
+                >
+                  {rawSaving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+                  저장
+                </button>
+              )}
+            </div>
+            {rawNoteOpen && (
+              <textarea
+                value={rawDraft}
+                onChange={e => canEditRaw && setRawDraft(e.target.value)}
+                readOnly={!canEditRaw}
+                placeholder="내용이 없습니다."
+                title={!canEditRaw ? "다른 사용자가 시작한 회의록입니다. 작성자 본인만 수정할 수 있습니다." : undefined}
+                className={cn(
+                  "w-full h-48 bg-black/5 dark:bg-white/5 border border-border rounded-xl p-4 whitespace-pre-wrap overflow-y-auto text-muted-foreground resize-none focus:outline-none transition-all",
+                  !canEditRaw ? "cursor-default" : "focus:ring-2 focus:ring-primary/40"
+                )}
+              />
+            )}
+          </div>
+        )}
+
+        <p className="text-sm text-muted-foreground font-semibold flex items-center gap-2">
+          기획서
+          {spec && <span className="text-xs font-mono font-normal text-muted-foreground/70">기획서 번호 {spec.id}</span>}
+        </p>
+        <div className="border border-border rounded-xl overflow-hidden bg-black/10 dark:bg-black/30 p-4 flex flex-col items-center gap-3">
+          {parsedContent ? (
+            <div className="doc-scroll w-full max-w-[840px] max-h-[1190px] overflow-y-auto bg-white dark:bg-white">
+              <div id="print-area">
+                <ProposalTemplate
+                  doc={parsedContent}
+                  title={note.title} dateLabel={dateLabel}
+                  editable={editMode} onChange={setEditDraft}
+                  periodEditable={periodEditable} onPeriodChange={handlePeriodChange}
+                  evidenceItems={parseEvidenceItems(spec?.evidence_items ?? null)}
+                  activeEvidenceKey={targetedEvidenceOpen ? evidenceTarget.sectionKey : undefined}
+                  onViewEvidence={showEvidence}
+                />
+              </div>
+            </div>
+          ) : (
+            <div className="w-full max-w-[840px] bg-white dark:bg-white p-10 text-center text-muted-foreground text-sm">
+              {!canGenerate || isPM ? "다른 사용자가 시작한 회의록입니다. 작성자 본인만 생성할 수 있습니다." : "AI가 아직 기획서를 생성하지 않았습니다."}
+            </div>
           )}
         </div>
-        {rawNoteOpen && (
-          <textarea
-            value={rawDraft}
-            onChange={e => canEditRaw && setRawDraft(e.target.value)}
-            readOnly={!canEditRaw}
-            placeholder="내용이 없습니다."
-            title={!canEditRaw ? "다른 사용자가 시작한 회의록입니다. 작성자 본인만 수정할 수 있습니다." : undefined}
-            className={cn(
-              "w-full h-48 bg-black/5 dark:bg-white/5 border border-border rounded-xl p-4 whitespace-pre-wrap overflow-y-auto text-muted-foreground resize-none focus:outline-none transition-all",
-              !canEditRaw ? "cursor-default" : "focus:ring-2 focus:ring-primary/40"
-            )}
-          />
-        )}
-      </div>
-      )}
 
-      <p className="text-sm text-muted-foreground font-semibold flex items-center gap-2">
-        기획서
-        {spec && <span className="text-xs font-mono font-normal text-muted-foreground/70">기획서 번호 {spec.id}</span>}
-      </p>
-      <div className="border border-border rounded-xl overflow-hidden bg-black/10 dark:bg-black/30 p-4 flex flex-col items-center gap-3">
-        {parsedContent ? (
-          <div className="doc-scroll w-full max-w-[840px] max-h-[1190px] overflow-y-auto bg-white dark:bg-white">
-            <div id="print-area">
-              <ProposalTemplate
-                doc={parsedContent}
-                title={note.title} dateLabel={dateLabel}
-                editable={editMode} onChange={setEditDraft}
-                periodEditable={periodEditable} onPeriodChange={handlePeriodChange}
-                evidenceItems={parseEvidenceItems(spec?.evidence_items ?? null)}
-                activeEvidenceKey={targetedEvidenceOpen ? evidenceTarget.sectionKey : undefined}
-                onViewEvidence={showEvidence}
-              />
+        <EvidencePanel
+          open={evidencePanelOpen && activeTab === "proposal"}
+          onClose={() => { setEvidenceTarget(null); setAutoEvidenceOpen(false); }}
+          fullText={note.content ?? ""}
+          targetQuotes={targetedEvidenceOpen ? evidenceTarget.quotes : []}
+          targetGroups={targetedEvidenceOpen ? evidenceTarget.items : undefined}
+          width={evidencePanelWidth}
+          onWidthChange={setEvidencePanelWidth}
+        />
+
+        <div className="flex flex-wrap justify-end items-center gap-3 pt-2">
+          {spec && (
+            <div className="flex items-center gap-2 mr-auto shrink-0">
+              <button onClick={handlePrint} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 text-xs font-semibold transition-colors whitespace-nowrap">
+                <Printer className="w-3.5 h-3.5" /> PDF 다운로드
+              </button>
+              <button onClick={handlePptx} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 text-xs font-semibold transition-colors whitespace-nowrap">
+                <Download className="w-3.5 h-3.5" /> PPTX 다운로드
+              </button>
             </div>
-          </div>
-        ) : (
-          <div className="w-full max-w-[840px] bg-white dark:bg-white p-10 text-center text-muted-foreground text-sm">
-            {!canGenerate || isPM ? "다른 사용자가 시작한 회의록입니다. 작성자 본인만 생성할 수 있습니다." : "AI가 아직 기획서를 생성하지 않았습니다."}
-          </div>
-        )}
-      </div>
+          )}
 
-      <EvidencePanel
-        open={evidencePanelOpen && activeTab === "proposal"}
-        onClose={() => { setEvidenceTarget(null); setAutoEvidenceOpen(false); }}
-        fullText={note.content ?? ""}
-        targetQuotes={targetedEvidenceOpen ? evidenceTarget.quotes : []}
-        targetGroups={targetedEvidenceOpen ? evidenceTarget.items : undefined}
-        width={evidencePanelWidth}
-        onWidthChange={setEvidencePanelWidth}
-      />
+          {!spec && canGenerate && !isPM && (
+            <>
+              {busy === busyKey("generate") && <SpecGenProgressBar stage={specGenStage} startedAt={specGenStartedAt} />}
+              <button
+                onClick={onGenerateSpec}
+                disabled={busy === busyKey("generate")}
+                className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-bold hover:bg-primary/90 disabled:opacity-50 whitespace-nowrap"
+              >
+                {busy === busyKey("generate") ? <Loader2 className="w-4 h-4 animate-spin" /> : <Bot className="w-4 h-4" />}
+                {busy === busyKey("generate") ? (specGenStage || "기획서 생성 중…") : "기획서 생성"}
+              </button>
+            </>
+          )}
 
-      <div className="flex flex-wrap justify-end items-center gap-3 pt-2">
-        {spec && (
-          <div className="flex items-center gap-2 mr-auto shrink-0">
-            <button onClick={handlePrint} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 text-xs font-semibold transition-colors whitespace-nowrap">
-              <Printer className="w-3.5 h-3.5" /> PDF 다운로드
-            </button>
-            <button onClick={handlePptx} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 text-xs font-semibold transition-colors whitespace-nowrap">
-              <Download className="w-3.5 h-3.5" /> PPTX 다운로드
-            </button>
-          </div>
-        )}
-
-        {!spec && canGenerate && !isPM && (
-          <>
-            {busy === busyKey("generate") && <SpecGenProgressBar stage={specGenStage} startedAt={specGenStartedAt} />}
-            <button
-              onClick={onGenerateSpec}
-              disabled={busy === busyKey("generate")}
-              className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-bold hover:bg-primary/90 disabled:opacity-50 whitespace-nowrap"
-            >
-              {busy === busyKey("generate") ? <Loader2 className="w-4 h-4 animate-spin" /> : <Bot className="w-4 h-4" />}
-              {busy === busyKey("generate") ? (specGenStage || "기획서 생성 중…") : "기획서 생성"}
-            </button>
-          </>
-        )}
-
-        {/* 2026-09-10: 팀원 요청으로 추가한 "재생성" 버튼 — analyze 엔드포인트가 이미
+          {/* 2026-09-10: 팀원 요청으로 추가한 "재생성" 버튼 — analyze 엔드포인트가 이미
             update_or_create라 기존 기획서 위에 덮어써도 백엔드 수정 없이 안전하다. 다만
             검토요청 이후(PENDING_REVIEW/APPROVED)에는 노출하지 않는다 — 승인된 기획서 내용이
             사용자가 인지하지 못한 채 AI 재생성으로 통째로 바뀌면 안 되기 때문(검토요청 버튼과
             같은 조건). "직접수정"으로 손댄 내용도 재생성하면 사라지므로 실행 전 확인창을 띄운다. */}
-        {spec && !isPM && canGenerate && (status === "DRAFT" || status === "REJECTED") && (
-          <>
-            {busy === busyKey("generate") && <SpecGenProgressBar stage={specGenStage} startedAt={specGenStartedAt} />}
-            <button
-              onClick={() => {
-                if (window.confirm("기획서를 다시 생성하면 현재 내용(직접 수정한 부분 포함)이 AI 결과로 덮어써집니다. 계속하시겠습니까?")) {
-                  onGenerateSpec();
-                }
-              }}
-              disabled={busy === busyKey("generate")}
-              className="flex items-center gap-2 px-3 py-2 rounded-lg bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 text-xs font-semibold transition-colors disabled:opacity-50 whitespace-nowrap"
-            >
-              {busy === busyKey("generate") ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RotateCcw className="w-3.5 h-3.5" />}
-              {busy === busyKey("generate") ? (specGenStage || "재생성 중…") : "재생성"}
-            </button>
-          </>
-        )}
+          {spec && !isPM && canGenerate && (status === "DRAFT" || status === "REJECTED") && (
+            <>
+              {busy === busyKey("generate") && <SpecGenProgressBar stage={specGenStage} startedAt={specGenStartedAt} />}
+              <button
+                onClick={() => {
+                  if (window.confirm("기획서를 다시 생성하면 현재 내용(직접 수정한 부분 포함)이 AI 결과로 덮어써집니다. 계속하시겠습니까?")) {
+                    onGenerateSpec();
+                  }
+                }}
+                disabled={busy === busyKey("generate")}
+                className="flex items-center gap-2 px-3 py-2 rounded-lg bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 text-xs font-semibold transition-colors disabled:opacity-50 whitespace-nowrap"
+              >
+                {busy === busyKey("generate") ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RotateCcw className="w-3.5 h-3.5" />}
+                {busy === busyKey("generate") ? (specGenStage || "재생성 중…") : "재생성"}
+              </button>
+            </>
+          )}
 
-        {/* 검토요청은 하단, 승인/반려는 상단 우측 — "직접수정"도 하단에 있어서 사용자
+          {/* 검토요청은 하단, 승인/반려는 상단 우측 — "직접수정"도 하단에 있어서 사용자
             흐름상 하단에 두는 게 더 자연스럽다는 판단으로 다시 하단으로 내렸다. */}
-        {spec && !isPM && canGenerate && (status === "DRAFT" || status === "REJECTED") && (
-          <button
-            onClick={() => onSubmitReview(spec)}
-            disabled={busy === busyKey("submit")}
-            className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-bold hover:bg-primary/90 disabled:opacity-50 whitespace-nowrap"
-          >
-            {busy === busyKey("submit") ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-            검토요청
-          </button>
-        )}
+          {spec && !isPM && canGenerate && (status === "DRAFT" || status === "REJECTED") && (
+            <button
+              onClick={() => onSubmitReview(spec)}
+              disabled={busy === busyKey("submit")}
+              className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-bold hover:bg-primary/90 disabled:opacity-50 whitespace-nowrap"
+            >
+              {busy === busyKey("submit") ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+              검토요청
+            </button>
+          )}
 
 
-        {/* "기획서 생성"/"검토요청"과 같은 기준(작성자 본인, PM은 예외)으로 맞춘다 —
+          {/* "기획서 생성"/"검토요청"과 같은 기준(작성자 본인, PM은 예외)으로 맞춘다 —
             이 체크가 빠져있어서 다른 사람이 시작한 초안도 고칠 수 있는 상태였다. */}
-        {spec && (status === "REJECTED" || status === "DRAFT") && (canGenerate || isPM) && !editMode && (
-          <button
-            onClick={startEdit}
-            className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 text-sm font-bold transition-colors whitespace-nowrap"
-          >
-            <Pencil className="w-4 h-4" /> 직접 수정
-          </button>
-        )}
-
-        {spec && (status === "REJECTED" || status === "DRAFT") && editMode && (
-          <>
+          {spec && (status === "REJECTED" || status === "DRAFT") && (canGenerate || isPM) && !editMode && (
             <button
-              onClick={() => setEditMode(false)}
-              className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 text-sm font-bold transition-colors"
+              onClick={startEdit}
+              className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 text-sm font-bold transition-colors whitespace-nowrap"
             >
-              취소
+              <Pencil className="w-4 h-4" /> 직접 수정
             </button>
-            <button
-              onClick={saveEdit}
-              disabled={editSaving}
-              className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-bold hover:bg-primary/90 disabled:opacity-50"
-            >
-              {editSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-              저장
-            </button>
-          </>
-        )}
+          )}
 
-        {spec && !isPM && status === "PENDING_REVIEW" && (
-          <span className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-muted text-muted-foreground text-sm font-bold">
-            <Clock className="w-4 h-4" /> 요청완료
-          </span>
-        )}
+          {spec && (status === "REJECTED" || status === "DRAFT") && editMode && (
+            <>
+              <button
+                onClick={() => setEditMode(false)}
+                className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 text-sm font-bold transition-colors"
+              >
+                취소
+              </button>
+              <button
+                onClick={saveEdit}
+                disabled={editSaving}
+                className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-bold hover:bg-primary/90 disabled:opacity-50"
+              >
+                {editSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                저장
+              </button>
+            </>
+          )}
 
-        {/* 승인/반려는 상단 우측(제목 옆)으로 옮겼다 — 요구사항정의서 탭과 위치 통일. */}
-      </div>
+          {spec && !isPM && status === "PENDING_REVIEW" && (
+            <span className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-muted text-muted-foreground text-sm font-bold">
+              <Clock className="w-4 h-4" /> 요청완료
+            </span>
+          )}
+
+          {/* 승인/반려는 상단 우측(제목 옆)으로 옮겼다 — 요구사항정의서 탭과 위치 통일. */}
+        </div>
       </div>
 
       {/* 요구사항정의서 탭 — heyzzabi2와 동일하게 위에는 근거가 된 기획서 원본을 접었다 폈다
@@ -2340,8 +2348,8 @@ function NoteDetail({
                   {!isPM && tasksForReqDef.length > 0
                     ? "본인에게 배정된 업무가 없습니다."
                     : reqDef?.status_info?.code_id === "APPROVED"
-                    ? "요구사항정의서 탭에서 \"업무 배분 실행\"을 누르면 여기에 결과가 표시됩니다."
-                    : "요구사항정의서가 승인되면 업무 배분을 실행할 수 있습니다."}
+                      ? "요구사항정의서 탭에서 \"업무 배분 실행\"을 누르면 여기에 결과가 표시됩니다."
+                      : "요구사항정의서가 승인되면 업무 배분을 실행할 수 있습니다."}
                 </p>
               </>
             )}
@@ -2449,25 +2457,37 @@ function TaskDraftReview({
       assigneeName: members.find(m => m.id === d.assignee_id)?.name ?? "미배정",
       start: d.start_date,
       end: d.end_date,
+      epicNo: d.epic_no,
+      epicTitle: d.epic_title,
     }));
 
   // 2026-09-17: 원래 정렬이 전혀 없어 백엔드가 담당자를 결정한 순서(우선순위·업무
-  // 패키지 크기, 날짜와 무관) 그대로 표에 나열됐다 — 그래서 같은 담당자의 업무도
-  // 화면에서 날짜순으로 안 읽혀 workload_fit(담당자별 날짜순 누적 부하 문구, 방금
-  // 고침)를 읽어도 여전히 뒤죽박죽으로 보이는 문제가 있었다(사용자 리포트). 담당자
-  // 이름으로 묶고 그 안에서 시작일순으로 정렬해, 같은 사람의 업무가 날짜 순서대로
-  // 이어져 보이게 한다 — 미배정은 맨 뒤로.
+  // 패키지 크기, 날짜와 무관) 그대로 표에 나열돼 뒤죽박죽으로 보였다(사용자 리포트).
+  // 한때 "담당자순"(담당자별 날짜순) 토글도 있었으나, 인접한 업무가 실제로는
+  // 무관한데 같은 담당자·비슷한 날짜라는 이유만으로 옆에 붙어 있어 같은 Epic인
+  // 것처럼 오해를 낳았다(2026-09-22 사용자 리포트) — Epic 단위(업무순) 하나로
+  // 통일한다. Epic을 그 안 업무들의 최소 시작일 오름차순으로 배치하고, Epic
+  // 안에서는 시작일 오름차순으로 정렬한다.
   const sortedDrafts = useMemo(() => {
-    const nameOf = (d: TaskDraft) => members.find(m => m.id === d.assignee_id)?.name ?? "";
-    return [...drafts].sort((a, b) => {
-      if (a.assignee_id == null && b.assignee_id == null) return 0;
-      if (a.assignee_id == null) return 1;
-      if (b.assignee_id == null) return -1;
-      const nameCompare = nameOf(a).localeCompare(nameOf(b), "ko");
-      if (nameCompare !== 0) return nameCompare;
-      return (a.start_date || "").localeCompare(b.start_date || "");
+    const byEpic = new Map<string, TaskDraft[]>();
+    for (const d of drafts) {
+      const key = d.epic_no || "";
+      (byEpic.get(key) ?? byEpic.set(key, []).get(key)!).push(d);
+    }
+    const epicGroups = [...byEpic.values()].sort((a, b) => {
+      const minStart = (items: TaskDraft[]) =>
+        items.reduce((min, d) => (d.start_date && (!min || d.start_date < min) ? d.start_date : min), "");
+      return (minStart(a) || "9999-12-31").localeCompare(minStart(b) || "9999-12-31");
     });
-  }, [drafts, members]);
+    // 2026-09-22: Task 헤더는 담당자가 없어 start_date가 항상 비어있다 — 날짜만으로
+    // 정렬하면 맨 뒤로 밀려 자기 Subtask들보다 아래에 나온다. 헤더를 같은 Epic 안에서
+    // 먼저 오게 하고, 그 다음은 기존대로 날짜순.
+    const byDate = (a: TaskDraft, b: TaskDraft) => {
+      if (a.is_task_header !== b.is_task_header) return a.is_task_header ? -1 : 1;
+      return (a.start_date || "9999-12-31").localeCompare(b.start_date || "9999-12-31");
+    };
+    return epicGroups.flatMap(items => [...items].sort(byDate));
+  }, [drafts]);
 
   // 전부 "미배정"인 채로 확정을 누르면 서버가 저장할 게 하나도 없어 created_count=0
   // 인데도 "확정되었습니다" 성공 토스트가 뜨는 버그가 있었다(사용자 신고: "배분 확정하고
@@ -2562,54 +2582,90 @@ function TaskDraftReview({
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
-            {sortedDrafts.map(d => (
-              <Fragment key={d.unit_id}>
-                <tr className="align-top">
-                  <td className="px-4 py-3">
-                    <TaskTitleCell
-                      title={d.title}
-                      estimatedHours={d.estimated_hours}
-                      techFit={d.tech_fit}
-                      featureArea={d.feature_area}
-                      expanded={expandedUnitId === d.unit_id}
-                      onToggleExpand={() => setExpandedUnitId(v => v === d.unit_id ? null : d.unit_id)}
-                    />
-                  </td>
-                  <td className="px-4 py-3">
-                    <select
-                      value={d.assignee_id ?? ""}
-                      onChange={e => updateDraft(d.unit_id, { assignee_id: e.target.value ? Number(e.target.value) : null })}
-                      className="w-full bg-black/5 dark:bg-white/5 border border-border rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-primary/40"
-                    >
-                      <option value="">미배정</option>
-                      {members.map(m => (
-                        <option key={m.id} value={m.id}>{m.name}</option>
-                      ))}
-                    </select>
-                    {d.assignee_id == null && d.hold_explanation && (
-                      <p className="text-[11px] text-amber-500 mt-1">{d.hold_explanation}</p>
-                    )}
-                  </td>
-                  <td className="px-4 py-3">
-                    {d.score != null ? (
-                      <span className="text-[11px] font-bold text-primary bg-primary/10 px-2 py-0.5 rounded-full">{d.score}</span>
-                    ) : <span className="text-xs text-muted-foreground">-</span>}
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-1.5">
-                      <input type="date" value={d.start_date} onChange={e => updateDraft(d.unit_id, { start_date: e.target.value })}
-                        className="bg-black/5 dark:bg-white/5 border border-border rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-primary/40" />
-                      <span className="text-muted-foreground">~</span>
-                      <input type="date" value={d.end_date} onChange={e => updateDraft(d.unit_id, { end_date: e.target.value })}
-                        className="bg-black/5 dark:bg-white/5 border border-border rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-primary/40" />
-                    </div>
-                  </td>
-                </tr>
-                {expandedUnitId === d.unit_id && (
-                  <ReasonRow techFit={d.tech_fit} workloadFit={d.workload_fit} experienceFit={d.experience_fit} scheduleReason={d.schedule_reason} />
-                )}
-              </Fragment>
-            ))}
+            {sortedDrafts.map((d, idx) => {
+              // 2026-09-22: Epic이 바뀌는 지점에 구분 행을 넣는다. Epic 헤더가 이미
+              // 소속을 보여주므로 업무명 쪽엔 epicLabel을 따로 안 넣는다(중복).
+              const showEpicHeader = d.epic_no !== sortedDrafts[idx - 1]?.epic_no;
+              const isSubtask = !!d.parent_task_id;
+              return (
+                <Fragment key={d.unit_id}>
+                  {showEpicHeader && (
+                    <tr className="bg-primary/5">
+                      <td colSpan={4} className="px-4 py-2 text-xs font-bold text-primary">
+                        {d.epic_no} · {d.epic_title}
+                      </td>
+                    </tr>
+                  )}
+                  {d.is_task_header ? (
+                    // 2026-09-22 (사용자 요청): Subtask로 쪼개진 Task 자신은 배정 대상이
+                    // 아니라 담당자·적합도·일정 칸이 없다 — 그 하위 Subtask들을 묶는
+                    // 제목만 보여준다(estimated_hours는 하위 Subtask 합계, services.py에서
+                    // 계산해 내려줌).
+                    <tr className="align-top bg-black/[0.015] dark:bg-white/[0.015]">
+                      <td className="px-4 py-3" colSpan={4}>
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-semibold">{d.title}</span>
+                          <span className="shrink-0 text-[10px] px-1.5 py-0.5 rounded-full bg-black/5 dark:bg-white/5 text-muted-foreground font-semibold">
+                            {d.estimated_hours ?? "-"}h 합계
+                          </span>
+                          <span className="text-xs text-muted-foreground">하위 업무로 배정됨 — 이 Task 자체엔 담당자·일정 없음</span>
+                        </div>
+                      </td>
+                    </tr>
+                  ) : (
+                    <tr className="align-top">
+                      <td className="px-4 py-3">
+                        {/* Subtask는 들여쓰기+화살표로 표시한다 — Epic으로 이미 실제
+                            소속이 묶인 상태라 인접이 우연이 아니다. */}
+                        <div className={cn("flex items-start gap-1", isSubtask && "pl-5")}>
+                          {isSubtask && <span className="text-muted-foreground/60 text-xs mt-0.5 shrink-0">↳</span>}
+                          <TaskTitleCell
+                            title={d.title}
+                            estimatedHours={d.estimated_hours}
+                            techFit={d.tech_fit}
+                            featureArea={d.feature_area}
+                            expanded={expandedUnitId === d.unit_id}
+                            onToggleExpand={() => setExpandedUnitId(v => v === d.unit_id ? null : d.unit_id)}
+                          />
+                        </div>
+                      </td>
+                      <td className="px-4 py-3">
+                        <select
+                          value={d.assignee_id ?? ""}
+                          onChange={e => updateDraft(d.unit_id, { assignee_id: e.target.value ? Number(e.target.value) : null })}
+                          className="w-full bg-black/5 dark:bg-white/5 border border-border rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-primary/40"
+                        >
+                          <option value="">미배정</option>
+                          {members.map(m => (
+                            <option key={m.id} value={m.id}>{m.name}</option>
+                          ))}
+                        </select>
+                        {d.assignee_id == null && d.hold_explanation && (
+                          <p className="text-[11px] text-amber-500 mt-1">{d.hold_explanation}</p>
+                        )}
+                      </td>
+                      <td className="px-4 py-3">
+                        {d.score != null ? (
+                          <span className="text-[11px] font-bold text-primary bg-primary/10 px-2 py-0.5 rounded-full">{d.score}</span>
+                        ) : <span className="text-xs text-muted-foreground">-</span>}
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-1.5">
+                          <input type="date" value={d.start_date} onChange={e => updateDraft(d.unit_id, { start_date: e.target.value })}
+                            className="bg-black/5 dark:bg-white/5 border border-border rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-primary/40" />
+                          <span className="text-muted-foreground">~</span>
+                          <input type="date" value={d.end_date} onChange={e => updateDraft(d.unit_id, { end_date: e.target.value })}
+                            className="bg-black/5 dark:bg-white/5 border border-border rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-primary/40" />
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                  {!d.is_task_header && expandedUnitId === d.unit_id && (
+                    <ReasonRow techFit={d.tech_fit} workloadFit={d.workload_fit} experienceFit={d.experience_fit} scheduleReason={d.schedule_reason} />
+                  )}
+                </Fragment>
+              );
+            })}
           </tbody>
         </table>
       </div>
@@ -2651,7 +2707,10 @@ function TaskAssignmentList({
 
   const ganttItems: GanttItem[] = tasks
     .filter(t => t.start_date && t.end_date)
-    .map(t => ({ id: String(t.id), title: t.title, assigneeName: t.assigned_user_name, start: t.start_date!, end: t.end_date! }));
+    .map(t => ({
+      id: String(t.id), title: t.title, assigneeName: t.assigned_user_name, start: t.start_date!, end: t.end_date!,
+      epicNo: t.epic_no, epicTitle: t.epic_title,
+    }));
 
   // 배분 확정 직후엔 전부 PENDING_APPROVAL("배분승인대기")로 시작해서, PM이 projects/[id]
   // 칸반보드에서 개별 승인해야 TASK_APPROVED로 바뀐다(위 상태 배지 주석 참고). 하나라도
@@ -2713,72 +2772,72 @@ function TaskAssignmentList({
                         상태와 무관하게 드롭박스를 열어준다. */}
                     {isPM && (!["TASK_APPROVED", "IN_PROGRESS", "DONE"].includes(t.status_info?.code_id ?? "") || t.assigned_user_resigned) ? (
                       <div className="flex flex-col gap-1">
-                      <div className="flex items-center gap-1">
-                        <select
-                          value={pendingReassign[t.id] ?? t.assigned_user}
-                          onChange={e => {
-                            const next = Number(e.target.value);
-                            setPendingReassign(prev => {
-                              if (next === t.assigned_user) {
-                                const { [t.id]: _omit, ...rest } = prev;
-                                return rest;
-                              }
-                              return { ...prev, [t.id]: next };
-                            });
-                          }}
-                          disabled={reassigningTaskId === t.id}
-                          className={cn(
-                            "w-full border rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-primary/40 disabled:opacity-50",
-                            pendingReassign[t.id] != null
-                              ? "bg-amber-500/10 border-amber-500/40"
-                              : "bg-black/5 dark:bg-white/5 border-border"
+                        <div className="flex items-center gap-1">
+                          <select
+                            value={pendingReassign[t.id] ?? t.assigned_user}
+                            onChange={e => {
+                              const next = Number(e.target.value);
+                              setPendingReassign(prev => {
+                                if (next === t.assigned_user) {
+                                  const { [t.id]: _omit, ...rest } = prev;
+                                  return rest;
+                                }
+                                return { ...prev, [t.id]: next };
+                              });
+                            }}
+                            disabled={reassigningTaskId === t.id}
+                            className={cn(
+                              "w-full border rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-primary/40 disabled:opacity-50",
+                              pendingReassign[t.id] != null
+                                ? "bg-amber-500/10 border-amber-500/40"
+                                : "bg-black/5 dark:bg-white/5 border-border"
+                            )}
+                          >
+                            {members.map(m => (
+                              <option key={m.id} value={m.id}>{m.name}</option>
+                            ))}
+                          </select>
+                          {pendingReassign[t.id] != null && (
+                            <>
+                              <button
+                                type="button"
+                                title="담당자 변경 확정"
+                                disabled={reassigningTaskId === t.id}
+                                onClick={() => {
+                                  const newId = pendingReassign[t.id];
+                                  onReassign(t.id, newId);
+                                  setPendingReassign(prev => { const { [t.id]: _omit, ...rest } = prev; return rest; });
+                                }}
+                                className="shrink-0 p-1.5 rounded-lg text-emerald-500 hover:bg-emerald-500/10 disabled:opacity-50"
+                              >
+                                {reassigningTaskId === t.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
+                              </button>
+                              <button
+                                type="button"
+                                title="취소"
+                                disabled={reassigningTaskId === t.id}
+                                onClick={() => setPendingReassign(prev => { const { [t.id]: _omit, ...rest } = prev; return rest; })}
+                                className="shrink-0 p-1.5 rounded-lg text-muted-foreground hover:bg-black/5 dark:hover:bg-white/5 disabled:opacity-50"
+                              >
+                                <X className="w-3.5 h-3.5" />
+                              </button>
+                            </>
                           )}
-                        >
-                          {members.map(m => (
-                            <option key={m.id} value={m.id}>{m.name}</option>
-                          ))}
-                        </select>
-                        {pendingReassign[t.id] != null && (
-                          <>
-                            <button
-                              type="button"
-                              title="담당자 변경 확정"
-                              disabled={reassigningTaskId === t.id}
-                              onClick={() => {
-                                const newId = pendingReassign[t.id];
-                                onReassign(t.id, newId);
-                                setPendingReassign(prev => { const { [t.id]: _omit, ...rest } = prev; return rest; });
-                              }}
-                              className="shrink-0 p-1.5 rounded-lg text-emerald-500 hover:bg-emerald-500/10 disabled:opacity-50"
-                            >
-                              {reassigningTaskId === t.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
-                            </button>
-                            <button
-                              type="button"
-                              title="취소"
-                              disabled={reassigningTaskId === t.id}
-                              onClick={() => setPendingReassign(prev => { const { [t.id]: _omit, ...rest } = prev; return rest; })}
-                              className="shrink-0 p-1.5 rounded-lg text-muted-foreground hover:bg-black/5 dark:hover:bg-white/5 disabled:opacity-50"
-                            >
-                              <X className="w-3.5 h-3.5" />
-                            </button>
-                          </>
-                        )}
-                      </div>
-                      {/* 2026-09-16 (사용자 요청): 재배정하면 원래 AI가 누굴 추천했었는지
+                        </div>
+                        {/* 2026-09-16 (사용자 요청): 재배정하면 원래 AI가 누굴 추천했었는지
                           화면에서 알 수 없어진다는 지적 — 현재 선택(대기 중 선택 포함)이
                           AI 원래 추천과 다를 때만 참고용으로 보여준다. */}
-                      {t.original_assigned_user_name &&
-                        (pendingReassign[t.id] ?? t.assigned_user) !== t.original_assigned_user && (
-                          <p className="text-[11px] text-muted-foreground pl-0.5">
-                            AI 추천 담당자: {t.original_assigned_user_name}
+                        {t.original_assigned_user_name &&
+                          (pendingReassign[t.id] ?? t.assigned_user) !== t.original_assigned_user && (
+                            <p className="text-[11px] text-muted-foreground pl-0.5">
+                              AI 추천 담당자: {t.original_assigned_user_name}
+                            </p>
+                          )}
+                        {t.assigned_user_resigned && ["TASK_APPROVED", "IN_PROGRESS", "DONE"].includes(t.status_info?.code_id ?? "") && (
+                          <p className="text-[11px] text-amber-500 pl-0.5">
+                            담당자가 퇴사 처리되어 재배정이 필요합니다
                           </p>
                         )}
-                      {t.assigned_user_resigned && ["TASK_APPROVED", "IN_PROGRESS", "DONE"].includes(t.status_info?.code_id ?? "") && (
-                        <p className="text-[11px] text-amber-500 pl-0.5">
-                          담당자가 퇴사 처리되어 재배정이 필요합니다
-                        </p>
-                      )}
                       </div>
                     ) : (
                       <div className="flex items-center gap-1.5">
@@ -2895,12 +2954,12 @@ export function parseEvidenceItems(raw: string | null): ProposalEvidenceEntries 
         : [];
       const items = Array.isArray(entry.items)
         ? entry.items.flatMap((item): ProposalEvidenceItem[] => {
-            if (!item || typeof item !== "object" || Array.isArray(item)) return [];
-            const candidate = item as Record<string, unknown>;
-            if (typeof candidate.title !== "string" || !candidate.title.trim() || !Array.isArray(candidate.quotes)) return [];
-            const itemQuotes = candidate.quotes.filter((quote): quote is string => typeof quote === "string" && quote.trim().length > 0);
-            return itemQuotes.length > 0 ? [{ title: candidate.title.trim(), quotes: itemQuotes }] : [];
-          })
+          if (!item || typeof item !== "object" || Array.isArray(item)) return [];
+          const candidate = item as Record<string, unknown>;
+          if (typeof candidate.title !== "string" || !candidate.title.trim() || !Array.isArray(candidate.quotes)) return [];
+          const itemQuotes = candidate.quotes.filter((quote): quote is string => typeof quote === "string" && quote.trim().length > 0);
+          return itemQuotes.length > 0 ? [{ title: candidate.title.trim(), quotes: itemQuotes }] : [];
+        })
         : undefined;
       if (quotes.length > 0 || (items && items.length > 0)) result[mappedKey] = { quotes, items };
     }
@@ -2977,11 +3036,14 @@ function GanttChart({ items }: { items: GanttItem[] }) {
     })
     .sort((a, b) => a.firstStart - b.firstStart);
 
-  type Row = { title: string; assigneeName: string; startIdx: number; endIdx: number };
+  type Row = { title: string; assigneeName: string; epicLabel: string; startIdx: number; endIdx: number };
   const rowData: Row[] = groups.flatMap(({ items: personItems }) =>
     personItems.map(item => ({
       title: item.title,
       assigneeName: item.assigneeName,
+      // 2026-09-22: 어느 Epic 소속 업무인지 여기서도 보이게 — 번호가 없으면(예:
+      // 예전 데이터) 제목만, 제목도 없으면 빈 칸으로 둔다.
+      epicLabel: [item.epicNo, item.epicTitle].filter(Boolean).join(" · "),
       startIdx: dayIndexOf(item.start),
       endIdx: dayIndexOf(item.end),
     }))
@@ -3041,6 +3103,7 @@ function GanttChart({ items }: { items: GanttItem[] }) {
   });
 
   const columnDefs: (ColDef<Row> | ColGroupDef<Row>)[] = [
+    { headerName: "Epic", field: "epicLabel", pinned: "left", width: 160, cellClass: "text-xs text-muted-foreground" },
     { headerName: "작업명", field: "title", pinned: "left", width: 220, cellClass: "text-xs font-semibold" },
     { headerName: "담당자", field: "assigneeName", pinned: "left", width: 110, cellClass: "text-xs" },
     ...dayGroups,
@@ -3339,7 +3402,7 @@ function RequirementSection({
                 "inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold",
                 reqStatus === "APPROVED" ? "bg-emerald-500/10 text-emerald-500"
                   : reqStatus === "REJECTED" ? "bg-red-500/10 text-red-500"
-                  : "bg-orange-500/10 text-orange-500"
+                    : "bg-orange-500/10 text-orange-500"
               )}>
                 {reqDef.status_info?.code_name ?? reqStatus}
               </span>
@@ -3608,280 +3671,280 @@ function RequirementSection({
         }
 
         return (
-        <>
-        <div className="border border-border rounded-xl overflow-hidden">
-          <table className="w-full text-sm text-left">
-            <thead className="text-xs text-muted-foreground uppercase bg-black/5 dark:bg-white/5">
-              <tr>
-                <th className="px-4 py-2.5 font-bold w-14">순번</th>
-                <th className="px-4 py-2.5 font-bold w-24">분류</th>
-                <th className="px-4 py-2.5 font-bold w-28">
-                  <button type="button" onClick={() => toggleSort("code")} className="flex items-center gap-1 hover:text-foreground">
-                    코드 <span className="text-primary">{sortArrow("code")}</span>
-                  </button>
-                </th>
-                <th className="px-4 py-2.5 font-bold">요구사항명</th>
-                <th className="px-4 py-2.5 font-bold w-24">
-                  <button type="button" onClick={() => toggleSort("priority")} className="flex items-center gap-1 hover:text-foreground">
-                    우선순위 <span className="text-primary">{sortArrow("priority")}</span>
-                  </button>
-                </th>
-                {!isPM && canGenerate && !itemsLocked && <th className="px-4 py-2.5 font-bold w-20 text-right">관리</th>}
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {!sortColumn && !isPM && canGenerate && !itemsLocked && (
-                addFormAt === "start" ? renderAddFormRow("start") : renderDivider("start")
-              )}
-              {displayItems.map((item, index) => {
-                const isEditing = editingItemId === item.id;
-                const deleting = busy === `reqitem-${item.id}-delete`;
-                const updating = busy === `reqitem-${item.id}-update`;
-                return (
-                  <Fragment key={item.id}>
+          <>
+            <div className="border border-border rounded-xl overflow-hidden">
+              <table className="w-full text-sm text-left">
+                <thead className="text-xs text-muted-foreground uppercase bg-black/5 dark:bg-white/5">
                   <tr>
-                    <td className="px-4 py-2.5 text-xs text-muted-foreground align-middle">{index + 1}</td>
-                    <td className="px-4 py-2.5 text-xs text-muted-foreground align-middle">
-                      {/* req_code 접두사(FR/NFR)로 기능·비기능을 구분한다 — category 필드는
+                    <th className="px-4 py-2.5 font-bold w-14">순번</th>
+                    <th className="px-4 py-2.5 font-bold w-24">분류</th>
+                    <th className="px-4 py-2.5 font-bold w-28">
+                      <button type="button" onClick={() => toggleSort("code")} className="flex items-center gap-1 hover:text-foreground">
+                        코드 <span className="text-primary">{sortArrow("code")}</span>
+                      </button>
+                    </th>
+                    <th className="px-4 py-2.5 font-bold">요구사항명</th>
+                    <th className="px-4 py-2.5 font-bold w-24">
+                      <button type="button" onClick={() => toggleSort("priority")} className="flex items-center gap-1 hover:text-foreground">
+                        우선순위 <span className="text-primary">{sortArrow("priority")}</span>
+                      </button>
+                    </th>
+                    {!isPM && canGenerate && !itemsLocked && <th className="px-4 py-2.5 font-bold w-20 text-right">관리</th>}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {!sortColumn && !isPM && canGenerate && !itemsLocked && (
+                    addFormAt === "start" ? renderAddFormRow("start") : renderDivider("start")
+                  )}
+                  {displayItems.map((item, index) => {
+                    const isEditing = editingItemId === item.id;
+                    const deleting = busy === `reqitem-${item.id}-delete`;
+                    const updating = busy === `reqitem-${item.id}-update`;
+                    return (
+                      <Fragment key={item.id}>
+                        <tr>
+                          <td className="px-4 py-2.5 text-xs text-muted-foreground align-middle">{index + 1}</td>
+                          <td className="px-4 py-2.5 text-xs text-muted-foreground align-middle">
+                            {/* req_code 접두사(FR/NFR)로 기능·비기능을 구분한다 — category 필드는
                           도메인 세부분류(재고 관리, 보안성 등)라 기능/비기능 여부와는 다르다. */}
-                      {item.req_code?.startsWith("NFR") ? "비기능" : item.req_code?.startsWith("FR") ? "기능" : "-"}
-                    </td>
-                    <td className="px-4 py-2.5 font-mono text-xs text-muted-foreground align-middle whitespace-nowrap">{item.req_code}</td>
-                    <td className="px-4 py-2.5 align-top">
-                      {isEditing ? (
-                        <div className="space-y-1.5">
-                          <input
-                            value={editName}
-                            onChange={e => setEditName(e.target.value)}
-                            className="w-full bg-black/5 dark:bg-white/5 border border-border rounded-lg px-2 py-1.5 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-primary/40"
-                          />
-                          <textarea
-                            value={editDesc}
-                            onChange={e => setEditDesc(e.target.value)}
-                            className="w-full bg-black/5 dark:bg-white/5 border border-border rounded-lg px-2 py-1.5 text-xs resize-none h-16 focus:outline-none focus:ring-2 focus:ring-primary/40"
-                          />
-                        </div>
-                      ) : (
-                        <>
-                          <p className="font-semibold">{item.req_name}</p>
-                          <p className="text-xs text-muted-foreground mt-0.5">{item.description}</p>
-                        </>
-                      )}
-                    </td>
-                    <td className="px-4 py-2.5 align-middle">
-                      {/* 설명 아래 회색 텍스트로만 있던 우선순위를 별도 컬럼 + 상/중/하 색
+                            {item.req_code?.startsWith("NFR") ? "비기능" : item.req_code?.startsWith("FR") ? "기능" : "-"}
+                          </td>
+                          <td className="px-4 py-2.5 font-mono text-xs text-muted-foreground align-middle whitespace-nowrap">{item.req_code}</td>
+                          <td className="px-4 py-2.5 align-top">
+                            {isEditing ? (
+                              <div className="space-y-1.5">
+                                <input
+                                  value={editName}
+                                  onChange={e => setEditName(e.target.value)}
+                                  className="w-full bg-black/5 dark:bg-white/5 border border-border rounded-lg px-2 py-1.5 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-primary/40"
+                                />
+                                <textarea
+                                  value={editDesc}
+                                  onChange={e => setEditDesc(e.target.value)}
+                                  className="w-full bg-black/5 dark:bg-white/5 border border-border rounded-lg px-2 py-1.5 text-xs resize-none h-16 focus:outline-none focus:ring-2 focus:ring-primary/40"
+                                />
+                              </div>
+                            ) : (
+                              <>
+                                <p className="font-semibold">{item.req_name}</p>
+                                <p className="text-xs text-muted-foreground mt-0.5">{item.description}</p>
+                              </>
+                            )}
+                          </td>
+                          <td className="px-4 py-2.5 align-middle">
+                            {/* 설명 아래 회색 텍스트로만 있던 우선순위를 별도 컬럼 + 상/중/하 색
                           배지로 바꿨다(가독성 피드백) — 신호등처럼 급함(상)=빨강,
                           보통(중)=주황, 낮음(하)=회색. 요구사항명만 내용이 길어서 위쪽
                           정렬, 나머지 컬럼(순번/분류/코드/우선순위/관리)은 세로 중앙
                           정렬로 맞췄다(요청). 수정 모드에서는 AI가 생성한 항목이라도
                           드롭박스로 우선순위를 바꿀 수 있다(요청). */}
-                      {isEditing ? (
-                        <select
-                          value={editPriority}
-                          onChange={e => setEditPriority(e.target.value)}
-                          className="bg-black/5 dark:bg-white/5 border border-border rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-primary/40"
-                        >
-                          <option value="">미지정</option>
-                          {PRIORITY_OPTIONS.map(p => (
-                            <option key={p.code_id} value={p.code_id}>{p.label}</option>
-                          ))}
-                        </select>
-                      ) : (() => {
-                        const code = item.priority_info?.code_name ?? "";
-                        const label = PRIORITY_LABEL[code];
-                        return (
-                          <span className={cn(
-                            "inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold",
-                            PRIORITY_BADGE_CLASS[code] ?? "bg-black/5 dark:bg-white/5 text-muted-foreground"
-                          )}>
-                            {label ?? "미지정"}
-                          </span>
-                        );
-                      })()}
-                    </td>
-                    {!isPM && canGenerate && !itemsLocked && (
-                      <td className="px-4 py-2.5 align-middle">
-                        {isEditing ? (
-                          <div className="flex items-center justify-end gap-1">
-                            <button
-                              onClick={() => setEditingItemId(null)}
-                              className="p-1.5 rounded-lg text-muted-foreground hover:bg-black/5 dark:hover:bg-white/5"
-                            >
-                              취소
-                            </button>
-                            <button
-                              onClick={() => {
-                                if (!editName.trim()) return;
-                                onUpdateItem(reqDef.id, item.id, { req_name: editName.trim(), description: editDesc.trim(), priority_code: editPriority || null });
-                                setEditingItemId(null);
-                              }}
-                              disabled={!editName.trim() || updating}
-                              className="p-1.5 rounded-lg text-primary hover:bg-primary/10 disabled:opacity-50"
-                            >
-                              {updating ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "저장"}
-                            </button>
-                          </div>
-                        ) : (
-                          <div className="flex items-center justify-end gap-1">
-                            <button
-                              onClick={() => { setEditingItemId(item.id); setEditName(item.req_name); setEditDesc(item.description); setEditPriority(item.priority_info?.code_id ?? ""); }}
-                              title="항목 수정"
-                              className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-black/5 dark:hover:bg-white/5"
-                            >
-                              <Pencil className="w-3.5 h-3.5" />
-                            </button>
-                            <button
-                              onClick={() => onDeleteItem(reqDef.id, item.id)}
-                              disabled={deleting}
-                              title="항목 삭제"
-                              className="p-1.5 rounded-lg text-muted-foreground hover:text-red-400 hover:bg-red-500/10 disabled:opacity-50"
-                            >
-                              {deleting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
-                            </button>
-                          </div>
-                        )}
-                      </td>
-                    )}
-                  </tr>
-                  {/* 같은 그룹(FR-01 등) 안에서는 +버튼을 안 보여준다 — 다음 항목이 없거나
+                            {isEditing ? (
+                              <select
+                                value={editPriority}
+                                onChange={e => setEditPriority(e.target.value)}
+                                className="bg-black/5 dark:bg-white/5 border border-border rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-primary/40"
+                              >
+                                <option value="">미지정</option>
+                                {PRIORITY_OPTIONS.map(p => (
+                                  <option key={p.code_id} value={p.code_id}>{p.label}</option>
+                                ))}
+                              </select>
+                            ) : (() => {
+                              const code = item.priority_info?.code_name ?? "";
+                              const label = PRIORITY_LABEL[code];
+                              return (
+                                <span className={cn(
+                                  "inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold",
+                                  PRIORITY_BADGE_CLASS[code] ?? "bg-black/5 dark:bg-white/5 text-muted-foreground"
+                                )}>
+                                  {label ?? "미지정"}
+                                </span>
+                              );
+                            })()}
+                          </td>
+                          {!isPM && canGenerate && !itemsLocked && (
+                            <td className="px-4 py-2.5 align-middle">
+                              {isEditing ? (
+                                <div className="flex items-center justify-end gap-1">
+                                  <button
+                                    onClick={() => setEditingItemId(null)}
+                                    className="p-1.5 rounded-lg text-muted-foreground hover:bg-black/5 dark:hover:bg-white/5"
+                                  >
+                                    취소
+                                  </button>
+                                  <button
+                                    onClick={() => {
+                                      if (!editName.trim()) return;
+                                      onUpdateItem(reqDef.id, item.id, { req_name: editName.trim(), description: editDesc.trim(), priority_code: editPriority || null });
+                                      setEditingItemId(null);
+                                    }}
+                                    disabled={!editName.trim() || updating}
+                                    className="p-1.5 rounded-lg text-primary hover:bg-primary/10 disabled:opacity-50"
+                                  >
+                                    {updating ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "저장"}
+                                  </button>
+                                </div>
+                              ) : (
+                                <div className="flex items-center justify-end gap-1">
+                                  <button
+                                    onClick={() => { setEditingItemId(item.id); setEditName(item.req_name); setEditDesc(item.description); setEditPriority(item.priority_info?.code_id ?? ""); }}
+                                    title="항목 수정"
+                                    className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-black/5 dark:hover:bg-white/5"
+                                  >
+                                    <Pencil className="w-3.5 h-3.5" />
+                                  </button>
+                                  <button
+                                    onClick={() => onDeleteItem(reqDef.id, item.id)}
+                                    disabled={deleting}
+                                    title="항목 삭제"
+                                    className="p-1.5 rounded-lg text-muted-foreground hover:text-red-400 hover:bg-red-500/10 disabled:opacity-50"
+                                  >
+                                    {deleting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+                                  </button>
+                                </div>
+                              )}
+                            </td>
+                          )}
+                        </tr>
+                        {/* 같은 그룹(FR-01 등) 안에서는 +버튼을 안 보여준다 — 다음 항목이 없거나
                       (마지막 행) 그룹이 다를 때만 표시. 정렬 중에는 화면 순서와 실제 order가
                       달라서 삽입 위치 계산이 의미 없어지므로 +버튼 자체를 숨긴다. */}
-                  {!sortColumn && !isPM && canGenerate && !itemsLocked && (
-                    index === reqDef.items.length - 1 || groupOf(item.req_code) !== groupOf(reqDef.items[index + 1].req_code)
-                  ) && (
-                    addFormAt === item.id ? renderAddFormRow(item.id) : renderDivider(item.id)
-                  )}
-                  </Fragment>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-        {!isPM && canGenerate && !itemsLocked && (
-          bottomAddOpen ? (
-            <div className="border border-border rounded-xl p-4 space-y-2 mt-3">
-              <div className="grid grid-cols-2 gap-2">
-                <select
-                  value={bottomCategory}
-                  onChange={e => {
-                    const cat = e.target.value as "FR" | "NFR";
-                    setBottomCategory(cat);
-                    setBottomGroup(groupsFor(cat)[0] ?? "__new__");
-                  }}
-                  className="bg-black/5 dark:bg-white/5 border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
-                >
-                  <option value="FR">기능 (FR)</option>
-                  <option value="NFR">비기능 (NFR)</option>
-                </select>
-                <select
-                  value={bottomGroup}
-                  onChange={e => setBottomGroup(e.target.value)}
-                  className="bg-black/5 dark:bg-white/5 border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
-                >
-                  {groupsFor(bottomCategory).map(g => (
-                    <option key={g} value={g}>{bottomCategory}-{g} (다음 {nextSeqInGroup(bottomCategory, g)})</option>
-                  ))}
-                  <option value="__new__">새 그룹 추가 ({bottomCategory}-{nextGroupNumber(bottomCategory)})</option>
-                </select>
-              </div>
-              <div className="grid grid-cols-[1fr_120px] gap-2">
-                <input
-                  value={bottomName}
-                  onChange={e => setBottomName(e.target.value)}
-                  placeholder="요구사항명"
-                  className="bg-black/5 dark:bg-white/5 border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
-                />
-                <select
-                  value={bottomPriority}
-                  onChange={e => setBottomPriority(e.target.value)}
-                  className="bg-black/5 dark:bg-white/5 border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
-                >
-                  <option value="">우선순위</option>
-                  {PRIORITY_OPTIONS.map(p => (
-                    <option key={p.code_id} value={p.code_id}>{p.label}</option>
-                  ))}
-                </select>
-              </div>
-              <textarea
-                value={bottomDesc}
-                onChange={e => setBottomDesc(e.target.value)}
-                placeholder="상세 내용"
-                className="w-full bg-black/5 dark:bg-white/5 border border-border rounded-lg px-3 py-2 text-sm resize-none h-20 focus:outline-none focus:ring-2 focus:ring-primary/40"
-              />
-              <div className="flex items-center justify-between">
-                <p className="text-[11px] text-muted-foreground/70 font-mono">코드 {bottomCode} (자동)</p>
-                <div className="flex justify-end gap-2">
-                  <button onClick={() => setBottomAddOpen(false)} className="px-4 py-2 text-sm font-semibold text-muted-foreground hover:bg-black/5 dark:hover:bg-white/5 rounded-lg">취소</button>
-                  <button
-                    onClick={submitBottomAdd}
-                    disabled={!bottomName.trim() || !!addingItem}
-                    className="flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-bold hover:bg-primary/90 disabled:opacity-50"
-                  >
-                    {addingItem ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
-                    추가
-                  </button>
-                </div>
-              </div>
+                        {!sortColumn && !isPM && canGenerate && !itemsLocked && (
+                          index === reqDef.items.length - 1 || groupOf(item.req_code) !== groupOf(reqDef.items[index + 1].req_code)
+                        ) && (
+                            addFormAt === item.id ? renderAddFormRow(item.id) : renderDivider(item.id)
+                          )}
+                      </Fragment>
+                    );
+                  })}
+                </tbody>
+              </table>
             </div>
-          ) : (
-            <button
-              onClick={openBottomAdd}
-              className="mt-3 flex items-center gap-1.5 text-xs font-semibold text-primary hover:underline"
-            >
-              <Plus className="w-3.5 h-3.5" /> 항목 직접 추가
-            </button>
-          )
-        )}
-        {/* 기획서 탭의 하단 액션 줄(flex justify-end items-center gap-3 pt-2 +
+            {!isPM && canGenerate && !itemsLocked && (
+              bottomAddOpen ? (
+                <div className="border border-border rounded-xl p-4 space-y-2 mt-3">
+                  <div className="grid grid-cols-2 gap-2">
+                    <select
+                      value={bottomCategory}
+                      onChange={e => {
+                        const cat = e.target.value as "FR" | "NFR";
+                        setBottomCategory(cat);
+                        setBottomGroup(groupsFor(cat)[0] ?? "__new__");
+                      }}
+                      className="bg-black/5 dark:bg-white/5 border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
+                    >
+                      <option value="FR">기능 (FR)</option>
+                      <option value="NFR">비기능 (NFR)</option>
+                    </select>
+                    <select
+                      value={bottomGroup}
+                      onChange={e => setBottomGroup(e.target.value)}
+                      className="bg-black/5 dark:bg-white/5 border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
+                    >
+                      {groupsFor(bottomCategory).map(g => (
+                        <option key={g} value={g}>{bottomCategory}-{g} (다음 {nextSeqInGroup(bottomCategory, g)})</option>
+                      ))}
+                      <option value="__new__">새 그룹 추가 ({bottomCategory}-{nextGroupNumber(bottomCategory)})</option>
+                    </select>
+                  </div>
+                  <div className="grid grid-cols-[1fr_120px] gap-2">
+                    <input
+                      value={bottomName}
+                      onChange={e => setBottomName(e.target.value)}
+                      placeholder="요구사항명"
+                      className="bg-black/5 dark:bg-white/5 border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
+                    />
+                    <select
+                      value={bottomPriority}
+                      onChange={e => setBottomPriority(e.target.value)}
+                      className="bg-black/5 dark:bg-white/5 border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
+                    >
+                      <option value="">우선순위</option>
+                      {PRIORITY_OPTIONS.map(p => (
+                        <option key={p.code_id} value={p.code_id}>{p.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <textarea
+                    value={bottomDesc}
+                    onChange={e => setBottomDesc(e.target.value)}
+                    placeholder="상세 내용"
+                    className="w-full bg-black/5 dark:bg-white/5 border border-border rounded-lg px-3 py-2 text-sm resize-none h-20 focus:outline-none focus:ring-2 focus:ring-primary/40"
+                  />
+                  <div className="flex items-center justify-between">
+                    <p className="text-[11px] text-muted-foreground/70 font-mono">코드 {bottomCode} (자동)</p>
+                    <div className="flex justify-end gap-2">
+                      <button onClick={() => setBottomAddOpen(false)} className="px-4 py-2 text-sm font-semibold text-muted-foreground hover:bg-black/5 dark:hover:bg-white/5 rounded-lg">취소</button>
+                      <button
+                        onClick={submitBottomAdd}
+                        disabled={!bottomName.trim() || !!addingItem}
+                        className="flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-bold hover:bg-primary/90 disabled:opacity-50"
+                      >
+                        {addingItem ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+                        추가
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <button
+                  onClick={openBottomAdd}
+                  className="mt-3 flex items-center gap-1.5 text-xs font-semibold text-primary hover:underline"
+                >
+                  <Plus className="w-3.5 h-3.5" /> 항목 직접 추가
+                </button>
+              )
+            )}
+            {/* 기획서 탭의 하단 액션 줄(flex justify-end items-center gap-3 pt-2 +
             mr-auto 다운로드 그룹)과 구조·클래스를 그대로 맞춘다(사용자 요청 —
             "요구사항정의서 다운로드 버튼도 기획서와 통일"). 요구사항정의서는 표라서
             PDF 대신 엑셀(원본 양식과 같은 컬럼)로, PPTX는 표 슬라이드로 내보낸다.
             상태와 무관하게 항상 노출(초안 단계에서도 팀 공유용으로 뽑아볼 수 있어야 함). */}
-        <div className="flex flex-wrap justify-end items-center gap-3 pt-2">
-          <div className="flex items-center gap-2 mr-auto shrink-0">
-            <button onClick={handleReqSpecExcel} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 text-xs font-semibold transition-colors whitespace-nowrap">
-              <FileSpreadsheet className="w-3.5 h-3.5" /> Excel 다운로드
-            </button>
-            <button onClick={handleReqSpecPptx} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 text-xs font-semibold transition-colors whitespace-nowrap">
-              <Download className="w-3.5 h-3.5" /> PPTX 다운로드
-            </button>
-          </div>
-          {!isPM && canGenerate && !tasksAlreadyAssigned && (reqStatus === "DRAFT" || reqStatus === "REJECTED" || reqStatus === null) && (
-            <>
-              {extracting && <ReqExtractProgressBar stage={reqExtractStage} startedAt={reqExtractStartedAt} />}
-              <button
-                onClick={() => {
-                  if (busy !== null) return;
-                  if (window.confirm("요구사항정의서를 다시 생성하면 현재 항목(직접 추가·수정한 내용 포함)이 AI 결과로 교체됩니다. 계속하시겠습니까?")) {
-                    setEditingItemId(null);
-                    setAddFormAt(null);
-                    setBottomAddOpen(false);
-                    onExtract(spec.id, reqDef.id);
-                  }
-                }}
-                disabled={busy !== null}
-                className="flex items-center gap-2 px-3 py-2 rounded-lg bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 text-xs font-semibold transition-colors disabled:opacity-50 whitespace-nowrap"
-              >
-                {extracting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RotateCcw className="w-3.5 h-3.5" />}
-                {extracting ? (reqExtractStage || "재생성 중…") : "재생성"}
-              </button>
-            </>
-          )}
-          {/* 검토요청은 하단 우측 — 기획서 탭과 동일한 위치(승인/반려는 상단, 검토요청/
+            <div className="flex flex-wrap justify-end items-center gap-3 pt-2">
+              <div className="flex items-center gap-2 mr-auto shrink-0">
+                <button onClick={handleReqSpecExcel} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 text-xs font-semibold transition-colors whitespace-nowrap">
+                  <FileSpreadsheet className="w-3.5 h-3.5" /> Excel 다운로드
+                </button>
+                <button onClick={handleReqSpecPptx} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 text-xs font-semibold transition-colors whitespace-nowrap">
+                  <Download className="w-3.5 h-3.5" /> PPTX 다운로드
+                </button>
+              </div>
+              {!isPM && canGenerate && !tasksAlreadyAssigned && (reqStatus === "DRAFT" || reqStatus === "REJECTED" || reqStatus === null) && (
+                <>
+                  {extracting && <ReqExtractProgressBar stage={reqExtractStage} startedAt={reqExtractStartedAt} />}
+                  <button
+                    onClick={() => {
+                      if (busy !== null) return;
+                      if (window.confirm("요구사항정의서를 다시 생성하면 현재 항목(직접 추가·수정한 내용 포함)이 AI 결과로 교체됩니다. 계속하시겠습니까?")) {
+                        setEditingItemId(null);
+                        setAddFormAt(null);
+                        setBottomAddOpen(false);
+                        onExtract(spec.id, reqDef.id);
+                      }
+                    }}
+                    disabled={busy !== null}
+                    className="flex items-center gap-2 px-3 py-2 rounded-lg bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 text-xs font-semibold transition-colors disabled:opacity-50 whitespace-nowrap"
+                  >
+                    {extracting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RotateCcw className="w-3.5 h-3.5" />}
+                    {extracting ? (reqExtractStage || "재생성 중…") : "재생성"}
+                  </button>
+                </>
+              )}
+              {/* 검토요청은 하단 우측 — 기획서 탭과 동일한 위치(승인/반려는 상단, 검토요청/
               직접수정 성격의 액션은 하단). reqStatus===null은 REQSPEC_STATUS 도입 전
               기존 데이터라 DRAFT로 간주해 검토요청을 받을 수 있게 한다. */}
-          {!isPM && canGenerate && !itemsLocked && (reqStatus === "DRAFT" || reqStatus === "REJECTED" || reqStatus === null) && (
-            <button
-              onClick={() => onStatusChange("PENDING_REVIEW")}
-              disabled={!!submittingReview}
-              className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-bold hover:bg-primary/90 disabled:opacity-50"
-            >
-              {submittingReview ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-              검토요청
-            </button>
-          )}
-        </div>
-        </>
+              {!isPM && canGenerate && !itemsLocked && (reqStatus === "DRAFT" || reqStatus === "REJECTED" || reqStatus === null) && (
+                <button
+                  onClick={() => onStatusChange("PENDING_REVIEW")}
+                  disabled={!!submittingReview}
+                  className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-bold hover:bg-primary/90 disabled:opacity-50"
+                >
+                  {submittingReview ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                  검토요청
+                </button>
+              )}
+            </div>
+          </>
         );
       })()}
     </fieldset>

@@ -457,6 +457,41 @@ def generate_task_suggestions(spec_id: int, on_stage=None) -> dict:
             # flatten_assignable_units()가 이미 계산해둔 값을 그대로 실어 보낸다 —
             # _persist_assignments()가 TaskAssignment.parent_task(문자열, FK 아님)로 저장한다.
             "parent_task_id": unit.get("parent_task_id"),
+            "is_task_header": False,
+        })
+
+    # 2026-09-22 (사용자 요청): Subtask로 쪼개진 Task는 flatten_assignable_units가
+    # 배정 단위로 안 만들어서(담당자·시간이 Subtask들에 나뉨) 위 루프에 안 걸리고,
+    # 그 결과 Task 제목이 어디에도 안 남는 문제가 있었다. 배정 대상은 아니지만
+    # Subtask를 묶어 보여주는 표시용 행으로 별도 추가한다 — 담당자/시간은 비워
+    # 이중 계산을 피하고, is_task_header로 실제 배정 단위와 구분한다.
+    for t in tasks:
+        if not t.get("subtasks"):
+            continue
+        epic_no, epic_title = epic_lookup.get(t["task_id"], ("", ""))
+        suggestions.append({
+            "unit_id": t["task_id"],
+            "source_req_id": t["source_req_id"],
+            "title": t["title"],
+            "description": t["description"],
+            "estimated_hours": sum(sub["estimated_hours"] for sub in t["subtasks"]),
+            "difficulty_reason": t.get("difficulty_reason", ""),
+            "epic_no": epic_no,
+            "epic_title": epic_title,
+            "assignee_id": None,
+            "assignee_name": None,
+            "score": None,
+            "tech_fit": None,
+            "workload_fit": None,
+            "experience_fit": None,
+            "review_required": False,
+            "hold_explanation": None,
+            "depends_on": [],
+            "risk_buffer_factor": None,
+            "feature_area": t.get("feature_area"),
+            "package_id": None,
+            "parent_task_id": None,
+            "is_task_header": True,
         })
 
     # 2026-09-11 (Phase 2): LLM이 만든 의존성에 순환이 있으면 여기서 잡힌다.
@@ -530,17 +565,35 @@ def generate_task_suggestions(spec_id: int, on_stage=None) -> dict:
 
 
 def _persist_assignments(req_def: RequirementDefinition, items: list, status_code_id: str) -> int:
-    """assignee_id가 있는 항목만 TaskAssignment로 저장한다. 반환값은 저장된 건수.
+    """assignee_id가 있는 항목 + is_task_header 항목을 TaskAssignment로 저장한다.
+    반환값은 저장된 건수 중 실제 배정 단위 개수(헤더 제외).
 
     2026-09-15: generate_task_suggestions(초안 자동저장, status=BACKLOG)와
     confirm_task_assignments(확정, status=PENDING_APPROVAL) 둘 다 이 함수를 쓴다 —
     TaskAssignment 생성 로직을 한 곳에만 둔다. items는 suggestions(생성 직후,
     suggested_start_date/suggested_end_date 필드)와 assignments(확정 요청,
     프론트가 start_date/end_date로 보냄) 두 모양을 다 받는다.
+
+    2026-09-22: is_task_header=True인 항목(Subtask로 쪼개진 Task 자신 — 배정
+    대상은 아니지만 제목이 사라지지 않도록 표시용으로 저장, 사용자 요청)도
+    assignee_id 없이 저장한다. 일반 항목은 여전히 assignee_id가 없으면
+    (미배정/보류) 저장하지 않는다.
+
+    헤더는 BACKLOG(미리보기 단계)에서만 저장한다 — PENDING_APPROVAL 이후로
+    넘어가면 칸반보드·대시보드·"내 업무" 목록(dashboard/views.py,
+    requirements/views.py 등, TaskAssignmentListCreateView를 거치지 않고
+    TaskAssignment를 직접 쿼리하는 곳이 여럿이라 전부 손보기엔 범위가 큼)에
+    담당자 없는 카드로 섞여 들어갈 위험이 있다. 미리보기 화면(documents/page.tsx)
+    목적(제목이 안 사라지게)은 BACKLOG 저장만으로 이미 충분하다.
     """
     created_count = 0
     for item in items:
-        if item.get("assignee_id") is None:
+        is_header = item.get("is_task_header", False)
+        if is_header and status_code_id != TaskStatusCode.BACKLOG:
+            continue
+        # 2026-09-22: 표시용 Task 헤더 행은 담당자가 없는 게 정상이라 건너뛰지 않는다
+        # — 일반 배정 단위는 여전히 담당자가 없으면(미배정/보류) 저장하지 않는다.
+        if item.get("assignee_id") is None and not is_header:
             continue
 
         req_item = req_def.items.filter(req_code=item["source_req_id"]).first()
@@ -558,10 +611,12 @@ def _persist_assignments(req_def: RequirementDefinition, items: list, status_cod
             item.get("schedule_reason"),
         ]))
 
+        assignee_id_val = int(item["assignee_id"]) if item.get("assignee_id") is not None else None
+
         TaskAssignment.objects.create(
             task_no=f"RD{req_def.id}-{item['unit_id']}",
             req_item=req_item,
-            assigned_user_id=int(item["assignee_id"]),
+            assigned_user_id=assignee_id_val,
             project=req_def.project,
             title=item["title"],
             description=item["description"],
@@ -571,15 +626,15 @@ def _persist_assignments(req_def: RequirementDefinition, items: list, status_cod
             # 2026-09-16: 확정(저장) 시점의 담당자·근거를 "AI 원래 추천"으로 그대로 보존해둔다
             # — PM이 나중에 다른 사람으로 재배정했다가 다시 이 사람으로 되돌리면, 재배정
             # API(tasks/serializers.py, tasks/views.py)가 이 값과 비교해 원래 근거를
-            # 복원할지 판단한다.
-            original_assigned_user_id=int(item["assignee_id"]),
-            original_assignment_reason=reason_text,
+            # 복원할지 판단한다. Task 헤더 행은 애초에 배정 대상이 아니라 원래 추천
+            # 담당자도 없다(None).
+            original_assigned_user_id=assignee_id_val if not is_header else None,
+            original_assignment_reason=reason_text if not is_header else None,
             # 2026-09-17: Subtask 단위 업무의 원본 Task를 문자열로 기록한다(parent_task는
             # FK가 아니라 CharField — epic_no/epic_title과 같은 패턴). task_no와 같은
             # "RD{req_def.id}-{...}" 형식으로 맞춰, 같은 규칙으로 만들어진 값끼리 비교 가능하게
-            # 한다. 부모 Task 자신은 Subtask가 있으면 배정 단위가 아니라서 별도 행이 없다 —
-            # 이 값은 그 행을 가리키는 게 아니라 "어느 Task에서 갈라져 나왔는지"를 남기는
-            # 참조 문자열일 뿐이다.
+            # 한다. 2026-09-22부터 부모 Task 자신도 is_task_header=True인 별도 행으로 저장되므로
+            # (사용자 요청 — 제목이 완전히 사라지는 문제), 이 값은 그 행을 직접 참조할 수 있다.
             parent_task=(
                 f"RD{req_def.id}-{item['parent_task_id']}" if item.get("parent_task_id") else None
             ),
@@ -588,8 +643,13 @@ def _persist_assignments(req_def: RequirementDefinition, items: list, status_cod
             start_date=item.get("start_date") or item.get("suggested_start_date") or None,
             end_date=item.get("end_date") or item.get("suggested_end_date") or None,
             status_code_id=status_code_id,
+            is_task_header=is_header,
         )
-        created_count += 1
+        # 2026-09-22: created_count는 프론트 확정 토스트("N건")에 그대로 쓰인다
+        # (documents/page.tsx) — Task 헤더는 실제 배정 업무가 아니라 표시용이라
+        # 이 개수엔 안 넣는다.
+        if not is_header:
+            created_count += 1
     return created_count
 
 

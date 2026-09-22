@@ -179,12 +179,14 @@ class TaskAssignmentSerializer(serializers.ModelSerializer):
             'parent_task',
             'epic_no',
             'epic_title',
+            'is_task_header',
             'created_at',
             'updated_at',
         ]
         # original_assigned_user는 확정 시점에 한 번만 정해지고 이후 코드(services.py
         # _persist_assignments)에서만 채운다 — API 요청으로 덮어쓸 수 있는 필드가 아니다.
-        read_only_fields = ['id', 'created_at', 'updated_at', 'original_assigned_user']
+        # is_task_header도 생성 시점(services.py)에만 정해지는 구조적 표시값이라 동일하게 취급.
+        read_only_fields = ['id', 'created_at', 'updated_at', 'original_assigned_user', 'is_task_header']
 
 
 class TaskAssignmentCreateSerializer(serializers.ModelSerializer):
