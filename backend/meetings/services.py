@@ -13,8 +13,8 @@ from meetings.serializers import MeetingNoteSerializer, SpecDocumentSerializer
 from projects.models import PipelineHistory
 from common.models import CommonCode
 
-from meeting_analysis.node import run as analyze_meeting
 from plan_draft.agent import run as generate_plan
+from plan_draft.list_builder import build_feature_citation_sources
 from plan_review.agent import run as review_plan
 
 User = get_user_model()
@@ -46,16 +46,99 @@ def _strip_html_tags(text):
     return clean_text.strip()
 
 
+def _build_evidence_items(plan_dict: dict, structured: dict) -> dict:
+    """
+    회의록 전체원문 근거연동 UI("원문 보기" 패널) 준비용 — evidence_data(섹션당
+    인용문을 줄바꿈으로 합친 문자열 하나)와 별도로, 항목 단위 근거를 JSON으로
+    만든다. 화면 쪽 작업(패널·하이라이트)은 아직 없고, 이건 그 화면이 나중에
+    읽을 데이터만 먼저 채워두는 것이다.
+
+    5번(주요 기능)만 기능 하나하나 단위로 쪼갠다 — Feature.source_indices가
+    이미 원문 인용 번호를 들고 있어 유일하게 항목 단위 연결이 가능하기
+    때문이다(build_feature_citation_sources 참고). 다른 섹션(1~4·6·7번)은
+    문단·목표·사용자·결정 단위 근거가 아직 섹션 전체로 뭉쳐서 나온다
+    (plan_draft.generator.render_section·list_builder가 evidence를
+    섹션 하나의 dict/list로 모으기 때문) — 그래서 지금은 섹션 전체 인용문
+    목록만 담는다. 항목 단위로 더 쪼개려면 그 렌더링 함수들을 먼저 고쳐야
+    한다.
+
+    반환 형태 (evidence_data와 같은 필드명으로 키를 맞춘다):
+        {
+          "key_features": {
+            "quotes": ["원문 인용1", "원문 인용2", ...],   # 섹션 전체 근거
+            "items": [                                       # features만 있음
+              {"title": "기능명", "quotes": ["원문 인용1", ...]},
+              ...
+            ]
+          },
+          "overview": {"quotes": [...]},
+          ...
+        }
+    """
+    citation_sources = {}
+    if isinstance(structured, dict):
+        citation_sources = {
+            s["index"]: s for s in build_feature_citation_sources(structured)
+        }
+
+    result: dict = {}
+    for sec in (plan_dict.get('sections') or []):
+        if not isinstance(sec, dict):
+            continue
+        sec_key = sec.get('key')
+        field_name = SECTION_KEY_TO_FIELD.get(sec_key)
+        if not field_name:
+            continue
+
+        quotes = [
+            e.get('quote') for e in (sec.get('evidence') or [])
+            if isinstance(e, dict) and e.get('status') == 'verified' and e.get('quote')
+        ]
+        entry: dict = {"quotes": quotes}
+
+        if sec_key == 'features':
+            items = []
+            for f in (sec.get('features') or []):
+                if not isinstance(f, dict):
+                    continue
+                direct_quotes = [
+                    evidence.get("quote")
+                    for evidence in (f.get("evidence") or [])
+                    if isinstance(evidence, dict)
+                    and evidence.get("quote")
+                    and evidence.get("status", "verified") == "verified"
+                ]
+                legacy_quotes = [
+                    citation_sources[idx]["quote"]
+                    for idx in (f.get('source_indices') or [])
+                    if idx in citation_sources and citation_sources[idx].get("quote")
+                ]
+                f_quotes = list(dict.fromkeys(direct_quotes or legacy_quotes))
+                items.append({"title": f.get('title', ''), "quotes": f_quotes})
+            entry["items"] = items
+
+        if sec_key == 'decisions' and sec.get('items'):
+            entry["structured_items"] = [
+                item for item in sec["items"] if isinstance(item, str) and item.strip()
+            ]
+
+        if entry["quotes"] or entry.get("items") or entry.get("structured_items"):
+            result[field_name] = entry
+
+    return result
+
+
 def run_meeting_analysis(note_id: int, actor_user_id, on_stage=None) -> dict:
     """
-    "기획서 생성" 버튼 — 회의록 AI 분석(노드①) → 기획서 초안 생성(노드②)을 순서대로
-    호출해 SpecDocument를 upsert한다. MeetingNoteAnalyzeView.post에 있던 로직을
-    그대로 옮긴 것(2026-09-15, 백그라운드 실행 + 진행 단계 폴링 도입) — 로직/순서는
-    바꾸지 않았다.
+    "기획서 생성" 버튼 — 회의록 원문을 기획서 노드에 전달해 SpecDocument를
+    upsert한다.
 
-    on_stage: 있으면 각 단계 시작 시 사람이 읽을 라벨(str)로 호출한다(선택). 노드①이
-    실측 ~100초로 특히 오래 걸려(2026-09-14 "느리다" 문의 확인) 업무 배분 실행과
-    같은 방식으로 체감을 개선한다.
+    2026-09-21(PLAN_GENERATION_HANDOFF): 무거운 meeting_analysis 전체
+    구조화 노드는 더 이상 웹 경로에서 실행하지 않는다. plan_draft.agent.run()의
+    기본 전략(parallel)이 원문을 두 개의 독립된 LLM 호출(1~5번 / 6~7번)로
+    나눠 직접 읽으므로, 구조화 결과 없이 원문만 담은 입력으로 충분하다.
+
+    on_stage: 있으면 각 단계 시작 시 사람이 읽을 라벨(str)로 호출한다(선택).
     """
     def _stage(label: str) -> None:
         if on_stage:
@@ -68,11 +151,16 @@ def run_meeting_analysis(note_id: int, actor_user_id, on_stage=None) -> dict:
     meeting.save()
 
     try:
-        # 2026-09-15: 두 노드 다 내부적으로 몇 단계씩 더 있어(구조화→근거검증→
-        # 정합성검사, 초안작성→목록조립→병합), 여기서 뭉뚱그려 부르지 않고
-        # on_stage를 그대로 넘겨 노드 내부에서 세분화된 라벨을 직접 보고하게 한다.
-        analysis_result = analyze_meeting(meeting.content, str(meeting.pk), on_stage=on_stage)
-        structured_data = analysis_result.data if hasattr(analysis_result, 'data') else analysis_result
+        structured_data = {
+            "meeting_id": str(meeting.pk),
+            "plan_source_text": meeting.content or "",
+            "project": {},
+            "users": [],
+            "requirements": {},
+            "decisions": [],
+            "constraints": [],
+            "unresolved": [],
+        }
 
         proposal_id = f"PLN-{meeting.pk:03d}"
         doc = generate_plan(structured_data, proposal_id, on_stage=on_stage)
@@ -86,8 +174,13 @@ def run_meeting_analysis(note_id: int, actor_user_id, on_stage=None) -> dict:
         else:
             plan_dict = {}
 
-        summary_val = structured_data.get('summary') if isinstance(structured_data, dict) else None
-        meeting.summary_content = summary_val or f"[{meeting.title}] AI 분석이 완료되었습니다."
+        overview_section = next(
+            (section for section in plan_dict.get('sections', []) if section.get('key') == 'overview'),
+            {},
+        )
+        meeting.summary_content = _strip_html_tags(
+            overview_section.get('content_html', '')
+        ) or f"[{meeting.title}] 기획서 초안이 생성되었습니다."
         meeting.status = MeetingNote.Status.REVIEWED
         meeting.save()
 
@@ -140,6 +233,9 @@ def run_meeting_analysis(note_id: int, actor_user_id, on_stage=None) -> dict:
             spec_defaults[field] = _normalize_plan_html(spec_defaults[field])
         if evidence_map:
             spec_defaults['evidence_data'] = json.dumps(evidence_map, ensure_ascii=False)
+        evidence_items_map = _build_evidence_items(plan_dict, structured_data)
+        if evidence_items_map:
+            spec_defaults['evidence_items'] = json.dumps(evidence_items_map, ensure_ascii=False)
 
         period_match = re.search(
             r'(\d{4}-\d{2}-\d{2})\s*(?:~|-|부터)\s*(\d{4}-\d{2}-\d{2})',

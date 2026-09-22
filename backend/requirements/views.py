@@ -1,6 +1,9 @@
 # requirements/views.py
 import logging
 import threading
+import json
+import html
+import re
 from django.db import transaction
 from django.db.models import Q
 from django.shortcuts import get_object_or_404
@@ -137,8 +140,35 @@ def _parse_feature_lines(raw_features) -> list:
         return [str(f).strip() for f in raw_features if str(f).strip()]
     if not raw_features:
         return []
+    text = str(raw_features)
+    if re.search(r"<\s*p\b", text, flags=re.IGNORECASE):
+        paragraphs = re.findall(
+            r"<p[^>]*>(.*?)</p>", text, flags=re.IGNORECASE | re.DOTALL
+        )
+        lines = []
+        pending_title = ""
+        for paragraph in paragraphs:
+            strong = re.fullmatch(
+                r"\s*<strong[^>]*>(.*?)</strong>\s*",
+                paragraph,
+                flags=re.IGNORECASE | re.DOTALL,
+            )
+            plain = html.unescape(re.sub(r"<[^>]+>", " ", paragraph))
+            plain = re.sub(r"\s+", " ", plain).strip()
+            if not plain or plain == "PM 확인 사항":
+                continue
+            if strong:
+                pending_title = plain
+                continue
+            if pending_title:
+                lines.append(f"{pending_title}: {plain}")
+                pending_title = ""
+        if pending_title:
+            lines.append(pending_title)
+        if lines:
+            return lines
     lines = []
-    for raw_line in str(raw_features).splitlines():
+    for raw_line in text.splitlines():
         line = raw_line.strip().lstrip("•-*").strip()
         if not line or "회의에서 논의되지 않았습니다" in line:
             continue
@@ -191,6 +221,17 @@ def process_ai_requirement_extraction(spec_document, user, on_stage=None):
             }
         ]
 
+    final_decisions = getattr(spec_document, "final_decisions", None) or ""
+    try:
+        evidence_items = json.loads(getattr(spec_document, "evidence_items", "") or "{}")
+        structured_decisions = evidence_items.get("final_decisions", {}).get(
+            "structured_items", []
+        )
+        if structured_decisions:
+            final_decisions = "\n".join(structured_decisions)
+    except (TypeError, ValueError, json.JSONDecodeError):
+        logger.warning("기획서 구조화 결정사항을 읽지 못해 화면용 본문을 사용합니다.")
+
     plan_dict = {
         # SpecDocument엔 project 필드가 없다 — meeting을 거쳐야 함(위 defaults의 project 필드와 동일한 이유)
         "project_id": str(spec_document.meeting.project_id) if spec_document.meeting.project_id else "DEFAULT_PROJECT",
@@ -202,7 +243,7 @@ def process_ai_requirement_extraction(spec_document, user, on_stage=None):
         "key_features": getattr(spec_document, "key_features", None) or [],
         "tech_stack": getattr(spec_document, "tech_stack", None) or [],
         "requirements": requirements_input,
-        "final_decisions": getattr(spec_document, "final_decisions", None) or [],
+        "final_decisions": final_decisions,
         "problem_definition": getattr(spec_document, "problem_definition", None) or "",
         "user_scenarios": getattr(spec_document, "user_scenarios", None) or [],
     }

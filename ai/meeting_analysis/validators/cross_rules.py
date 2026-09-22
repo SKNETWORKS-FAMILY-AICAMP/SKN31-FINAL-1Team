@@ -13,9 +13,17 @@ Pydantic이 못 잡는 '필드 간' 정합성을 검사합니다.
 
 """
 
+import re
+
 from .evidence import normalize
 
 REQ_CATEGORIES = ["functional", "non_functional", "data", "technical"]
+
+DECISION_CATEGORY_BY_REQUIREMENT = {
+    "non_functional": "non_functional",
+    "data": "data",
+    "technical": "tech",
+}
 
 # 항목 수가 이보다 많으면 프롬프트 폭주를 의심합니다.
 # 임계값. 임의로 잡은 값이므로 실측 후 조정하세요.
@@ -25,7 +33,9 @@ MAX_ITEMS_PER_CATEGORY = 20
 # 모델이 "비기능 요구사항이 논의되지 않았습니다."라고 썼는데
 # non_functiona에 항목이 있으면 모순입니다.
 AREA_KEYWORDS = {
-    "requirements.non_functional": ["성능", "응답 속도", "동시 접속"],
+    # "비기능"을 직접 넣어 아래 functional 키워드와의 충돌(다음 주석 참고)
+    # 없이도 non_functional을 먼저 확실하게 잡습니다.
+    "requirements.non_functional": ["성능", "응답 속도", "동시 접속", "비기능"],
     "requirements.technical": ["기술 스택", "기술스택", "기술 요구"],
     "requirements.data": ["데이터"],
     "requirements.functional": ["기능 요구사항"],
@@ -34,6 +44,36 @@ AREA_KEYWORDS = {
     "constraints": ["제약"],
 }
 
+# 2026-09-16: "기능 요구사항"은 "비기능 요구사항"의 부분 문자열이라
+# 단순 in 검사로는 "비기능 요구사항이 논의되지 않았습니다"도 걸려버립니다.
+# 실측(Codex 재현)에서 이 오매칭 때문에 진짜 모순(비기능 요구사항은
+# 이미 추출돼 있는데 안 됐다고 거짓 주장)이 엉뚱하게 비어있는 functional
+# 쪽을 확인하게 되어 안 걸러진 사례를 확인했습니다. "비"로 시작하지
+# 않을 때만 매치되게 합니다 — non_functional에 위 "비기능" 키워드를
+# 추가한 것과 별개로, 한 문장에 "기능 요구사항"과 "비기능 요구사항"이
+# 둘 다 나오는 경우까지 정확히 구분하기 위한 이중 안전장치입니다.
+_FUNCTIONAL_KEYWORD_PATTERN = re.compile(r"(?<!비)기능\s*요구사항")
+
+# 2026-09-16: 영역 키워드만 겹치면 모순으로 보는 게 너무 헐거웠습니다.
+# 실측(Codex 재현)에서 "데이터 보관 기간은 다음 회의에서 결정한다"가
+# "데이터" 한 단어만 겹쳐서, requirements.data에 아무 항목이나 있으면
+# 무조건 제거됐습니다. 이건 "데이터 요구사항 자체가 안 나왔다"는 주장이
+# 아니라 "보관 기간이라는 세부 사항을 다음으로 미룬다"는, 전혀 다른
+# 정당한 미결정 사항입니다.
+#
+# 이제 영역 키워드에 더해 "실제로 논의되지 않았다"는 취지의 표현이
+# 함께 있어야만 모순으로 봅니다. 둘 다 있어야 "그 영역 자체가 통째로
+# 빠졌다"는 모델의 주장으로 해석합니다.
+NOT_DISCUSSED_PHRASES = [
+    "논의되지 않았",
+    "확인되지 않았",
+    "언급되지 않았",
+    "다뤄지지 않았",
+    "정해지지 않았",
+    "결정되지 않았",
+    "나오지 않았",
+]
+
 
 def _get_items(data: dict, path: str) -> list:
     """'requirements.non_functional' 또는 'scenarios' 경로로 배열을 꺼냅니다."""
@@ -41,11 +81,18 @@ def _get_items(data: dict, path: str) -> list:
         base, sub = path.split(".", 1)
         return (data.get(base) or {}).get(sub) or []
     return data.get(path) or []
+
+
+def _keyword_matches(path: str, u: str) -> bool:
+    """u가 path 영역을 가리키는 키워드를 담고 있는지 봅니다."""
+    if path == "requirements.functional":
+        return bool(_FUNCTIONAL_KEYWORD_PATTERN.search(u))
+    return any(k in u for k in AREA_KEYWORDS[path])
  
  
 def check_unresolved_consistency(data: dict) -> list[str]:
     """
-    unresolved 모순 검사 — 이 모듈에서 유일하게 데이터를 수정합니다.
+    unresolved 모순 검사 — 모순된 안내 문구를 제거합니다.
  
     ## 왜 필요한가
  
@@ -67,9 +114,13 @@ def check_unresolved_consistency(data: dict) -> list[str]:
  
     for u in data.get("unresolved", []):
         contradiction = None
- 
-        for path, keywords in AREA_KEYWORDS.items():
-            if not any(k in u for k in keywords):
+
+        if not any(phrase in u for phrase in NOT_DISCUSSED_PHRASES):
+            kept.append(u)
+            continue
+
+        for path in AREA_KEYWORDS:
+            if not _keyword_matches(path, u):
                 continue
             items = _get_items(data, path)
             if items:
@@ -87,22 +138,172 @@ def check_unresolved_consistency(data: dict) -> list[str]:
  
     data["unresolved"] = kept
     return notes
+
+
+def repair_feature_decision_categories(data: dict) -> list[str]:
+    """
+    feature로 잘못 분류된 품질·데이터·기술 결정을 보정합니다.
+
+    의미를 추측해 분류하지 않습니다. evidence 검증이 끝난 뒤,
+    verified 결정과 verified 요구사항이 정확히 같은 원문 quote를 사용하고
+    그 quote가 functional에는 없으며 다른 요구사항 분류 하나에만 있을 때만
+    해당 요구사항 분류로 옮깁니다.
+
+    같은 quote가 여러 요구사항 분류에 걸치면 안전하게 기존 값을 유지합니다.
+    scope 결정은 기능 요구사항과 같은 quote를 쓸 수 있으므로 수정하지 않습니다.
+    """
+    requirements = data.get("requirements") or {}
+    quote_categories: dict[str, set[str]] = {}
+
+    for category in REQ_CATEGORIES:
+        for item in requirements.get(category, []) or []:
+            if not isinstance(item, dict):
+                continue
+
+            if item.get("evidence_status") != "verified":
+                continue
+
+            evidence = item.get("evidence") or {}
+            quote = (
+                evidence.get("quote", "")
+                if isinstance(evidence, dict)
+                else ""
+            )
+            quote_key = normalize(str(quote))
+
+            if quote_key:
+                quote_categories.setdefault(
+                    quote_key,
+                    set(),
+                ).add(category)
+
+    notes: list[str] = []
+
+    for decision in data.get("decisions", []) or []:
+        if not isinstance(decision, dict):
+            continue
+
+        if decision.get("category") != "feature":
+            continue
+
+        if decision.get("evidence_status") != "verified":
+            continue
+
+        evidence = decision.get("evidence") or {}
+        quote = (
+            evidence.get("quote", "")
+            if isinstance(evidence, dict)
+            else ""
+        )
+        quote_key = normalize(str(quote))
+        matched_categories = quote_categories.get(
+            quote_key,
+            set(),
+        )
+
+        # functional에도 같은 quote가 있으면 실제 기능 결정일 수 있으므로
+        # 자동 보정하지 않습니다.
+        if "functional" in matched_categories:
+            continue
+
+        candidates = {
+            DECISION_CATEGORY_BY_REQUIREMENT[category]
+            for category in matched_categories
+            if category in DECISION_CATEGORY_BY_REQUIREMENT
+        }
+
+        if len(candidates) != 1:
+            continue
+
+        corrected_category = next(iter(candidates))
+        decision["category"] = corrected_category
+        notes.append(
+            "결정사항 분류를 근거가 같은 요구사항 분류에 맞춰 "
+            f"feature에서 {corrected_category}(으)로 보정했습니다: "
+            f"{str(decision.get('content', ''))[:35]}"
+        )
+
+    return notes
  
  
+def dedupe_requirement_categories(data: dict) -> list[str]:
+    """
+    같은 내용이 여러 요구사항 분류에 중복 등록된 항목을 제거합니다.
+
+    ## 왜 필요한가
+
+    실행 결과에서 같은 내용이 functional과 technical에 동일하게
+    중복 등록되는 사례가 확인됐습니다
+    (예: "주클로 모델을 사용하여 패션 데이터를 분류한다"가 두 분류
+    모두에 들어감). 기획서 5·6·7번 섹션(주요 기능·기술 및 제약사항·
+    최종 결정사항)이 이 requirements를 그대로 재료로 쓰므로, 중복을
+    남겨두면 같은 내용이 서로 다른 섹션에 반복 표시됩니다.
+
+    ## 왜 기록만 하지 않고 제거까지 하는가
+
+    다른 교차 규칙은 대부분 판단이 필요해 기록만 하지만, 이 중복은
+    원인이 한 가지뿐입니다 — 같은 content가 두 분류에 걸쳐 있으면
+    같은 사실이 기능이면서 동시에 기술 스택일 수는 없으므로 하나는
+    반드시 잘못된 분류입니다. 판단 없이 기계적으로 정리할 수 있는
+    경우라 안전하게 제거합니다. check_unresolved_consistency와 같은
+    이유로 제거하되, 제거 사실은 notes에 남겨 추적할 수 있게 합니다.
+
+    REQ_CATEGORIES 순서(functional 우선)로 먼저 나온 분류를 남깁니다.
+    같은 분류 안의 중복(예: non_functional 안에서 같은 내용이 두 번)은
+    이 함수가 보는 대상이 아닙니다 — 분류 간 혼선만 봅니다.
+    """
+    reqs = data.get("requirements") or {}
+    seen: dict[str, str] = {}
+    notes: list[str] = []
+
+    for category in REQ_CATEGORIES:
+        items = reqs.get(category) or []
+        kept: list = []
+
+        for item in items:
+            key = normalize(item.get("content", ""))
+
+            # 다른 분류에 이미 등록된 내용만 중복으로 봅니다.
+            # 같은 분류 안의 중복은 이 규칙의 대상이 아닙니다
+            # (test_같은_분류_안의_중복은_기록하지_않는다 참고).
+            if key and key in seen and seen[key] != category:
+                notes.append(
+                    f"중복 등록을 제거했습니다: {seen[key]}에 이미 있는 내용이 "
+                    f"{category}에도 등록되어 있었습니다 — "
+                    f"{str(item.get('content', ''))[:25]}"
+                )
+                continue
+
+            if key and key not in seen:
+                seen[key] = category
+
+            kept.append(item)
+
+        reqs[category] = kept
+
+    return notes
+
+
 def check(data: dict) -> list[str]:
     """
     교차 규칙 전체.
     반환값은 validation_notes에 담깁니다.
- 
+
     ※ 아래 규칙 3개는 예시입니다.
       실제 목록은 회의록을 더 돌려보고 확정하세요.
     """
     notes: list[str] = []
     reqs = data.get("requirements", {})
- 
+
     # ── unresolved 모순 검사 (데이터 수정 있음) ──────────────
     notes += check_unresolved_consistency(data)
- 
+
+    # ── 결정사항 분류 보정 (검증된 동일 quote일 때만 수정) ────
+    notes += repair_feature_decision_categories(data)
+
+    # ── 요구사항 분류 간 중복 제거 (데이터 수정 있음) ─────────
+    notes += dedupe_requirement_categories(data)
+
     # 규칙 1: 기술 결정이 있는데 기술 요구사항이 비어 있는가
     tech_decisions = [
         d for d in data.get("decisions", []) if d.get("category") == "tech"
@@ -111,23 +312,7 @@ def check(data: dict) -> list[str]:
         notes.append(
             "기술 관련 결정사항이 있으나 기술 요구사항이 비어 있습니다. 확인이 필요합니다."
         )
- 
-    # 규칙 2: 같은 내용이 여러 분류에 중복 등록됐는가
-    seen: dict[str, str] = {}
-    for category in REQ_CATEGORIES:
-        for item in reqs.get(category, []):
-            key = normalize(item.get("content", ""))
-            if not key:
-                continue
-            if key in seen and seen[key] != category:
-                notes.append(
-                    f"동일 내용이 {seen[key]}와 {category}에 중복 등록됐습니다: "
-                    f"{item['content'][:25]}"
-                )
-            seen[key] = category
- 
-   
- 
+
     # 규칙 4: 항목 수가 비정상적으로 많은가 (프롬프트 폭주 신호)
     for category in REQ_CATEGORIES:
         count = len(reqs.get(category, []))
