@@ -295,23 +295,15 @@ class TaskStatusUpdateView(APIView):
                 )
 
             # ── 상태별 세부 권한 분기 ────────────────────────────────────
-            # 2026-09-18 (사용자 재확인): 배분 승인/반려를 PM만 하도록 되돌린다 — 담당자
-            # 본인 전용으로 뒀던 적(9/16)도 있었지만, 이건 PM이 배분을 문서생성 화면에서
-            # 확정하는 액션이라는 결론으로 다시 PM 전용으로 좁힌다.
-            # A. 배분 승인(APPROVED)/반려(REJECTED)는 PM만 가능.
-            if new_status in [TaskStatusCode.APPROVED, TaskStatusCode.REJECTED]:
-                if not is_pm:
-                    return Response(
-                        {"error": "FORBIDDEN", "details": "업무 배분 승인 및 반려는 PM 권한이 필요합니다."},
-                        status=status.HTTP_403_FORBIDDEN
-                    )
-            # B. 기타 상태 변경(IN_PROGRESS, COMPLETED 등)은 PM 또는 담당자 본인만 가능
-            else:
-                if not is_pm and task.assigned_user_id != user.id:
-                    return Response(
-                        {"error": "FORBIDDEN", "details": "본인에게 배정된 업무만 상태를 변경할 수 있습니다."},
-                        status=status.HTTP_403_FORBIDDEN
-                    )
+            # 2026-09-22 (사용자 재확인 — 9/16 정책으로 재복귀): 배분 승인(APPROVED)/
+            # 반려(REJECTED)는 PM이 배분하는 액션이 아니라, PM이 배정한 업무를 담당자
+            # 본인이 받아들일지 정하는 액션이다 — 그래서 PM 전용이었던 예외(9/18)를
+            # 없애고, 다른 상태 변경(B)과 동일하게 "PM 또는 담당자 본인"으로 통일한다.
+            if not is_pm and task.assigned_user_id != user.id:
+                return Response(
+                    {"error": "FORBIDDEN", "details": "본인에게 배정된 업무만 상태를 변경할 수 있습니다."},
+                    status=status.HTTP_403_FORBIDDEN
+                )
             # ─────────────────────────────────────────────────────────────
 
             old_status = task.status_code_id
