@@ -359,13 +359,12 @@ export default function TasksPage() {
                             {task.description && <div className="text-xs text-muted-foreground line-clamp-1 max-w-md">{task.description}</div>}
                           </td>
                           <td className="px-6 py-4" onClick={e => e.stopPropagation()}>
-                            {/* 2026-09-18 (사용자 재확인): PENDING_APPROVAL(배분승인대기)은 PM
-                                개별 승인 전이라 여기서도 발견/승인이 가능해야 한다(팀 결정 —
-                                칸반/승인함만으론 발견성이 떨어진다는 지적). PM에게는 승인/반려
-                                버튼을, 일반유저에게는 대기 배지를 보여준다. CANCELLED(반려/취소)는
+                            {/* 2026-09-22 (사용자 재확인 — 9/16 정책으로 재복귀): 배분 승인/
+                                반려는 배정받은 담당자 본인 권한이다 — 담당자 본인에게 승인/반려
+                                버튼을, PM에게는 대기 배지를 보여준다. CANCELLED(반려/취소)는
                                 반려 사유 입력으로만 바뀌어야 하므로 드롭다운으로는 못 바꾸게 막는다. */}
                             {task.status_code === "PENDING_APPROVAL" ? (
-                              isPM ? (
+                              !isPM ? (
                                 <div className="flex items-center gap-1.5">
                                   <button
                                     onClick={() => handleApprove(task.id)}
