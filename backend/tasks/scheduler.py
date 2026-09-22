@@ -13,7 +13,7 @@ depends_on=[], risk_buffer_factor=기본값으로 동작해 Phase 0과 같은 �
 
 import logging
 from collections import deque
-from datetime import date
+from datetime import date, timedelta
 from typing import Any, Dict, List, Optional, Sequence
 
 # 2026-09-11: 일정 계산 정책 상수·환산 함수의 정본 위치를 ai/assignee_recommend/
@@ -35,6 +35,27 @@ logger = logging.getLogger(__name__)
 
 class ScheduleError(ValueError):
     """의존성 순환처럼 일정을 계산할 수 없는 입력."""
+
+
+def _workday_at(workdays: Sequence[date], idx: int) -> date:
+    """
+    workdays 범위를 벗어나는 idx도 평일(월~금) 규칙을 그대로 이어서 계산한다.
+
+    project_buffer_days가 실제 초과 일수를 클램프 없이 그대로 노출하는 것과
+    마찬가지로, projected_finish_date도 프로젝트 기간 안으로 클램프하면 실제
+    완료일보다 일찍 끝나는 것처럼 보여 같은 summary 안의 project_buffer_days
+    (초과)와 모순되는 값을 보여주게 된다(2026-09-22 버그 확인 — 예상완료일이
+    프로젝트 종료일 이전인데 동시에 N일 초과라고 표시됨).
+    """
+    if idx < len(workdays):
+        return workdays[idx]
+    current = workdays[-1]
+    remaining = idx - (len(workdays) - 1)
+    while remaining > 0:
+        current += timedelta(days=1)
+        if current.weekday() < 5:
+            remaining -= 1
+    return current
 
 
 def _topo_order(units_by_id: Dict[str, dict]) -> List[str]:
@@ -108,6 +129,12 @@ def schedule(
       project_buffer_days: 계획상 마지막 업무 종료일부터 프로젝트 종료일까지 남는
         평일 수. 일정이 종료일을 넘으면 음수(초과 일수). 남는 기간을 가짜 버퍼로
         흡수하지 않고 그대로 노출한다.
+      projected_finish_date: 가장 늦게 끝나는 업무의 실제 완료일. project_buffer_days와
+        같은 원칙으로, 프로젝트 종료일을 넘겨도 그 안으로 클램프하지 않고 실제
+        날짜(평일 기준 연장)를 그대로 보여준다 — 클램프하면 "예상완료일은
+        종료일 이전인데 N일 초과"라는 모순된 값이 나온다(2026-09-22 수정).
+        units 안의 개별 start_date/end_date는 캘린더 표시용이라 계속 종료일로
+        클램프된다 — exceeds_project_period로 초과 여부를 별도 확인한다.
     """
     units_by_id = {u["unit_id"]: u for u in units}
     total_workdays = len(workdays)
@@ -117,7 +144,6 @@ def schedule(
     raw_end_idx: Dict[str, int] = {}      # 클램프 전 실제 종료 인덱스(의존/버퍼 계산용)
     assignee_cursor: Dict[Any, int] = {}  # 담당자별 다음 가용 평일 인덱스
     any_exceeds = False
-    latest_display_idx = -1
     latest_raw_idx = -1
 
     for uid in _topo_order(units_by_id):
@@ -160,7 +186,6 @@ def schedule(
         any_exceeds = any_exceeds or exceeds
         disp_start = min(start_idx, last_idx)
         disp_end = min(end_idx, last_idx)
-        latest_display_idx = max(latest_display_idx, disp_end)
         latest_raw_idx = max(latest_raw_idx, end_idx)
 
         # 시작일이 무엇에 의해 결정됐는지 (결정적)
@@ -183,7 +208,7 @@ def schedule(
             "schedule_reason": reason,
         }
 
-    if latest_display_idx < 0:
+    if latest_raw_idx < 0:
         summary = {
             "projected_finish_date": None,
             "project_buffer_days": 0,
@@ -192,7 +217,7 @@ def schedule(
         }
     else:
         summary = {
-            "projected_finish_date": workdays[latest_display_idx].isoformat(),
+            "projected_finish_date": _workday_at(workdays, latest_raw_idx).isoformat(),
             "project_buffer_days": last_idx - latest_raw_idx,
             "exceeds_project_period": any_exceeds,
             "feasible": not any_exceeds,
