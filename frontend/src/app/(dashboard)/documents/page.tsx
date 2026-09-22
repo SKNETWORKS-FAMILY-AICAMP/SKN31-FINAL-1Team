@@ -2311,16 +2311,6 @@ function NoteDetail({
           </button>
         )}
 
-        {spec && (canGenerate || isPM) && (status === "DRAFT" || status === "REJECTED") && (
-          <button
-            onClick={() => onViewSpecReport(spec)}
-            disabled={busy !== null}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-cyan-500/30 bg-cyan-500/10 text-cyan-500 text-sm font-bold hover:bg-cyan-500/20 disabled:opacity-50"
-          >
-            {autoSpecValidating || viewingSpecReport ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
-            {autoSpecValidating ? (specGenStage.includes("보완사항") ? "보완사항 적용 중…" : "검증 보고서 생성 중…") : viewingSpecReport ? "보고서 불러오는 중…" : "검증보고서 확인"}
-          </button>
-        )}
 
         {/* "기획서 생성"/"검토요청"과 같은 기준(작성자 본인, PM은 예외)으로 맞춘다 —
             이 체크가 빠져있어서 다른 사람이 시작한 초안도 고칠 수 있는 상태였다. */}
@@ -4075,16 +4065,6 @@ function RequirementSection({
                 {extracting ? (reqExtractStage || "재생성 중…") : "재생성"}
               </button>
             </>
-          )}
-          {(canGenerate || isPM) && !tasksAlreadyAssigned && (reqStatus === "DRAFT" || reqStatus === "REJECTED" || reqStatus === null) && (
-            <button
-              onClick={() => onViewReport(reqDef)}
-              disabled={busy !== null}
-              className="flex items-center gap-2 px-5 py-2.5 rounded-xl border border-cyan-500/30 bg-cyan-500/10 text-cyan-500 text-sm font-bold hover:bg-cyan-500/20 disabled:opacity-50 whitespace-nowrap"
-            >
-              {autoReqValidating || viewingReqReport ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
-              {autoReqValidating ? (reqExtractStage.includes("보완사항") ? "보완사항 적용 중…" : "검증 보고서 생성 중…") : viewingReqReport ? "보고서 불러오는 중…" : "검증보고서 확인"}
-            </button>
           )}
           {/* 검토요청은 하단 우측 — 기획서 탭과 동일한 위치(승인/반려는 상단, 검토요청/
               직접수정 성격의 액션은 하단). reqStatus===null은 REQSPEC_STATUS 도입 전
