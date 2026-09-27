@@ -2022,12 +2022,18 @@ function NoteDetail({
               "어느 프로젝트의 업무 배분인지"가 더 중요한 정보라, 회의록 번호/제목/작성자
               대신 프로젝트 번호/이름을 보여준다. project가 아직 없으면(이론상 업무배분
               탭까지 왔으면 항상 있어야 하지만 방어적으로) 회의록 정보로 폴백한다.
+              2026-09-27 (사용자 리포트로 수정): 여기서 쓰던 project는 이 문서생성 페이지
+              전체가 스코프된 "첫 번째 프로젝트" 하나로 고정된 페이지 레벨 상태라, 서로
+              다른 프로젝트의 문서를 오가며 봐도 항상 같은 프로젝트 번호/이름만 보였다
+              (실제 리포트: 회의록마다 데이터는 다른데 헤더의 "프로젝트 번호"만 똑같음).
+              지금 보고 있는 reqDef 자신이 어느 프로젝트 소속인지(project/project_name)를
+              대신 써서 문서마다 정확한 프로젝트로 보이게 한다.
               그 외 탭에서는 기존처럼 회의록 정보를 보여주되, 여러 프로젝트를 오갈 때 지금
               보고 있는 문서가 어느 프로젝트 소속인지 알 수 있도록 프로젝트명을 보조로 병기한다. */}
-          {activeTab === "taskAssignment" && project ? (
+          {activeTab === "taskAssignment" && (reqDef || project) ? (
             <>
-              <p className="text-xs font-mono text-muted-foreground/70">프로젝트 번호 {project.id}</p>
-              <h2 className="font-bold text-lg">{project.name}</h2>
+              <p className="text-xs font-mono text-muted-foreground/70">프로젝트 번호 {reqDef ? reqDef.project : project!.id}</p>
+              <h2 className="font-bold text-lg">{reqDef ? reqDef.project_name : project!.name}</h2>
             </>
           ) : (
             <>
