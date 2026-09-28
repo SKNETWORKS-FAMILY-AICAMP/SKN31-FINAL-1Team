@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { useAuth } from "@/lib/auth";
 import { FolderKanban, Search, LayoutGrid, Loader2, ClipboardList, AlertTriangle, CheckCircle2, XCircle, X, MessageSquare, RotateCcw } from "lucide-react";
 import { Pagination } from "@/components/ui/Pagination";
@@ -45,6 +45,11 @@ const STATUSES = [
   { id: "CANCELLED", label: "취소됨", color: "text-red-500", bg: "bg-red-500/10" },
 ];
 
+// 2026-09-28 (사용자 리포트): 리스트/업무보드(WBS) 뷰의 상태 드롭다운으로 "완료"를
+// 선택해도 진행률이 그대로 남아있었다 — projects/[id] 페이지와 같은 기준으로 상태를
+// 바꾸면 진행률도 같이 맞춘다(진행률 슬라이더는 이 두 뷰엔 없어서 이 방향만 필요).
+const STATUS_TO_PROGRESS: Record<string, number> = { TASK_APPROVED: 0, IN_PROGRESS: 5, DONE: 100 };
+
 export default function TasksPage() {
   const { user } = useAuth();
   const isPM = user?.role === "PM";
@@ -62,6 +67,15 @@ export default function TasksPage() {
   const [filterScope, setFilterScope] = useState<"ME" | "ALL">("ME");
   // null = "전체 보기" — 특정 프로젝트를 고르면 그 프로젝트 업무만 남긴다.
   const [projectFilter, setProjectFilter] = useState<string | null>(null);
+  // 2026-09-28 (사용자 요청): 대시보드 "진행 중인 프로젝트"가 별도의 프로젝트 상세
+  // 페이지(/projects/{id})로 빠지던 걸 없애고, 업무관리 탭 안에서 그 프로젝트로
+  // 필터링해서 보여주는 것으로 통일 — ?project=123으로 들어오면 프로젝트 필터를
+  // 미리 맞춰준다. filterScope는 건드리지 않는다: 일반유저는 "내 업무" 기본값을
+  // 유지해야 그 프로젝트 안에서도 본인에게 배정된 업무만 보인다(PM만 전체가 보임).
+  useEffect(() => {
+    const p = searchParams.get("project");
+    if (p) setProjectFilter(p);
+  }, [searchParams]);
   const [viewMode, setViewMode] = useState<"KANBAN" | "LIST" | "WBS">("LIST");
   const [processingId, setProcessingId] = useState<number | null>(null);
   const [page, setPage] = useState(1);
@@ -133,15 +147,24 @@ export default function TasksPage() {
   }, [isPM]);
 
   const statusMutation = useMutation({
-    mutationFn: ({ taskId, newStatus, rejectReason: reason }: { taskId: number; newStatus: string; rejectReason?: string }) =>
-      apiFetch(`/api/tasks/assignments/${taskId}/status/`, {
+    mutationFn: async ({ taskId, newStatus, rejectReason: reason }: { taskId: number; newStatus: string; rejectReason?: string }) => {
+      await apiFetch(`/api/tasks/assignments/${taskId}/status/`, {
         method: "PATCH",
         body: JSON.stringify(reason ? { status_code: newStatus, reject_reason: reason } : { status_code: newStatus }),
-      }),
+      });
+      const newProgress = STATUS_TO_PROGRESS[newStatus];
+      if (newProgress !== undefined) {
+        await apiFetch(`/api/tasks/assignments/${taskId}/`, {
+          method: "PATCH",
+          body: JSON.stringify({ progress: newProgress }),
+        });
+      }
+      return newProgress;
+    },
     onMutate: ({ taskId }) => setProcessingId(taskId),
-    onSuccess: (_data, { taskId, newStatus }) => {
+    onSuccess: (newProgress, { taskId, newStatus }) => {
       queryClient.setQueryData<Task[]>(["tasks"], (prev) =>
-        prev?.map(t => t.id === taskId ? { ...t, status_code: newStatus } : t)
+        prev?.map(t => t.id === taskId ? { ...t, status_code: newStatus, ...(newProgress !== undefined ? { progress: newProgress } : {}) } : t)
       );
       if (newStatus === "TASK_APPROVED") setToast({ message: "업무를 승인했습니다.", variant: "success" });
       if (newStatus === "CANCELLED") {
@@ -204,6 +227,21 @@ export default function TasksPage() {
   // 위 리셋 대상이 아닌 다른 이유로 목록이 줄어들 수도 있으므로(다른 화면에서 상태 변경 후 재조회 등),
   // 지금 페이지가 범위를 넘으면 마지막 페이지로 당겨서 빈 화면이 뜨지 않게 한다
   useEffect(() => { setPage(p => Math.min(p, totalPages)); }, [totalPages]);
+
+  // 대시보드 "내 최근 업무 활동"에서 ?task=123으로 들어오면 그 업무가 있는 목록 페이지로
+  // 바로 넘어간다(상세 창은 열지 않음). PM은 첫 렌더 후 filterScope가 "ALL"로 바뀌면서
+  // 위 리셋 effect가 페이지를 1로 되돌리므로, 그 전환이 끝난 뒤에 계산해야 한다.
+  // 30초 폴링으로 목록이 갱신될 때마다 다시 이동하지 않도록 처리한 id를 ref로 기억한다.
+  const jumpedTaskParamRef = useRef<string | null>(null);
+  useEffect(() => {
+    const id = searchParams.get("task");
+    if (!id || !user || jumpedTaskParamRef.current === id) return;
+    if (isPM && filterScope !== "ALL") return;
+    const index = filteredTasks.findIndex(t => String(t.id) === id);
+    if (index < 0) return;
+    jumpedTaskParamRef.current = id;
+    setPage(Math.floor(index / PAGE_SIZE) + 1);
+  }, [searchParams, user, isPM, filterScope, filteredTasks]);
   const pagedTasks = filteredTasks.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
   return (

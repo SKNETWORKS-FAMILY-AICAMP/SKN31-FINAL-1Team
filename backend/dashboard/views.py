@@ -116,6 +116,7 @@ class DashboardOverviewView(APIView):
                 assignee_name = f"{task.assigned_user.last_name}{task.assigned_user.first_name}".strip() or task.assigned_user.username
 
             activity_log.append({
+                "taskId": task.id,
                 "projectId": task.project.id if task.project else None,
                 "projectName": task.project.name if task.project else "",
                 "taskTitle": task.title,

@@ -26,6 +26,12 @@ const COLUMNS = [
   { id: "CANCELLED", title: "반려됨", color: "bg-red-500/20" },
 ];
 
+// 2026-09-28 (사용자 리포트): 카드를 드래그해 컬럼을 옮겨도(승인됨은 별도 컬럼이
+// 없어 "진행 중"으로 합쳐 보여주지만, 실제 전이 대상은 IN_PROGRESS/DONE뿐 —
+// PENDING_APPROVAL/CANCELLED는 아래 handleDragEnd에서 드롭 자체를 막음) 진행률이
+// 안 따라오던 문제 — tasks/page.tsx 리스트/WBS 뷰와 같은 기준으로 맞춘다.
+const STATUS_TO_PROGRESS: Record<string, number> = { TASK_APPROVED: 0, IN_PROGRESS: 5, DONE: 100 };
+
 function AssigneeBadge({ task, members, onAssign, readOnly }: { task: any; members: any[]; onAssign: (taskId: number, userId: string) => void; readOnly?: boolean }) {
   const [isOpen, setIsOpen] = useState(false);
 
@@ -255,13 +261,21 @@ export function KanbanBoard({ initialTasks, members = [], onTaskChange, projectN
 
   const commitStatusChange = async (taskId: number, newStatus: string) => {
     const prev = tasks;
-    setTasks((cur) => cur.map((t) => t.id === taskId ? { ...t, status_code: newStatus } : t));
-    onTaskChange?.(taskId, { status_code: newStatus });
+    const newProgress = STATUS_TO_PROGRESS[newStatus];
+    const patch = newProgress !== undefined ? { status_code: newStatus, progress: newProgress } : { status_code: newStatus };
+    setTasks((cur) => cur.map((t) => t.id === taskId ? { ...t, ...patch } : t));
+    onTaskChange?.(taskId, patch);
     try {
       await apiFetch(`/api/tasks/assignments/${taskId}/status/`, {
         method: "PATCH",
         body: JSON.stringify({ status_code: newStatus }),
       });
+      if (newProgress !== undefined) {
+        await apiFetch(`/api/tasks/assignments/${taskId}/`, {
+          method: "PATCH",
+          body: JSON.stringify({ progress: newProgress }),
+        });
+      }
     } catch (e: any) {
       setTasks(prev);
       onTaskChange?.(taskId, { status_code: prev.find((t) => t.id === taskId)?.status_code });
