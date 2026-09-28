@@ -26,6 +26,7 @@ type ProjectStat = {
 };
 
 type ActivityLog = {
+  taskId: number;
   projectId: string;
   projectName: string;
   taskTitle: string;
@@ -40,7 +41,7 @@ type OverviewDto = {
   summary: { totalTasks: number; inProgress: number; pendingApproval: number; done: number; completionRate: number };
   statusChart: { code_id: string; code_name: string; value: number }[];
   workload: { userId: number; name: string; taskCount: number }[];
-  activityLog: { projectId: number | null; projectName: string; taskTitle: string; status: string; statusLabel: string; assigneeName: string; updatedAt: string | null }[];
+  activityLog: { taskId: number; projectId: number | null; projectName: string; taskTitle: string; status: string; statusLabel: string; assigneeName: string; updatedAt: string | null }[];
   projectList: { id: number; name: string; totalTasks: number; doneTasks: number; progress: number }[];
 };
 
@@ -80,6 +81,7 @@ function mapOverview(raw: OverviewDto): {
     })),
     workload: raw.workload,
     activityLog: raw.activityLog.map(a => ({
+      taskId: a.taskId,
       projectId: String(a.projectId ?? ""),
       projectName: a.projectName,
       taskTitle: a.taskTitle,
@@ -187,10 +189,10 @@ export default function OverviewView() {
                 <p className="text-sm text-muted-foreground text-center py-8">아직 활동 내역이 없습니다.</p>
               ) : (
                 activityLog.slice(0, 5).map((log: ActivityLog, i: number) => (
-                  // project=null인 업무(레거시/시드 데이터)는 projectId가 빈 문자열이 되어
-                  // "/projects/"(빈 id)로 링크되면 존재하지 않는 페이지로 이동한다 — 그럴 땐
-                  // 프로젝트 상세 대신 전체보기와 같은 목적지(/tasks)로 보낸다.
-                  <Link key={i} href={log.projectId ? `/projects/${log.projectId}` : "/tasks"} className="flex items-start gap-3 pb-3 border-b border-foreground/5 last:border-0 last:pb-0 group">
+                  // 프로젝트 상세(/projects/{id})는 사이드바 "업무관리"(/tasks)와 별개 화면이라
+                  // 건수·필터가 서로 달라 헷갈린다는 지적(2026-09-28) — 상세 창은 열지 않고
+                  // 업무관리 탭에서 이 업무가 있는 목록 페이지로 바로 이동한다(?task=).
+                  <Link key={i} href={`/tasks?task=${log.taskId}`} className="flex items-start gap-3 pb-3 border-b border-foreground/5 last:border-0 last:pb-0 group">
                     <div className={cn("w-2 h-2 rounded-full mt-1.5 shrink-0", STATUS_COLORS[log.status] ?? "bg-gray-500")} />
                     <div className="flex-1 min-w-0">
                       {/* 단일 프로젝트 운영 전제라 프로젝트명 배지는 중복 정보 — 업무 제목만 표시 */}
@@ -287,8 +289,13 @@ export default function OverviewView() {
               </div>
             ) : (
               <div className="space-y-3 max-h-[420px] overflow-y-auto pr-1 -mr-1">
+                {/* 2026-09-28 (사용자 요청): 별도의 프로젝트 상세 페이지(/projects/{id})는
+                    업무관리(/tasks)와 건수·필터 기준이 달라 헷갈린다는 지적 — 최근 업무
+                    활동과 같은 방식으로 업무관리 탭 안에서 이 프로젝트로 필터링해서 보여준다.
+                    filterScope는 그대로 둬서, 일반유저는 이 프로젝트 안에서도 본인에게
+                    배정된 업무만(PM은 전체) 보이게 한다. */}
                 {projectList.map((p: ProjectStat) => (
-                  <Link key={p.id} href={`/projects/${p.id}`} className="block group">
+                  <Link key={p.id} href={`/tasks?project=${p.id}`} className="block group">
                     <div className="flex items-center justify-between mb-1">
                       <span className="text-sm font-semibold group-hover:text-primary transition-colors flex items-center gap-1">
                         {p.name}

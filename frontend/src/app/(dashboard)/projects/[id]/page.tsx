@@ -42,6 +42,13 @@ const STATUSES = [
   { id: "CANCELLED", label: "반려됨", icon: XCircle, color: "text-red-400" },
 ];
 
+// 2026-09-28 (사용자 요청): WBS 표의 상태 드롭다운(승인됨/진행중/완료 3개뿐 — 승인대기/
+// 반려는 칸반 버튼으로만 바뀜)과 진행률 슬라이더가 서로 반대로 놀아서 헷갈린다는 지적 —
+// 어느 쪽을 바꾸든 다른 쪽이 항상 같이 맞춰지게 양방향으로 동기화한다.
+const STATUS_TO_PROGRESS: Record<string, number> = { TASK_APPROVED: 0, IN_PROGRESS: 5, DONE: 100 };
+const progressToStatus = (progress: number): string =>
+  progress <= 0 ? "TASK_APPROVED" : progress >= 100 ? "DONE" : "IN_PROGRESS";
+
 export default function ProjectPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const router = useRouter();
@@ -105,6 +112,13 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
     }
   }, [project?.id]);
 
+  // DEV 역할전환 패널로 재로그인 없이 PM -> 일반유저로 바뀌는 경우, 설정 탭을 보고
+  // 있었다면 탭 버튼은 숨겨져도 activeTab 상태는 그대로 남는다 — 안 보이는 탭에
+  // 머물러 있지 않도록 접근 가능한 탭으로 되돌린다.
+  useEffect(() => {
+    if (!isPM && activeTab === "SETTINGS") setActiveTab("KANBAN");
+  }, [isPM, activeTab]);
+
   const handleSaveSettings = async () => {
     if (!project || !settingsName.trim()) return;
     setSavingSettings(true);
@@ -126,15 +140,39 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
 
   const handleStatusChange = async (taskId: number, newStatus: string) => {
     const oldTasks = tasks;
-    setTasks(tasks.map(t => t.id === taskId ? { ...t, status_code: newStatus } : t));
+    const newProgress = STATUS_TO_PROGRESS[newStatus] ?? tasks.find(t => t.id === taskId)?.progress ?? 0;
+    setTasks(tasks.map(t => t.id === taskId ? { ...t, status_code: newStatus, progress: newProgress } : t));
     try {
+      await apiFetch(`/api/tasks/assignments/${taskId}/status/`, {
+        method: "PATCH",
+        body: JSON.stringify({ status_code: newStatus }),
+      });
+      await apiFetch(`/api/tasks/assignments/${taskId}/`, {
+        method: "PATCH",
+        body: JSON.stringify({ progress: newProgress }),
+      });
+    } catch (err: any) {
+      setTasks(oldTasks);
+      setToast({ message: err.message || "상태 변경에 실패했습니다.", variant: "error" });
+    }
+  };
+
+  const handleProgressChange = async (taskId: number, newProgress: number) => {
+    const oldTasks = tasks;
+    const newStatus = progressToStatus(newProgress);
+    setTasks(tasks.map(t => t.id === taskId ? { ...t, progress: newProgress, status_code: newStatus } : t));
+    try {
+      await apiFetch(`/api/tasks/assignments/${taskId}/`, {
+        method: "PATCH",
+        body: JSON.stringify({ progress: newProgress }),
+      });
       await apiFetch(`/api/tasks/assignments/${taskId}/status/`, {
         method: "PATCH",
         body: JSON.stringify({ status_code: newStatus }),
       });
     } catch (err: any) {
       setTasks(oldTasks);
-      setToast({ message: err.message || "상태 변경에 실패했습니다.", variant: "error" });
+      setToast({ message: err.message || "진행률 변경에 실패했습니다.", variant: "error" });
     }
   };
 
@@ -233,12 +271,16 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
           >
             <CalendarDays className="w-4 h-4" /> WBS (목록)
           </button>
-          <button
-            onClick={() => setActiveTab("SETTINGS")}
-            className={cn("px-4 py-2.5 rounded-lg text-sm font-bold flex items-center gap-2 transition-all", activeTab === "SETTINGS" ? "bg-white dark:bg-white/10 text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground hover:bg-black/5 dark:hover:bg-white/5")}
-          >
-            <Settings className="w-4 h-4" /> 설정
-          </button>
+          {/* 2026-09-28 (사용자 요청): 프로젝트 설정(이름/설명 수정)은 PM 권한 —
+              일반유저는 어차피 읽기 전용으로 막혀있었지만 탭 자체를 안 보이게 한다. */}
+          {isPM && (
+            <button
+              onClick={() => setActiveTab("SETTINGS")}
+              className={cn("px-4 py-2.5 rounded-lg text-sm font-bold flex items-center gap-2 transition-all", activeTab === "SETTINGS" ? "bg-white dark:bg-white/10 text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground hover:bg-black/5 dark:hover:bg-white/5")}
+            >
+              <Settings className="w-4 h-4" /> 설정
+            </button>
+          )}
         </div>
 
         <div className="relative group">
@@ -366,7 +408,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                                 type="range"
                                 min="0" max="100" step="5"
                                 value={task.progress || 0}
-                                onChange={e => handleTaskUpdate(task.id, { progress: parseInt(e.target.value) })}
+                                onChange={e => handleProgressChange(task.id, parseInt(e.target.value))}
                                 className="w-24 accent-primary"
                               />
                               <span className="text-xs w-8 text-right text-muted-foreground">{task.progress || 0}%</span>

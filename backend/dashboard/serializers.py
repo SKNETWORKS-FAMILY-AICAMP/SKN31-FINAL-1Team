@@ -23,6 +23,7 @@ class WorkloadItemSerializer(serializers.Serializer):
 
 
 class ActivityLogItemSerializer(serializers.Serializer):
+    taskId = serializers.IntegerField()
     projectId = serializers.IntegerField(allow_null=True)
     # views.py가 project/assigned_user가 없는 task는 ""로 채워서 넘긴다 —
     # CharField 기본값(allow_blank=False)이라

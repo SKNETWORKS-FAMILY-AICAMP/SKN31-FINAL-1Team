@@ -106,9 +106,15 @@ class TaskAssignmentListCreateView(generics.ListCreateAPIView):
         # documents/page.tsx는 이 엔드포인트를 안 거치고 generate_task_suggestions/
         # confirm_task_assignments 응답을 직접 쓰므로 헤더를 볼 수 있다.
         qs = qs.exclude(is_task_header=True)
+        # 2026-09-28: 일반유저는 본인에게 배정된 업무만 볼 수 있어야 한다(사용자 요청 —
+        # 칸반 등 어느 화면에서도 다른 팀원의 업무 내용이 보이면 안 됨). 예전엔 화면에서만
+        # "내 업무"로 걸러서, API를 직접 부르거나 프로젝트 상세 칸반을 열면 전원의 업무가
+        # 내려갔다. assigneeId로 남의 업무를 조회하는 것도 PM만 허용한다.
+        if not is_pm:
+            qs = qs.filter(assigned_user_id=self.request.user.id)
         if project_id:
             qs = qs.filter(req_item__req_def__spec__meeting__project_id=project_id)
-        if assignee_id:
+        if assignee_id and is_pm:
             qs = qs.filter(assigned_user_id=assignee_id)
         if status_param:
             qs = qs.filter(status_code_id=status_param)
@@ -185,9 +191,13 @@ class TaskAssignmentDetailView(generics.RetrieveUpdateDestroyAPIView):
         # 2026-09-16: id를 직접 안다고 해도 BACKLOG(초안)는 상세 조회/수정/삭제로
         # 못 보게 막는다 — 목록 API와 동일하게 PM도 예외 없이 막는다(TaskAssignmentListCreateView
         # 참고: PM이 초안을 검토/수정하는 화면은 이 REST 엔드포인트를 아예 안 쓴다).
-        return TaskAssignment.objects.select_related(
+        qs = TaskAssignment.objects.select_related(
             'req_item', 'assigned_user', 'status_code'
         ).exclude(status_code_id=TaskStatusCode.BACKLOG)
+        # 목록 API와 동일하게 일반유저는 본인에게 배정된 업무만 상세 조회/수정/삭제할 수 있다.
+        user = self.request.user
+        is_pm = getattr(user, 'is_staff', False) or user.groups.filter(name='PM').exists()
+        return qs if is_pm else qs.filter(assigned_user_id=user.id)
 
 
 #tasks/views.py
