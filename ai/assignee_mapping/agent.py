@@ -22,6 +22,7 @@ EmployeeFitnessProfile을 만든다.
 """
 
 import logging
+import re
 from typing import Any, Dict, List, Optional
 
 from pydantic import ValidationError
@@ -43,6 +44,11 @@ logger = logging.getLogger(__name__)
 # 캐시에 없는 후보를 한 번의 LLM 호출에 몇 명씩 묶을지. career_history_text가
 # 사람마다 꽤 길 수 있어 유닛 배치(REASON_BATCH_SIZE=8)보다는 살짝 낮춰 잡았다.
 EXTRACTION_BATCH_SIZE = 10
+MAX_EXPERIENCE_TAGS = 10
+
+_EXPERIENCE_SIGNAL_PATTERN = re.compile(
+    r"개발|구축|구현|설계|운영|개선|마이그레이션|연동|자동화|담당|수행|작성"
+)
 
 # 프로세스 안에서 유지되는 경험 태그 캐시: career_history_text(원문) -> tags.
 # 같은 사람의 경력기술서가 안 바뀐 채로 파이프라인이 다시 도는 경우(예: PM이
@@ -52,14 +58,44 @@ EXTRACTION_BATCH_SIZE = 10
 _experience_tags_cache: Dict[str, List[str]] = {}
 
 
+def _normalize_tag_values(values: List[str]) -> List[str]:
+    """Remove formatting noise and duplicate tags without changing their meaning."""
+    normalized: List[str] = []
+    seen = set()
+    for value in values:
+        tag = " ".join(value.split()).strip(" -•·,;")
+        key = re.sub(r"[\s/,_-]+", "", tag).casefold()
+        if not tag or key in seen:
+            continue
+        seen.add(key)
+        normalized.append(tag)
+        if len(normalized) >= MAX_EXPERIENCE_TAGS:
+            break
+    return normalized
+
+
+def _needs_selective_retry(
+    profile: RawEmployeeProfile, tags: Optional[ExtractedExperienceTags]
+) -> bool:
+    """Retry only an obviously empty extraction, never a merely short result."""
+    text = profile.career_history_text.strip()
+    return bool(
+        tags is not None
+        and not tags.tags
+        and len(text) >= 20
+        and _EXPERIENCE_SIGNAL_PATTERN.search(text)
+    )
+
+
 def _get_cached_tags(text: str) -> Optional[ExtractedExperienceTags]:
-    if text in _experience_tags_cache:
-        return ExtractedExperienceTags(tags=_experience_tags_cache[text])
+    cache_key = text.strip()
+    if cache_key in _experience_tags_cache:
+        return ExtractedExperienceTags(tags=_experience_tags_cache[cache_key])
     return None
 
 
 def _store_tags(text: str, tags: ExtractedExperienceTags) -> None:
-    _experience_tags_cache[text] = tags.tags
+    _experience_tags_cache[text.strip()] = _normalize_tag_values(tags.tags)
 
 
 def extract_experience_tags(profile: RawEmployeeProfile) -> ExtractedExperienceTags:
@@ -76,6 +112,7 @@ def extract_experience_tags(profile: RawEmployeeProfile) -> ExtractedExperienceT
         temperature=TEMPERATURE_STRUCTURED,
         max_retries=MAX_RETRIES,
     )
+    tags = ExtractedExperienceTags(tags=_normalize_tag_values(tags.tags))
     _store_tags(profile.career_history_text, tags)
     return tags
 
@@ -103,7 +140,7 @@ def extract_experience_tags_batch(
     text_by_employee = {p.employee_id: p.career_history_text for p in profiles}
     result: Dict[str, ExtractedExperienceTags] = {}
     for item in batch.items:
-        tags = ExtractedExperienceTags(tags=item.tags)
+        tags = ExtractedExperienceTags(tags=_normalize_tag_values(item.tags))
         result[item.employee_id] = tags
         text = text_by_employee.get(item.employee_id)
         if text:
@@ -129,7 +166,7 @@ def assignee_mapping_node(state: Dict[str, Any]) -> Dict[str, Any]:
     known_tags = state.get("known_experience_tags") or {}
     for text, tags in known_tags.items():
         if text not in _experience_tags_cache:
-            _experience_tags_cache[text] = tags
+            _experience_tags_cache[text] = _normalize_tag_values(tags)
 
     # LLM 호출 전, 후보를 코드로 먼저 추린다 (rule_filter.py 참고). 아래 세
     # 키(current_workload/total_workdays/skill_role_map)가 전부 있으면 역할별
@@ -166,11 +203,17 @@ def assignee_mapping_node(state: Dict[str, Any]) -> Dict[str, Any]:
         logger.exception("담당자 매핑 실행 중 오류(배치)")
         return {"error": f"GENERATION_FAILED: {e}"}
 
-    # 누락 방어: 배치 응답에 employee_id가 빠졌으면 그 사람만 단건으로 보완한다.
+    # Retry only a missing item or an obviously empty extraction.
     for profile in to_call:
-        if profile.employee_id in tags_by_employee:
+        current_tags = tags_by_employee.get(profile.employee_id)
+        if current_tags is not None and not _needs_selective_retry(profile, current_tags):
             continue
-        logger.warning("employee_id=%s: 배치 응답에 없어 단건 재호출", profile.employee_id)
+        reason = "empty extraction" if current_tags is not None else "missing employee_id"
+        logger.warning(
+            "employee_id=%s: selective single retry (%s)",
+            profile.employee_id,
+            reason,
+        )
         try:
             tags_by_employee[profile.employee_id] = extract_experience_tags(profile)
         except ValidationError as e:

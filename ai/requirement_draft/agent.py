@@ -5,6 +5,7 @@ a2_1_requirement_draft/agent.py
 반려 시 이 노드로 되돌아온다 (graph.py의 requirement_review_gate 참고).
 """
 
+import json
 import logging
 from typing import Any, Dict, List
 
@@ -14,6 +15,7 @@ from shared.llm_client import create_structured, traceable
 from shared.retry_config import DEFAULT_MAX_TOKENS, MAX_RETRIES, TEMPERATURE_STRUCTURED
 
 from .prompt_builder import build_messages, load_nfr_checklist
+from .quality import collect_requirement_quality_issues, format_quality_issues
 from .schemas import (
     ItemReviewStatus,
     PlanDocument,
@@ -96,6 +98,72 @@ def verify_source_consistency(doc: RequirementDocument) -> List[str]:
     ]
 
 
+def merge_quality_replacements(
+    items: List[RequirementItem],
+    replacements: List[RequirementItem],
+    invalid_ids: set[str],
+) -> List[RequirementItem]:
+    """Replace only rejected items while preserving document order and valid items."""
+    replacement_by_id = {
+        item.id: item for item in replacements if item.id in invalid_ids
+    }
+    return [
+        replacement_by_id.get(item.id, item) if item.id in invalid_ids else item
+        for item in items
+    ]
+
+
+def finalize_unresolved_quality_items(
+    items: List[RequirementItem], quality_issues
+) -> List[RequirementItem]:
+    """Apply a conservative final fallback after LLM correction retries.
+
+    Ungrounded or invented requirements are removed because saving them would
+    turn a proposal into project scope. Items whose only remaining problem is
+    acceptance wording keep their grounded content, become review-pending, and
+    receive an objective test condition without inventing a numeric threshold.
+    """
+    codes_by_id: dict[str, set[str]] = {}
+    for issue in quality_issues:
+        codes_by_id.setdefault(issue.requirement_id, set()).add(issue.code)
+
+    result: List[RequirementItem] = []
+    for item in items:
+        codes = codes_by_id.get(item.id, set())
+        if not codes:
+            result.append(item)
+            continue
+        if "UNSUPPORTED_DESIGN" in codes or any(
+            code.startswith("EVIDENCE_") for code in codes
+        ):
+            logger.warning("근거 미충족 요구사항 제거: %s (%s)", item.id, sorted(codes))
+            continue
+        if all(code.startswith("ACCEPTANCE_") for code in codes):
+            if item.type == ReqType.FUNCTIONAL:
+                criteria = (
+                    f"대표 입력으로 '{item.title}' 기능을 실행했을 때 description에 "
+                    "명시된 출력 또는 상태 변경이 발생하는지 기능 테스트로 확인한다."
+                )
+            else:
+                criteria = (
+                    f"'{item.title}' 조건을 재현한 시험에서 description에 명시된 "
+                    "품질 특성이 유지되는지 테스트 결과와 로그로 확인한다."
+                )
+            note = f"{item.note} | 자동 품질 보정된 인수조건은 PM 확인 필요"
+            result.append(
+                item.model_copy(
+                    update={
+                        "acceptance_criteria": criteria,
+                        "review_status": ItemReviewStatus.PENDING,
+                        "note": note,
+                    }
+                )
+            )
+            continue
+        result.append(item)
+    return result
+
+
 @traceable(name="requirement_draft.generate_requirements")
 def generate_requirements(plan: PlanDocument, plan_id: str | None = None, on_stage=None) -> RequirementDocumentOutput:
     # on_stage: 있으면 각 내부 단계 시작 시 사람이 읽을 라벨(str)로 호출한다(선택,
@@ -157,12 +225,71 @@ def generate_requirements(plan: PlanDocument, plan_id: str | None = None, on_sta
         # 그 중복을 걸러내기 전에 먼저 재번호를 매겨 통과하게 한다.
         all_items = dedupe_requirement_ids(all_items + list(retry_doc.requirements))
 
+    # Retry only rejected items so corrections do not destabilize valid output.
+    for attempt in range(MAX_RETRIES):
+        quality_issues = collect_requirement_quality_issues(plan, all_items)
+        if not quality_issues:
+            break
+        invalid_ids = {issue.requirement_id for issue in quality_issues}
+        invalid_items = [
+            item.model_dump(mode="json") for item in all_items if item.id in invalid_ids
+        ]
+        logger.warning(
+            "요구사항 품질 검증 실패(재시도 %d/%d): %s",
+            attempt + 1,
+            MAX_RETRIES,
+            ", ".join(sorted(invalid_ids)),
+        )
+        _stage(f"요구사항 품질 보완 중… ({attempt + 1}/{MAX_RETRIES})")
+        retry_message = (
+            f"{user_message}\n\n"
+            "아래 요구사항만 품질 검증에 실패했다. ID를 바꾸지 말고 실패 항목만 "
+            "수정하여 requirements 배열로 반환하라. 다른 ID의 항목은 반환하지 마라.\n"
+            "UNSUPPORTED_DESIGN 오류의 용어와 그 용어에 의존하는 설계는 완전히 제거하라. "
+            "ACCEPTANCE 오류는 '후속 확정', '미정', 주관적 표현을 쓰지 말고, 기획서에 "
+            "없는 수치를 만들지 않으면서 실행 조건·관찰 가능한 결과·시험 방법을 모두 "
+            "포함한 통과/실패 조건으로 다시 작성하라.\n"
+            f"[검증 오류]\n{format_quality_issues(quality_issues)}\n"
+            f"[수정 대상]\n{json.dumps(invalid_items, ensure_ascii=False, indent=2)}"
+        )
+        try:
+            retry_doc: RequirementDocument = create_structured(
+                system_prompt=system_prompt,
+                user_message=retry_message,
+                response_model=RequirementDocument,
+                max_tokens=DEFAULT_MAX_TOKENS,
+                temperature=TEMPERATURE_STRUCTURED,
+                max_retries=MAX_RETRIES,
+            )
+        except Exception as e:
+            logger.warning(
+                "품질 보완 호출 실패(재시도 %d/%d): %s",
+                attempt + 1,
+                MAX_RETRIES,
+                e,
+            )
+            continue
+        all_items = merge_quality_replacements(
+            all_items, list(retry_doc.requirements), invalid_ids
+        )
+
+    quality_issues = collect_requirement_quality_issues(plan, all_items)
+    if quality_issues:
+        _stage("미해결 품질 항목 보수적 처리 중…")
+        all_items = finalize_unresolved_quality_items(all_items, quality_issues)
+
     _stage("최종 검증 중…")
     remaining = verify_baseline_coverage(RequirementDocument(requirements=all_items))
     if remaining:
         logger.error("재시도 소진 — baseline 카테고리 여전히 누락: %s", ", ".join(remaining))
     for problem in verify_source_consistency(RequirementDocument(requirements=all_items)):
         logger.warning("source 일관성 문제: %s", problem)
+    quality_issues = collect_requirement_quality_issues(plan, all_items)
+    if quality_issues:
+        raise ValueError(
+            "요구사항 품질 검증을 통과하지 못했습니다:\n"
+            + format_quality_issues(quality_issues)
+        )
 
     return RequirementDocumentOutput(
         project_id=plan.project_id,

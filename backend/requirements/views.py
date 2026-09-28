@@ -33,6 +33,10 @@ from projects.models import PipelineHistory
 
 # AI 에이전트 및 Pydantic 스키마 임포트
 from requirement_draft.agent import generate_requirements
+from requirement_draft.quality import (
+    collect_requirement_quality_issues,
+    format_quality_issues,
+)
 from requirement_draft.schemas import PlanDocument
 
 logger = logging.getLogger(__name__)
@@ -173,6 +177,16 @@ def _parse_feature_lines(raw_features) -> list:
     return lines
 
 
+def _validate_ai_output_before_persist(plan, requirements) -> None:
+    """Block persistence when generated requirements fail the shared quality gate."""
+    issues = collect_requirement_quality_issues(plan, requirements)
+    if not issues:
+        return
+    detail = format_quality_issues(issues)
+    logger.error("요구사항 저장 전 품질 검증 실패:\n%s", detail)
+    raise ValueError(f"요구사항 저장 전 품질 검증 실패:\n{detail}")
+
+
 def process_ai_requirement_extraction(spec_document, user, on_stage=None):
     """
     SpecDocument 기반으로 AI 에이전트를 실행하고
@@ -263,7 +277,11 @@ def process_ai_requirement_extraction(spec_document, user, on_stage=None):
         logger.exception(f"AI 요구사항 추출 실패 (spec_id: {spec_id}): {e}")
         raise RuntimeError(f"AI 요구사항 추출 중 오류가 발생했습니다: {str(e)}")
 
-    # 4. DB 저장 및 기존 요구사항 정의서 연동 (트랜잭션)
+    # 4. Agent 내부 검증을 우회한 출력도 DB에 저장되지 않도록 마지막으로 방어한다.
+    _stage("저장 전 품질 검증 중…")
+    _validate_ai_output_before_persist(plan_input, ai_output.requirements)
+
+    # 5. DB 저장 및 기존 요구사항 정의서 연동 (트랜잭션)
     _stage("저장 중…")
     with transaction.atomic():
         draft_status = CommonCode.objects.filter(

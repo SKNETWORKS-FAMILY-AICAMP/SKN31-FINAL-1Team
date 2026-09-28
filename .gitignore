@@ -45,3 +45,4 @@ ai/check_node2.py
 ai/check_recall.py
 ai/test_db_meeting_to_plan.py
 ai/tests
+CLAUIDE.md

@@ -9,8 +9,10 @@ assignee_mapping/rule_filter.filter_candidates — LLM 없는 순수 로직.
 팀 원칙; 위 게이트 제거 때 같이 빠졌던 걸 되살림).
 """
 
+from assignee_mapping import agent
+from assignee_mapping.prompt_builder import load_template
 from assignee_mapping.rule_filter import filter_candidates
-from assignee_mapping.schemas import RawEmployeeProfile
+from assignee_mapping.schemas import ExtractedExperienceTags, RawEmployeeProfile
 
 TASKS = [{"task_id": "TASK-001", "required_skills": ["Django", "REST API"], "estimated_hours": 8}]
 
@@ -287,3 +289,97 @@ def test_role_cap_leaves_unmapped_skill_candidates_uncapped():
         current_workload={}, total_workdays=10, skill_role_map={},
     )
     assert len(result) == 7
+
+
+def test_experience_prompt_collects_up_to_ten_explicit_experiences():
+    load_template.cache_clear()
+    constraints = load_template()["constraints"]
+
+    assert "최대 10개" in constraints
+    assert "임의로 생략하지 마라" in constraints
+
+
+def test_experience_tags_are_deduplicated_and_capped():
+    values = [
+        " - 결제 API 개발 경험 ",
+        "결제 API 개발 경험",
+        "결제/API 개발 경험",
+        *[f"업무 {index} 수행 경험" for index in range(12)],
+    ]
+
+    result = agent._normalize_tag_values(values)
+
+    assert result[0] == "결제 API 개발 경험"
+    assert len(result) == agent.MAX_EXPERIENCE_TAGS
+    assert result.count("결제 API 개발 경험") == 1
+    assert "결제/API 개발 경험" not in result
+
+
+def test_selective_retry_only_for_obviously_empty_work_history():
+    empty = ExtractedExperienceTags(tags=[])
+    work_profile = _profile(
+        career_history_text="결제 시스템 정산 배치를 개발하고 운영했습니다."
+    )
+
+    assert agent._needs_selective_retry(work_profile, empty) is True
+    assert agent._needs_selective_retry(
+        work_profile, ExtractedExperienceTags(tags=["정산 배치 개발 경험"])
+    ) is False
+    assert agent._needs_selective_retry(
+        _profile(career_history_text="사내 동호회 활동 및 교육 이수"), empty
+    ) is False
+
+
+def test_normal_batch_result_does_not_trigger_single_retry(monkeypatch):
+    profile = _profile(
+        employee_id="EMP-TAG-NORMAL",
+        career_history_text="결제 시스템 정산 배치를 개발하고 운영했습니다.",
+    )
+    agent._experience_tags_cache.clear()
+    monkeypatch.setattr(agent, "filter_candidates", lambda *args, **kwargs: [profile])
+    monkeypatch.setattr(
+        agent,
+        "extract_experience_tags_batch",
+        lambda profiles: {
+            profile.employee_id: ExtractedExperienceTags(tags=["정산 배치 개발 경험"])
+        },
+    )
+
+    def fail_single_retry(_profile):
+        raise AssertionError("normal batch output must not trigger another LLM call")
+
+    monkeypatch.setattr(agent, "extract_experience_tags", fail_single_retry)
+    result = agent.assignee_mapping_node(
+        {"raw_employee_profiles": [profile.model_dump()], "tasks": []}
+    )
+
+    assert result["error"] is None
+    assert result["member_profiles"][0]["past_similar_tasks"] == ["정산 배치 개발 경험"]
+
+
+def test_empty_batch_result_triggers_one_selective_retry(monkeypatch):
+    profile = _profile(
+        employee_id="EMP-TAG-RETRY",
+        career_history_text="결제 시스템 정산 배치를 개발하고 운영했습니다.",
+    )
+    agent._experience_tags_cache.clear()
+    single_calls = []
+    monkeypatch.setattr(agent, "filter_candidates", lambda *args, **kwargs: [profile])
+    monkeypatch.setattr(
+        agent,
+        "extract_experience_tags_batch",
+        lambda profiles: {profile.employee_id: ExtractedExperienceTags(tags=[])},
+    )
+
+    def single_retry(retry_profile):
+        single_calls.append(retry_profile.employee_id)
+        return ExtractedExperienceTags(tags=["정산 배치 개발 경험"])
+
+    monkeypatch.setattr(agent, "extract_experience_tags", single_retry)
+    result = agent.assignee_mapping_node(
+        {"raw_employee_profiles": [profile.model_dump()], "tasks": []}
+    )
+
+    assert result["error"] is None
+    assert single_calls == [profile.employee_id]
+    assert result["member_profiles"][0]["past_similar_tasks"] == ["정산 배치 개발 경험"]

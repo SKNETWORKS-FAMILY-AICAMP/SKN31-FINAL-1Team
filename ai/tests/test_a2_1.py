@@ -63,3 +63,78 @@ def test_schema_rejects_rule_violations(overrides, expected_error):
     base.update(overrides)
     with pytest.raises(ValidationError):
         RequirementItem(**base)
+
+
+
+def _quality_plan() -> PlanDocument:
+    return PlanDocument.model_validate(
+        {
+            "project_id": "102",
+            "title": "ERP 연동",
+            "goal": "ERP 업무를 자동화한다",
+            "key_features": "ERP API 어댑터를 연동하고 사용자 피드백을 수집한다.",
+            "requirements": [{"id": "REQ-01", "content": "ERP API 어댑터 연동"}],
+        }
+    )
+
+
+def _quality_item(**overrides) -> RequirementItem:
+    values = {
+        "id": "FR-01-001",
+        "category_1": "기능",
+        "category_2": "ERP 연동",
+        "title": "ERP API 요청",
+        "description": "ERP API로 요청을 전달하고 결과를 반환한다.",
+        "related_feature": "[key_features] ERP API 어댑터 연동",
+        "input_output": "업무 요청을 입력받아 ERP API 결과를 반환한다.",
+        "acceptance_criteria": "요청 결과가 반환되는지 통합 테스트로 확인한다.",
+        "note": "기획서 직접 근거",
+        "type": "기능",
+        "priority": "High",
+        "source": "requirement_text",
+        "review_status": "검토완료",
+    }
+    values.update(overrides)
+    return RequirementItem.model_validate(values)
+
+
+def test_quality_gate_rejects_unsupported_scope_and_repairs_acceptance():
+    from requirement_draft.agent import finalize_unresolved_quality_items
+    from requirement_draft.quality import collect_requirement_quality_issues
+
+    item = _quality_item(
+        description="사용자 피드백을 개선 작업 큐에 전달한다.",
+        acceptance_criteria="최소 1개 결과를 저장한다.",
+    )
+    issues = collect_requirement_quality_issues(_quality_plan(), [item])
+    codes = {issue.code for issue in issues}
+
+    assert "UNSUPPORTED_DESIGN" in codes
+    assert "ACCEPTANCE_UNGROUNDED_NUMBER" in codes
+    assert finalize_unresolved_quality_items([item], issues) == []
+
+
+def test_quality_gate_accepts_grounded_objective_boolean_criteria():
+    from requirement_draft.quality import collect_requirement_quality_issues
+
+    assert collect_requirement_quality_issues(_quality_plan(), [_quality_item()]) == []
+
+
+def test_agent_regenerates_failed_item_only(monkeypatch):
+    from requirement_draft import agent
+    from requirement_draft.schemas import RequirementDocument
+
+    invalid = _quality_item(acceptance_criteria="후속 확정 필요")
+    corrected = _quality_item()
+    calls = iter(
+        [
+            RequirementDocument(requirements=[invalid]),
+            RequirementDocument(requirements=[corrected]),
+        ]
+    )
+    monkeypatch.setattr(agent, "create_structured", lambda **kwargs: next(calls))
+    monkeypatch.setattr(agent, "verify_baseline_coverage", lambda doc: [])
+
+    result = agent.generate_requirements(_quality_plan())
+
+    assert result.requirements == [corrected]

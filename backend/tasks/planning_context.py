@@ -20,9 +20,12 @@ from tasks.models import EmployeeExperienceTagCache
 
 User = get_user_model()
 
+EXPERIENCE_TAG_EXTRACTOR_VERSION = "v2"
+
 
 def _text_hash(text: str) -> str:
-    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+    versioned_text = f"{EXPERIENCE_TAG_EXTRACTOR_VERSION}\0{text}"
+    return hashlib.sha256(versioned_text.encode("utf-8")).hexdigest()
 
 
 def load_known_experience_tags(raw_profiles: List[dict]) -> Dict[str, List[str]]:
