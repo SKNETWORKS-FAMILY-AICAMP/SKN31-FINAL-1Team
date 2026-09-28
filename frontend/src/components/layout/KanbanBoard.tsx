@@ -93,7 +93,12 @@ function SortableTask({ task, members, onAssign, onClick, isPM, onApprove, onRej
     transition,
   };
 
-  const showApprovalActions = isPM && task.status_code === "PENDING_APPROVAL";
+  // 2026-09-28 (사용자 리포트): 배분 승인/반려는 배정받은 담당자 본인 권한이라 리스트
+  // 뷰에서는 이미 PM에게 "배분승인대기" 배지만, 담당자 본인에게 반려/승인 버튼을
+  // 보여주는데(tasks/page.tsx 참고), 칸반 뷰만 반대로 PM에게 버튼이 보이고 있었다 —
+  // 리스트 뷰와 같은 기준으로 맞춘다.
+  const isPendingApproval = task.status_code === "PENDING_APPROVAL";
+  const showApprovalActions = !isPM && isPendingApproval;
   const overdue = isTaskOverdue({ wbsEnd: task.end_date, status: task.status_code });
 
   return (
@@ -135,6 +140,14 @@ function SortableTask({ task, members, onAssign, onClick, isPM, onApprove, onRej
         <AssigneeBadge task={task} members={members} onAssign={onAssign} readOnly={!isPM} />
         {task.progress > 0 && <span className="font-medium text-primary">{task.progress}%</span>}
       </div>
+
+      {isPM && isPendingApproval && (
+        <div className="flex items-center border-t border-border pt-3 mt-3">
+          <span className="inline-block text-xs font-bold px-2.5 py-1.5 rounded-lg bg-orange-500/10 text-orange-500">
+            배분승인대기
+          </span>
+        </div>
+      )}
 
       {showApprovalActions && (
         <div className="flex items-center gap-2 border-t border-border pt-3 mt-3" onClick={(e) => e.stopPropagation()}>
