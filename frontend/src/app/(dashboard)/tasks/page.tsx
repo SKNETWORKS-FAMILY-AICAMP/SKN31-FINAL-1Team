@@ -463,7 +463,17 @@ export default function TasksPage() {
               <Pagination page={page} totalPages={totalPages} onChange={setPage} />
             </div>
           ) : (
-            <WbsBoardView tasks={filteredTasks} onRowClick={setSelectedTaskForDetail} projectNameById={projectNameById} />
+            <WbsBoardView
+              tasks={filteredTasks}
+              onRowClick={setSelectedTaskForDetail}
+              projectNameById={projectNameById}
+              isPM={isPM}
+              currentUserId={user?.id}
+              processingId={processingId}
+              onApprove={handleApprove}
+              onReject={(task) => { setRejectTarget({ id: task.id, title: task.title }); setRejectReason(""); }}
+              onReopen={handleReopen}
+            />
           )}
         </>
       )}
@@ -518,7 +528,13 @@ export default function TasksPage() {
  * 업무보드(WBS) 뷰 — 상단에는 상태별 카운트/전체 진행률 요약 바를, 아래에는 업무별 표를 그린다.
  * Git 상태 배지/예상 소요시간/난이도는 heyzzabi2 시절 필드로 이 프로젝트 백엔드엔 없어서 제외했다.
  */
-function WbsBoardView({ tasks, onRowClick, projectNameById }: { tasks: Task[]; onRowClick: (task: Task) => void; projectNameById: Map<string, string> }) {
+function WbsBoardView({
+  tasks, onRowClick, projectNameById, isPM, currentUserId, processingId, onApprove, onReject, onReopen,
+}: {
+  tasks: Task[]; onRowClick: (task: Task) => void; projectNameById: Map<string, string>;
+  isPM: boolean; currentUserId: string | undefined; processingId: number | null;
+  onApprove: (taskId: number) => void; onReject: (task: Task) => void; onReopen: (taskId: number) => void;
+}) {
   const total = tasks.length;
   const counts = STATUSES.reduce((acc, s) => {
     acc[s.id] = tasks.filter(t => t.status_code === s.id).length;
@@ -594,10 +610,59 @@ function WbsBoardView({ tasks, onRowClick, projectNameById }: { tasks: Task[]; o
                       </div>
                     </td>
                     <td className="px-6 py-4 text-[13px]">{task.assigned_user_name ? task.assigned_user_name : <span className="text-muted-foreground">미배정</span>}</td>
-                    <td className="px-6 py-4">
-                      <span className={cn("inline-block text-xs font-bold px-2.5 py-1.5 rounded-lg", statusInfo.bg, statusInfo.color)}>
-                        {task.status_info?.code_name ?? statusInfo.label}
-                      </span>
+                    <td className="px-6 py-4" onClick={e => e.stopPropagation()}>
+                      {/* 2026-09-28 (사용자 리포트): 배분 승인/반려는 배정받은 담당자 본인
+                          권한이라 리스트/칸반 뷰에서는 이미 PM에게 배지만, 담당자 본인에게
+                          승인/반려 버튼을 보여주는데, 업무보드(WBS) 뷰만 누구에게나 항상
+                          배지만 보여주고 있었다 — 같은 기준으로 맞춘다. */}
+                      {task.status_code === "PENDING_APPROVAL" ? (
+                        !isPM ? (
+                          <div className="flex items-center gap-1.5">
+                            <button
+                              onClick={() => onApprove(task.id)}
+                              disabled={processingId === task.id}
+                              className="inline-flex items-center gap-1 px-2 py-1.5 rounded-lg text-xs font-bold bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500/20 transition-colors disabled:opacity-50"
+                            >
+                              <CheckCircle2 className="w-3.5 h-3.5" /> 승인
+                            </button>
+                            <button
+                              onClick={() => onReject(task)}
+                              disabled={processingId === task.id}
+                              className="inline-flex items-center gap-1 px-2 py-1.5 rounded-lg text-xs font-bold bg-red-500/10 text-red-500 hover:bg-red-500/20 transition-colors disabled:opacity-50"
+                            >
+                              <XCircle className="w-3.5 h-3.5" /> 반려
+                            </button>
+                          </div>
+                        ) : (
+                          <span className={cn("inline-block text-xs font-bold px-2.5 py-1.5 rounded-lg", statusInfo.bg, statusInfo.color)}>
+                            {task.status_info?.code_name ?? statusInfo.label}
+                          </span>
+                        )
+                      ) : task.status_code === "CANCELLED" ? (
+                        String(task.assigned_user) === String(currentUserId) ? (
+                          <div className="flex items-center gap-1.5">
+                            <span className={cn("inline-block text-xs font-bold px-2.5 py-1.5 rounded-lg", statusInfo.bg, statusInfo.color)}>
+                              {task.status_info?.code_name ?? statusInfo.label}
+                            </span>
+                            <button
+                              onClick={() => onReopen(task.id)}
+                              disabled={processingId === task.id}
+                              title="배분승인대기 상태로 되돌려 PM에게 다시 검토를 요청합니다"
+                              className="inline-flex items-center gap-1 px-2 py-1.5 rounded-lg text-xs font-bold bg-sky-500/10 text-sky-500 hover:bg-sky-500/20 transition-colors disabled:opacity-50"
+                            >
+                              <RotateCcw className="w-3.5 h-3.5" /> 재승인 요청
+                            </button>
+                          </div>
+                        ) : (
+                          <span className={cn("inline-block text-xs font-bold px-2.5 py-1.5 rounded-lg", statusInfo.bg, statusInfo.color)}>
+                            {task.status_info?.code_name ?? statusInfo.label}
+                          </span>
+                        )
+                      ) : (
+                        <span className={cn("inline-block text-xs font-bold px-2.5 py-1.5 rounded-lg", statusInfo.bg, statusInfo.color)}>
+                          {task.status_info?.code_name ?? statusInfo.label}
+                        </span>
+                      )}
                     </td>
                     <td className="px-6 py-4">
                       <div className="flex items-center justify-center gap-2">
