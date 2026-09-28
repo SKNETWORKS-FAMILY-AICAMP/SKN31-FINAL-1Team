@@ -10,6 +10,12 @@ import { NextRequest } from "next/server";
 // 보여 정상 저장/전송된다.
 const BACKEND_ORIGIN = process.env.BACKEND_ORIGIN ?? "http://localhost:8000";
 
+// 2026-09-28 (서비스 테스트 보고서 IS-001): 이 함수가 미국 리전(iad1)에서 실행되면서
+// 서울에 있는 백엔드(EC2)까지의 왕복 시간이 추가로 붙어, 직접 호출 대비 요청마다 약
+// 0.75초가 더 걸렸다(프록시 평균 0.79초 vs 직접 0.04초, 실측). 리전 고정은 route 세그먼트
+// 설정(preferredRegion, Next.js에서 지원 중단됨) 대신 프로젝트 루트의 vercel.json
+// "regions" 설정으로 서울(icn1)에 고정한다.
+
 async function proxy(req: NextRequest) {
   const backendUrl = `${BACKEND_ORIGIN}${req.nextUrl.pathname}${req.nextUrl.search}`;
 
