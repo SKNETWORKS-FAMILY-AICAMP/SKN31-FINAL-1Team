@@ -40,8 +40,9 @@ export function TaskDetailModal({
   const [isReopening, setIsReopening] = useState(false);
   const [errorToast, setErrorToast] = useState<string | null>(null);
   const overdue = isTaskOverdue({ wbsEnd: task.end_date, status: task.status_code });
-  // PM 개별 승인 전(배분승인대기)에는 아직 실제로 착수한 업무가 아니므로 진행도를 매길 수 없다.
-  const progressLocked = task.status_code === "PENDING_APPROVAL";
+  // PM 개별 승인 전(배분승인대기)에는 아직 실제로 착수한 업무가 아니므로 진행도를 매길 수 없고,
+  // 취소된(CANCELLED) 업무도 더 이상 진행 중인 업무가 아니므로 동일하게 잠근다.
+  const progressLocked = ["PENDING_APPROVAL", "CANCELLED"].includes(task.status_code);
   // 2026-09-16: documents/page.tsx의 확정 업무 목록과 같은 이유 — 담당자가 배정을 승인했거나
   // (TASK_APPROVED) 이미 착수했거나(IN_PROGRESS) 완료(DONE)된 업무는 중간에 담당자만
   // 바꿔치기하면 안 된다. 단, 현재 담당자가 퇴사 처리됐으면 그 업무가 영영 재배정 못 하고
@@ -57,7 +58,7 @@ export function TaskDetailModal({
           title,
           description,
           // 진행률은 담당자 본인이 갱신하는 게 자연스러워 PM 제한 없이 저장하지만,
-          // 배분승인대기 상태에서는 슬라이더 자체가 잠겨 있어 원래 값 그대로 보낸다.
+          // 배분승인대기·취소됨 상태에서는 슬라이더 자체가 잠겨 있어 원래 값 그대로 보낸다.
           progress: progressLocked ? task.progress || 0 : progress,
           ...(isPM ? {
             assigned_user: assigneeId || null,
@@ -185,7 +186,10 @@ export function TaskDetailModal({
                 <BarChart2 className="w-4 h-4" /> 진행도 ({progress}%)
               </label>
               {progressLocked && (
-                <span className="flex items-center gap-1 text-[11px] font-normal text-muted-foreground/70"><Lock className="w-3 h-3" /> 배분 승인 후 설정할 수 있습니다</span>
+                <span className="flex items-center gap-1 text-[11px] font-normal text-muted-foreground/70">
+                  <Lock className="w-3 h-3" />
+                  {task.status_code === "CANCELLED" ? "취소된 업무는 진행도를 수정할 수 없습니다" : "배분 승인 후 설정할 수 있습니다"}
+                </span>
               )}
             </div>
             <input
