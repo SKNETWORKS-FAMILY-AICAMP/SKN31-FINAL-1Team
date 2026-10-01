@@ -1,240 +1,209 @@
-# 헤이,짜비(SKN31기 Final 1팀)
-
-## 목차
-
-* [팀원 소개](#팀원-소개)
-* [WBS](#WBS)
-* [기술스택](#기술스택)
-* [디렉토리 구조](#디렉토리-구조)
-* [프로젝트 소개](#프로젝트-소개)
-
-### 팀원 소개
+## SKN31 Final 1Team
 <div align="center">
-<table align="center">
-  <tr>
-    <td align="center" width="190px"><img src="산출물/images/2.png" width="500" style="object-fit: contain; aspect-ratio: 1/1;"></td>
-    <td align="center" width="190px"><img src="산출물/images/3.png" width="500" style="object-fit: contain; aspect-ratio: 1/1;"></td>
-    <td align="center" width="190px"><img src="산출물/images/1.png" width="500" style="object-fit: contain; aspect-ratio: 1/1;"></td>
-    <td align="center" width="190px"><img src="산출물/images/5.png" width="500" style="object-fit: contain; aspect-ratio: 1/1;"></td>
-    <td align="center" width="190px"><img src="산출물/images/4.png" width="5**00" style="object-fit: contain; aspect-ratio: 1/1;"></td>
-  </tr>
-  <tr>
-    <td align="center"><b>박연아(PM)</b></td>
-    <td align="center"><b>이재일</b></td>
-    <td align="center"><b>김가율</b></td>
-    <td align="center"><b>김재원</b></td>
-    <td align="center"><b>박하린</b></td>
-  </tr>
-    <tr>
-    <td align="center">AI agent</td>
-    <td align="center">DB, AWS</td>
-    <td align="center">Django <br> 백엔드</td>
-    <td align="center">React <br> 프론트엔드</td>
-    <td align="center">AI agent</td>
-  </tr>
-
-  <tr>
-    <td align="center"><a href="https://github.com/yeona9549"><img src="https://img.shields.io/badge/yeona9549-181717?style=for-the-badge&logo=github&logoColor=white"></a></td>
-    <td align="center"><a href="https://github.com/qufdlfkd88"><img src="https://img.shields.io/badge/qufdlfkd88-181717?style=for-the-badge&logo=github&logoColor=white"></a></td>
-    <td align="center"><a href="https://github.com/Kim-gayul"><img src="https://img.shields.io/badge/Kimgayul-181717?style=for-the-badge&logo=github&logoColor=white"></a></td>
-    <td align="center"><a href="https://github.com/kimjae9360"><img src="https://img.shields.io/badge/kimjae9360-181717?style=for-the-badge&logo=github&logoColor=white"></a></td>
-    <td align="center"><a href="https://github.com/MintRinne"><img src="https://img.shields.io/badge/MintRinne-181717?style=for-the-badge&logo=github&logoColor=white"></a></td>
-  </tr>
-  
-</table>
-
+<img src="산출물/images/main.png" width="700">
 </div>
 
 <br>
 
-## 기술스택
+## 📌 목차
+1. [프로젝트 소개](#1-프로젝트-소개)
+2. [팀원 소개 및 역할](#2-팀원-소개-및-역할)
+3. [기술 스택 및 인프라](#3-기술-스택-및-인프라)
+4. [시스템 & AI 아키텍처](#4-시스템--ai-아키텍처)
+5. [핵심 기능 및 멀티 에이전트 파이프라인](#5-핵심-기능-및-멀티-에이전트-파이프라인)
+6. [핵심 설계 원칙 & 신뢰성 장치](#6-핵심-설계-원칙--신뢰성-장치)
+7. [프로젝트 디렉토리 구조](#7-프로젝트-디렉토리-구조)
+8. [회고](#8-회고)
+9. [실행 방법](#9-실행-방법)
 
-#### Frontend
-![React](https://img.shields.io/badge/React_19-61DAFB?style=for-the-badge&logo=React&logoColor=black)
-![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?style=for-the-badge&logo=TypeScript&logoColor=white)
-![Vite](https://img.shields.io/badge/Vite_7-646CFF?style=for-the-badge&logo=Vite&logoColor=white)
-![React Router](https://img.shields.io/badge/React_Router_7-CA4245?style=for-the-badge&logo=ReactRouter&logoColor=white)
-![Canvas 2D](https://img.shields.io/badge/Canvas_2D-E34F26?style=for-the-badge&logo=HTML5&logoColor=white)
-![Vitest](https://img.shields.io/badge/Vitest-6E9F18?style=for-the-badge&logo=Vitest&logoColor=white)
- 
-#### Backend
-![Python](https://img.shields.io/badge/Python_3.12-3776AB?style=for-the-badge&logo=Python&logoColor=white)
-![Django](https://img.shields.io/badge/Django_5.2-092E20?style=for-the-badge&logo=Django&logoColor=white)
-![Django REST Framework](https://img.shields.io/badge/Django_REST_Framework-A30000?style=for-the-badge&logo=django&logoColor=white)
-![JWT](https://img.shields.io/badge/Simple_JWT-000000?style=for-the-badge&logo=JSON%20web%20tokens&logoColor=white)
-![Swagger](https://img.shields.io/badge/drf--spectacular-85EA2D?style=for-the-badge&logo=Swagger&logoColor=black)
-![Gunicorn](https://img.shields.io/badge/Gunicorn-499848?style=for-the-badge&logo=Gunicorn&logoColor=white)
-![Pytest](https://img.shields.io/badge/pytest-0A9EDC?style=for-the-badge&logo=pytest&logoColor=white)
- 
-#### AI 
-![OpenAI](https://img.shields.io/badge/OpenAI_GPT--4o-412991?style=for-the-badge&logo=OpenAI&logoColor=white)
-
-#### Database
-![PostgreSQL](https://img.shields.io/badge/PostgreSQL_17-4169E1?style=for-the-badge&logo=PostgreSQL&logoColor=white)
-![pgvector](https://img.shields.io/badge/pgvector_HNSW-4169E1?style=for-the-badge&logo=PostgreSQL&logoColor=white)
-![Neo4j](https://img.shields.io/badge/Neo4j_Aura-4581C3?style=for-the-badge&logo=Neo4j&logoColor=white)
-![SQLite](https://img.shields.io/badge/SQLite-003B57?style=for-the-badge&logo=SQLite&logoColor=white)
- 
-#### Infrastructure & DevOps
-![Amazon EC2](https://img.shields.io/badge/EC2_g4dn.xlarge-FF9900?style=for-the-badge&logo=AmazonEC2&logoColor=white)
-![Amazon RDS](https://img.shields.io/badge/Amazon_RDS-527FFF?style=for-the-badge&logo=AmazonRDS&logoColor=white)
-![NVIDIA](https://img.shields.io/badge/NVIDIA_T4-76B900?style=for-the-badge&logo=NVIDIA&logoColor=white)
-![Docker](https://img.shields.io/badge/Docker_Compose-2496ED?style=for-the-badge&logo=Docker&logoColor=white)
-![Nginx](https://img.shields.io/badge/Nginx-009639?style=for-the-badge&logo=Nginx&logoColor=white)
-![GitHub](https://img.shields.io/badge/GitHub-181717?style=for-the-badge&logo=GitHub&logoColor=white)
-
----
 <br>
-
-## 디렉토리 구조
-````
-SKN31-FINAL-1Team/
-├── ai/               # LLM 기반 AI 에이전트 파이프라인
-├── backend/          # Django REST API 서버
-├── frontend/         # Next.js 웹 클라이언트
-├── infra/            # 인프라 코드 
-├── data/             # 데이터 저장용 
-├── API.yaml          # API 명세 (OpenAPI/Swagger)
-└── requirements.txt
-````
-<br>
-
 
 ## 1. 프로젝트 소개
 
-### 1.1 프로젝트 주제  
-- <b>프로젝트 명: 헤이,짜비(Hey Zzabi)</b>
-- 개발 프로젝트를 진행하는 과정에서 <b>팀장이 반복적으로 수행하는 기획서 작성·요구사항 정의·업무 배분을 AI가 자동으로 지원하는</b> 스마트 그룹웨어입니다.
+### 💡 기획 배경
+- **개발팀 PM의 업무 병목**: 회의 종료 후 회의록 정리, 기획서 작성, 요구사항 정의, 업무 분해, 담당자 배정, 일정 산정까지 수많은 후속 조율 작업이 PM 1명에게 집중되는 구조적 한계가 존재합니다.
+- **반복되는 문서화와 정보 분산**: 한국 직장인의 66%가 정기 보고서 및 정리 업무에 시간을 소모하고, 87%는 업무 조율 여력 부족을 겪고 있습니다.
+- **핵심 목표**: "회의 한 번으로 시작되는 승인형 AI 워크플로우!"  
+  정리는 AI 에이전트에게 맡기고, PM은 **검토와 승인(Human-in-the-Loop)** 에만 집중하여 업무 효율과 정확도를 크게 향상시킵니다.
 
-
-### 1.3 프로젝트 기획 배경
+### 🌟 차별화 포인트
 <div align="center">
-<img src="산출물/그림02.png" width="500">
+<img src="산출물/images/차별점.png" width="700">
 </div>
-<br>
 
-- 현대의 업무 환경에서는 정보 검색, 자료 관리, 보고서 작성 등 **반복적인 행정 업무에 많은 시간이 소요**되고 있습니다.
-
-- **드롭박스·유고브(2025)**: 국내 근로 시간의 약 **절반(연간 251억 시간)**이 행정·반복 업무에 소요되며, **68%**가 주당 최대 10시간을 단순 업무에 사용
-- **인크루트(2025)**: 직장인의 **30.1%**가 회의 문화를 비효율적으로 평가하며, 주요 원인으로 **목적·결론 부재(52.7%)** 등을 지적
-특히 회의 후 **회의록 정리 → 결정사항 문서화 → 업무 배분** 등의 작업이 수작업으로 이루어져 팀장·관리자의 업무 부담이 증가하고 있습니다.
+- **끊기지 않는 업무 흐름**: 회의 녹음 → 기획서 → 요구사항 정의서 → 업무 생성 → 담당자 배정/일정 산정까지 단계별 출처 추적 지원
+- **근거 있는 AI 결정**: 스킬·숙련도·가용일 데이터와 명확한 정량적 공식으로 담당자를 추천하고 이유를 설명
+- **단독형 및 승인 중심 구조**: 거대한 엔터프라이즈 라이선스(MS Copilot 등) 없이도 가볍게 도입 가능한 단독형 서비스
 
 <br>
 
-### 1.4 프로젝트 목표
-
-#### "회의 한 건으로 시작되는 스마트 AI 그룹웨어 파이프라인 구축!"
-**헤이 짜비는 개발팀 PM의 반복적인 문서 작성과 업무 관리 부담을 줄이고, PM이 기획과 의사결정에 집중할 수 있도록 지원하는 AI 업무 보조 시스템을 구축하는 것을 목표로 합니다.**
-
-이를 위해 회의에서 논의된 내용을 AI가 분석하고, 기획·요구사항·업무 생성 및 배분까지 연결하는 **AI 에이전트 기반 업무 자동화 파이프라인**을 구현합니다.
-
-| 핵심 포인트 | 주요 내용 |
-|---|---|
-| **End-to-End AI 업무 파이프라인** | 회의록 입력부터 안건 구조화, 기획서·요구사항 정의서 생성, 업무 도출 및 담당자 추천까지 하나의 워크플로우로 연결합니다. |
-| **사람 중심의 통제와 설명 가능한 AI** | AI가 생성한 문서와 업무 배분안을 팀장이 직접 승인·반려할 수 있으며, 담당자 추천 근거와 답변의 출처를 제공하여 AI 결과에 대한 신뢰성과 투명성을 높입니다. |
-| **팀 생산성 향상 및 지식 자산화** | 회의록 작성과 업무 배분 등 반복 업무를 줄여 팀원이 핵심 개발 업무에 집중할 수 있도록 하며, 회의 및 업무 이력을 축적하여 조직의 지식 자산으로 활용할 수 있도록 합니다. |
-
-<br>
-
-<br>
-
-
-## 2. 시장 기회 및 차별화 전략
-
-
-기존 협업툴은 메신저, 화상회의, 파일 공유, 프로젝트 및 업무 관리 등 다양한 협업 기능을 제공하며 조직 내 커뮤니케이션과 정보 공유를 지원합니다. Enterprise Collaboration Market 역시 프로젝트 관리, 통합 메시징, 파일 공유, 비즈니스 프로세스 관리 등의 영역을 포함하고 있습니다. 
-
-하지만 회의에서 결정된 내용을 실제 업무로 연결하기 위해서는 여전히 사용자가 여러 단계를 직접 처리해야 합니다.
-<br>
-
-<br>
-
-### 2-1. 기존 협업툴과의 차별화
-
-기존 협업툴은 메신저, 문서, 프로젝트 및 업무 관리 등 **협업에 필요한 기능을 제공하는 것**에 초점을 둡니다.
-
-반면 **헤이 짜비는 회의에서 생성된 정보를 다음 업무 단계의 입력으로 활용하여, 개발팀의 업무 프로세스를 연결하고 자동화**하는 것을 목표로 합니다.
-
-| 구분 | 기존 협업툴 | 헤이 짜비 |
-|---|---|---|
-| 회의 | 회의록 작성·공유 | AI 기반 회의 내용 구조화 |
-| 문서 | 사용자가 직접 작성 | 회의 내용을 기반으로 기획서 생성 |
-| 요구사항 | 별도 작성·관리 | 기획서를 기반으로 요구사항 생성 |
-| 업무 | 사용자가 직접 등록 | 요구사항을 기반으로 업무 생성 |
-| 담당자 | 사용자가 직접 지정 | 업무 특성을 기반으로 담당자 추천·배분 |
-| 핵심 방식 | **기능 중심의 협업 지원** | **단계 간 정보 연결 및 업무 자동화** |
-<br>
-
-<br>
-
-### 2-2. 핵심 차별화 포인트
-
-**① 회의 중심의 업무 연결**
-
-회의를 단순 기록의 시작점으로 사용하지 않고, 회의에서 결정된 내용을 이후 산출물 생성의 입력으로 활용합니다.
-
-**② 단계별 AI 에이전트 파이프라인**
-
-하나의 AI가 모든 작업을 처리하는 방식이 아니라, **회의 분석 → 기획 → 요구사항/WBS → 업무 생성 → 업무 배분**을 단계별 에이전트로 구성합니다.
-
-각 에이전트는 이전 단계의 결과물을 입력으로 받아 자신의 역할을 수행하고, **생성된 결과를 다음 단계로 전달하는 파이프라인 구조**로 설계했습니다.
-
-**③ 사람의 검토를 포함한 자동화**
-
-모든 과정을 AI에게 맡기는 방식이 아니라, 주요 산출물 사이에 **사람의 검토 및 승인 과정**을 포함합니다.
-
-AI가 생성한 결과를 사람이 확인하고 승인한 후 다음 단계로 전달하며, 수정이 필요한 경우 **사람이 직접 수정하거나 재생성을 요청할 수 있도록 구성**합니다.
-<br>
-
-<br>
-
-## AWS 아키텍처
+## 2. 팀원 소개 및 역할
 
 <div align="center">
-<img src="산출물/VPC1.png" width="500">
-</div>
-<br>
 
-## AI Agent Flow
+| **박연아** | **김가율** | **김재원** | **이재일** | **박하린** |
+| :---: | :---: | :---: | :---: | :---: |
+| <img src="산출물/images/2.png" width="100"> | <img src="산출물/images/3.png" width="100"> | <img src="산출물/images/1.png" width="100"> | <img src="산출물/images/5.png" width="100"> | <img src="산출물/images/4.png" width="100"> |
+| **PM & AI Agent** | **Backend** | **Frontend** | **DB & DevOps** | **AI Agent** |
+| [<img src="https://img.shields.io/badge/yeona9549-181717?style=flat&logo=github&logoColor=white">](https://github.com/yeona9549) | [<img src="https://img.shields.io/badge/Kim--gayul-181717?style=flat&logo=github&logoColor=white">](https://github.com/Kim-gayul) | [<img src="https://img.shields.io/badge/kimjae9360-181717?style=flat&logo=github&logoColor=white">](https://github.com/kimjae9360) | [<img src="https://img.shields.io/badge/qufdlfkd88-181717?style=flat&logo=github&logoColor=white">](https://github.com/qufdlfkd88) | [<img src="https://img.shields.io/badge/MintRinne-181717?style=flat&logo=github&logoColor=white">](https://github.com/MintRinne) |
 
-<div align="center">
-<img src="산출물/A.jpg" width="500">
 </div>
 
 <br>
 
-<br>
+## 3. 기술 스택 및 인프라
 
-## 주요 기능
-
-| 기능 | 주요 내용 | PM 지원 효과 |
-|---|---|---|
-| **회의록 AI 구조화** | 회의록을 분석하여 프로젝트, 사용자, 요구사항, 시나리오, 결정사항 등의 정보로 구조화 | 회의 내용 정리 및 핵심 정보 추출 자동화 |
-| **기획서 자동 생성** | 구조화된 회의 데이터를 기반으로 기획서 자동 생성 | 반복적인 기획 문서 작성 부담 감소 |
-| **PM 검토 및 승인** | AI가 생성한 기획서를 PM이 검토하고 승인·반려·수정 | AI 결과에 대한 PM의 검토 및 통제 |
-| **요구사항 정의서 자동 생성** | 승인된 기획서를 기반으로 요구사항 정의서 자동 생성 | 요구사항 정리 및 문서 작성 업무 지원 |
-| **업무 자동 생성** | 확정된 요구사항을 분석하여 개발에 필요한 업무 자동 생성 | 업무 단위 정의 및 등록 업무 감소 |
-| **담당자 자동 매칭** | 업무에 필요한 역할·인원과 사원 DB의 정보를 기반으로 적합한 담당자 매칭 | 업무별 담당자 선정 부담 감소 |
-| **업무 자동 배분** | 매칭된 담당자를 기반으로 업무를 자동 배분 | 반복적인 업무 배분 작업 자동화 |
-| **최종 업무 검토** | PM이 업무별 담당자를 확인하고 필요 시 직접 수정 후 최종 확정 | PM의 최종 의사결정 및 업무 통제 |
+| 분류 | 사용 기술 및 도구 |
+| :--- | :--- |
+| **Frontend** | ![Next.js](https://img.shields.io/badge/Next.js-000000?style=flat&logo=nextdotjs&logoColor=white) ![TanStack Query](https://img.shields.io/badge/TanStack_Query-FF4154?style=flat&logo=reactquery&logoColor=white) (Vercel 배포, Route Handler 프록시, HttpOnly 쿠키 인증) |
+| **Backend** | ![Python](https://img.shields.io/badge/Python_3.12-3776AB?style=flat&logo=python&logoColor=white) ![Django](https://img.shields.io/badge/Django-092E20?style=flat&logo=django&logoColor=white) ![DRF](https://img.shields.io/badge/DRF-A30000?style=flat&logo=django&logoColor=white) ![Gunicorn](https://img.shields.io/badge/Gunicorn-499848?style=flat&logo=gunicorn&logoColor=white) ![Nginx](https://img.shields.io/badge/Nginx-009639?style=flat&logo=nginx&logoColor=white) (AWS EC2 Ubuntu) |
+| **Database** | ![MySQL](https://img.shields.io/badge/MySQL-4479A1?style=flat&logo=mysql&logoColor=white) ![AWS RDS](https://img.shields.io/badge/AWS_RDS-527FFF?style=flat&logo=amazonrds&logoColor=white) |
+| **AI & LLM** | ![OpenAI](https://img.shields.io/badge/OpenAI_gpt--5-412991?style=flat&logo=openai&logoColor=white) `gpt-5` (기본 모델), `gpt-transcribe` (음성 전사), ![LangSmith](https://img.shields.io/badge/LangSmith-1C1C1C?style=flat) (호출 추적 및 관측) |
+| **Domain & Network** | DuckDNS, Nginx Reverse Proxy (HTTPS), CORS/CSRF 보호, Vercel 4.5MB 제한 우회용 음성 직접 전송 |
 
 <br>
 
+## 4. 시스템 아키텍처
+
+### 🏗️ 전체 시스템 구조
+<div align="center">
+<img src="산출물/images/시스템아키텍처.png" width="700">
+</div>
+
+1. **Next.js (Vercel)**: 사용자의 요청을 Same-origin Route Handler로 프록시하여 서드파티 쿠키 CORS 문제 회피. (단, 음성 파일은 4.5MB 제한 우회를 위해 백엔드로 직접 전송)
+2. **Django + Nginx (AWS EC2)**: HttpOnly JWT 토큰 기반 인증 및 권한 제어(PM 그룹 관리). 비동기 작업 스레드 생성 후 `202 Accepted + job_id` 즉시 응답.
+3. **비동기 폴링 (Task & Job Table)**: 프론트엔드가 작업 상태(`RUNNING` $\rightarrow$ `SUCCESS`/`ERROR`)를 주기적으로 폴링하여 현재 단계를 UI에 반영.
+4. **AWS RDS (MySQL)**: `meeting_note`, `spec_document`, `requirement_definition`, `task_assignment`, `pipeline_history`, `*_job` 등 관리.
+
 <br>
 
-## 데이터 수집 및 활용
+## 5. 핵심 기능 및 멀티 에이전트 흐름도
 
-| 데이터명 | 수집 대상 | 수집 목적 | 사용 예정 기능 | 출처 / 저작권 |
-|---|---|---|---|---|
-| 사원 정보 데이터 | 팀원 인적사항, 보유 기술, 자격증 | AI 담당자 추천 시 참조할 인력 프로필 구성 | 담당자 추천, 업무 배분 자동화 | Faker(`ko_KR`) 기반 자체 생성 |
-| 회의록 데이터 | 회의 내용 및 회의 기록 | 회의 내용을 근거로 한 기획서 자동 생성 시 참조 데이터 확보 | 회의록 자동 요약, 액션아이템 추출 | LLM API(Claude/GPT) 기반 합성 데이터 생성 |
-| 기획서, 요구사항정의서 데이터 | 프로젝트 기획 문서 및 요구사항 목록 | 문서 기반 AI 분석 및 추천 기능 검증 | 요구사항 분석, 산출물 검토 지원 | LLM API 기반 합성 데이터 생성 |
+체계적인 3단계 10-Step 에이전트 흐름으로 구성됩니다.
+
+<div align="center">
+<img src="산출물/images/에이전트.png" width="700">
+</div>
+
+### 📄 STEP 1~2: 문서화 단계
+- **기획서 생성**: 회의 원문을 요약 없이 그대로 읽고 **[맥락 섹션]**과 **[기술·결정 섹션]**을 두 개의 LLM 호출로 병렬 처리. 인용 검증 모듈이 회의록 원문 대조 통과 여부 검증 후 7개 섹션 작성.
+- **요구사항 정의서 생성**: 승인된 기획서를 기반으로 기능(FR) 및 비기능(NFR: 보안·신뢰성·성능) 요구사항 자동 추출. 누락 검사를 통해 최대 3회 자동 재요청.
+
+### ⚙️ STEP 3~6: 업무 설계 단계 (백그라운드)
+- **업무 생성 (Epic > Task > Subtask)**: 요구사항별 업무 및 공수(시간), 난이도, 리스크 버퍼, 필요 스킬 정의.
+- **규모 판단 & 인원 산정**: 기획서의 난이도(하·중·상)에 따라 버퍼(0~30%)를 가산하고, 역할별 총 공수 계산식을 통해 인원 산정 및 업무 패키지 묶음 생성.
+- **패키지 분할 판단**: FAST LLM이 1인 가용시간 초과 및 역할 혼합 여부를 판단하여 분할안 적용.
+
+### 👥 STEP 7~10: 배정 & 일정 단계 (백그라운드)
+- **후보 필터링 & 경력 적합도**: 사원 DB에서 재직 여부 및 스킬 일치 후보를 추출 후 FAST LLM이 경력기술서 원문과 실제 업무 대조 (0~1점 산출).
+- **담당자 배정 (코드 정량 공식)**:  
+  $$\text{Score} = (0.40 \times \text{스킬 적합도}) + (0.25 \times \text{경력/자격증}) + (0.15 \times \text{잔여 여유율}) + (0.20 \times \text{동일 기능 보너스})$$
+  *※ LLM은 배정 결정을 직접 하지 않고, 확정된 배정에 대해 3문장의 추천 사유 작성만 담당합니다.*
+- **일정 산정 (결정적 스케줄러)**: 선행 업무 의존관계(위상 정렬)에 따라 하루 6시간 기준 주말 제외 시작/종료일 자동 산정.
+- **계획 브리핑**: 리스크 요약(2~4개) 및 체크포인트를 정리하여 PM 검토 화면에 제공.
+
 <br>
 
+## 6. 핵심 설계 원칙 & 신뢰성 장치
+
+AI의 환각(Hallucination) 및 오작동을 방지하고 서비스 신뢰성을 확보하기 위한 **13가지 핵심 장치**를 적용했습니다.
+
+<div align="center">
+<img src="산출물/images/핵심.png" width="700">
+</div>
+
+1. **역할 분리 및 순차 실행**: LLM 판단과 코드의 정량 계산을 철저히 분리 (담당자/일정 수치는 100% 코드가 결정).
+2. **인간 중심 통제 (Human-in-the-Loop)**: 주요 산출물(기획서, 요구사항, 최종 배분) 사이마다 PM 승인 절차 배치. 반려 시 사유를 포함하여 선택적 재생성.
+3. **실패 관리 체계**:
+   - 저장 전 인용 대조 및 구조 자동 검증
+   - 누락 및 이상 발생 시 빠진 항목만 최대 3회 재요청
+   - LLM 판단 실패 시 코드 기반 기본 규칙으로 자동 풀백(Fallback)
+   - 파이프라인 오류 이력 상세 기록 및 복구 지원
+
 <br>
 
-## 화면설계
+## 7. 프로젝트 디렉토리 구조
 
-<p align="center">
-  <img src="./산출물/heyzzabi_slides.gif" width="70%"/>
-</p>
+```
+Heyzzabi/
+├── ai/                     # LLM 기반 AI 에이전트 파이프라인 패키지
+│   ├── prompts/            # 에이전트별 YAML 프롬프트 (context, technical_decisions 등)
+│   ├── validators/         # 원문 인용 검증 및 누락 검사 모듈
+│   └── pipeline/           # Step 1~10 비동기 실행 파이프라인
+├── backend/                # Django REST Framework 백엔드
+│   ├── apps/               # meeting_note, spec_document, task 등 서비스 레이어
+│   ├── config/             # Nginx, Gunicorn, JWT, CORS 설정
+│   └── jobs/               # 비동기 스레드 작업 상태 관리 (*_job)
+├── frontend/               # Next.js App Router 프론트엔드
+│   ├── app/                # Route Handler (/api/*) 및 페이지 UI
+│   └── hooks/              # TanStack Query 기반 상태 관리 및 상태 폴링
+└── docs/                   # API 명세서 (API.yaml) 및 프로젝트 산출물
+```
+
+<br>
+
+## 8. 회고
+| 팀원 | 한 줄 회고 |
+| :---: | :--- |
+| **박연아** | |
+| **김가율** | |
+| **김재원** | |
+| **이재일** | |
+| **박하린** | |
+
+<br>
+
+## 9. 실행 방법
+### 💡프론트엔드
+```
+1. 프론트엔드 폴더로 이동
+`cd frontend`
+
+2. 어떤 npm을 사용 중인지 확인
+`which npm`
+
+* 출력 결과가 /mnt/c/Program Files/... 처럼 /mnt/c/로 시작한다면 Windows용 패키지가 리눅스 환경에서 억지로 실행되면서 경로 충돌을 일으키고 있는 상태
+
+3. 리눅스 자체에 Node.js를 설치
+* NVM(Node 버전 관리자) 설치
+`curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash`
+* 환경 변수 즉시 적용
+`source ~/.bashrc`
+* 리눅스용 Node.js(LTS 버전) 설치
+`nvm install --lts`
+4. 설치 확인 및 기존 node_modules 재설치
+* 설치가 끝난 후 아래 명령어를 실행해 경로가 /home/playdata/...로 바꼈는지 확인
+`which npm`
+5. 기존 찌꺼기 파일 삭제
+`rm -rf node_modules package-lock.json`
+6. 패키지 재설치
+`npm install`
+7. 서버 실행(기본 포트 3000)
+`npm run dev`
+8. 웹 실행
+`http://localhost:3000`
+```
+*  최초실행 완료 후에는 7,8번만 실행하면 됨.
+---
+### 💡백엔드
+
+* 새로운 터미널에서 실행
+
+1) 터미널에서 다음 명령어 순차적으로 실행
+```powershell
+cd backend
+uv venv .venv --python=3.13
+.venv\Scripts\activate
+uv pip install -r requirements.txt
+copy .env.example .env
+
+1-1) 아래 코드 실행하여 django secret key 생성한 후 복사하여 env에 붙여넣기
+
+python -c "from django.core.management.utils import get_random_secret_key; print(get_random_secret_key())"
+
+2) env 파일 내 key 값 채우기
+
+SECRET_KEY=<<본인 django API key 입력>>
+OPENAI_API_KEY=<<본인 API key 입력>>
+
+3) python manage.py runserver
