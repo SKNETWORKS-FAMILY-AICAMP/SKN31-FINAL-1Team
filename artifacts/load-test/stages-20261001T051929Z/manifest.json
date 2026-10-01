@@ -1,0 +1,56 @@
+{
+  "run_id": "20261001T051929Z",
+  "status": "complete",
+  "base_url": "https://127.0.0.1:18084",
+  "commit": "8d5325698fa88b22740269a8316e991fd891d34c",
+  "python": "3.14.4",
+  "mysql": "8.4.11",
+  "database": "heyzzabi_test",
+  "counts": {
+    "all_users": 123,
+    "test_users": 20,
+    "projects": 50,
+    "tasks": 2000
+  },
+  "debug": false,
+  "web_server": "Gunicorn: 1 worker, gthread, 2 threads",
+  "warmup_requests_per_endpoint": "one per role before stages",
+  "concurrency": [
+    20
+  ],
+  "limitations": [
+    "Local server and generator share host; Docker MySQL on same machine",
+    "Direct HTTPS; excludes Vercel and nginx",
+    "One 60-second run per stage; per-endpoint sample sizes vary",
+    "Read-only workload plus login session updates; no AI calls",
+    "Resource samples exclude MySQL container and are not DB profiling"
+  ],
+  "duration_per_stage_seconds": 60,
+  "think_time_seconds": [
+    2,
+    5
+  ],
+  "model": "closed user model; read-only",
+  "role_ratio": "20% PM, 80% member",
+  "seed": 20261001,
+  "endpoint_weights": {
+    "overview": 25,
+    "projects": 20,
+    "tasks": 20,
+    "notes": 10,
+    "specs": 10,
+    "requirements": 10,
+    "notifications": 5
+  },
+  "stages": [
+    {
+      "users": 20,
+      "started_unix": 1790831977.3406467,
+      "elapsed_seconds_including_drain": 60.30581953900037,
+      "requests": 271,
+      "errors": 0,
+      "stopped_early": false
+    }
+  ],
+  "finished_utc": "2026-10-01T05:20:38.513191+00:00"
+}

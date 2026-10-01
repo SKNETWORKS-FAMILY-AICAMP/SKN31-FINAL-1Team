@@ -1,0 +1,291 @@
+{
+  "label": "after-scale",
+  "validity": "superseded: the fifth task-list sample was truncated by Django's cumulative query-log limit; use after-scale-v2",
+  "database": "heyzzabi_test",
+  "counts": {
+    "projects": 50,
+    "tasks": 2000,
+    "requirement_definitions": 50,
+    "requirement_items": 2000
+  },
+  "method": "Django APIClient + CaptureQueriesContext; 1 warmup excluded, 5 measured calls",
+  "limitations": [
+    "Django internal request path; excludes HTTPS, Gunicorn, Vercel and nginx",
+    "MySQL-reported query time is low-resolution and excludes Python serialization",
+    "Login is excluded; PM test account used"
+  ],
+  "summary": [
+    {
+      "path": "/api/tasks/assignments/",
+      "samples": 5,
+      "mean_elapsed_ms": 1729.413,
+      "query_count_min": 992,
+      "query_count_max": 2002,
+      "mean_recorded_db_ms": 305.6,
+      "response_bytes": 2061681
+    },
+    {
+      "path": "/api/requirements/",
+      "samples": 5,
+      "mean_elapsed_ms": 288.968,
+      "query_count_min": 252,
+      "query_count_max": 252,
+      "mean_recorded_db_ms": 128.6,
+      "response_bytes": 923558
+    },
+    {
+      "path": "/api/dashboard/overview/",
+      "samples": 5,
+      "mean_elapsed_ms": 88.398,
+      "query_count_min": 109,
+      "query_count_max": 109,
+      "mean_recorded_db_ms": 32.4,
+      "response_bytes": 7683
+    },
+    {
+      "path": "/api/dashboard/analytics/",
+      "samples": 5,
+      "mean_elapsed_ms": 61.076,
+      "query_count_min": 65,
+      "query_count_max": 65,
+      "mean_recorded_db_ms": 21.6,
+      "response_bytes": 3891
+    },
+    {
+      "path": "/api/projects/",
+      "samples": 5,
+      "mean_elapsed_ms": 48.393,
+      "query_count_min": 52,
+      "query_count_max": 52,
+      "mean_recorded_db_ms": 18.2,
+      "response_bytes": 16192
+    }
+  ],
+  "requests": [
+    {
+      "path": "/api/tasks/assignments/",
+      "sample": 1,
+      "status": 200,
+      "elapsed_ms": 1734.121,
+      "query_count": 2002,
+      "recorded_db_ms": 378.0,
+      "response_bytes": 2061681
+    },
+    {
+      "path": "/api/tasks/assignments/",
+      "sample": 2,
+      "status": 200,
+      "elapsed_ms": 1759.567,
+      "query_count": 2002,
+      "recorded_db_ms": 346.0,
+      "response_bytes": 2061681
+    },
+    {
+      "path": "/api/tasks/assignments/",
+      "sample": 3,
+      "status": 200,
+      "elapsed_ms": 1745.813,
+      "query_count": 2002,
+      "recorded_db_ms": 411.0,
+      "response_bytes": 2061681
+    },
+    {
+      "path": "/api/tasks/assignments/",
+      "sample": 4,
+      "status": 200,
+      "elapsed_ms": 1693.603,
+      "query_count": 2002,
+      "recorded_db_ms": 279.0,
+      "response_bytes": 2061681
+    },
+    {
+      "path": "/api/tasks/assignments/",
+      "sample": 5,
+      "status": 200,
+      "elapsed_ms": 1713.96,
+      "query_count": 992,
+      "recorded_db_ms": 114.0,
+      "response_bytes": 2061681
+    },
+    {
+      "path": "/api/requirements/",
+      "sample": 1,
+      "status": 200,
+      "elapsed_ms": 284.148,
+      "query_count": 252,
+      "recorded_db_ms": 126.0,
+      "response_bytes": 923558
+    },
+    {
+      "path": "/api/requirements/",
+      "sample": 2,
+      "status": 200,
+      "elapsed_ms": 281.406,
+      "query_count": 252,
+      "recorded_db_ms": 121.0,
+      "response_bytes": 923558
+    },
+    {
+      "path": "/api/requirements/",
+      "sample": 3,
+      "status": 200,
+      "elapsed_ms": 274.052,
+      "query_count": 252,
+      "recorded_db_ms": 108.0,
+      "response_bytes": 923558
+    },
+    {
+      "path": "/api/requirements/",
+      "sample": 4,
+      "status": 200,
+      "elapsed_ms": 274.389,
+      "query_count": 252,
+      "recorded_db_ms": 116.0,
+      "response_bytes": 923558
+    },
+    {
+      "path": "/api/requirements/",
+      "sample": 5,
+      "status": 200,
+      "elapsed_ms": 330.846,
+      "query_count": 252,
+      "recorded_db_ms": 172.0,
+      "response_bytes": 923558
+    },
+    {
+      "path": "/api/dashboard/overview/",
+      "sample": 1,
+      "status": 200,
+      "elapsed_ms": 99.901,
+      "query_count": 109,
+      "recorded_db_ms": 49.0,
+      "response_bytes": 7683
+    },
+    {
+      "path": "/api/dashboard/overview/",
+      "sample": 2,
+      "status": 200,
+      "elapsed_ms": 85.713,
+      "query_count": 109,
+      "recorded_db_ms": 26.0,
+      "response_bytes": 7683
+    },
+    {
+      "path": "/api/dashboard/overview/",
+      "sample": 3,
+      "status": 200,
+      "elapsed_ms": 85.025,
+      "query_count": 109,
+      "recorded_db_ms": 23.0,
+      "response_bytes": 7683
+    },
+    {
+      "path": "/api/dashboard/overview/",
+      "sample": 4,
+      "status": 200,
+      "elapsed_ms": 85.228,
+      "query_count": 109,
+      "recorded_db_ms": 34.0,
+      "response_bytes": 7683
+    },
+    {
+      "path": "/api/dashboard/overview/",
+      "sample": 5,
+      "status": 200,
+      "elapsed_ms": 86.121,
+      "query_count": 109,
+      "recorded_db_ms": 30.0,
+      "response_bytes": 7683
+    },
+    {
+      "path": "/api/dashboard/analytics/",
+      "sample": 1,
+      "status": 200,
+      "elapsed_ms": 60.031,
+      "query_count": 65,
+      "recorded_db_ms": 19.0,
+      "response_bytes": 3891
+    },
+    {
+      "path": "/api/dashboard/analytics/",
+      "sample": 2,
+      "status": 200,
+      "elapsed_ms": 60.283,
+      "query_count": 65,
+      "recorded_db_ms": 21.0,
+      "response_bytes": 3891
+    },
+    {
+      "path": "/api/dashboard/analytics/",
+      "sample": 3,
+      "status": 200,
+      "elapsed_ms": 60.135,
+      "query_count": 65,
+      "recorded_db_ms": 24.0,
+      "response_bytes": 3891
+    },
+    {
+      "path": "/api/dashboard/analytics/",
+      "sample": 4,
+      "status": 200,
+      "elapsed_ms": 64.019,
+      "query_count": 65,
+      "recorded_db_ms": 24.0,
+      "response_bytes": 3891
+    },
+    {
+      "path": "/api/dashboard/analytics/",
+      "sample": 5,
+      "status": 200,
+      "elapsed_ms": 60.91,
+      "query_count": 65,
+      "recorded_db_ms": 20.0,
+      "response_bytes": 3891
+    },
+    {
+      "path": "/api/projects/",
+      "sample": 1,
+      "status": 200,
+      "elapsed_ms": 49.245,
+      "query_count": 52,
+      "recorded_db_ms": 18.0,
+      "response_bytes": 16192
+    },
+    {
+      "path": "/api/projects/",
+      "sample": 2,
+      "status": 200,
+      "elapsed_ms": 49.348,
+      "query_count": 52,
+      "recorded_db_ms": 21.0,
+      "response_bytes": 16192
+    },
+    {
+      "path": "/api/projects/",
+      "sample": 3,
+      "status": 200,
+      "elapsed_ms": 47.046,
+      "query_count": 52,
+      "recorded_db_ms": 18.0,
+      "response_bytes": 16192
+    },
+    {
+      "path": "/api/projects/",
+      "sample": 4,
+      "status": 200,
+      "elapsed_ms": 46.632,
+      "query_count": 52,
+      "recorded_db_ms": 13.0,
+      "response_bytes": 16192
+    },
+    {
+      "path": "/api/projects/",
+      "sample": 5,
+      "status": 200,
+      "elapsed_ms": 49.696,
+      "query_count": 52,
+      "recorded_db_ms": 21.0,
+      "response_bytes": 16192
+    }
+  ]
+}
