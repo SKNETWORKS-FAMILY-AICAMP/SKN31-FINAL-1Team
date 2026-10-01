@@ -1,0 +1,53 @@
+{
+  "runs": [
+    {
+      "repeat": 1,
+      "run_id": "20261001T032653Z",
+      "requests": 1691,
+      "errors": 0,
+      "error_rate_pct": 0.0,
+      "rps": 5.636,
+      "mean_ms": 47.128,
+      "p50_ms": 35.761,
+      "p95_ms": 129.411,
+      "p99_ms": 235.697,
+      "max_ms": 369.648
+    },
+    {
+      "repeat": 2,
+      "run_id": "20261001T033916Z",
+      "requests": 1691,
+      "errors": 0,
+      "error_rate_pct": 0.0,
+      "rps": 5.637,
+      "mean_ms": 47.45,
+      "p50_ms": 36.199,
+      "p95_ms": 114.944,
+      "p99_ms": 239.917,
+      "max_ms": 391.944
+    },
+    {
+      "repeat": 3,
+      "run_id": "20261001T034716Z",
+      "requests": 1691,
+      "errors": 0,
+      "error_rate_pct": 0.0,
+      "rps": 5.637,
+      "mean_ms": 47.626,
+      "p50_ms": 36.075,
+      "p95_ms": 111.541,
+      "p99_ms": 242.062,
+      "max_ms": 410.224
+    }
+  ],
+  "total_requests": 5073,
+  "total_errors": 0,
+  "overall_error_rate_pct": 0.0,
+  "mean_run_p95_ms": 118.632,
+  "run_p95_min_ms": 111.541,
+  "run_p95_max_ms": 129.411,
+  "run_p95_cv_pct": 6.53,
+  "mean_rps": 5.637,
+  "rps_cv_pct": 0.01,
+  "interpretation": "All three local read-only runs met the provisional p95 <= 1000 ms and unexpected error rate < 1% criteria. This is not an AWS capacity result."
+}

@@ -1,0 +1,16 @@
+[
+  {
+    "users": 20,
+    "requests": 1691,
+    "errors": 0,
+    "rps": 5.64,
+    "mean_ms": 47.45,
+    "p50_ms": 36.199,
+    "p95_ms": 114.944,
+    "p99_ms": 239.917,
+    "max_ms": 391.944,
+    "peak_inflight_requests": 5,
+    "server_cpu_one_core_pct": 17.9,
+    "server_peak_rss_mib": 251.3
+  }
+]

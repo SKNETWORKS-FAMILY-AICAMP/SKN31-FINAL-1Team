@@ -1,0 +1,130 @@
+{
+  "method": "Django APIClient with cookie login; not HTTP network/load measurement",
+  "database": "heyzzabi_test",
+  "pending_migrations": 0,
+  "existing_users_before": 103,
+  "seed_users": 20,
+  "seed_tasks": 200,
+  "results": [
+    {
+      "user": "lt_small_001",
+      "path": "/api/users/login/",
+      "status": 200,
+      "expected": 200
+    },
+    {
+      "user": "lt_small_001",
+      "path": "/api/users/me/",
+      "status": 200,
+      "expected": 200
+    },
+    {
+      "user": "lt_small_001",
+      "path": "/api/dashboard/overview/",
+      "status": 200,
+      "expected": 200
+    },
+    {
+      "user": "lt_small_001",
+      "path": "/api/dashboard/analytics/",
+      "status": 200,
+      "expected": 200
+    },
+    {
+      "user": "lt_small_001",
+      "path": "/api/projects/",
+      "status": 200,
+      "expected": 200
+    },
+    {
+      "user": "lt_small_001",
+      "path": "/api/tasks/assignments/",
+      "status": 200,
+      "expected": 200
+    },
+    {
+      "user": "lt_small_001",
+      "path": "/api/meetings/notes/",
+      "status": 200,
+      "expected": 200
+    },
+    {
+      "user": "lt_small_001",
+      "path": "/api/meetings/specs/",
+      "status": 200,
+      "expected": 200
+    },
+    {
+      "user": "lt_small_001",
+      "path": "/api/requirements/",
+      "status": 200,
+      "expected": 200
+    },
+    {
+      "user": "lt_small_001",
+      "path": "/api/notifications/",
+      "status": 200,
+      "expected": 200
+    },
+    {
+      "user": "lt_small_005",
+      "path": "/api/users/login/",
+      "status": 200,
+      "expected": 200
+    },
+    {
+      "user": "lt_small_005",
+      "path": "/api/users/me/",
+      "status": 200,
+      "expected": 200
+    },
+    {
+      "user": "lt_small_005",
+      "path": "/api/dashboard/overview/",
+      "status": 200,
+      "expected": 200
+    },
+    {
+      "user": "lt_small_005",
+      "path": "/api/dashboard/analytics/",
+      "status": 403,
+      "expected": 403
+    },
+    {
+      "user": "lt_small_005",
+      "path": "/api/projects/",
+      "status": 200,
+      "expected": 200
+    },
+    {
+      "user": "lt_small_005",
+      "path": "/api/tasks/assignments/",
+      "status": 200,
+      "expected": 200
+    },
+    {
+      "user": "lt_small_005",
+      "path": "/api/meetings/notes/",
+      "status": 200,
+      "expected": 200
+    },
+    {
+      "user": "lt_small_005",
+      "path": "/api/meetings/specs/",
+      "status": 200,
+      "expected": 200
+    },
+    {
+      "user": "lt_small_005",
+      "path": "/api/requirements/",
+      "status": 200,
+      "expected": 200
+    },
+    {
+      "user": "lt_small_005",
+      "path": "/api/notifications/",
+      "status": 200,
+      "expected": 200
+    }
+  ]
+}
