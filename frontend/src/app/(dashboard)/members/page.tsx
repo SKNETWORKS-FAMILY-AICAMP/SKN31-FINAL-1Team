@@ -116,7 +116,7 @@ export default function MembersPage() {
   const [jobRoleOptions, setJobRoleOptions] = useState<CodeOption[]>([]);
   const [statusOptions, setStatusOptions] = useState<CodeOption[]>([]);
 
-  // Add Employee Modal
+  // 직원 추가 모달
   const [addModal, setAddModal] = useState(false);
   const [newUsername, setNewUsername] = useState("");
   const [newLastName, setNewLastName] = useState("");
@@ -128,7 +128,7 @@ export default function MembersPage() {
   const [newHireDate, setNewHireDate] = useState("");
   const [adding, setAdding] = useState(false);
 
-  // Edit Modal
+  // 직원 수정 모달
   const [editModal, setEditModal] = useState<{
     id: string; lastName: string; firstName: string; department: string; roleCode: string;
     phone: string; employeeNo: string; position: string; jobRole: string; status: EmployeeStatus;
@@ -136,7 +136,7 @@ export default function MembersPage() {
   } | null>(null);
   const [editing, setEditing] = useState(false);
 
-  // Delete Confirm Modal
+  // 삭제 확인 모달
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
 
   const menuRef = useRef<HTMLDivElement>(null);
@@ -410,16 +410,16 @@ export default function MembersPage() {
 
       {/* Table */}
       <div className="glass rounded-xl border border-border overflow-hidden">
-        <div className="overflow-x-auto">
+        <div className="overflow-x-auto overflow-y-auto max-h-[560px]">
           <table className="w-full text-left text-sm">
-            <thead className="bg-black/10 dark:bg-white/5 text-muted-foreground">
+            <thead className="bg-black/10 dark:bg-white/5 text-muted-foreground sticky top-0 z-10 backdrop-blur">
               <tr>
-                <th className="px-6 py-4 font-semibold">직원</th>
+                <th className="px-6 py-4 font-semibold whitespace-nowrap">직원</th>
                 <th className="px-6 py-4 font-semibold whitespace-nowrap">부서 / 직급 /<br />직무</th>
                 <th className="px-6 py-4 font-semibold">보유 기술 / 자격증</th>
                 <th className="px-6 py-4 font-semibold whitespace-nowrap">입사일 /<br />퇴사일</th>
-                <th className="px-6 py-4 font-semibold">역할</th>
-                <th className="px-6 py-4 font-semibold">상태</th>
+                <th className="px-6 py-4 font-semibold whitespace-nowrap">역할</th>
+                <th className="px-6 py-4 font-semibold whitespace-nowrap">상태</th>
                 {isPM && <th className="px-6 py-4 font-semibold text-center">설정</th>}
               </tr>
             </thead>
@@ -432,7 +432,7 @@ export default function MembersPage() {
                 filtered.map(member => (
                   <tr key={member.id} className="hover:bg-black/5 dark:hover:bg-white/5 transition-colors">
                     {/* Name + Email */}
-                    <td className="px-6 py-4">
+                    <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex items-center gap-3">
                         <div className="w-9 h-9 rounded-full bg-primary/20 text-primary flex items-center justify-center font-bold text-sm shrink-0">
                           {member.name.charAt(0)}
@@ -625,7 +625,7 @@ export default function MembersPage() {
         ))}
       </div>
 
-      {/* Add Employee Modal */}
+      {/* 직원 추가 모달 */}
       {addModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
           <div className="bg-background border border-border rounded-2xl p-6 shadow-2xl max-w-sm w-full mx-4">
@@ -754,7 +754,7 @@ export default function MembersPage() {
         </div>
       )}
 
-      {/* Delete Confirm Modal */}
+      {/* 삭제 확인 모달 */}
       {deleteTarget && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
           <div className="bg-background border border-border rounded-2xl p-6 shadow-2xl max-w-sm w-full mx-4">
@@ -889,21 +889,30 @@ export default function MembersPage() {
                     <label className="text-sm font-semibold mb-1.5 block text-muted-foreground">계정 상태</label>
                     <select
                       value={editModal.status}
-                      onChange={e => setEditModal({ ...editModal, status: e.target.value as EmployeeStatus })}
+                      onChange={e => {
+                        const status = e.target.value as EmployeeStatus;
+                        // 퇴사 상태가 아니게 되면 입력란이 사라져 더 이상 고칠 수 없으니,
+                        // 이전에 남아있던 퇴사일 값도 같이 지워서 저장 시 남지 않게 한다.
+                        setEditModal({ ...editModal, status, resignDate: status === "RESIGNED" ? editModal.resignDate : "" });
+                      }}
                       className="w-full px-4 py-2.5 bg-black/5 dark:bg-white/5 border border-border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 appearance-none"
                     >
                       {statusOptions.map(s => <option key={s.code_id} value={s.code_id}>{STATUS_META[s.code_id]?.label ?? s.code_name}</option>)}
                     </select>
                   </div>
-                  <div>
-                    <label className="text-sm font-semibold mb-1.5 block text-muted-foreground">퇴사일</label>
-                    <input
-                      type="date"
-                      value={editModal.resignDate}
-                      onChange={e => setEditModal({ ...editModal, resignDate: e.target.value })}
-                      className="w-full px-4 py-2.5 bg-black/5 dark:bg-white/5 border border-border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
-                    />
-                  </div>
+                  {/* 퇴사 처리된 직원이 아니면 퇴사일 자체가 의미 없는 값이라 입력란을
+                      아예 숨긴다(사용자 요청) — 재직 중인데 퇴사일이 보이면 혼란을 준다. */}
+                  {editModal.status === "RESIGNED" && (
+                    <div>
+                      <label className="text-sm font-semibold mb-1.5 block text-muted-foreground">퇴사일</label>
+                      <input
+                        type="date"
+                        value={editModal.resignDate}
+                        onChange={e => setEditModal({ ...editModal, resignDate: e.target.value })}
+                        className="w-full px-4 py-2.5 bg-black/5 dark:bg-white/5 border border-border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
+                      />
+                    </div>
+                  )}
                 </div>
               </div>
 

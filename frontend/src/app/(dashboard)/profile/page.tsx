@@ -3,12 +3,19 @@
 import { useState, useEffect } from "react";
 import { useAuth } from "@/lib/auth";
 import { apiFetch } from "@/lib/api/client";
-import { User as UserIcon, Mail, Shield, KeyRound, Loader2, CheckCircle2, X, Phone, Pencil } from "lucide-react";
+import { Mail, Shield, KeyRound, Loader2, CheckCircle2, X, Phone, Pencil } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { PROJECT_SUGGESTIONS } from "@/lib/employeeOptions";
 import TagAutocomplete from "@/components/ui/TagAutocomplete";
 
 const toList = (s: string) => (s ? s.split(",").map(v => v.trim()).filter(Boolean) : []);
+
+// 2026-09-16: 기술 스택/자격증을 본인이 직접 추가/삭제할 수 있게 됐다 — 예전엔 이
+// 값들을 저장하는 API 자체가 없어서(온보딩 화면 주석에 남아있던 사실) 세 화면
+// (온보딩/프로필/직원관리)이 서로 "다른 데서 관리한다"고 미루기만 했었다.
+type SkillEntry = { skill_id: number; skill_code: string; skill_name: string; proficiency_level: number };
+type CertEntry = { cert_id: number; cert_code: string; cert_name: string };
+type CodeOption = { code_id: string; code_name: string };
 
 export default function ProfilePage() {
   const { user } = useAuth();
@@ -24,27 +31,105 @@ export default function ProfilePage() {
   const [changingPassword, setChangingPassword] = useState(false);
 
   // 내 정보 (온보딩 때 입력한 항목들 — 언제든 수정 가능해야 함)
-  // 기술 스택/자격증은 Django에서 CommonCode를 참조하는 구조화된 데이터(UserSkill/UserCertification)라
-  // 여기서 자유 텍스트로 바로 수정할 수 없다 — 직원관리(members) 화면과 동일하게 읽기 전용으로만 보여준다.
   const [infoLoading, setInfoLoading] = useState(true);
   const [phone, setPhone] = useState("");
-  const [techStack, setTechStack] = useState<string[]>([]);
-  const [certifications, setCertifications] = useState<string[]>([]);
+  const [skills, setSkills] = useState<SkillEntry[]>([]);
+  const [certifications, setCertifications] = useState<CertEntry[]>([]);
   const [pastProjects, setPastProjects] = useState<string[]>([]);
   const [savingInfo, setSavingInfo] = useState(false);
+
+  // 추가 가능한 스킬/자격증 코드 목록(공통코드) + 지금 고른 값 + 처리 중 여부
+  const [skillOptions, setSkillOptions] = useState<CodeOption[]>([]);
+  const [certOptions, setCertOptions] = useState<CodeOption[]>([]);
+  const [selectedSkillCode, setSelectedSkillCode] = useState("");
+  const [selectedCertCode, setSelectedCertCode] = useState("");
+  const [addingSkill, setAddingSkill] = useState(false);
+  const [addingCert, setAddingCert] = useState(false);
 
   useEffect(() => {
     if (!user) return;
     apiFetch<any>("/api/users/me/")
       .then(data => {
         setPhone(data.phone || "");
-        setTechStack((data.skills ?? []).map((s: any) => s.skill_name));
-        setCertifications((data.certifications ?? []).map((c: any) => c.cert_name));
+        setSkills((data.skills ?? []).map((s: any) => ({
+          skill_id: s.skill_id, skill_code: s.skill_code, skill_name: s.skill_name, proficiency_level: s.proficiency_level,
+        })));
+        setCertifications((data.certifications ?? []).map((c: any) => ({
+          cert_id: c.cert_id, cert_code: c.cert_code, cert_name: c.cert_name,
+        })));
         setPastProjects(toList(data.past_projects || ""));
       })
       .catch(() => showToast("내 정보를 불러오지 못했습니다.", "error"))
       .finally(() => setInfoLoading(false));
+    apiFetch<any[]>("/api/common/codes/?group_prefix=SKILL")
+      .then(list => setSkillOptions(list.map(c => ({ code_id: c.code_id, code_name: c.code_name }))))
+      .catch(() => {});
+    apiFetch<any[]>("/api/common/codes/?group_prefix=CERTIFICATION")
+      .then(list => setCertOptions(list.map(c => ({ code_id: c.code_id, code_name: c.code_name }))))
+      .catch(() => {});
   }, [user]);
+
+  const handleAddSkill = async () => {
+    if (!selectedSkillCode) return;
+    setAddingSkill(true);
+    try {
+      const created = await apiFetch<any>("/api/users/me/skills/", {
+        method: "POST",
+        body: JSON.stringify({ skill_code: selectedSkillCode, proficiency_level: 3 }),
+      });
+      setSkills(prev => {
+        const rest = prev.filter(s => s.skill_id !== created.skill_id);
+        return [...rest, created];
+      });
+      setSelectedSkillCode("");
+    } catch (err: any) {
+      showToast(err.message || "기술 스택 추가에 실패했습니다.", "error");
+    } finally {
+      setAddingSkill(false);
+    }
+  };
+
+  const handleRemoveSkill = async (skillId: number) => {
+    const prev = skills;
+    setSkills(cur => cur.filter(s => s.skill_id !== skillId)); // 낙관적 업데이트
+    try {
+      await apiFetch(`/api/users/me/skills/${skillId}/`, { method: "DELETE" });
+    } catch (err: any) {
+      setSkills(prev); // 실패하면 되돌림
+      showToast(err.message || "삭제에 실패했습니다.", "error");
+    }
+  };
+
+  const handleAddCertification = async () => {
+    if (!selectedCertCode) return;
+    setAddingCert(true);
+    try {
+      const created = await apiFetch<any>("/api/users/me/certifications/", {
+        method: "POST",
+        body: JSON.stringify({ cert_code: selectedCertCode }),
+      });
+      setCertifications(prev => {
+        const rest = prev.filter(c => c.cert_id !== created.cert_id);
+        return [...rest, created];
+      });
+      setSelectedCertCode("");
+    } catch (err: any) {
+      showToast(err.message || "자격증 추가에 실패했습니다.", "error");
+    } finally {
+      setAddingCert(false);
+    }
+  };
+
+  const handleRemoveCertification = async (certId: number) => {
+    const prev = certifications;
+    setCertifications(cur => cur.filter(c => c.cert_id !== certId));
+    try {
+      await apiFetch(`/api/users/me/certifications/${certId}/`, { method: "DELETE" });
+    } catch (err: any) {
+      setCertifications(prev);
+      showToast(err.message || "삭제에 실패했습니다.", "error");
+    }
+  };
 
   const showToast = (msg: string, type: "success" | "error" = "success") => {
     setToast({ msg, type });
@@ -173,26 +258,77 @@ export default function ProfilePage() {
                   className="w-full px-4 py-2.5 bg-black/5 dark:bg-white/5 border border-border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
                 />
               </div>
-              {/* 기술 스택/자격증은 직원관리 화면에서 PM이 관리하는 구조화된 데이터라 여기서는
-                  읽기 전용으로만 보여준다(members/page.tsx와 동일한 처리). */}
+              {/* 2026-09-16: 기술 스택/자격증을 본인이 직접 추가/삭제할 수 있게 바꿨다 —
+                  예전엔 이 값들을 저장하는 API 자체가 없어서(온보딩 화면 주석 참고)
+                  읽기 전용으로만 보여줬었다. */}
               <div>
                 <label className="block text-sm font-medium mb-1">기술 스택</label>
-                <div className="flex flex-wrap gap-1.5">
-                  {techStack.length === 0 ? (
+                <div className="flex flex-wrap gap-1.5 mb-2">
+                  {skills.length === 0 ? (
                     <span className="text-sm text-muted-foreground">등록된 기술 스택이 없습니다.</span>
-                  ) : techStack.map((s, i) => (
-                    <span key={i} className="px-2.5 py-1 rounded-lg bg-black/5 dark:bg-white/5 text-xs font-medium">{s}</span>
+                  ) : skills.map(s => (
+                    <span key={s.skill_id} className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-black/5 dark:bg-white/5 text-xs font-medium">
+                      {s.skill_name}
+                      <button type="button" onClick={() => handleRemoveSkill(s.skill_id)} className="text-muted-foreground hover:text-red-400" aria-label={`${s.skill_name} 삭제`}>
+                        <X className="w-3 h-3" />
+                      </button>
+                    </span>
                   ))}
+                </div>
+                <div className="flex gap-1.5">
+                  <select
+                    value={selectedSkillCode}
+                    onChange={e => setSelectedSkillCode(e.target.value)}
+                    className="flex-1 px-3 py-2 bg-black/5 dark:bg-white/5 border border-border rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-primary/40"
+                  >
+                    <option value="">기술 스택 선택...</option>
+                    {skillOptions
+                      .filter(o => !skills.some(s => s.skill_code === o.code_id))
+                      .map(o => <option key={o.code_id} value={o.code_id}>{o.code_name}</option>)}
+                  </select>
+                  <button
+                    type="button"
+                    onClick={handleAddSkill}
+                    disabled={!selectedSkillCode || addingSkill}
+                    className="px-3 py-2 rounded-lg bg-primary/10 text-primary text-xs font-bold hover:bg-primary/20 disabled:opacity-50 transition-colors"
+                  >
+                    {addingSkill ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "추가"}
+                  </button>
                 </div>
               </div>
               <div>
                 <label className="block text-sm font-medium mb-1">자격증</label>
-                <div className="flex flex-wrap gap-1.5">
+                <div className="flex flex-wrap gap-1.5 mb-2">
                   {certifications.length === 0 ? (
                     <span className="text-sm text-muted-foreground">등록된 자격증이 없습니다.</span>
-                  ) : certifications.map((c, i) => (
-                    <span key={i} className="px-2.5 py-1 rounded-lg bg-black/5 dark:bg-white/5 text-xs font-medium">{c}</span>
+                  ) : certifications.map(c => (
+                    <span key={c.cert_id} className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-black/5 dark:bg-white/5 text-xs font-medium">
+                      {c.cert_name}
+                      <button type="button" onClick={() => handleRemoveCertification(c.cert_id)} className="text-muted-foreground hover:text-red-400" aria-label={`${c.cert_name} 삭제`}>
+                        <X className="w-3 h-3" />
+                      </button>
+                    </span>
                   ))}
+                </div>
+                <div className="flex gap-1.5">
+                  <select
+                    value={selectedCertCode}
+                    onChange={e => setSelectedCertCode(e.target.value)}
+                    className="flex-1 px-3 py-2 bg-black/5 dark:bg-white/5 border border-border rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-primary/40"
+                  >
+                    <option value="">자격증 선택...</option>
+                    {certOptions
+                      .filter(o => !certifications.some(c => c.cert_code === o.code_id))
+                      .map(o => <option key={o.code_id} value={o.code_id}>{o.code_name}</option>)}
+                  </select>
+                  <button
+                    type="button"
+                    onClick={handleAddCertification}
+                    disabled={!selectedCertCode || addingCert}
+                    className="px-3 py-2 rounded-lg bg-primary/10 text-primary text-xs font-bold hover:bg-primary/20 disabled:opacity-50 transition-colors"
+                  >
+                    {addingCert ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "추가"}
+                  </button>
                 </div>
               </div>
               <div>

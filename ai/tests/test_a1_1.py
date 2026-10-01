@@ -23,8 +23,9 @@ def _base(**overrides) -> dict:
     data = {
         "meeting_id": "M-TEST",
         "project": {
-            "name": "테스트", "background": "b", "problem": "p", "goals": ["g"],
-            "evidence": {"quote": "개발 기간은 8주다"},
+            "name": "테스트", "background": "b", "problem": "p", "goals": [],
+            "background_evidence": {"quote": "개발 기간은 8주다"},
+            "problem_evidence": {"quote": "개발 기간은 8주다"},
         },
         "users": [],
         "requirements": {
@@ -58,7 +59,7 @@ def test_원문에_없는_인용은_unverified이고_삭제되지_않는다():
     data = _base(requirements={
         "functional": [], "data": [], "technical": [],
         "non_functional": [{
-            "content": "응답 속도는 3초 이내여야 한다", "priority": "medium",
+            "content": "응답 속도는 3초 이내여야 한다",
             "evidence": {"quote": "빠르게 처리되어야 한다"},   # 원문에 없음
         }],
     })
@@ -91,9 +92,59 @@ def test_통과율_집계():
         {"type": "기술", "content": "가짜", "evidence": {"quote": "없는문장1입니다"}},
     ])
     report = verify_and_mark(data, MEETING)
-    assert report.checked == 3          # project 1 + constraints 2
-    assert report.verified_count == 2
-    assert abs(report.pass_rate - 2 / 3) < 0.01
+    assert report.checked == 4          # project 2(background+problem) + constraints 2
+    assert report.verified_count == 3
+    assert abs(report.pass_rate - 3 / 4) < 0.01
+
+
+def test_project의_background와_problem은_evidence가_따로_검증된다():
+    """
+    2026-09-07 추가.
+
+    예전엔 project.evidence 하나로 background/problem을 같이 대표해서,
+    실제로는 goals 쪽 문장이 매칭됐는데 그게 그대로 개요·문제 정의
+    두 섹션의 근거로 쓰이는 문제가 있었습니다(리테일링크 기획안에서 발견).
+    background_evidence/problem_evidence로 나눈 뒤에는 하나가 틀려도
+    다른 하나까지 같이 UNVERIFIED가 되면 안 됩니다 — 서로 독립적이어야 합니다.
+    """
+    data = _base(project={
+        "name": "테스트", "background": "b", "problem": "p", "goals": [],
+        "background_evidence": {"quote": "개발 기간은 8주다"},        # 원문에 있음
+        "problem_evidence": {"quote": "회의록에 없는 문장입니다"},     # 원문에 없음
+    })
+    verify_and_mark(data, MEETING)
+    project = data["project"]
+    assert project["background_evidence_status"] == VERIFIED
+    assert project["problem_evidence_status"] == UNVERIFIED
+
+
+def test_background_evidence_extra의_각_quote가_따로_검증된다():
+    """
+    2026-09-17 추가. background_evidence 하나만으로는 근거가 1개로만
+    보여 신뢰하기 어렵다는 문제(plan_draft "프로젝트 개요" 화면)를 고치기
+    위해 추가한 필드입니다. 리스트 안 항목은 서로 독립적으로 검증되고,
+    상태는 병렬 리스트(background_evidence_extra_status)에 담깁니다.
+    """
+    data = _base(project={
+        "name": "테스트", "background": "b", "problem": "p", "goals": [],
+        "background_evidence": {"quote": "백엔드는 Django로 간다"},
+        "problem_evidence": {"quote": "개발 기간은 8주다"},
+        "background_evidence_extra": [
+            {"quote": "개발 기간은 8주다"},          # 원문에 있음
+            {"quote": "회의록에 없는 문장입니다"},     # 원문에 없음
+        ],
+    })
+    verify_and_mark(data, MEETING)
+    project = data["project"]
+
+    assert project["background_evidence_status"] == VERIFIED
+    assert project["background_evidence_extra_status"] == [VERIFIED, UNVERIFIED]
+
+
+def test_background_evidence_extra가_비어있으면_상태도_빈_리스트다():
+    data = _base()
+    verify_and_mark(data, MEETING)
+    assert data["project"]["background_evidence_extra_status"] == []
 
 
 def test_리포트에_quote가_출력된다():

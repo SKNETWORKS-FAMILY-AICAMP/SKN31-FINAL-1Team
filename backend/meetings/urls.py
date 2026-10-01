@@ -4,6 +4,7 @@ from meetings.views import (
     MeetingNoteListCreateView,
     MeetingNoteDetailView,
     MeetingNoteAnalyzeView,
+    MeetingNoteAnalyzeJobStatusView,
     SpecDocumentListCreateView,
     SpecDocumentDetailView,
     SpecDocumentReviewView,
@@ -11,6 +12,8 @@ from meetings.views import (
     SpecDocumentApproveView,
     SpecDocumentRejectView,
     MeetingNoteParseFileView,
+    MeetingNoteTranscribeAudioView,
+    MeetingNoteCleanupTranscriptView,
 )
 
 urlpatterns = [
@@ -18,7 +21,10 @@ urlpatterns = [
     path('notes/', MeetingNoteListCreateView.as_view(), name='meeting-note-list'),
     path('notes/<int:pk>/', MeetingNoteDetailView.as_view(), name='meeting-note-detail'),
     path('notes/<int:pk>/analyze/', MeetingNoteAnalyzeView.as_view(), name='meeting-note-analyze'),
+    path('notes/analyze-jobs/<uuid:job_id>/', MeetingNoteAnalyzeJobStatusView.as_view(), name='meeting-note-analyze-job-status'),
     path('notes/parse-file/', MeetingNoteParseFileView.as_view(), name='meeting-note-parse-file'),
+    path('notes/transcribe-audio/', MeetingNoteTranscribeAudioView.as_view(), name='meeting-note-transcribe-audio'),
+    path('notes/cleanup-transcript/', MeetingNoteCleanupTranscriptView.as_view(), name='meeting-note-cleanup-transcript'),
 
     # 기획서 엔드포인트
     path('specs/', SpecDocumentListCreateView.as_view(), name='spec-document-list'),

@@ -6,14 +6,14 @@ import {
   CheckCircle2, XCircle, AlertCircle, Clock, Loader2,
   MessageSquare, RotateCcw, ShieldCheck
 } from "lucide-react";
-import { cn } from "@/lib/utils";
 import { apiFetch } from "@/lib/api/client";
+import { Toast } from "@/components/ui/Toast";
 
 type Task = {
   id: number;
-  task_title: string;
-  status: string;
-  task_description?: string | null;
+  title: string;
+  status_code: string;
+  description?: string | null;
   reject_reason?: string | null;
   progress: number;
   assigned_user_name: string | null;
@@ -30,6 +30,7 @@ export default function ApprovalsPage() {
   const [processingId, setProcessingId] = useState<number | null>(null);
   const [rejectModal, setRejectModal] = useState<{ id: number; title: string } | null>(null);
   const [rejectReason, setRejectReason] = useState("");
+  const [errorToast, setErrorToast] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchTasks = async () => {
@@ -45,8 +46,8 @@ export default function ApprovalsPage() {
 
         const data = await apiFetch<Task[]>(url);
         setTasks(data);
-      } catch (e) {
-        console.error(e);
+      } catch (e: any) {
+        setErrorToast(e.message || "승인 대기 목록을 불러오지 못했습니다.");
       } finally {
         setLoading(false);
       }
@@ -59,11 +60,11 @@ export default function ApprovalsPage() {
     try {
       await apiFetch(`/api/tasks/assignments/${taskId}/status/`, {
         method: "PATCH",
-        body: JSON.stringify({ status: "APPROVED" }),
+        body: JSON.stringify({ status_code: "TASK_APPROVED" }),
       });
       setTasks(prev => prev.filter(t => t.id !== taskId));
-    } catch (e) {
-      console.error(e);
+    } catch (e: any) {
+      setErrorToast(e.message || "승인 처리에 실패했습니다.");
     } finally {
       setProcessingId(null);
     }
@@ -75,13 +76,13 @@ export default function ApprovalsPage() {
     try {
       await apiFetch(`/api/tasks/assignments/${rejectModal.id}/status/`, {
         method: "PATCH",
-        body: JSON.stringify({ status: "REJECTED", reject_reason: rejectReason }),
+        body: JSON.stringify({ status_code: "CANCELLED", reject_reason: rejectReason }),
       });
       setTasks(prev => prev.filter(t => t.id !== rejectModal.id));
       setRejectModal(null);
       setRejectReason("");
-    } catch (e) {
-      console.error(e);
+    } catch (e: any) {
+      setErrorToast(e.message || "반려 처리에 실패했습니다.");
     } finally {
       setProcessingId(null);
     }
@@ -102,12 +103,16 @@ export default function ApprovalsPage() {
       <div>
         <h1 className="text-3xl font-bold tracking-tight flex items-center gap-2">
           <ShieldCheck className="w-8 h-8 text-orange-400" />
-          {isPM ? "배분 승인 대기함" : "내 배분 승인 요청 현황"}
+          {/* 2026-09-22 (사용자 재확인 — 9/16 정책으로 재복귀): 배분 승인/반려는 PM이
+              검토하는 게 아니라, PM이 배정한 업무를 담당자 본인이 받아들일지 정하는
+              것이다 — 그래서 액션(승인/반려)은 담당자 본인에게, PM에게는 팀 전체
+              현황을 보여주는 읽기 전용 화면으로 뒤집는다. */}
+          {isPM ? "팀 배분 요청 현황" : "내 배분 승인 대기함"}
         </h1>
         <p className="text-muted-foreground mt-1">
           {isPM
-            ? "팀원에게 배정하려는 업무를 승인하거나 반려하세요. (업무관리 칸반의 배분승인대기 칼럼과 동일한 요청 목록입니다)"
-            : "내가 요청한 업무 배정의 처리 상태를 확인하세요."}
+            ? "팀원에게 배정 요청한 업무들의 수락/반려 처리 현황입니다. (업무관리 칸반의 \"승인 대기\" 칼럼과 동일한 목록입니다)"
+            : "나에게 배정 요청된 업무를 수락하거나 반려하세요."}
         </p>
       </div>
 
@@ -131,12 +136,12 @@ export default function ApprovalsPage() {
         <div className="glass rounded-2xl border border-border p-16 text-center">
           <CheckCircle2 className="w-14 h-14 text-emerald-400 mx-auto mb-4" />
           <h3 className="text-xl font-bold mb-2">
-            {isPM ? "모든 요청을 처리했습니다! 🎉" : "아직 배분 승인을 요청한 업무가 없습니다."}
+            {isPM ? "대기 중인 배분 요청이 없습니다." : "아직 나에게 배분 요청된 업무가 없습니다."}
           </h3>
           <p className="text-muted-foreground text-sm">
             {isPM
-              ? "팀원의 배분 승인 요청이 들어오면 여기에 표시됩니다."
-              : "업무관리에서 담당자를 지정하고 '배분 승인 요청'을 누르면 여기서 확인할 수 있습니다."}
+              ? "팀원에게 업무를 배정하면 여기서 수락/반려 처리 현황을 볼 수 있습니다."
+              : "PM이 업무를 배정하면 여기서 수락하거나 반려할 수 있습니다."}
           </p>
         </div>
       ) : (
@@ -156,7 +161,7 @@ export default function ApprovalsPage() {
                   </div>
 
                   {/* Title */}
-                  <h3 className="font-bold text-lg leading-tight mb-1">{task.task_title}</h3>
+                  <h3 className="font-bold text-lg leading-tight mb-1">{task.title}</h3>
 
                   {/* Assignee (PM view) */}
                   {isPM && task.assigned_user_name && (
@@ -180,8 +185,10 @@ export default function ApprovalsPage() {
                   </div>
                 </div>
 
-                {/* Action Buttons (PM only) */}
-                {isPM && (
+                {/* 2026-09-22 (사용자 재확인 — 9/16 정책으로 재복귀): 수락/반려는 그
+                    업무를 배정받은 담당자 본인 권한 — PM은 자기 팀 현황을 읽기 전용
+                    배지로만 본다. */}
+                {!isPM && (
                   <div className="flex flex-col gap-2 shrink-0">
                     <button
                       onClick={() => handleApprove(task.id)}
@@ -193,10 +200,10 @@ export default function ApprovalsPage() {
                       ) : (
                         <CheckCircle2 className="w-4 h-4" />
                       )}
-                      승인
+                      수락
                     </button>
                     <button
-                      onClick={() => setRejectModal({ id: task.id, title: task.task_title })}
+                      onClick={() => setRejectModal({ id: task.id, title: task.title })}
                       disabled={processingId === task.id}
                       className="flex items-center gap-2 px-4 py-2 bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-red-400 rounded-xl text-sm font-semibold transition-colors disabled:opacity-50"
                     >
@@ -206,11 +213,11 @@ export default function ApprovalsPage() {
                   </div>
                 )}
 
-                {/* Status (Employee view) */}
-                {!isPM && (
+                {/* Status (PM view) */}
+                {isPM && (
                   <span className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold text-orange-400 bg-orange-400/10 border border-orange-400/20">
                     <AlertCircle className="w-3.5 h-3.5" />
-                    배분 승인 대기 중
+                    담당자 수락 대기 중
                   </span>
                 )}
               </div>
@@ -228,8 +235,8 @@ export default function ApprovalsPage() {
               반려 사유 입력
             </h3>
             <p className="text-sm text-muted-foreground mb-4">
-              <span className="font-semibold text-foreground">"{rejectModal.title}"</span> 업무를 반려합니다.
-              팀원에게 전달할 피드백을 입력해 주세요.
+              <span className="font-semibold text-foreground">"{rejectModal.title}"</span> 업무 배정을 반려합니다.
+              PM에게 전달할 반려 사유를 입력해 주세요.
             </p>
             <div className="relative mb-4">
               <MessageSquare className="w-4 h-4 absolute left-3 top-3.5 text-muted-foreground" />
@@ -259,6 +266,8 @@ export default function ApprovalsPage() {
           </div>
         </div>
       )}
+
+      <Toast message={errorToast} variant="error" onDismiss={() => setErrorToast(null)} />
     </div>
   );
 }

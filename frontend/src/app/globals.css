@@ -112,7 +112,7 @@ select option {
   color: hsl(var(--foreground));
 }
 
-/* Glassmorphism Utilities */
+/* 글래스모피즘(반투명 유리 느낌) 유틸리티 */
 .glass {
   background: rgba(255, 255, 255, 0.7);
   backdrop-filter: blur(16px);
@@ -127,14 +127,14 @@ select option {
   box-shadow: 0 4px 30px rgba(0, 0, 0, 0.1);
 }
 
-/* Hide scrollbar for Chrome, Safari and Opera */
+/* Chrome/Safari/Opera 스크롤바 숨김 */
 .scrollbar-hide::-webkit-scrollbar {
   display: none;
 }
 
-/* Hide scrollbar for IE, Edge and Firefox */
+/* IE/Edge/Firefox 스크롤바 숨김 */
 .scrollbar-hide {
-  -ms-overflow-style: none;  /* IE and Edge */
+  -ms-overflow-style: none;  /* IE·Edge */
   scrollbar-width: none;  /* Firefox */
 }
 
@@ -169,7 +169,7 @@ select option {
   background: rgba(0, 0, 0, 0.4);
 }
 
-/* PDF export: print only the #print-area subtree (see documents page "PDF 다운로드") */
+/* PDF 내보내기: #print-area 하위만 인쇄한다 (문서생성 화면의 "PDF 다운로드" 참고) */
 @media print {
   body * {
     visibility: hidden;

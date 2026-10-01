@@ -1,4 +1,4 @@
-#users/views.py
+# users/views.py
 
 from django.conf import settings
 from django.middleware.csrf import get_token
@@ -20,9 +20,16 @@ from users.serializers import (
     UserPasswordResetResponseSerializer,
     LoginRequestSerializer,
     LoginResponseSerializer,
+    UserSkillSerializer,
+    UserCertificationSerializer,
 )
+from users.models import UserSkill, UserCertification
 from users.permissions import IsAdminUserOnly
 from users.jwt_cookies import set_auth_cookies, clear_auth_cookies, REFRESH_COOKIE, REFRESH_COOKIE_PATH
+from users.sessions import (
+    issue_session_tokens, token_sid_matches, clear_session,
+    is_session_active, touch_session, SESSION_IDLE_LIMIT,
+)
 from common.models import CommonCode
 
 User = get_user_model()
@@ -49,6 +56,27 @@ class CsrfCookieView(APIView):
         return Response({"detail": "csrf cookie set"})
 
 
+class UploadTokenView(APIView):
+    """
+    음성 파일처럼 큰 업로드는 Vercel 프록시(요청 본문 4.5MB 제한)를 안 거치고 프론트가
+    브라우저에서 백엔드로 직접 보낸다 — 크로스도메인이라 access_token 쿠키가 안 실리므로,
+    그 요청에 Authorization 헤더로 실을 토큰 값을 여기서 내려준다(쿠키에 있는 값 그대로,
+    HttpOnly라 JS가 직접 못 읽어서 이렇게 한 번 발급해줘야 한다).
+    GET /api/users/upload-token/
+    """
+    @extend_schema(
+        tags=['0단계 - 사용자 관리'],
+        summary='대용량 업로드용 access 토큰 조회',
+        description='로그인 상태의 access_token 쿠키 값을 그대로 반환한다. 백엔드로 직접 파일을 업로드할 때 Authorization 헤더에 실어 쓴다.',
+        responses={200: OpenApiTypes.OBJECT}
+    )
+    def get(self, request):
+        raw_token = request.COOKIES.get('access_token')
+        if raw_token is None:
+            return Response({"detail": "로그인이 필요합니다."}, status=status.HTTP_401_UNAUTHORIZED)
+        return Response({"token": raw_token})
+
+
 class LoginView(APIView):
     """
     사용자 로그인 API
@@ -70,7 +98,25 @@ class LoginView(APIView):
         serializer = LoginRequestSerializer(data=request.data)
         if serializer.is_valid():
             user = serializer.validated_data['user']
-            refresh = RefreshToken.for_user(user)
+
+            # TODO: 데모/개발 편의로 중복 로그인 차단을 임시 해제. 복구하려면 아래 블록의 주석을 풀 것.
+            #       (authentication.py 의 sid 검사도 함께 주석 처리돼 있으니 같이 복구)
+            # 한 계정당 1개 세션 — 이미 다른 기기에서 로그인 중이면(그 세션이 최근까지
+            # 활동 중이면) 이 로그인을 거부한다. 그 세션이 SESSION_IDLE_LIMIT(30분) 넘게
+            # 조용했으면 자리를 비운 것으로 보고 통과시켜 새로 발급한다.
+            # if is_session_active(user):
+            #     mins = int(SESSION_IDLE_LIMIT.total_seconds() // 60)
+            #     return Response(
+            #         {
+            #             "detail": f"이미 다른 기기에서 로그인되어 있습니다. "
+            #                       f"기존 기기에서 로그아웃하거나, 활동이 없으면 약 {mins}분 후 다시 시도하세요.",
+            #             "code": "already_logged_in",
+            #         },
+            #         status=status.HTTP_409_CONFLICT,
+            #     )
+
+            # 새 세션 발급.
+            access, refresh = issue_session_tokens(user, new_session=True)
 
             response = Response({
                 "message": "로그인 성공",
@@ -80,7 +126,7 @@ class LoginView(APIView):
             # XSS 한 방이면 JS가 그대로 읽어갈 수 있지만, HttpOnly 쿠키는 JS가 아예 접근할 수
             # 없다. 응답 본문에는 더 이상 access/refresh를 담지 않는다(담으면 결국 프론트가
             # 어딘가에 저장해야 하고, 그게 localStorage면 의미가 없어진다).
-            set_auth_cookies(response, str(refresh.access_token), str(refresh))
+            set_auth_cookies(response, access, refresh)
             # 로그인 직후 바로 쓰기 요청(예: 다음 화면의 POST)이 CSRF 토큰을 요구하므로,
             # 이 시점에 csrftoken 쿠키도 같이 보장해준다.
             get_token(request)
@@ -109,6 +155,9 @@ class LogoutView(APIView):
                 RefreshToken(refresh_token).blacklist()
             except Exception:
                 pass
+        # 활성 세션 표식을 지운다 — 이 계정으로는 어떤 기존 토큰도 더 이상 유효하지 않게 된다.
+        if request.user and request.user.is_authenticated:
+            clear_session(request.user)
         response = Response({"message": "로그아웃되었습니다."}, status=status.HTTP_200_OK)
         clear_auth_cookies(response)
         # DEV 계정전환 중이었다면 그 흔적도 같이 지운다.
@@ -128,8 +177,8 @@ class CookieTokenRefreshView(APIView):
         tags=['0단계 - 사용자 관리'],
         summary='access 토큰 재발급',
         description='refresh_token 쿠키로 새 access 토큰을 발급해 쿠키로 내려줍니다. 활동이 있는 '
-                     '동안은 refresh 토큰도 매번 새로 발급해(슬라이딩) 세션이 계속 연장되게 합니다 — '
-                     '그렇지 않으면 로그인 시점 기준 24시간 뒤 활동 중이어도 무조건 로그아웃됩니다.',
+                    '동안은 refresh 토큰도 매번 새로 발급해(슬라이딩) 세션이 계속 연장되게 합니다 — '
+                    '그렇지 않으면 로그인 시점 기준 24시간 뒤 활동 중이어도 무조건 로그아웃됩니다.',
         responses={200: OpenApiTypes.OBJECT, 401: OpenApiTypes.OBJECT}
     )
     def post(self, request):
@@ -146,15 +195,23 @@ class CookieTokenRefreshView(APIView):
         except User.DoesNotExist:
             return Response({"detail": "유효하지 않은 토큰입니다."}, status=status.HTTP_401_UNAUTHORIZED)
 
-        # 활동(=API 호출로 인한 재발급)이 있을 때마다 refresh 토큰도 새로 발급해 만료 시점을
-        # 지금부터 다시 24시간으로 미룬다(슬라이딩 세션) — access만 갱신하고 refresh는 그대로
-        # 재사용하면, 로그인한 지 24시간이 지나는 순간 계속 활동 중이었어도 무조건 로그아웃된다
-        # (실제로 겪은 문제). 블랙리스트 앱은 안 붙어 있어 예전 refresh 토큰이 자기 수명이 끝날
-        # 때까지는 여전히 유효하지만, 로그아웃 처리도 지금 블랙리스트 없이 동작하는 것과 같은
-        # 수준이라 새로운 보안 저하는 아니다.
-        new_refresh = RefreshToken.for_user(user)
+        # 한 계정당 1개 세션 — 이 refresh 토큰의 sid가 현재 활성 세션과 다르면(다른 기기에서
+        # 새로 로그인함) 재발급을 거부하고 쿠키를 지운다. 프론트는 이 401을 받고 로그인 화면으로.
+        if not token_sid_matches(user, refresh):
+            resp = Response(
+                {"detail": "다른 기기에서 로그인되어 세션이 종료되었습니다.", "code": "session_superseded"},
+                status=status.HTTP_401_UNAUTHORIZED,
+            )
+            clear_auth_cookies(resp)
+            return resp
+
+        # 이 세션이 살아있음을 기록(유휴 자동해제 방지) + 슬라이딩 재발급.
+        touch_session(user)
+        # session_key는 그대로 유지한다(new_session=False) — 재발급은 "같은 세션의 연장"이지
+        # 새 로그인이 아니므로. refresh 토큰도 새로 발급해 만료를 지금부터 다시 24시간으로 민다.
+        access, new_refresh = issue_session_tokens(user, new_session=False)
         response = Response({"detail": "재발급 완료"}, status=status.HTTP_200_OK)
-        set_auth_cookies(response, str(new_refresh.access_token), str(new_refresh))
+        set_auth_cookies(response, access, new_refresh)
         return response
 
 
@@ -162,6 +219,7 @@ class CurrentUserProfileView(APIView):
     """
     현재 로그인한 사용자 프로필 조회/수정 API
     GET /api/users/me/
+    PATCH /api/users/me/ (본인 프로필 및 온보딩 상태 수정)
     """
     permission_classes = [permissions.IsAuthenticated]
 
@@ -175,6 +233,137 @@ class CurrentUserProfileView(APIView):
         serializer = UserDetailSerializer(request.user)
         return Response(serializer.data)
 
+    @extend_schema(
+        tags=['0단계 - 사용자 관리'],
+        summary='현재 로그인 유저 프로필 수정 / 온보딩 완료',
+        description='본인의 상세 프로필 정보 및 온보딩 완료 상태(`is_onboarded=True`)를 업데이트합니다.',
+        request=UserDetailSerializer,
+        responses={200: UserDetailSerializer, 400: OpenApiTypes.OBJECT}
+    )
+    def patch(self, request):
+        """
+        [2026-09-08 추가] 온보딩 완료 시 프로필(전화번호 등) 입력 및 is_onboarded=True 처리를 함께 수행
+        """
+        serializer = UserDetailSerializer(request.user, data=request.data, partial=True)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data, status=status.HTTP_200_OK)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+# ==========================================
+# 2026-09-16: 본인 기술 스택/자격증 자기관리 API
+#
+# 지금까지 이 값들(UserSkill/UserCertification)을 추가·삭제하는 API 자체가
+# 없었다(UserDetailSerializer는 nested read_only로만 보여줌) — 프로필 화면·
+# 직원관리 화면·온보딩 화면 셋 다 "다른 화면에서 관리한다"고 서로 미루기만
+# 하고 실제로 저장되는 곳이 없었다(온보딩 화면 주석에 이 사실이 남아있음,
+# 실제 확인 결과). 본인이 프로필에서 직접 관리하도록 이 엔드포인트를 새로 만든다.
+# ==========================================
+
+class MySkillListCreateView(generics.ListCreateAPIView):
+    """
+    본인 기술 스택 목록 조회/추가 API
+    GET/POST /api/users/me/skills/
+    """
+    serializer_class = UserSkillSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    @extend_schema(tags=['0단계 - 사용자 관리'], summary='본인 기술 스택 목록 조회')
+    def get(self, request, *args, **kwargs):
+        return super().get(request, *args, **kwargs)
+
+    @extend_schema(
+        tags=['0단계 - 사용자 관리'],
+        summary='본인 기술 스택 추가',
+        description='skill_code(공통코드 SKILL_* 그룹의 code_id)와 proficiency_level(1~5, 생략 시 1)을 받아 추가합니다.',
+    )
+    def post(self, request, *args, **kwargs):
+        return super().post(request, *args, **kwargs)
+
+    def get_queryset(self):
+        return self.request.user.skills.select_related('skill_code').all()
+
+    def perform_create(self, serializer):
+        # 같은 스킬을 중복으로 추가하면 화면에 똑같은 태그가 두 번 뜨는 것보다,
+        # 숙련도만 업데이트하는 게 자연스럽다 — DB에 unique 제약이 없어 그대로 두면
+        # 조용히 중복 행이 쌓인다.
+        skill_code = serializer.validated_data.get('skill_code')
+        existing = self.request.user.skills.filter(skill_code=skill_code).first()
+        if existing:
+            existing.proficiency_level = serializer.validated_data.get('proficiency_level', existing.proficiency_level)
+            existing.save(update_fields=['proficiency_level'])
+            serializer.instance = existing
+        else:
+            serializer.save(user=self.request.user)
+
+
+class MySkillDetailView(generics.DestroyAPIView):
+    """
+    본인 기술 스택 삭제 API
+    DELETE /api/users/me/skills/<skill_id>/
+    조회 대상을 본인 것으로만 한정해서, 남의 skill_id를 넣어도 404로 처리한다(권한 우회 방지).
+    """
+    serializer_class = UserSkillSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    @extend_schema(tags=['0단계 - 사용자 관리'], summary='본인 기술 스택 삭제', responses={204: None})
+    def delete(self, request, *args, **kwargs):
+        return super().delete(request, *args, **kwargs)
+
+    def get_queryset(self):
+        return self.request.user.skills.all()
+
+
+class MyCertificationListCreateView(generics.ListCreateAPIView):
+    """
+    본인 자격증 목록 조회/추가 API
+    GET/POST /api/users/me/certifications/
+    """
+    serializer_class = UserCertificationSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    @extend_schema(tags=['0단계 - 사용자 관리'], summary='본인 자격증 목록 조회')
+    def get(self, request, *args, **kwargs):
+        return super().get(request, *args, **kwargs)
+
+    @extend_schema(
+        tags=['0단계 - 사용자 관리'],
+        summary='본인 자격증 추가',
+        description='cert_code(공통코드 CERTIFICATION_* 그룹의 code_id)와 acquired_date(선택)를 받아 추가합니다.',
+    )
+    def post(self, request, *args, **kwargs):
+        return super().post(request, *args, **kwargs)
+
+    def get_queryset(self):
+        return self.request.user.certifications.select_related('cert_code').all()
+
+    def perform_create(self, serializer):
+        cert_code = serializer.validated_data.get('cert_code')
+        existing = self.request.user.certifications.filter(cert_code=cert_code).first()
+        if existing:
+            existing.acquired_date = serializer.validated_data.get('acquired_date', existing.acquired_date)
+            existing.save(update_fields=['acquired_date'])
+            serializer.instance = existing
+        else:
+            serializer.save(user=self.request.user)
+
+
+class MyCertificationDetailView(generics.DestroyAPIView):
+    """
+    본인 자격증 삭제 API
+    DELETE /api/users/me/certifications/<cert_id>/
+    """
+    serializer_class = UserCertificationSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    @extend_schema(tags=['0단계 - 사용자 관리'], summary='본인 자격증 삭제', responses={204: None})
+    def delete(self, request, *args, **kwargs):
+        return super().delete(request, *args, **kwargs)
+
+    def get_queryset(self):
+        return self.request.user.certifications.all()
+
 
 class ChangePasswordView(APIView):
     """
@@ -187,7 +376,7 @@ class ChangePasswordView(APIView):
     @extend_schema(
         tags=['0단계 - 사용자 관리'],
         summary='본인 비밀번호 변경',
-        description='현재 비밀번호 확인 후 새 비밀번호로 변경합니다.',
+        description='현재 비밀번호 확인 후 새 비밀번호로 변경합니다. (온보딩 과정에서 변경 시 is_onboarded=True 전환)',
         responses={200: None, 400: None},
     )
     def patch(self, request):
@@ -202,7 +391,11 @@ class ChangePasswordView(APIView):
             return Response({"error": "새 비밀번호는 4자 이상이어야 합니다."}, status=status.HTTP_400_BAD_REQUEST)
 
         request.user.set_password(new_password)
-        request.user.save(update_fields=['password'])
+        
+        # 2026-09-08: 초기 비밀번호 변경 시 온보딩을 완료한 것으로 판단하여 is_onboarded=True 함께 반영
+        request.user.is_onboarded = True
+        request.user.save(update_fields=['password', 'is_onboarded'])
+        
         return Response({"message": "비밀번호가 변경되었습니다."}, status=status.HTTP_200_OK)
 
 
@@ -313,7 +506,7 @@ class UserManageView(generics.RetrieveUpdateDestroyAPIView):
 
     @extend_schema(tags=['0단계 - 사용자 관리'], summary='직원 정보 수정 (PM 전용)',
                     description='이름/부서/직급/직무/권한(role_code)/상태(status_code)/연락처/'
-                                '입사일/퇴사일/참여 프로젝트 등을 수정합니다.')
+                                '입사일/퇴사일/참여 프로젝트/온보딩 상태 등을 수정합니다.')
     def patch(self, request, *args, **kwargs):
         return super().patch(request, *args, **kwargs)
 
@@ -323,8 +516,9 @@ class UserManageView(generics.RetrieveUpdateDestroyAPIView):
         description='실제로는 하드 삭제가 아니라 비활성화 처리합니다. TaskAssignment.assigned_user가 '
                     'on_delete=CASCADE라 진짜로 삭제하면 그 직원이 배정받았던 업무 기록이 전부 함께 '
                     '지워지기 때문입니다 — 대신 is_active=False로 바꾸고 status_code를 RESIGNED로, '
-                    'resign_date를 오늘 날짜로 채웁니다. 목록 조회(GET /api/users/)는 is_active=True만 '
-                    '보여주므로 화면에서는 즉시 사라집니다.',
+                    'resign_date가 비어있으면 오늘 날짜로 채웁니다(이미 있으면 그대로 둠 — 이미 퇴사 '
+                    '처리된 계정을 삭제해도 원래 퇴사일이 덮어써지지 않습니다). 목록 조회(GET /api/users/)는 '
+                    'is_active=True만 보여주므로 화면에서는 즉시 사라집니다.',
         responses={204: None}
     )
     def delete(self, request, *args, **kwargs):
@@ -332,7 +526,11 @@ class UserManageView(generics.RetrieveUpdateDestroyAPIView):
 
     def perform_destroy(self, instance):
         instance.is_active = False
-        instance.resign_date = timezone.localdate()
+        # 2026-09-16 (사용자 지적): 이미 퇴사 처리(resign_date 있음)된 계정에 "삭제"를
+        # 또 누르면, 원래 정확히 기록돼 있던 퇴사일이 삭제 누른 "오늘 날짜"로 조용히
+        # 덮어써지는 버그가 있었다 — 퇴사일이 아직 없을 때만 오늘 날짜로 채운다.
+        if not instance.resign_date:
+            instance.resign_date = timezone.localdate()
         resigned_code = CommonCode.objects.filter(
             group__group_code='USER_STATUS', code_id='RESIGNED'
         ).first()
@@ -352,7 +550,7 @@ class UserPasswordResetView(APIView):
     @extend_schema(
         tags=['0단계 - 사용자 관리'],
         summary='비밀번호 초기화 (PM 전용)',
-        description='해당 직원의 비밀번호를 1111로 초기화합니다. 다음 로그인 시 본인이 바꿔야 합니다.',
+        description='해당 직원의 비밀번호를 1111로 초기화합니다. 비밀번호 변경 시 온보딩을 새로 진행해야 하므로 is_onboarded=False로 리셋합니다.',
         responses={200: UserPasswordResetResponseSerializer}
     )
     def post(self, request, id):
@@ -361,7 +559,11 @@ class UserPasswordResetView(APIView):
         except User.DoesNotExist:
             return Response({"error": "존재하지 않는 사용자입니다."}, status=status.HTTP_404_NOT_FOUND)
         user.set_password('1111')
-        user.save()
+        
+        # 2026-09-08: PM이 비밀번호를 초기화하면 다시 온보딩 절차를 밟도록 is_onboarded=False로 리셋
+        user.is_onboarded = False
+        user.save(update_fields=['password', 'is_onboarded'])
+        
         return Response({"message": "비밀번호가 초기화되었습니다."}, status=status.HTTP_200_OK)
 
 
@@ -396,7 +598,10 @@ class UserImpersonateView(APIView):
         except User.DoesNotExist:
             return Response({"error": "존재하지 않는 사용자입니다."}, status=status.HTTP_404_NOT_FOUND)
 
-        refresh = RefreshToken.for_user(target)
+        # DEV 전환도 단일 세션 규칙을 따른다 — target의 session_key를 새로 발급해 sid 검사를
+        # 통과시킨다(부수효과: target 계정이 실제로 어딘가 로그인돼 있었다면 그 세션은 끊긴다.
+        # DEBUG 전용 도구라 감수).
+        access, refresh = issue_session_tokens(target, new_session=True)
         response = Response({"user": UserSimpleSerializer(target).data}, status=status.HTTP_200_OK)
 
         # 이미 다른 계정으로 전환 중인 상태에서 또 전환하면(연쇄 전환) dev_original_*을
@@ -410,7 +615,7 @@ class UserImpersonateView(APIView):
             response.set_cookie('dev_original_refresh_token', current_refresh, httponly=True,
                                  secure=not settings.DEBUG, samesite='Lax', path=REFRESH_COOKIE_PATH)
 
-        set_auth_cookies(response, str(refresh.access_token), str(refresh))
+        set_auth_cookies(response, access, refresh)
         return response
 
 
@@ -447,12 +652,14 @@ class UserStopImpersonateView(APIView):
         if not original_user:
             return Response({"error": "되돌아갈 계정 정보가 유효하지 않습니다."}, status=status.HTTP_400_BAD_REQUEST)
 
-        refresh = RefreshToken.for_user(original_user)
+        # 원래 계정으로 복귀도 새 세션으로 발급한다(전환 동안 만료됐을 수 있는 옛 토큰 대신,
+        # 그리고 sid 검사를 통과하도록).
+        access, refresh = issue_session_tokens(original_user, new_session=True)
         response = Response(
             {"user": UserSimpleSerializer(original_user).data},
             status=status.HTTP_200_OK,
         )
-        set_auth_cookies(response, str(refresh.access_token), str(refresh))
+        set_auth_cookies(response, access, refresh)
         response.delete_cookie('dev_original_access_token', path='/')
         response.delete_cookie('dev_original_refresh_token', path=REFRESH_COOKIE_PATH)
         return response

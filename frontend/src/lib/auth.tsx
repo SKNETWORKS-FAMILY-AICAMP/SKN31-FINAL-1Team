@@ -1,6 +1,6 @@
 "use client";
 
-import React, { createContext, useContext, useState, useEffect } from "react";
+import React, { createContext, useContext, useState, useEffect, useRef } from "react";
 import { apiFetch } from "@/lib/api/client";
 import { toUser } from "@/lib/api/mappers";
 
@@ -27,6 +27,13 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  // 첫 로그인(온보딩) 때만 쓰는 값 — 온보딩에서 비밀번호를 바꾸려면 백엔드
+  // ChangePasswordView가 "현재 비밀번호"를 요구하는데, 로그인 성공 후에는 그
+  // 비밀번호를 어디에도 저장해두지 않아서(보안상 당연히 맞는 설계) 온보딩
+  // 단계에서 다시 쓸 방법이 없었다. localStorage 등에 영구 저장하면 보안
+  // 문제이므로, useRef로 이 세션의 메모리에만 잠깐 들고 있다가 온보딩이
+  // 끝나면(성공/실패 무관) 바로 지운다 — 새로고침하면 사라짐.
+  const pendingPasswordRef = useRef<string | null>(null);
 
   // Still use localStorage for session persistence in this MVP
   useEffect(() => {
@@ -63,7 +70,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         try {
           await apiFetch("/api/users/me/");
           return; // refresh로 살아났으면 그냥 계속 진행
-        } catch {
+        } catch (err: any) {
+          // 2026-09-07: "동시 로그인 1개만 허용" 기능이 추가되면서, 다른 곳에서 같은 계정으로
+          // 로그인하면 이 세션이 강제 종료된다 — 아무 설명 없이 로그인 화면으로 튕기면 사용자는
+          // 왜 로그아웃됐는지 알 방법이 없다(실제로 겪음). 백엔드가 이미 detail 메시지로 사유를
+          // 내려주므로(예: "다른 기기에서 로그인되어 세션이 종료되었습니다"), 그걸 로그인
+          // 화면에 전달해서 보여준다.
+          if (err?.message) {
+            sessionStorage.setItem("hz_logout_reason", err.message);
+          }
           setUser(null);
           localStorage.removeItem("hz_session");
           window.location.href = "/login";
@@ -99,6 +114,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // role_code는 GET /api/users/me/ (UserDetailSerializer)에만 있어서 한 번 더 불러온다.
     const profile = await apiFetch<any>("/api/users/me/");
     const mappedUser = toUser(profile);
+
+    // 첫 로그인이면 온보딩에서 비밀번호 변경 API에 "현재 비밀번호"로 다시 써야 한다
+    // (위 pendingPasswordRef 선언부 설명 참고). 첫 로그인이 아니면 온보딩을 안 타므로
+    // 굳이 들고 있을 필요 없음 — 비워둔다.
+    pendingPasswordRef.current = mappedUser.isFirstLogin ? password : null;
 
     setUser(mappedUser);
     localStorage.setItem("hz_session", JSON.stringify(mappedUser));
@@ -156,41 +176,40 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const completeOnboarding = async (name: string, info: any) => {
+  // 2026-09-10: 이 함수가 호출하던 "/api/auth/onboarding"은 예전 Next.js
+  // 프로토타입(heyzzabi2) 시절의 API Route였고, 지금 백엔드는 Django라 이 경로가
+  // 존재하지 않는다 — 온보딩 자체가 항상 실패하고 있었다(실제로 확인). 실제
+  // 존재하는 두 엔드포인트로 나눠서 호출하도록 고친다:
+  //   1) PATCH /api/users/me/            — 이름/부서/연락처 저장
+  //   2) PATCH /api/users/me/change-password/ — 비밀번호 변경(이 호출이 서버에서
+  //      is_onboarded=True로 전환해준다, users/views.py ChangePasswordView 참고)
+  const completeOnboarding = async (
+    name: string,
+    info: { lastName: string; firstName: string; newPassword: string; phone?: string; deptCode?: string }
+  ) => {
     if (!user) return;
-    
-    // We pass password here but usually we should get it from a state inside onboarding page
-    // For MVP, we assume the onboarding page passed the new password inside `info.newPassword` 
-    // Wait, let's fix the interface to accept the new password.
-    // The previous page code didn't pass newPassword to `completeOnboarding`. Let me check onboarding page.
-    
-    // Let's assume we update the onboarding API call here
-    // Actually, in onboarding_page.tsx, it calls completeOnboarding(name, { department }).
-    // It doesn't pass newPassword. We need to update completeOnboarding signature or onboarding page.
-    // For now, let's just use a dummy password to satisfy the API or update onboarding page.
-    
-    // Let's throw error if newPassword is not in info for safety, and we'll fix onboarding_page.tsx
-    const newPassword = info.newPassword || "123456"; // Fallback for MVP if not updated
 
-    const res = await fetch("/api/auth/onboarding", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
+    await apiFetch("/api/users/me/", {
+      method: "PATCH",
       body: JSON.stringify({
-        email: user.email,
-        password: newPassword,
-        name,
-        department: info.department,
-        phone: info.phone,
-        techStack: info.techStack,
-        certifications: info.certifications,
-        pastProjects: info.pastProjects,
+        last_name: info.lastName,
+        first_name: info.firstName,
+        phone: info.phone || null,
+        dept_code: info.deptCode || null,
       }),
     });
 
-    if (!res.ok) {
-      const errorData = await res.json();
-      throw new Error(errorData.error || "온보딩에 실패했습니다.");
+    // change-password는 "현재 비밀번호" 확인이 필요하다 — 로그인 때 딱 한 번
+    // 메모리에 잠깐 담아둔 값(pendingPasswordRef, login() 참고)을 여기서 쓴다.
+    const currentPassword = pendingPasswordRef.current;
+    if (!currentPassword) {
+      throw new Error("로그인 정보가 만료되었습니다. 다시 로그인한 뒤 온보딩을 진행해주세요.");
     }
+    await apiFetch("/api/users/me/change-password/", {
+      method: "PATCH",
+      body: JSON.stringify({ current_password: currentPassword, new_password: info.newPassword }),
+    });
+    pendingPasswordRef.current = null; // 다 썼으니 메모리에서 바로 지움
 
     const updatedUser = { ...user, name, isFirstLogin: false };
     setUser(updatedUser);

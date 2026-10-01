@@ -12,6 +12,8 @@ from django.middleware.csrf import CsrfViewMiddleware
 from rest_framework import exceptions
 from rest_framework_simplejwt.authentication import JWTAuthentication
 
+from users.sessions import token_sid_matches, touch_session
+
 
 class _CsrfCheck(CsrfViewMiddleware):
     def _reject(self, request, reason):
@@ -26,12 +28,41 @@ class CookieJWTAuthentication(JWTAuthentication):
     """
 
     def authenticate(self, request):
+        # 2026-09-17: 음성 파일 업로드(transcribe-audio)는 Vercel 프록시(Route Handler)의
+        # 요청 본문 4.5MB 제한에 걸려, 이 요청만 프록시를 안 거치고 브라우저가 백엔드로 직접
+        # 보낸다 — 그러면 크로스도메인이라 access_token 쿠키가 안 실리므로, 이 경우엔 대신
+        # Authorization: Bearer 헤더로 같은 토큰을 받는다. 브라우저가 "자동으로" 붙이는
+        # 쿠키와 달리 헤더는 프론트 코드가 명시적으로 붙여야만 실리므로 CSRF 위협이 없다
+        # (그래서 이 경로는 아래 쿠키 경로와 달리 enforce_csrf를 타지 않는다).
+        header = self.get_header(request)
+        if header is not None:
+            header_token = self.get_raw_token(header)
+            if header_token is not None:
+                validated_token = self.get_validated_token(header_token)
+                user = self.get_user(validated_token)
+                touch_session(user)
+                return (user, validated_token)
+
         raw_token = request.COOKIES.get('access_token')
         if raw_token is None:
             return None
 
         validated_token = self.get_validated_token(raw_token)
         user = self.get_user(validated_token)
+
+        # TODO: 데모/개발 편의로 중복 로그인 차단을 임시 해제. 복구하려면 아래 sid 검사 주석을 풀 것.
+        #       (views.py LoginView 의 is_session_active 차단도 함께 주석 처리돼 있으니 같이 복구)
+        # 한 계정당 1개 세션만 허용 — 다른 기기에서 새로 로그인하면 이 토큰의 sid가
+        # 더 이상 user.session_key와 맞지 않으므로 여기서 거부된다.
+        # if not token_sid_matches(user, validated_token):
+        #     raise exceptions.AuthenticationFailed(
+        #         '다른 기기에서 로그인되어 이 세션은 종료되었습니다.',
+        #         code='session_superseded',
+        #     )
+
+        # 이 세션이 아직 살아있음을 기록 — 유휴 자동해제 판정 기준.
+        touch_session(user)
+
         self.enforce_csrf(request)
         return (user, validated_token)
 

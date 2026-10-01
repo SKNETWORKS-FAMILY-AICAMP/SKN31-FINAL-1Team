@@ -2,67 +2,270 @@
 a2_3_assignee_recommend/agent.py
 
 AI 담당자 추천 (FR-05-016, 017)
-하이브리드 구조: rule_filter.py(코드)가 후보를 좁히고, LLM은 근거 문장만 생성한다.
+그리디 스케줄러(코드)가 우선순위(요구사항 priority 상속) 순으로 업무를 정렬해
+가용시간이 남은 최적 담당자에게 순차 배정을 "확정"한다. LLM은 그 결과에 대한
+근거 문장(정상 배정) 또는 보류 사유 설명(후보 없음)만 생성한다 — 사람이 이
+추천을 검토·승인하기 전까지는 확정 배정이 아니라 어디까지나 "추천"이다.
+
+이 모듈은 DB를 모른다:
+  - state["member_profiles"] — 같은 그래프 안에서 앞서 실행된 assignee_mapping_node의
+    출력을 그대로 이어받는다 (별도 조회 불필요).
+  - state["current_workload"] — task 테이블에서 assignee_id 기준 SUM(estimated_hours)한
+    값. 호출부(Django/Celery task)가 A2-3 실행 직전에 최신값으로 채워야 한다 — 사람
+    검토 게이트로 오래 멈춰 있었을 수 있어, 파이프라인 시작 시점 값을 그대로 쓰면 낡을
+    수 있다 (ai/ ↔ backend 통합 방식 B안, 2026-08-30 결정).
+  - state["project_start_date"] / state["project_end_date"] — project.start_date/
+    end_date 값 그대로("YYYY-MM-DD"). 담당자 1인당 배정 상한(주 40시간 x 기간 주수)을
+    계산하는 데 쓴다. DB 조회 없이 두 날짜만 있으면 되는 순수 계산이라 이 모듈
+    안에서 직접 계산한다 (rule_filter.calculate_max_hours_per_assignee 참고).
 """
 
 import logging
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from pydantic import ValidationError
 
-from shared.llm_client import get_client
-from shared.retry_config import DEFAULT_MAX_TOKENS, DEFAULT_MODEL, MAX_RETRIES, TEMPERATURE_STRUCTURED
+from shared.llm_client import create_structured, traceable
+from shared.retry_config import FAST_MODEL, FAST_MODEL_MAX_TOKENS, MAX_RETRIES, structured_temperature_for
 
-from .prompt_builder import build_system_prompt
-from .rule_filter import filter_candidates
-from .schemas import RecommendationList
+from .prompt_builder import (
+    build_hold_batch_prompt,
+    build_hold_prompt,
+    build_reason_batch_prompt,
+    build_reason_prompt,
+)
+from assignment_ranking.agent import score_candidate_fit
+from work_package import build_work_packages
+
+from .rule_filter import (
+    calculate_max_hours_per_assignee,
+    flatten_assignable_units,
+    list_project_workdays,
+    schedule_assignments,
+    sort_units_by_priority,
+)
+from .schemas import (
+    AssignmentResult,
+    HoldBatch,
+    HoldExplanation,
+    ReasonBatch,
+    RecommendationReason,
+)
 
 logger = logging.getLogger(__name__)
 
+# OpenAI TPM 한도 때문에 유닛 1개당 1회 호출하던 근거/보류 사유 생성을 묶어서
+# 호출한다. reason은 업무+후보 정보가 더 많이 들어가 hold보다 배치 크기를 작게 뒀다.
+REASON_BATCH_SIZE = 8
+HOLD_BATCH_SIZE = 15
 
-def get_project_members(project_id: str) -> List[Dict[str, Any]]:
-    """TODO(담당자1): member/assignment 테이블에서 기술스택·현재업무량·이력 조회."""
-    raise NotImplementedError
+
+def _chunked(seq: List[Any], size: int) -> List[List[Any]]:
+    return [seq[i : i + size] for i in range(0, len(seq), size)]
 
 
-def recommend_assignee(task: Dict[str, Any], members: List[Dict[str, Any]]) -> RecommendationList:
-    candidates = filter_candidates(task, members)
+def _priority_by_req_id(requirement_doc: Dict[str, Any]) -> Dict[str, Optional[str]]:
+    """요구사항 ID -> priority. 업무는 자기 자신에 priority가 없고 요구사항에서 상속받는다."""
+    return {r["id"]: r.get("priority") for r in requirement_doc.get("requirements", [])}
 
-    if not candidates:
-        # 규칙: 근거 없으면 자동확정 대신 보류
-        logger.warning("task_id=%s: 조건을 만족하는 후보가 없어 보류 처리", task["task_id"])
-        return RecommendationList(task_id=task["task_id"], recommendations=[], review_required=True)
 
-    client = get_client()
-    system_prompt = build_system_prompt(task["task_id"], candidates)
+# 2026-09-14: 근거 문장/보류 사유는 코드가 이미 정한 결과(스코어·배정·보류 여부)를
+# 한두 문장으로 서술만 하는 저난도 호출이라 FAST_MODEL(retry_config 참고)을 쓴다.
+_FAST_TEMPERATURE = structured_temperature_for(FAST_MODEL)
 
-    return client.chat.completions.create(
-        model=DEFAULT_MODEL,
-        max_tokens=DEFAULT_MAX_TOKENS,
-        temperature=TEMPERATURE_STRUCTURED,
-        system=system_prompt,
-        messages=[{"role": "user", "content": "위 후보 목록에 대한 추천 근거를 작성하라."}],
-        response_model=RecommendationList,
+
+def generate_reason(unit: Dict[str, Any], candidate: Dict[str, Any]) -> RecommendationReason:
+    prompt = build_reason_prompt(unit, candidate)
+    return create_structured(
+        system_prompt=prompt,
+        user_message="위 후보에 대한 추천 근거를 작성하라.",
+        response_model=RecommendationReason,
+        max_tokens=FAST_MODEL_MAX_TOKENS,
+        temperature=_FAST_TEMPERATURE,
         max_retries=MAX_RETRIES,
+        openai_model=FAST_MODEL,
     )
 
 
-def assignee_recommend_node(state: Dict[str, Any]) -> Dict[str, Any]:
-    try:
-        members = get_project_members(state["project_id"])
-    except NotImplementedError:
-        return {"error": "NOT_IMPLEMENTED: get_project_members"}
+def generate_hold_explanation(unit: Dict[str, Any]) -> HoldExplanation:
+    prompt = build_hold_prompt(unit)
+    return create_structured(
+        system_prompt=prompt,
+        user_message="이 업무가 왜 배정 보류됐는지 설명하라.",
+        response_model=HoldExplanation,
+        max_tokens=FAST_MODEL_MAX_TOKENS,
+        temperature=_FAST_TEMPERATURE,
+        max_retries=MAX_RETRIES,
+        openai_model=FAST_MODEL,
+    )
 
+
+def generate_reasons_batch(items: List[Dict[str, Any]]) -> Dict[str, RecommendationReason]:
+    """여러 unit의 근거 문장을 한 번의 LLM 호출로 생성한다. 반환값은 unit_id -> RecommendationReason."""
+    if not items:
+        return {}
+    prompt = build_reason_batch_prompt(items)
+    batch: ReasonBatch = create_structured(
+        system_prompt=prompt,
+        user_message="위 후보들에 대한 추천 근거를 각각 작성하라.",
+        response_model=ReasonBatch,
+        max_tokens=FAST_MODEL_MAX_TOKENS,
+        temperature=_FAST_TEMPERATURE,
+        max_retries=MAX_RETRIES,
+        openai_model=FAST_MODEL,
+    )
+    return {
+        r.unit_id: RecommendationReason(
+            skill_fit=r.skill_fit, workload=r.workload, similar_experience=r.similar_experience
+        )
+        for r in batch.items
+    }
+
+
+def generate_hold_explanations_batch(units: List[Dict[str, Any]]) -> Dict[str, str]:
+    """여러 unit의 보류 사유를 한 번의 LLM 호출로 생성한다. 반환값은 unit_id -> explanation."""
+    if not units:
+        return {}
+    prompt = build_hold_batch_prompt(units)
+    batch: HoldBatch = create_structured(
+        system_prompt=prompt,
+        user_message="아래 업무들이 왜 배정 보류됐는지 각각 설명하라.",
+        response_model=HoldBatch,
+        max_tokens=FAST_MODEL_MAX_TOKENS,
+        temperature=_FAST_TEMPERATURE,
+        max_retries=MAX_RETRIES,
+        openai_model=FAST_MODEL,
+    )
+    return {h.unit_id: h.explanation for h in batch.items}
+
+
+@traceable(name="assignee_recommend.assignee_recommend_node")
+def assignee_recommend_node(state: Dict[str, Any]) -> Dict[str, Any]:
+    missing = [
+        k
+        for k in ("member_profiles", "current_workload", "project_start_date", "project_end_date")
+        if k not in state
+    ]
+    if missing:
+        return {"error": f"MISSING_INPUT: state{missing} — 호출부가 미리 채워야 함"}
+
+    members = state["member_profiles"]
+    current_workload = state["current_workload"]
+
+    try:
+        max_hours_per_assignee = calculate_max_hours_per_assignee(
+            state["project_start_date"], state["project_end_date"]
+        )
+    except ValueError as e:
+        return {"error": f"INVALID_INPUT: {e}"}
+    # 2026-09-11: schedule_assignments의 실제 용량 게이트는 평일 수 기준이다
+    # (rule_filter.schedule_assignments 참고 — 시간 기준 상한과 어긋나던 문제 수정).
+    total_workdays = len(list_project_workdays(state["project_start_date"], state["project_end_date"]))
+
+    requirement_doc = state.get("requirement_doc", {})
+    priority_map = _priority_by_req_id(requirement_doc)
+
+    # 1. 배정 대상 단위를 뽑아 우선순위 순으로 정렬한다 (Task별 독립 처리가 아니라
+    #    프로젝트 전체를 한 번에 순회해야 부하 누적이 순서대로 반영된다).
+    #    2026-09-11 (Phase 2 item 7): 각 unit에 WorkPackage id를 달아, 정렬·배정이
+    #    "같은 기능을 한 사람이 이어서" 처리하도록 한다.
+    #    2026-09-11 (Phase 3): 호출부(services)가 LLM 분할 판단까지 반영한
+    #    package_by_unit을 넘겨주면 그걸 쓴다. 없으면(graph.py 경로 등) 여기서 계산.
+    units = flatten_assignable_units(state.get("tasks", []))
+    package_by_unit = state.get("package_by_unit") or build_work_packages(units)["package_by_unit"]
+    for u in units:
+        u["package_id"] = package_by_unit.get(u["unit_id"])
+    units = sort_units_by_priority(units, priority_map)
+
+    # 1.5. 2026-09-11: 스킬로 이미 좁혀진 소수 후보의 경력·자격증·숙련도 "내용"을
+    #      업무 설명과 대조해 질적 적합도를 판단시킨다(코드가 개수만 세던 것 대체).
+    #      실패해도 빈 dict로 진행 — _fit_score가 개수 기반 계산으로 폴백한다.
+    try:
+        fit_scores = score_candidate_fit(units, members)
+    except Exception:
+        logger.exception("후보 질적 적합도 판단 실패 — 개수 기반으로 폴백")
+        fit_scores = {}
+
+    # 2. 코드가 전체 배정을 한 번에 확정한다 (최종 선택·용량 추적은 LLM 개입 없음).
+    scheduled = schedule_assignments(
+        units, members, current_workload, max_hours_per_assignee, total_workdays, fit_scores=fit_scores
+    )
+
+    # 2026-09-15: 배정 자체(누가 어디에 배정됐는지)는 여기서 이미 확정된다 — 아래
+    # 배치 LLM 호출은 근거 문장만 만든다. 호출부(services.py)가 진행 상황을
+    # 표시할 수 있도록, 확정 직후와 배치 진행마다 on_progress로 알려준다.
+    on_progress = state.get("on_progress")
+
+    def _progress(event: Dict[str, Any]) -> None:
+        if on_progress:
+            on_progress(event)
+
+    _progress({"type": "scheduled", "scheduled": scheduled})
+
+    # 3. 확정된 결과를 배정 성공/보류로 나눠 각각 배치로 LLM 호출한다
+    #    (유닛 1개당 1회 호출하면 OpenAI TPM 한도를 넘기 쉬워, 묶어서 호출 수를 줄인다).
+    assigned_items = [item for item in scheduled if item["employee_id"] is not None]
+    held_items = [item for item in scheduled if item["employee_id"] is None]
+
+    reasons_by_unit: Dict[str, RecommendationReason] = {}
+    holds_by_unit: Dict[str, str] = {}
+    try:
+        for batch in _chunked(assigned_items, REASON_BATCH_SIZE):
+            reasons_by_unit.update(generate_reasons_batch(batch))
+            _progress({
+                "type": "reasons_progress",
+                "done": len(reasons_by_unit),
+                "total": len(assigned_items),
+            })
+        for batch in _chunked([item["unit"] for item in held_items], HOLD_BATCH_SIZE):
+            holds_by_unit.update(generate_hold_explanations_batch(batch))
+    except ValidationError as e:
+        logger.error("A2-3 스키마 검증 실패(배치): %s", e)
+        return {"error": f"SCHEMA_VALIDATION_FAILED: {e}"}
+    except Exception as e:
+        logger.exception("A2-3 실행 중 오류(배치)")
+        return {"error": f"GENERATION_FAILED: {e}"}
+
+    # 4. 확정된 결과마다 근거 문장 또는 보류 사유를 채운다. 배치 응답에서 누락된
+    #    unit_id는 단건 호출로 보완한다(드문 경우지만 방어적으로 처리).
     assignments = []
-    for task in state.get("tasks", []):
+    for item in scheduled:
+        unit = item["unit"]
         try:
-            result = recommend_assignee(task, members)
+            if item["employee_id"] is None:
+                explanation = holds_by_unit.get(unit["unit_id"])
+                if explanation is None:
+                    logger.warning("unit_id=%s: 배치 응답에 보류 사유가 없어 단건 재호출", unit["unit_id"])
+                    explanation = generate_hold_explanation(unit).explanation
+                result = AssignmentResult(
+                    unit_id=unit["unit_id"],
+                    parent_task_id=unit["parent_task_id"],
+                    source_req_id=unit["source_req_id"],
+                    review_required=True,
+                    hold_explanation=explanation,
+                )
+                logger.warning("unit_id=%s: 조건을 만족하는 후보가 없어 보류 처리", unit["unit_id"])
+            else:
+                reason = reasons_by_unit.get(unit["unit_id"])
+                if reason is None:
+                    logger.warning("unit_id=%s: 배치 응답에 근거가 없어 단건 재호출", unit["unit_id"])
+                    reason = generate_reason(unit, item)
+                result = AssignmentResult(
+                    unit_id=unit["unit_id"],
+                    parent_task_id=unit["parent_task_id"],
+                    source_req_id=unit["source_req_id"],
+                    employee_id=item["employee_id"],
+                    score=item["score"],
+                    reason=reason,
+                    review_required=False,
+                )
         except ValidationError as e:
             logger.error("A2-3 스키마 검증 실패: %s", e)
             return {"error": f"SCHEMA_VALIDATION_FAILED: {e}"}
         except Exception as e:
             logger.exception("A2-3 실행 중 오류")
             return {"error": f"GENERATION_FAILED: {e}"}
+
         assignments.append(result.model_dump(mode="json"))
 
     return {"assignments": assignments, "error": None}

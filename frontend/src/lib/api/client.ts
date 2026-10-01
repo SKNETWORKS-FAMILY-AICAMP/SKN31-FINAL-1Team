@@ -1,4 +1,9 @@
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
+// 2026-09-17: 음성 파일 업로드 전용 — Vercel 프록시(Route Handler)는 요청 본문이 4.5MB
+// 넘으면 무조건 413로 막는 인프라 제한이 있어(코드로 못 풂), 이 요청만큼은 프록시를 안 거치고
+// 브라우저가 백엔드로 직접 보낸다. 그래서 프록시용 상대경로가 아니라 실제 백엔드 절대주소가
+// 따로 필요하다.
+const DIRECT_BACKEND_ORIGIN = process.env.NEXT_PUBLIC_BACKEND_ORIGIN ?? "http://localhost:8000";
 
 // 2026-08-31: access/refresh 토큰을 localStorage 대신 HttpOnly 쿠키로 옮겼다(XSS로 JS가
 // 토큰을 읽어갈 수 있는 경로를 막기 위함) — 그래서 이제 이 파일에서 토큰을 직접 읽거나
@@ -72,5 +77,26 @@ export async function apiFetch<T>(path: string, init: RequestInit = {}, isRetry 
   }
 
   if (response.status === 204) return undefined as T;
+  return response.json() as Promise<T>;
+}
+
+// 2026-09-17: 프록시를 안 거치고 백엔드로 직접 큰 파일을 올릴 때 쓴다(예: 음성 파일 업로드).
+// access_token은 HttpOnly 쿠키라 크로스도메인 직접 요청엔 안 실리므로, 먼저 짧게 쓸 토큰을
+// 쿠키 경로(apiFetch)로 받아와 Authorization 헤더에 실어 보낸다.
+export async function directUploadFetch<T>(path: string, body: FormData): Promise<T> {
+  const { token } = await apiFetch<{ token: string }>("/api/users/upload-token/");
+
+  const response = await fetch(`${DIRECT_BACKEND_ORIGIN}${path}`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+    body,
+  });
+
+  if (!response.ok) {
+    const errorBody = await response.json().catch(() => null);
+    const nonFieldError = Array.isArray(errorBody?.non_field_errors) ? errorBody.non_field_errors[0] : null;
+    throw new Error(errorBody?.detail ?? errorBody?.error ?? nonFieldError ?? `API 요청 실패 (${response.status})`);
+  }
+
   return response.json() as Promise<T>;
 }

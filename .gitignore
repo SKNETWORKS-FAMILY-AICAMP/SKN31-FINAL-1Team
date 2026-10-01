@@ -22,3 +22,27 @@ data/raw/
 *.tfstate.backup
 *:Zone.Identifier
 .gstack/
+.env.example
+*.tsbuildinfo
+coverage/
+.geminiignore
+backend/logs/
+ai_backup_0913/
+recovery_extra_20260913/
+eval_a1.py
+diag_eligibility.py
+diag_quotes.py
+compare_eval.py
+eval_baseline/
+.vercel
+
+# 2026-09-22: 팀원이 pull 받아 실행하는 데 필요 없는 산출물/디버그 스크립트.
+# 경로를 ai/ 밑으로 좁혀서 다른 곳의 tests/, out/ 폴더(특히 ai/tests의 실제
+# 단위 테스트 447개)까지 같이 무시되지 않게 한다.
+ai/out/
+ai/plan_document_output.json
+ai/check_node2.py
+ai/check_recall.py
+ai/test_db_meeting_to_plan.py
+ai/tests
+CLAUIDE.md

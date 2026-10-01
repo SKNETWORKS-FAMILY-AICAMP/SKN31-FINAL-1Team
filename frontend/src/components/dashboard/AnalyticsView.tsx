@@ -5,79 +5,32 @@ import {
   LineChart, Line, BarChart, Bar, AreaChart, Area, XAxis, YAxis, 
   CartesianGrid, ResponsiveContainer, PieChart, Pie, Cell, Tooltip
 } from "recharts";
-import { Loader2, TrendingUp, Users, Clock, Target, CheckCircle2, AlertTriangle, Layers } from "lucide-react";
+import { Loader2, TrendingUp, Users, Clock, Target, CheckCircle2, Layers } from "lucide-react";
 import { apiFetch } from "@/lib/api/client";
 
-type TaskDto = {
-  id: number;
-  project: number | null;
-  assigned_user_name: string | null;
-  status: string;
-  created_at: string;
-  updated_at: string;
+type ApprovalCount = { approved: number; rejected: number };
+
+type AnalyticsDto = {
+  weeklyCompletion: { date: string; count: number }[];
+  teamContribution: { name: string; done: number; inProgress: number }[];
+  averageProcessTime: number;
+  // 2026-09-15: 기획서·요구사항정의서 각각 몇 건 승인/반려됐는지 알 수 없다는
+  // 요청으로 문서 종류별로 나눠서 받는다(백엔드 dashboard/views.py 참고).
+  approvalPassRate: { proposal: ApprovalCount; requirement: ApprovalCount };
+  projectBurndown: { name: string; remaining: number }[];
 };
 
-type ProjectDto = { id: number; name: string };
-
-// 백엔드엔 통계 전용 API가 없다 — 업무 원본을 받아 화면에서 직접 집계한다. 완료 시각을 따로
-// 기록하지 않으므로 "완료 시점"은 상태가 마지막으로 바뀐 시각(updated_at)으로 근사한다.
-function buildAnalytics(tasks: TaskDto[], projects: ProjectDto[]) {
-  const days: string[] = [];
-  for (let i = 6; i >= 0; i--) {
-    const d = new Date();
-    d.setDate(d.getDate() - i);
-    days.push(d.toISOString().slice(0, 10));
-  }
-  const weeklyCompletion = days.map(date => ({
-    date: date.slice(5),
-    count: tasks.filter(t => t.status === "COMPLETED" && t.updated_at.slice(0, 10) === date).length,
-  }));
-
-  const contributionMap = new Map<string, { done: number; inProgress: number }>();
-  tasks.forEach(t => {
-    const name = t.assigned_user_name ?? "미배정";
-    const entry = contributionMap.get(name) ?? { done: 0, inProgress: 0 };
-    if (t.status === "COMPLETED") entry.done += 1;
-    if (t.status === "IN_PROGRESS") entry.inProgress += 1;
-    contributionMap.set(name, entry);
-  });
-  const teamContribution = Array.from(contributionMap.entries()).map(([name, v]) => ({ name, ...v }));
-
-  const completedTasks = tasks.filter(t => t.status === "COMPLETED");
-  const averageProcessTime = completedTasks.length
-    ? Math.round(
-        (completedTasks.reduce((sum, t) => sum + (new Date(t.updated_at).getTime() - new Date(t.created_at).getTime()), 0) /
-          completedTasks.length / 86400000) * 10
-      ) / 10
-    : 0;
-
-  const approved = tasks.filter(t => ["APPROVED", "IN_PROGRESS", "COMPLETED"].includes(t.status)).length;
-  const rejected = tasks.filter(t => t.status === "REJECTED").length;
-
-  const projectBurndown = projects.map(p => ({
-    name: p.name,
-    remaining: tasks.filter(t => t.project === p.id && ["PENDING_APPROVAL", "APPROVED", "IN_PROGRESS"].includes(t.status)).length,
-  }));
-
-  return {
-    weeklyCompletion,
-    teamContribution,
-    averageProcessTime,
-    approvalPassRate: { approved, rejected },
-    projectBurndown,
-  };
-}
-
 export default function AnalyticsPage() {
-  const [data, setData] = useState<any>(null);
+  const [data, setData] = useState<AnalyticsDto | null>(null);
   const [loading, setLoading] = useState(true);
 
+  // 예전엔 /api/tasks/assignments/ + /api/projects/ 원본을 통째로 받아 화면에서 직접
+  // 집계했다(#11 — 데이터 늘어나면 느려짐, 팀원 요청으로 백엔드에 집계 API 추가됨).
+  // 지금은 백엔드가 같은 모양(weeklyCompletion/teamContribution/... 필드명까지 동일)
+  // 으로 미리 집계해서 내려주므로 그대로 받아서 쓴다.
   useEffect(() => {
-    Promise.all([
-      apiFetch<TaskDto[]>("/api/tasks/assignments/"),
-      apiFetch<ProjectDto[]>("/api/projects/"),
-    ])
-      .then(([tasks, projects]) => setData(buildAnalytics(tasks, projects)))
+    apiFetch<AnalyticsDto>("/api/dashboard/analytics/")
+      .then(setData)
       .catch(console.error)
       .finally(() => setLoading(false));
   }, []);
@@ -90,18 +43,25 @@ export default function AnalyticsPage() {
     approvalPassRate, projectBurndown
   } = data;
 
-  const pieData = [
-    { name: "승인 통과", value: approvalPassRate.approved, color: "#10b981" },
-    { name: "반려/수정", value: approvalPassRate.rejected, color: "#f43f5e" }
+  const proposalPieData = [
+    { name: "승인 통과", value: approvalPassRate.proposal.approved, color: "#10b981" },
+    { name: "반려/수정", value: approvalPassRate.proposal.rejected, color: "#f43f5e" }
   ];
+  const requirementPieData = [
+    { name: "승인 통과", value: approvalPassRate.requirement.approved, color: "#10b981" },
+    { name: "반려/수정", value: approvalPassRate.requirement.rejected, color: "#f43f5e" }
+  ];
+  const passRatePercent = (c: ApprovalCount) =>
+    c.approved + c.rejected === 0 ? 0 : Math.round((c.approved / (c.approved + c.rejected)) * 100);
 
   return (
     <div className="max-w-7xl mx-auto space-y-6 animate-in fade-in duration-500">
       
 
 
-      {/* Top 3 KPI Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      {/* Top KPI Cards — 2026-09-15: 승인 통과율 카드 하나로 뭉쳐 보이던 걸
+          기획서/요구사항정의서 두 카드로 나눴다(사용자 요청). */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
         <div className="glass p-6 rounded-xl flex items-center gap-4">
           <div className="w-12 h-12 bg-blue-500/20 text-blue-500 rounded-full flex items-center justify-center">
             <CheckCircle2 className="w-6 h-6" />
@@ -111,7 +71,7 @@ export default function AnalyticsPage() {
             <h2 className="text-3xl font-bold">{weeklyCompletion.reduce((a:any, b:any) => a + b.count, 0)}<span className="text-sm font-normal text-muted-foreground ml-1">건</span></h2>
           </div>
         </div>
-        
+
         <div className="glass p-6 rounded-xl flex items-center gap-4">
           <div className="w-12 h-12 bg-orange-500/20 text-orange-500 rounded-full flex items-center justify-center">
             <Clock className="w-6 h-6" />
@@ -127,11 +87,21 @@ export default function AnalyticsPage() {
             <Target className="w-6 h-6" />
           </div>
           <div>
-            <p className="text-sm text-muted-foreground font-medium">승인 통과율</p>
+            <p className="text-sm text-muted-foreground font-medium">기획서 승인 통과율</p>
             <h2 className="text-3xl font-bold">
-              {approvalPassRate.approved + approvalPassRate.rejected === 0 
-                ? 0 
-                : Math.round((approvalPassRate.approved / (approvalPassRate.approved + approvalPassRate.rejected)) * 100)}<span className="text-sm font-normal text-muted-foreground ml-1">%</span>
+              {passRatePercent(approvalPassRate.proposal)}<span className="text-sm font-normal text-muted-foreground ml-1">%</span>
+            </h2>
+          </div>
+        </div>
+
+        <div className="glass p-6 rounded-xl flex items-center gap-4">
+          <div className="w-12 h-12 bg-teal-500/20 text-teal-500 rounded-full flex items-center justify-center">
+            <Target className="w-6 h-6" />
+          </div>
+          <div>
+            <p className="text-sm text-muted-foreground font-medium">요구사항정의서 승인 통과율</p>
+            <h2 className="text-3xl font-bold">
+              {passRatePercent(approvalPassRate.requirement)}<span className="text-sm font-normal text-muted-foreground ml-1">%</span>
             </h2>
           </div>
         </div>
@@ -175,35 +145,11 @@ export default function AnalyticsPage() {
           </div>
         </div>
 
-        {/* 4. Approval Pass Rate */}
-        <div className="glass p-6 rounded-xl">
-          <h3 className="font-bold mb-4 flex items-center gap-2">
-            <CheckCircle2 className="w-5 h-5 text-emerald-500" /> 승인 통과율
-          </h3>
-          <div className="flex items-center h-[250px]">
-            <ResponsiveContainer width="50%" height="100%">
-              <PieChart>
-                <Pie data={pieData} innerRadius={60} outerRadius={80} paddingAngle={5} dataKey="value">
-                  {pieData.map((entry, index) => <Cell key={`cell-${index}`} fill={entry.color} />)}
-                </Pie>
-                <Tooltip contentStyle={{ background: "rgba(0,0,0,0.85)", border: "none", borderRadius: "8px", color: "#fff" }} />
-              </PieChart>
-            </ResponsiveContainer>
-            <div className="w-1/2 space-y-4">
-              {pieData.map(d => (
-                <div key={d.name}>
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="text-sm font-medium flex items-center gap-2">
-                      <span className="w-3 h-3 rounded-full" style={{ backgroundColor: d.color }}/>
-                      {d.name}
-                    </span>
-                    <span className="font-bold text-sm">{d.value}건</span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
+        {/* 4-5. Approval Pass Rate — 2026-09-15: 기획서/요구사항정의서를 하나로
+            뭉쳐 보여주면 "대체 몇 건을 승인/반려했는지" 알 수 없다는 요청으로
+            문서 종류별 카드 두 개로 나눴다. */}
+        <ApprovalPieCard title="기획서 승인 통과율" pieData={proposalPieData} />
+        <ApprovalPieCard title="요구사항정의서 승인 통과율" pieData={requirementPieData} />
 
         {/* 6. Project Burndown (Remaining vs Completed) */}
         <div className="glass p-6 rounded-xl">
@@ -224,6 +170,58 @@ export default function AnalyticsPage() {
         </div>
 
       </div>
+    </div>
+  );
+}
+
+// 2026-09-15: 기획서/요구사항정의서 승인 통과율 카드를 분리하면서 중복되는
+// 파이차트+범례 마크업을 재사용하기 위해 뽑아냈다.
+function ApprovalPieCard({ title, pieData }: { title: string; pieData: { name: string; value: number; color: string }[] }) {
+  const total = pieData.reduce((sum, d) => sum + d.value, 0);
+  return (
+    <div className="glass p-6 rounded-xl">
+      <h3 className="font-bold mb-4 flex items-center gap-2">
+        <CheckCircle2 className="w-5 h-5 text-emerald-500" /> {title}
+      </h3>
+      {total === 0 ? (
+        <p className="text-sm text-muted-foreground text-center py-16">아직 승인/반려된 건이 없습니다.</p>
+      ) : (
+        <div className="flex items-center h-[250px]">
+          {/* 2026-09-15: "토탈 몇 건"도 한눈에 보이게 도넛 가운데에 총 건수를
+              겹쳐 표시한다(사용자 요청). */}
+          <div className="relative w-1/2 h-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <PieChart>
+                <Pie data={pieData} innerRadius={60} outerRadius={80} paddingAngle={5} dataKey="value">
+                  {pieData.map((entry, index) => <Cell key={`cell-${index}`} fill={entry.color} />)}
+                </Pie>
+                <Tooltip contentStyle={{ background: "rgba(0,0,0,0.85)", border: "none", borderRadius: "8px", color: "#fff" }} />
+              </PieChart>
+            </ResponsiveContainer>
+            <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+              <span className="text-2xl font-bold">{total}</span>
+              <span className="text-xs text-muted-foreground">총 건수</span>
+            </div>
+          </div>
+          <div className="w-1/2 space-y-4">
+            {pieData.map(d => (
+              <div key={d.name}>
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-sm font-medium flex items-center gap-2">
+                    <span className="w-3 h-3 rounded-full" style={{ backgroundColor: d.color }}/>
+                    {d.name}
+                  </span>
+                  <span className="font-bold text-sm">{d.value}건</span>
+                </div>
+              </div>
+            ))}
+            <div className="flex items-center justify-between pt-3 mt-1 border-t border-border">
+              <span className="text-sm font-semibold">총</span>
+              <span className="font-bold text-sm">{total}건</span>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

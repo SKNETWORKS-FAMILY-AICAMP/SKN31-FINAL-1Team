@@ -1,4 +1,5 @@
 #meetings/models.py
+import uuid
 from django.db import models
 from django.conf import settings
 from common.models import CommonCode
@@ -65,6 +66,11 @@ class SpecDocument(models.Model):
     회의록을 바탕으로 생성되는 기획서
     """
     spec_id = models.AutoField(primary_key=True, verbose_name="기획서 ID")
+    version = models.PositiveIntegerField(default=1, verbose_name="기획서 버전")
+    parent_spec = models.ForeignKey(
+        'self', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='revisions', verbose_name="이전 기획서 버전",
+    )
     meeting = models.ForeignKey(
         MeetingNote,
         on_delete=models.CASCADE,
@@ -79,18 +85,58 @@ class SpecDocument(models.Model):
     # 팀 결정: 7개 섹션 전부 자유 텍스트(한 덩어리)로 관리 — 4/5/7번(주요기능/시나리오/결정사항)도
     # 카드·리스트로 행 단위 저장하지 않고 줄바꿈으로 구분된 하나의 텍스트로 둔다.
     overview = models.TextField(null=True, blank=True, verbose_name="1. 프로젝트 개요")
-    problem_definition = models.TextField(null=True, blank=True, verbose_name="2. 문제 정의")
-    target_users = models.TextField(null=True, blank=True, verbose_name="3. 대상 사용자")
-    key_features = models.TextField(null=True, blank=True, verbose_name="4. 주요 기능")
+    problem_definition = models.TextField(null=True, blank=True, verbose_name="2. 핵심 목표")
+    target_users = models.TextField(null=True, blank=True, verbose_name="4. 대상 사용자")
+    key_features = models.TextField(null=True, blank=True, verbose_name="5. 주요 기능")
+    goals = models.TextField(null=True, blank=True, verbose_name="3. 세부 목표 및 문제 정의")
+    # 기존 시나리오는 보존하며 목표로 변환하지 않습니다.
     user_scenarios = models.TextField(null=True, blank=True, verbose_name="5. 사용자 시나리오")
     tech_stack = models.TextField(null=True, blank=True, verbose_name="6. 기술 스택 및 제약사항")
     final_decisions = models.TextField(null=True, blank=True, verbose_name="7. 최종 결정사항")
+
+    # 2026-09-07: 기획서 7개 섹션 각각에 대한 근거 문장을 모아둔 데이터.
+    # 프론트가 "근거 보기" 토글을 켰을 때만 읽어서 보여주고, 기본(깔끔한) 뷰에서는
+    # 이 컬럼을 조회하지 않는다.
+    evidence_data = models.TextField(
+        null=True, blank=True,
+        verbose_name="섹션별 근거 데이터",
+    )
+
+    # 2026-09-18: 회의록 전체원문 근거연동 UI(원문 보기 패널) 준비용.
+    # evidence_data는 섹션 하나당 인용문을 줄바꿈으로 합친 문자열 하나뿐이라,
+    # "이 항목 하나 → 이 인용문"처럼 항목 단위로 연결할 수가 없었다. 이 필드는
+    # 같은 데이터를 항목 단위 JSON으로도 담아, 프론트가 나중에 "원문 보기"
+    # 버튼 하나당 정확히 어느 인용문(들)을 강조할지 찾아갈 수 있게 한다.
+    # evidence_data는 기존 화면이 그대로 쓰므로 손대지 않고 이 필드를 새로
+    # 추가만 한다 — 필드 형태는 meetings/services.py의
+    # _build_evidence_items() 주석 참고.
+    evidence_items = models.TextField(
+        null=True, blank=True,
+        verbose_name="항목 단위 근거 데이터 (원문 보기용)",
+    )
 
     # 2026-09-01: 회의록 원문에 "프로젝트 기간: YYYY-MM-DD ~ YYYY-MM-DD"처럼 명시된 경우 AI 분석
     # 시점에 정규식으로 추출해 자동으로 채운다(views.py MeetingNoteAnalyzeView). 원문에 없으면
     # null로 두고 화면(ProposalTemplate)에서 직접 입력하게 한다 — 지어내지 않는다는 원칙 유지.
     period_start = models.DateField(null=True, blank=True, verbose_name="프로젝트 시작일")
     period_end = models.DateField(null=True, blank=True, verbose_name="프로젝트 종료일")
+
+    def save(self, *args, **kwargs):
+        # 1. SpecDocument 자체 저장
+        super().save(*args, **kwargs)
+
+        # 2. 관련 프로젝트(Project)가 연결되어 있는 경우, Project DB로 period_start/end 값 업데이트
+        # (SpecDocument -> MeetingNote -> Project 관계 추적)
+        project = None
+        if hasattr(self, 'project') and self.project:
+            project = self.project
+        elif self.meeting and getattr(self.meeting, 'project', None):
+            project = self.meeting.project
+
+        if project:
+            project.period_start = self.period_start
+            project.period_end = self.period_end
+            project.save(update_fields=['period_start', 'period_end'])
 
     # background/target_scope: 이 7섹션 템플릿 이전에 쓰이던 필드 — 새 화면에서는 안 쓰지만
     # 기존 데이터 호환을 위해 그대로 남겨둔다.
@@ -129,3 +175,50 @@ class SpecDocument(models.Model):
 
     def __str__(self):
         return f"[{self.spec_id}] {self.title}"
+
+
+class MeetingAnalysisJob(models.Model):
+    """
+    "기획서 생성"(회의록 AI 분석 → 기획서 초안 생성)이 순차 LLM 호출 2번(노드①
+    회의록 분석, 노드② 기획서 초안 생성 — 노드①만 실측 ~100초)이라 동기 요청으로
+    두면 사용자가 화면을 몇 분씩 붙잡고 있어야 한다. tasks.TaskGenerationJob과
+    동일한 패턴(백그라운드 스레드 + 진행 단계 폴링)을 그대로 따른다 — 이 프로젝트에
+    아직 Celery/Redis 같은 워커 인프라가 없어(2026-09-14 확인) threading.Thread로
+    가볍게 구현했다. 운영에서 워커가 여러 개거나 재시작되면 실행 중이던 스레드가
+    유실될 수 있는 한계는 TaskGenerationJob과 동일하게 감수한다.
+    """
+    STATUS_PENDING = "PENDING"
+    STATUS_RUNNING = "RUNNING"
+    STATUS_SUCCESS = "SUCCESS"
+    STATUS_ERROR = "ERROR"
+    STATUS_CHOICES = [
+        (STATUS_PENDING, "대기"),
+        (STATUS_RUNNING, "진행 중"),
+        (STATUS_SUCCESS, "완료"),
+        (STATUS_ERROR, "실패"),
+    ]
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    note = models.ForeignKey(
+        MeetingNote, on_delete=models.CASCADE,
+        related_name='analysis_jobs', verbose_name="대상 회의록",
+    )
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True,
+        related_name='meeting_analysis_jobs', verbose_name="실행자",
+    )
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default=STATUS_PENDING, verbose_name="상태")
+    stage = models.CharField(max_length=100, default="", blank=True, verbose_name="현재 진행 단계(사람이 읽는 라벨)")
+    result = models.JSONField(null=True, blank=True, verbose_name="성공 시 결과(MeetingNoteAnalyzeView 응답과 동일)")
+    error_message = models.TextField(null=True, blank=True, verbose_name="실패 시 오류 메시지")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "meeting_analysis_job"
+        verbose_name = "기획서 생성 실행 작업"
+        verbose_name_plural = "기획서 생성 실행 작업 목록"
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"[{self.status}] note={self.note_id} ({self.stage})"

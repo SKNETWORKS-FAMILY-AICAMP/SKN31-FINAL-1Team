@@ -1,348 +1,215 @@
-# 개발부서 업무 대시보드 백엔드 개발 및 프로젝트 진행
+# 개발부서 업무 대시보드 백엔드 — 현재 구현 기준 문서
 
-본 문서는 개발부서 사원을 위한 **회의록 작성 자동화 - 기획서 작성 자동화 - 요구사항 정의서 작성 자동화 - 업무 배분 자동화** 시스템의 백엔드 개발 및 전체 프로젝트 진행 방법을 단계별로 정리한 문서입니다.
-
----
-
-## 1. 시스템 아키텍처 및 데이터 흐름 설계
-
-팀장의 승인/검토 단계(Human-in-the-loop)를 거쳐 다음 파이프라인 API가 체인 형태로 호출되는 구조입니다. 데이터의 일관성과 작업 상태 관리를 위한 비동기 파이프라인과 상태 머신(State Machine) 설계가 핵심입니다.
+> 이 문서는 최초 설계안이 아니라 **2026-09-18 기준 실제 코드(models/views/urls)를 스캔해 재작성**한 현황 문서입니다.
+> "회의록 작성 → 기획서 생성 → 요구사항정의서 생성 → 업무 자동배분"이라는 큰 골격은 초기 설계와 같지만,
+> 상태값 체계·문서 버전관리·AI 품질감사·업무 배정 세부 모듈·비동기 처리 방식은 초기안과 다르게 구현되어 있습니다.
 
 ---
-### * 전체 아키텍처
+
+## 1. 시스템 아키텍처 및 데이터 흐름
+
 ```mermaid
 flowchart TB
   subgraph Client ["Frontend (Client Tier)"]
-      ReactUI["React Single Page App<br/>(Dashboard / Pipeline Forms)"]
+      ReactUI["React SPA<br/>(Dashboard / Pipeline Forms)"]
       SwaggerUI["Swagger UI / ReDoc<br/>(/api/docs/swagger/)"]
   end
 
   subgraph Backend ["Backend (Django / DRF Tier)"]
-      Router["DRF ViewSets & Routers"]
-      AuthModule["JWT Authentication"]
-      DocsEngine["drf-spectacular<br/>(OpenAPI 3.0 Schema Engine)"]
-      
-      subgraph BusinessLogic ["Core Application Logic"]
-          MeetingService["1단계: Meeting Note Module"]
-          SpecService["1-2단계: Spec Document Module"]
-          ReqService["2단계: Requirement Definition Module"]
-          TaskService["3단계: AI Task Assignment Module"]
-          HistoryService["Pipeline History Logger"]
-          CommonService["Common Code & User Management"]
+      Router["DRF APIView & Serializers"]
+      AuthModule["JWT 인증(HttpOnly 쿠키) + is_staff/PM 그룹 기반 권한"]
+      DocsEngine["drf-spectacular (OpenAPI 3.0)"]
+
+      subgraph BusinessLogic ["Core Application Logic (8개 앱)"]
+          CommonSvc["common: 공통코드"]
+          UserSvc["users: 사용자/스킬/자격증"]
+          ProjectSvc["projects: 프로젝트/파이프라인 이력"]
+          MeetingSvc["meetings: 회의록/기획서/AI 품질감사"]
+          ReqSvc["requirements: 요구사항정의서/AI 품질감사"]
+          TaskSvc["tasks: 업무배정/Git연동/진행률"]
+          NotifSvc["notifications: 인앱 알림"]
+          DashSvc["dashboard: 집계·통계"]
       end
   end
 
-  subgraph AI_Engine ["AI Agent Tier"]
-      LLM_Agent["LLM Processing Engine<br/>(Spec Parser & Req Extractor & Task Auto-Assign)"]
+  subgraph AI_Engine ["AI Agent Tier (ai/, 13개 모듈)"]
+      LLM_Agent["회의록 분석 · 기획서/요구사항 초안 · AI 품질감사<br/>· 업무 생성 · 담당자 매핑/추천 (Instructor+OpenAI)"]
+      Scheduler["결정적 코드: scheduler / team_sizing / work_package<br/>(배정·일정은 LLM이 아니라 코드가 확정)"]
   end
 
   subgraph DataTier ["Data Tier"]
-      DB[(Relational DB<br/>SQLite / PostgreSQL)]
+      DB[(SQLite, MySQL 전환 예정)]
+      JobTables[("*Job 테이블 (진행상태 폴링용)")]
   end
 
-  %% Interactions
-  ReactUI -->|"HTTP / REST API (JWT Header)"| Router
-  SwaggerUI -->|"OpenAPI Schema Fetch (/api/schema/)"| DocsEngine
-  DocsEngine -.-> Router
+  ReactUI -->|"HTTP / REST (JWT 쿠키)"| Router
+  SwaggerUI -->|"OpenAPI Schema"| DocsEngine
+  Router --> AuthModule --> BusinessLogic
 
-  Router --> AuthModule
-  AuthModule --> BusinessLogic
+  MeetingSvc -->|"AI 분석/생성 호출"| LLM_Agent
+  ReqSvc -->|"AI 추출/생성 호출"| LLM_Agent
+  TaskSvc -->|"AI 배정 호출"| LLM_Agent
+  LLM_Agent --> Scheduler
+  LLM_Agent -->|"구조화 결과(JSON)"| BusinessLogic
 
-  %% Multi-Stage AI Pipeline Execution Steps
-  MeetingService -->|"1. Raw Notes / Minutes"| SpecService
-  SpecService -->|"2. AI Spec Generation"| LLM_Agent
-  ReqService -->|"3. AI Requirement Extraction"| LLM_Agent
-  TaskService -->|"4. AI Auto-Assignment (is_busy Check)"| LLM_Agent
+  MeetingSvc -.->|"장시간 작업은 스레드+Job으로"| JobTables
+  ReqSvc -.-> JobTables
+  TaskSvc -.-> JobTables
 
-  LLM_Agent -->|"5. Structured JSON Response"| BusinessLogic
-
-  %% Pipeline History Logging
-  SpecService -.->|"Log Event"| HistoryService
-  ReqService -.->|"Log Event"| HistoryService
-  TaskService -.->|"Log Event"| HistoryService
-
-  %% Data Persistence
-  MeetingService --> DB
-  SpecService --> DB
-  ReqService --> DB
-  TaskService --> DB
-  HistoryService --> DB
-  CommonService --> DB 
+  BusinessLogic --> DB
+  TaskSvc -.->|"검토요청/승인/반려 발생 시"| NotifSvc
+  BusinessLogic -.->|"단계 완료마다"| ProjectSvc
 ```
 
-### * 시스템 계층별 주요 역할 명세
-
-### 1. Frontend (React)
-* **API 연동 & JWT 처리**: REST API 호출 시 `Authorization: Bearer <token>` 헤더를 포함하여 요청을 전송하며, Swagger UI(`http://127.0.0.1:8000/api/docs/swagger/`)를 통한 API 규격 확인 및 대화형 테스트를 지원합니다.
-* **사용자 권한별 인터페이스 제공**: 일반 회원(`MEMBER`)과 팀장(`LEADER`) 권한에 맞춰 버튼 활성화 및 주요 액션(검토 요청, 검토 완료, 최종 승인)을 제어합니다.
-* **수동 조정 UI**: AI가 자동 배정한 업무 담당자를 팀장이 직접 변경할 수 있는 수동 조정 인터페이스(개발자 목록 드롭다운)를 제공하고 변경 API를 호출합니다.
-
-### 2. Backend (Django REST Framework)
-* **ViewSets & Serializers**: 엔드포인트 라우팅, 요청/응답 데이터 검증 및 `drf-spectacular` 기반 OpenAPI 3.0 스키마/Swagger UI 문서화를 제공합니다.
-* **비즈니스 로직 및 트랜잭션 관리**: 파이프라인 단계별 상태 변경을 처리하며, `transaction.atomic()`을 적용해 LLM 연동, 데이터 저장, `PipelineHistory` 타임라인 이력 기록 간의 데이터 일관성을 보장합니다.
-* **권한 검증 및 개발자 상태 관리**: 요청자 역할(팀장/팀원)을 검증하여 팀장 전용 기능 접근을 제어하고, 업무 배정 및 완료 시 개발자의 작업 가능 상태(`is_busy`)를 자동으로 갱신합니다.
-
-### 3. AI Agent Tier
-* **기획서 자동 생성 모듈**: 회의록(`MeetingNote`) 데이터를 분석하여 구조화된 기획서(`SpecDocument`) 본문 및 요약을 자동 생성합니다.
-* **요구사항 추출 모듈**: 검토 완료된 기획서를 파싱하여 REQ 코드별 세부 요구사항 항목(`RequirementItem`)을 추출합니다.
-* **업무 자동 배정 모듈**: 요구사항 항목 분석 후, 가용 상태(`is_busy=False`)인 개발자의 스킬셋을 고려하여 업무(`TaskAssignment`)를 자동 추천 및 배정합니다.
-
-### 4. Data Tier (SQLite / PostgreSQL)
-* **데이터 영속성 관리**: 회의록, 기획서, 요구사항, 업무 배정, 사용자, 공통코드(`CommonCode`), 파이프라인 이력(`PipelineHistory`) 데이터를 저장하고 관리합니다.
-* **파이프라인 상태 흐름 보장**: `status` 필드를 통해 각 엔티티의 상태 변화(`DRAFT` → `PROCESSING` → `REVIEWED` 및 `PENDING_APPROVAL` → `APPROVED` → `COMPLETED`)를 정밀하게 추적합니다.
-
-## 2. 백엔드 개발 단계별 진행
-
-### 1단계: DB 스키마 설계 및 엔티티 구축
-파이프라인 간 데이터 연동과 사원 상태 관리를 위한 데이터베이스 구조를 정의합니다.(임시)
-
-* **User (사원/팀장 테이블)**
-  * `id`, `user_id`, `username`, `email`
-  * `role` (`LEADER` / `MEMBER`)
-  * `is_busy` (BOOLEAN: 현재 작업 수행 중 여부)
-
-* **MeetingNote (회의록 테이블)**
-  * `id`, `title`, `content`
-  * `created_by` (FK -> User), `created_at`, `updated_at`
-
-* **SpecDocument (기획서 테이블)**
-  * `id`, `meeting_id` (FK -> MeetingNote)
-  * `title`, `summary`, `file_path`
-  * `status` (`DRAFT`, `PENDING_REVIEW`, `REVIEWED`)
-  * `created_at`
-
-* **RequirementDefinition (요구사항정의서 테이블 - 신규 추가)**
-  * `id`, `spec_id` (1:1 FK -> SpecDocument)
-  * `title`, `status` (`GENERATING`, `COMPLETED`, `REVIEWED`)
-  * `created_at`
-
-* **RequirementItem (세부 요구사항 항목 테이블 - 신규 추가)**
-  * `id`, `definition_id` (FK -> RequirementDefinition)
-  * `code` (예: `REQ-FUN-001`)
-  * `category` (`FUNCTIONAL` / `NON_FUNCTIONAL`)
-  * `name`, `description`, `priority` (`HIGH`, `MEDIUM`, `LOW`)
-
-* **TaskAssignment (업무 배분 테이블)**
-  * `id`, `requirement_item_id` (FK -> RequirementItem)
-  * `assigned_user` (FK -> User, Nullable - 수동 변경 지원)
-  * `task_title`, `task_description`
-  * `status` (`PENDING_APPROVAL`, `APPROVED`)
-  * `created_at`
----
-### 2단계: 핵심 API 파이프라인 개발 명세
-
-### 1. API 파이프라인 흐름 표
-
-| 순서 | 주체 | 화면 동작 / 이벤트 | 호출 API | 주요 처리 내용 |
-| :--- | :--- | :--- | :--- | :--- |
-| **1** | Member, Leader | 회의록 작성 | `POST /api/v1/meetings/` | 회의록 DB 저장 (`DRAFT` 상태) |
-| **2** | Member, Leader | '기획서 생성' 버튼 클릭 | `POST /api/v1/meetings/{id}/specs/generate/` | LLM Agent 호출 ➔ `SpecDocument` 자동 생성 |
-| **3** | Member, Leader | 기획서 화면 확인/검토 | `GET /api/v1/meetings/specs/{id}/` | 생성된 기획서 데이터 조회 |
-| **4** | Member | '기획서 검토 요청' 버튼 클릭 | `PATCH /api/v1/meetings/specs/{id}/request-review/` | 기획서 상태를 `PENDING_REVIEW`로 변경 |
-| **5** | Member, Leader | 기획서 화면 확인/검토 | `GET /api/v1/meetings/specs/{id}/` | 검토 요청된 기획서 상세 조회 |
-| **6** | Leader | '기획서 검토완료' 버튼 클릭 | `POST /api/v1/meetings/specs/{id}/review-complete/` | 기획서 상태를 `REVIEWED`로 변경 |
-| **7** | Member, Leader | '요구사항정의서 생성' 버튼 클릭 | `POST /api/v1/requirements/extract/` | LLM Agent 호출 ➔ `RequirementDefinition` 및 `Item` 생성 |
-| **8** | Member, Leader | 요구사항정의서 화면 확인/검토 | `GET /api/v1/requirements/{id}/` | 추출된 기능/비기능 요구사항 목록 조회 |
-| **9** | Leader | '업무배분' 버튼 클릭 | `POST /api/v1/tasks/auto-assign/` | `RequirementItem` 기반으로 `PENDING_APPROVAL` 상태의 Task 자동 생성 |
-| **10** | Member, Leader | 업무 배정 목록 확인/검토 | `GET /api/v1/tasks/assignments/?status=PENDING_APPROVAL` | 승인 대기 중인 업무 배정 목록 조회 |
-| **11** | Leader | 담당자 변경 (드롭다운) | `PATCH /api/v1/tasks/assignments/{id}/` | 특정 Task의 `assigned_user` 필드 수동 수정 |
-| **12** | Leader | '업무 배정 최종 승인' 버튼 클릭 | `POST /api/v1/tasks/approve-all/` | Task 상태 `APPROVED` 변경, 담당자 `is_busy=True` 업데이트 및 `PipelineHistory` 이력 생성 |
+**초기 설계와 달라진 핵심 지점**
+- 오케스트레이션은 LangGraph가 아니라 **Django 서비스 레이어의 직접 함수 호출**이다. `ai/graph.py`(LangGraph `StateGraph`)는 실제로는 어디서도 호출되지 않고 import 경로도 깨져 있던 죽은 코드였다(2026-09-18 삭제).
+- "비동기 워커(Celery/Redis)"로 설계했으나, **이 프로젝트에 Celery/Redis 인프라가 없다**(requirements.txt에 패키지만 있고 실제 워커 설정 없음). 대신 `threading.Thread` + `*Job` 테이블(상태/진행단계 기록) + 프론트 폴링으로 임시 구현되어 있다.
+- 기획서·요구사항정의서 생성 후 사람이 승인/반려하는 흐름 외에, **PM이 별도로 트리거하는 "AI 품질감사" 루프**(검토 리포트 생성 → 점수/재작성안 확인 → 선택 적용 → 새 버전 생성)가 추가되어 있다.
 
 ---
 
-### 2. 단계별 핵심 구현 포인트
+## 2. 앱 구조 (8개, 초기 설계엔 6개만 있었음)
 
-#### 1. 요구사항정의서 Agent 연동 (7번 단계)
-* **LLM 파싱**: 검토 완료(`REVIEWED`)된 기획서(`SpecDocument`) 본문을 파싱하여 개별 기능/비기능 요구사항(`RequirementItem`) 객체로 분형화 및 생성합니다.
-* **독립 실행**: 기획서 검토 완료 후 팀장 또는 팀원이 직접 '요구사항정의서 생성' 버튼을 누를 때 독립된 API로 구동됩니다.
-
-#### 2. 업무 자동 배분: 임시 상태 생성 (9번 단계)
-* `POST /api/v1/tasks/auto-assign/` 호출 시 생성되는 모든 `TaskAssignment` 레코드는 **`status = 'PENDING_APPROVAL'`** 상태로 DB에 저장됩니다.
-* 이 시점에는 **자동 승인이 이루어지지 않으며**, 담당 사원의 `is_busy` 상태를 변경하거나 알림을 전송하지 않고 임시 배정 상태만 유지합니다.
-
-#### 3. 팀장의 담당자 수동 조정 권한 (11번 단계)
-* 프론트엔드에서 팀장은 승인 대기 중인 Task의 담당자 이름을 클릭하여 팀원 목록(드롭다운) 중 원하는 담당자로 변경할 수 있습니다.
-* 백엔드는 `PATCH /api/v1/tasks/assignments/{id}/` 요청을 받아 `{ "assigned_user": user_id }` 필드만 부분 업데이트 처리합니다.
-
-#### 4. 최종 승인 및 상태 업데이트 (12번 단계)
-* 팀장이 '업무 배정 최종 승인' 버튼을 누르면 `POST /api/v1/tasks/approve-all/`이 실행됩니다.
-* **트랜잭션(`transaction.atomic`) 보장**:
-  1. `PENDING_APPROVAL` 상태인 대상 Task들을 일괄 **`APPROVED`** 로 변경합니다.
-  2. 최종 할당된 담당 사원들의 상태를 **`is_busy = True`** 로 업데이트합니다.
-  3. `projects.PipelineHistory` 테이블에 업무 배정 완료 이력(`TASK_ASSIGNED`)을 기록합니다.
-  4. 담당 사원들에게 개별 **알림(Notification)** 을 발송합니다.
-
----
-
-## 3. 전체 프로젝트 단계별 진행 로드맵
-
-### 1단계: 개발 환경 구성 및 DB 스키마/인증 구축
-* **DRF & JWT 설정**: Django REST Framework 환경 구축 및 JWT 기반 사용자 인증/권한 체계 적용.
-   - Django는 화면을 전혀 만들지 않고 순수 데이터(JSON)만 제공하며, 화면(UI)은 React(Frontend)가 전담하여 그리는 탈중앙화(Decoupled) 구조.
-* **DB 모델링**: 데이터 모델 구축 (`User`, `MeetingNote`, `SpecDocument`, `RequirementDefinition`, `RequirementItem`, `TaskAssignment`).
-* **API 문서화**: `drf-spectacular`를 활용한 OpenAPI 3.0 기반 Swagger UI 자동화 설정.
-
-### 2단계: 문서 자동화 AI 파이프라인 구현 (기획서 & 요구사항정의서)
-* **회의록 & 기획서 생성**: 회의록 CRUD 및 LLM Agent 연동을 통한 기획서 자동 생성 API (`POST /api/v1/specs/generate/`).
-* **기획서 검토 워크플로우**: 기획서 검토 요청 (`PATCH /api/v1/specs/{id}/request-review/`) 및 팀장 검토 완료 (`POST /api/v1/specs/{id}/review-complete/`) 로직 작성.
-* **요구사항정의서 생성 Agent**: 검토 완료된 기획서 파싱 ➔ 기능/비기능 요구사항(`RequirementItem`) 자동 추출 및 DB 저장 API (`POST /api/v1/requirements/generate/`).
-
-### 3단계: 업무 자동 배분 및 수동 조정/승인 로직 구현
-* **임시 업무 배분 생성**: `RequirementItem` 기반 업무 자동 분할 ➔ 승인 대기 (`PENDING_APPROVAL`) 상태의 Task 생성 API (`POST /api/v1/tasks/auto-assign/`).
-* **팀장 담당자 수동 조정**: 팀장에 의한 특정 Task 담당자 변경 부분 업데이트 API (`PATCH /api/v1/tasks/{id}/`).
-* **최종 승인 및 트랜잭션 처리**: `transaction.atomic()` 기반의 일괄 승인 API (`POST /api/v1/tasks/approve-all/`) ➔ Task 상태 `APPROVED` 변경, 사원 `is_busy=True` 전환, 알림 서비스 연동.
-
-### 4단계: React 프론트엔드 연동 및 대시보드 UI 개발
-* **1 화면 (회의록)**: 회의록 작성/수정 UI 및 `[기획서 생성]` 버튼 연동.
-* **2 화면 (기획서)**: 생성된 기획서 확인, `[기획서 검토 요청]` (Member), `[기획서 검토 완료]` (Leader) 버튼 연동.
-* **3 화면 (요구사항정의서)**: `[요구사항정의서 생성]` 버튼 연동 및 추출된 기능/비기능 요구사항 목록 표(Table) UI 구현.
-* **4 화면 (업무 배분)**: `[업무배분]` 버튼 연동, 승인 대기 목록 UI, 담당자 변경 드롭다운 UI, `[업무 배정 최종 승인]` 버튼 연동.
-
-### 5단계: 파이프라인 예외 처리 및 통합 E2E 테스트
-* **AI Agent 예외 처리**: LLM 응답 지연, 파싱 실패 시 예외 처리 및 데이터 복구 로직 강화.
-* **리소스 부재 예외 처리**: 작업 가능 사원(`is_busy=False`) 미존재 시 경고 메시지 및 예외 처리.
-* **통합 E2E 테스트**: 회의록 작성부터 최종 업무 승인 및 알림 발송까지의 전체 자동화 파이프라인 E2E 검증.
-
----
-
-## 4. 핵심 고려 사항
-
-1. **비동기 작업 처리 (Async Task & AI Overhead)**
-   * 회의록 $\rightarrow$ 기획서 생성 및 기획서 $\rightarrow$ 요구사항정의서 파싱 과정에서 LLM API 호출에 따른 지연시간(Latency)이 발생합니다.
-   * Celery/Redis 기반 비동기 워커를 활용하여 HTTP 요청 블로킹을 방지하고, DB 상태 값(`GENERATING` $\rightarrow$ `COMPLETED`) 업데이트를 통해 프론트엔드에서 Polling 처리할 수 있도록 설계합니다.
-
-2. **사원 상태 관리 및 예외 처리 (Busy Check & Allocation Rules)**
-   * `is_busy=False`인 작업 가능 사원을 DB Query 레벨(`User.objects.filter(is_busy=False)`)에서 선별합니다.
-   * **예외 처리**: 요구사항 항목 수에 비해 작업 가능 사원이 부족할 경우, 시스템이 일괄 할당을 중단하고 경고 메시지를 반환하거나 팀장이 수동 지정할 수 있도록 예외 흐름을 보장합니다.
-
-3. **팀장 수동 변경 및 최종 승인 트랜잭션 (Atomic Transaction)**
-   * 팀장의 담당자 수동 변경(`PATCH`) 후 최종 승인(`POST /api/v1/tasks/approve-all/`) 시, Task 상태 변경(`APPROVED`), 담당자 `is_busy=True` 전환, 알림 발송 로직을 **`transaction.atomic()`** 으로 묶어 데이터 무결성을 보장합니다.
-
-4. **알림 전송 타겟팅 및 큐 활용 (Notification Queue)**
-   * 최종 승인 이벤트 발생 시 개별 사원 ID 기반으로 알림(Slack / Email / Web Push)이 누락 없이 전송되도록 비동기 메시지 큐 구조를 적용합니다.
----
-## 5. App 구조 및 테이블 현황
-1) App 구조
 ```text
-my_project/
- ├── common/                <-- [App 1]공통 코드 (CommonCodeGroup, CommonCode)
- ├── users/                 <-- [App 2]사용자 및 팀원 관리 (User, UserSkill, UserCertification)
- │
- ├── projects/              <-- [App 3]프로젝트 메인 & 파이프라인 통합 이력 관리
- │    └── models.py         - Project (프로젝트)
- │                          - PipelineHistory (파이프라인 전체 이력 로그)
- │
- ├── meetings/              <-- [App 4]회의록 & 기획서
- │    └── models.py         - MeetingNote (회의록)
- │                          - SpecDocument (기획서 / Proposal)
- │
- ├── requirements/          <-- [App 5]요구사항 정의서
- │    └── models.py         - RequirementDefinition (요구사항 정의서)
- │                          - RequirementItem (요구사항 상세 항목)
- │
- └── tasks/                 <-- [App 6]업무 자동 배정 및 진행
-      └── models.py         - TaskAssignment (배정된 업무)
+backend/
+ ├── common/          # 공통 코드 그룹/코드 (CommonCodeGroup, CommonCode)
+ ├── users/           # 사용자, 스킬, 자격증, 인증(JWT 쿠키), 계정 관리
+ ├── projects/        # Project, PipelineHistory
+ ├── meetings/        # MeetingNote, SpecDocument, SpecValidationReport, MeetingAnalysisJob
+ ├── requirements/    # RequirementDefinition, RequirementItem, RequirementValidationReport, RequirementExtractionJob
+ ├── tasks/           # TaskAssignment, TaskGenerationJob, EmployeeExperienceTagCache
+ ├── notifications/   # Notification (인앱 알림) — 초기 설계엔 없던 앱
+ └── dashboard/       # 대시보드 집계 API (자체 모델 없음, 다른 앱 데이터 조회) — 초기 설계엔 없던 앱
 ```
+
 ---
-2. 테이블 현황
+
+## 3. 권한 체계 — 설계 의도와 실제 적용이 다름
+
+- `User.role_code`(CommonCode FK)를 두어 세분화된 권한 코드 체계를 설계했지만, **실제 API 접근 제어는 이 필드를 보지 않는다.** 모든 PM 전용 엔드포인트(`IsPMUser`, `IsOwnerOrPM` 등, `users/permissions.py`)는 Django 내장 `is_staff` 플래그, 보조적으로 `request.user.groups.filter(name='PM')`으로 판정한다.
+- 이유는 코드 주석에 명시되어 있다: 기존 계정들의 `role_code` 시드 데이터가 비어 있어(`role_code=None`) 권한 판정에 쓸 수 없고, 프론트엔드 표시용(읽기 전용) 필드로만 노출 중이다(`users/serializers.py`).
+- 즉 **"권한 체계 = CommonCode 기반"이라는 설계와 "권한 체계 = Django is_staff/Group 기반"인 실제 구현이 공존**하는 상태다. 정합성을 맞추려면 (a) role_code 시드를 채우고 권한 판정 로직을 옮기거나, (b) role_code를 표시 전용으로 못박고 문서에서 권한 체계는 is_staff/Group이라고 명확히 하는 결정이 필요하다.
+
+---
+
+## 4. 핵심 테이블 (현재 구현 기준 요약 — 전체 필드는 각 앱 `models.py` 참고)
+
+### common
+- `CommonCodeGroup`(group_code PK) / `CommonCode`(code_id PK, group FK) — 부서/직무/직급/권한/상태/우선순위/난이도/기술/자격증/업무상태 등 대부분의 enum이 여기로 이관됨. **초기 설계의 TextChoices 방식은 대부분 폐기**.
+
+### users
+- `User`(AbstractUser 확장): `emp_no`, `phone`, `dept_code`/`job_role_code`/`position_code`/`role_code`/`status_code`(전부 CommonCode FK), `is_busy`, `is_onboarded`, `session_key`/`session_last_seen`(1계정 1세션 강제), `hire_date`/`resign_date`/`past_projects`(경력, 자유텍스트)
+- `UserSkill`(skill_code + `proficiency_level` 1~5), `UserCertification`(cert_code + 취득일)
+
+### projects
+- `Project`(name, owner, period_start/end)
+- `PipelineHistory`: 회의록 등록부터 완료까지 단계별 이력 로그(`step_type` 9종 choices) — meeting/spec/requirement/task를 각각 nullable FK로 연결
+
+### meetings
+- `MeetingNote`(status: DRAFT/PROCESSING/REVIEWED, project FK, summary_content)
+- `SpecDocument`: **버전관리**(`version`, `parent_spec` self-FK), 7개 섹션 자유텍스트(overview/problem_definition/goals/target_users/key_features/user_scenarios/tech_stack/final_decisions), `evidence_data`(근거, "근거 보기" 토글용), `period_start/end`, `status_code`(CommonCode), `reviewer`/`review_comment`. 초기 설계의 `summary`/`file_path` 필드는 없음.
+- `SpecValidationReport`(**초기 설계에 없던 신규 개념**): AI가 회의록 대비 기획서를 채점(scores/strengths/critical_issues/section_reviews)하고 `revised_document`(보완안)를 생성. PM이 적용하면 `SpecDocument`가 새 버전으로 저장됨(`applied_spec`로 연결, 멱등 적용).
+- `MeetingAnalysisJob`: 회의록 분석 백그라운드 작업 상태(PENDING/RUNNING/SUCCESS/ERROR) + 진행 단계 폴링용
+
+### requirements
+- `RequirementDefinition`: `project` FK 추가, `version`(문자열)/`parent_definition`(버전관리), `status_code`(group=REQSPEC_STATUS), `reject_reason`. **spec과 1:1이 아니라 1:N**(재생성/재검토마다 새 버전) — 초기 ERD와 다름.
+- `RequirementItem`: `req_code`/`req_name`/`description` 외 `related_feature`/`input_output`/`acceptance_criteria`(수용기준)/`note`/`source`/`review_status`/`priority_code`(CommonCode)/`difficulty`/`category`/`category_2`/`order`(끼워넣기용 float 순서) — 초기 설계 대비 실무형 필드로 대폭 확장. `category`도 FUNCTIONAL/NON_FUNCTIONAL enum이 아니라 자유문자열.
+- `RequirementValidationReport`(**신규**): SpecValidationReport와 동일한 패턴의 AI 품질감사(기획서 대비 요구사항정의서 채점 + `revised_items`)
+- `RequirementExtractionJob`: 요구사항 추출 백그라운드 작업 상태
+
+### tasks
+- `TaskAssignment`: **2026-09-07 "TASK 수정.xlsx" 기준으로 전면 재설계됨.** 초기 설계의 `task_title`/`task_description`/`status`(TextChoices)/`due_date`는 제거되고 `title`/`description`/`end_date`로 교체. 신규: `task_no`, `project` FK, `difficulty_reason`, `estimated_hours`, `assignment_reason`/`original_assigned_user`/`original_assignment_reason`(AI 최초 추천 보존 — PM 재배정 후 원복 시 근거 복원용), `assigned_workload`, `reject_reason`, `start_date`/`progress`, Git 연동(`linked_branch`/`linked_pr_number`/`linked_pr_url`), `status_code`/`difficulty_code`/`git_status_code`(CommonCode), `parent_task`/`epic_no`/`epic_title`(계층 구조).
+  - 상태값: `BACKLOG`(AI 배분 직후 자동저장된 초안, PM 검토 전) → `PENDING_APPROVAL`(PM 확정) → `TASK_APPROVED`/`CANCELLED`/`IN_PROGRESS`/`DONE`. `TaskStatusCode` 클래스 주석에 "CommonCode 전역 PK 충돌로 상태값이 조용히 다른 그룹을 가리키던 버그" 이력이 남아있다(수정 완료).
+- `TaskGenerationJob`: 업무 배분 실행 백그라운드 작업 상태
+- `EmployeeExperienceTagCache`(**신규**): 경력기술서 원문(SHA-256 해시)별 LLM 추출 경험 태그 캐시 — 서버 재시작/워커마다 매번 재호출되던 문제 해결용
+
+### notifications / dashboard (초기 설계엔 없던 앱)
+- `Notification`: 검토요청/승인/반려 등 이벤트를 PM 또는 담당자에게 인앱 알림으로 전달(type: info/success/warning/error, 읽음 여부)
+- `dashboard`: 자체 모델 없이 다른 앱 데이터를 집계해 개요/통계를 제공(PM 전용 통계 탭 포함)
+
+---
+
+## 5. API 엔드포인트 (실제 `urls.py` 기준)
+
+| 앱 | 경로 | 설명 |
+|---|---|---|
+| common | `GET /api/common/codes/` | 공통코드 목록 |
+| users | `POST /api/users/login/`, `logout/`, `token-refresh/` | JWT 쿠키 인증 |
+| users | `GET/PATCH /api/users/me/`, `me/change-password/`, `me/skills/`, `me/certifications/` | 본인 프로필/스킬/자격증 |
+| users | `GET/POST /api/users/`, `PATCH/DELETE /{id}/`, `{id}/password-reset/`, `{id}/impersonate/` | 직원 관리(PM 전용) |
+| projects | `GET/POST /api/projects/`, `/{id}/`, `/{id}/history/` | 프로젝트 CRUD + 파이프라인 이력 |
+| meetings | `/notes/`, `/notes/{id}/analyze/`, `/notes/analyze-jobs/{job_id}/`, `/notes/parse-file/`, `/notes/transcribe-audio/`, `/notes/cleanup-transcript/` | 회의록 작성 + AI 분석(비동기 Job) + 파일 파싱/음성 전사 |
+| meetings | `/specs/`, `/{id}/`, `/{id}/review/`, `/{id}/submit-review/`, `/{id}/approve/`, `/{id}/reject/`, `/{id}/validate/`, `/spec-validation-reports/{id}/apply/` | 기획서 CRUD + 검토요청/승인/반려 + **AI 품질감사 실행/적용** |
+| requirements | `/`, `/{spec_id}/`, `/{spec_id}/submit-review/`, `/approve/`, `/reject/`, `/definitions/{id}/validate/`, `/validation-reports/{id}/apply/` | 요구사항정의서 CRUD + 검토요청/승인/반려 + **AI 품질감사 실행/적용** |
+| requirements | `/{spec_id}/extract/`, `/extraction-jobs/{job_id}/` | AI 요구사항 추출(비동기 Job) |
+| requirements | `/{spec_id}/generate-tasks/`, `/generate-tasks-jobs/{job_id}/`, `/{spec_id}/task-draft/`, `/{spec_id}/confirm-tasks/` | **업무 배분 실행(비동기 Job)** → AI 초안(BACKLOG 자동저장) 조회 → PM 확정(PENDING_APPROVAL 전환) |
+| requirements | `/items/`, `/items/{id}/` | 요구사항 항목 개별 CRUD |
+| tasks | `/assignments/`, `/{id}/`, `/{id}/status/` | 업무 목록/상세/상태·담당자 변경 |
+| tasks | `/auto-assign/`, `/ai/assignee-mapping/`, `/ai/task-generation/` | 단건 AI 배정/매핑/생성 엔드포인트 — **실제 메인 플로우(requirements 앱의 generate-tasks/confirm-tasks Job 패턴)와 별개로 남아있는 경로**. 프론트 실사용 여부는 별도 확인 필요 |
+| notifications | `/`, `/read-all/`, `/{id}/read/` | 알림 목록/전체읽음/개별읽음 |
+| dashboard | `/overview/`, `/analytics/` | 대시보드 요약 / PM 전용 성과 통계 |
+
+> 초기 설계 문서의 12단계 표(`POST /api/v1/...`)는 실제 URL 프리픽스(`/api/v1/` 아님 → `/api/`)와도 다르고, 승인/반려/검토요청/AI품질감사/Job폴링 등 실제로는 훨씬 세분화된 엔드포인트로 구현되어 있다.
+
+---
+
+## 6. ERD (현재 구현 기준, 단순화)
+
 ```mermaid
 erDiagram
-    %% 1. User Entity (users app)
-    User {
-        int id PK
-        string username
-        string email
-        string role "LEADER | MEMBER"
-        boolean is_busy "작업 배정 가능 여부 (True/False)"
-    }
+    User ||--o{ MeetingNote : "작성"
+    User ||--o{ UserSkill : "보유"
+    User ||--o{ UserCertification : "보유"
+    Project ||--o{ MeetingNote : "소속"
+    Project ||--o{ RequirementDefinition : "소속"
+    Project ||--o{ TaskAssignment : "소속"
+    Project ||--o{ PipelineHistory : "이력"
 
-    %% 2. MeetingNote Entity (meetings app)
-    MeetingNote {
-        int id PK
-        string title "회의록 제목"
-        text content "회의록 내용"
-        datetime created_at
-        int created_by_id FK "작성자 (User)"
-    }
+    MeetingNote ||--o{ SpecDocument : "생성(버전 여러 개)"
+    SpecDocument ||--o{ SpecDocument : "parent_spec(이전 버전)"
+    SpecDocument ||--o{ SpecValidationReport : "AI 품질감사"
+    SpecDocument ||--o{ RequirementDefinition : "생성(버전 여러 개, 1:N)"
 
-    %% 3. SpecDocument Entity (specs app)
-    SpecDocument {
-        int id PK
-        string title "기획서 제목"
-        text summary "기획서 요약 내용"
-        string status "DRAFT | PENDING_REVIEW | REVIEWED"
-        datetime created_at
-        int meeting_id FK "연관 회의록 (MeetingNote)"
-    }
+    RequirementDefinition ||--o{ RequirementDefinition : "parent_definition(이전 버전)"
+    RequirementDefinition ||--o{ RequirementItem : "항목 포함"
+    RequirementDefinition ||--o{ RequirementValidationReport : "AI 품질감사"
 
-    %% 4. RequirementDefinition Entity (requirements app)
-    RequirementDefinition {
-        int id PK
-        string title "요구사항정의서 제목"
-        string status "GENERATING | COMPLETED | REVIEWED"
-        datetime created_at
-        int spec_id FK "연관 기획서 (SpecDocument 1:1)"
-    }
-
-    %% 5. RequirementItem Entity (requirements app)
-    RequirementItem {
-        int id PK
-        string code "요구사항 코드 (예: REQ-FUN-001)"
-        string category "FUNCTIONAL | NON_FUNCTIONAL"
-        string name "요구사항명"
-        text description "요구사항 상세 내용"
-        string priority "HIGH | MEDIUM | LOW"
-        int definition_id FK "연관 요구사항정의서 (RequirementDefinition)"
-    }
-
-    %% 6. TaskAssignment Entity (tasks app)
-    TaskAssignment {
-        int id PK
-        string task_title "세부 업무명"
-        text task_description "업무 상세 설명"
-        string status "PENDING_APPROVAL | APPROVED"
-        datetime created_at
-        int requirement_item_id FK "연관 요구사항 항목 (RequirementItem)"
-        int assigned_user_id FK "담당 사원 (User, Nullable)"
-    }
-
-    %% Relationships
-    User ||--o{ MeetingNote : "작성 (creates)"
-    MeetingNote ||--o| SpecDocument : "기반 생성 (1:1)"
-    SpecDocument ||--o| RequirementDefinition : "기반 생성 (1:1)"
-    RequirementDefinition ||--|{ RequirementItem : "항목 포함 (1:N)"
-    RequirementItem ||--o{ TaskAssignment : "업무 생성 (1:N)"
-    User ||--o{ TaskAssignment : "업무 담당 (assigned_to)"
+    RequirementItem ||--o{ TaskAssignment : "업무 생성"
+    User ||--o{ TaskAssignment : "담당(assigned_user)"
+    User ||--o{ TaskAssignment : "AI 최초 추천(original_assigned_user)"
+    User ||--o{ Notification : "수신"
 ```
+
 ---
 
-## 6. 데이터베이스 전환 (SQLite ➔ MySQL)
+## 7. AI 에이전트 티어 (`ai/`, 11개 모듈 — 초기 설계 문서는 7개만 서술)
 
-### 1. 개요
-현재 백엔드 개발은 빠른 프로토타이핑을 위해 임시로 SQLite를 사용 중이나, Django DRF의 ORM(Object-Relational Mapping) 추상화 레이어를 활용하므로 **나중에 MySQL로 전환하더라도 API 엔드포인트 스펙이나 비즈니스 로직을 변경할 필요가 없습니다.**
+`plan_review`/`requirement_review`(AI 품질감사·재작성안 자동 적용)는 2026-09-22
+전체 제거 — 검토요청 버튼 활성화가 이 검증 LLM 호출이 끝날 때까지 막혀 있던
+문제로, 프론트 버튼도 이미 지워둔 상태라 백엔드/AI 모듈까지 함께 정리했다.
 
-### 2. 전환 시 체크 및 고려 사항
+| 모듈 | 역할 | 비고 |
+|---|---|---|
+| `meeting_analysis` | 회의록 → 구조화 JSON | 판단 난이도 높아 STRONG_MODEL(gpt-5 계열) |
+| `plan_draft` | 구조화 JSON → 기획서 7섹션 | DEFAULT_MODEL |
+| `project_scale` | 프로젝트 규모/복잡도 판단 | 초기 설계에 없던 모듈 |
+| `requirement_draft` | 기획서 → 요구사항 목록 | DEFAULT_MODEL |
+| `task_generation` | 요구사항 → Task 단위 분해 | DEFAULT_MODEL |
+| `assignee_mapping` | 재직+스킬 기반 후보 필터링 | 초기 설계에 없던 모듈(결정적 코드 위주) |
+| `assignment_ranking` | 패키지 분할 여부 판단 + 후보 질적 적합도 판단 | 초기 설계에 없던 모듈, LLM은 판단 입력만 |
+| `assignee_recommend` | 최종 배정 확정 + 배정근거/보류사유 서술 | **배정 자체는 결정적 스케줄러(코드)가 확정**, LLM은 서술만(FAST_MODEL, 배치 호출) |
+| `assignment_explanation` | 배정 계획 요약(리스크/체크포인트) | 초기 설계에 없던 모듈 |
+| `retrieval` | 문서 임베딩·검색(Qdrant) | **미구현(TODO)** — RAG 챗봇용, LLM 호출 없음 |
+| `qa_answer` | RAG 질의응답 + 출처 | retrieval 완성 전까지는 단독 동작 불가 |
 
-* **데이터 타입 및 제약조건 엄격성**
-  * SQLite와 달리 MySQL은 데이터 타입과 제약조건을 엄격하게 검증합니다.
-  * Models 작성 시 `CharField`의 `max_length` 및 `Null/Blank` 속성을 명확히 정의해야 마이그레이션 에러를 방지할 수 있습니다.
+결정적 코드(비-LLM, `ai/scheduler.py` 등은 backend/tasks로 이관): 위상정렬 기반 ASAP 스케줄러, 스킬→역할 매핑, WorkPackage 그룹화 — "배정·일정은 코드가 결정하고 LLM은 판단 입력/서술만 생성한다"는 원칙으로 설계됨.
 
-* **필수 패키지 설치 및 환경 설정**
-  * Django가 MySQL과 연동하기 위한 Python 드라이버 패키지 설치가 필요합니다.
-    ```bash
-    pip install mysqlclient
-    # 또는 pymysql 사용 시: pip install pymysql
-    ```
+---
 
-* **마이그레이션(Migration) 초기화 및 적용**
-  * MySQL 데이터베이스 구축 완료 후 아래 명령어를 통해 스키마를 새로 생성하고 적용합니다.
-    ```bash
-    python manage.py makemigrations
-    python manage.py migrate
-    ```
+## 8. 알려진 구현 상태 / 격차 (2026-09-18 기준)
 
-* **트랜잭션 및 동시성(Concurrency) 보장**
-  * SQLite 특유의 File Lock 한계에서 벗어나 MySQL(InnoDB Engine) 전환 시 `transaction.atomic()` 기반의 업무 최종 승인 및 동시성 처리가 훨씬 안정적으로 동작합니다.
-
-### 3. 결론 및 향후 계획
-현재 설정된 DB 엔티티 구조(`User`, `MeetingNote`, `SpecDocument`, `RequirementDefinition`, `RequirementItem`, `TaskAssignment`)로 개발을 진행한 뒤, MySQL 환경 구축이 완료되는 시점에 `settings.py`의 `DATABASES` 설정 변경 및 마이그레이션을 통해 손쉽게 이관할 수 있습니다.
+1. **Celery/Redis 미도입** — `threading.Thread` + Job 테이블 폴링으로 임시 구현. 운영 환경에서 gunicorn 워커가 여러 개이거나 재배포되면 실행 중이던 작업이 유실될 수 있음(각 Job 모델 docstring에 명시된 한계).
+2. **role_code 기반 권한 체계 미완성** — 실제 권한 판정은 `is_staff`/PM 그룹 기준(3번 항목 참고).
+3. **RAG 챗봇(Track B) 미구현** — `retrieval/agent.py`의 청킹/임베딩/검색 함수가 전부 `NotImplementedError`.
+4. **tasks 앱의 단건 AI 엔드포인트**(`auto-assign`, `ai/assignee-mapping`, `ai/task-generation`)와 **requirements 앱의 Job 기반 메인 플로우**가 공존 — 정리 필요 여부 확인 필요.
+5. **DB는 아직 SQLite** — MySQL/PostgreSQL 전환은 계획 단계(ORM 추상화로 엔드포인트 변경 없이 전환 가능하도록 설계됨).

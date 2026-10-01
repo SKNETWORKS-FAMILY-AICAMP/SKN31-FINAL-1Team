@@ -12,6 +12,7 @@ https://docs.djangoproject.com/en/6.0/ref/settings/
 import os
 import environ
 import sys
+from datetime import timedelta
 from pathlib import Path
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
@@ -40,6 +41,8 @@ SECRET_KEY = env('SECRET_KEY')
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = env('DEBUG', default=True)
 
+# 2026-09-14: 하드코딩된 빈 리스트였음 — .env의 ALLOWED_HOSTS 값이 전혀 반영되지
+# 않아, DEBUG=False(배포) 환경에서 모든 요청이 400 DisallowedHost로 거부되던 버그.
 ALLOWED_HOSTS = env.list('ALLOWED_HOSTS', default=[])
 
 
@@ -67,6 +70,7 @@ INSTALLED_APPS = [
     'projects',
     'requirements',
     'notifications',
+    'dashboard',
 ]
 
 MIDDLEWARE = [
@@ -115,7 +119,11 @@ if env.str('MYSQL_HOST', default=''):
             'PASSWORD': env.str('MYSQL_PASSWORD'),
             'HOST': env.str('MYSQL_HOST'),
             'PORT': env.int('MYSQL_PORT', default=3306),
-            'OPTIONS': {'sql_mode': 'STRICT_TRANS_TABLES'},
+            # 2026-09-21: MySQL DATETIME 컬럼엔 시간대 정보가 없어, 이 값이 없으면 UTC로 저장돼
+            # DB를 직접 볼 때 한국 시간보다 9시간 이르게 보인다. 값을 지정하면 앞으로 저장되는
+            # 시각이 한국 시간(TIME_ZONE과 같은 값)으로 들어간다. 로컬·운영이 같은 RDS를 쓰므로
+            # 이 설정은 모두가 같이 적용해야 한다(옛 설정으로 저장하면 UTC/KST가 섞인다).
+            'TIME_ZONE': 'Asia/Seoul',
         }
     }
 else:
@@ -125,6 +133,54 @@ else:
             'NAME': BASE_DIR / 'db.sqlite3',
         }
     }
+
+# 로그 저장
+LOG_DIR = BASE_DIR / "logs"
+os.makedirs(LOG_DIR, exist_ok=True)
+
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,  # 기존 로거(우리 코드의 logger = logging.getLogger(name))를 끄지 않음
+
+    "formatters": {
+        "verbose": {
+            "format": "[{asctime}] {levelname} {name}: {message}",
+            "style": "{",
+        },
+    },
+
+    "handlers": {
+        "console": {
+            "class": "logging.StreamHandler",
+            "formatter": "verbose",
+        },
+        "file": {
+            "class": "logging.handlers.RotatingFileHandler",
+            "filename": LOG_DIR / "django.log",
+            "maxBytes": 10 * 1024 * 1024,  # 10MB — 넘으면 자동으로 새 파일로 교체
+            "backupCount": 5,               # 최근 5개 파일까지만 보관
+            "formatter": "verbose",
+            "encoding": "utf-8",
+        },
+    },
+
+    "root": {
+        # 프로젝트 전체(우리 views.py, ai/ 모듈 로거 포함)가 기본적으로
+        # 이 설정을 상속받는다 — 개별 앱마다 따로 설정 안 해도 됨
+        "handlers": ["console", "file"],
+        "level": "ERROR",
+    },
+
+    "loggers": {
+        # Django가 처리 못한 예외(500 에러)는 이걸로 잡힌다 —
+        # 지금 겪은 "터미널에 한 번 찍히고 사라지는" 에러가 여기 해당
+        "django.request": {
+            "handlers": ["console", "file"],
+            "level": "ERROR",
+            "propagate": False,
+        },
+    },
+}
 
 # Password validation
 # https://docs.djangoproject.com/en/6.0/ref/settings/#auth-password-validators
@@ -161,6 +217,9 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/6.0/howto/static-files/
 
 STATIC_URL = 'static/'
+# 2026-09-14: DEBUG=False(배포)에서는 STATIC_ROOT가 없으면 collectstatic이
+# ImproperlyConfigured로 죽는다 — admin/swagger 정적 파일을 모아둘 경로를 지정한다.
+STATIC_ROOT = BASE_DIR / 'staticfiles'
 
 AUTH_USER_MODEL = 'users.User'
 
@@ -181,6 +240,16 @@ REST_FRAMEWORK = {
 ),
 }
 
+# 2026-09-08: "한 번 로그인하면 24시간 전까지는 안 끊기게" 요청.
+# simplejwt 기본값(access 5분)이라 5분마다 재발급(token-refresh)이 돌아야 하고, 그 과정이
+# 한 번이라도 삐끗하면(네트워크 순간 끊김, 쿠키 미전송 등) 로그아웃됐다. access 수명을 24시간으로
+# 맞춰서 세션 도중 재발급 자체가 필요 없게 한다.
+# 쿠키 max_age도 이 값에서 파생된다(users/jwt_cookies.py) → access_token 쿠키도 24시간 유지.
+SIMPLE_JWT = {
+    'ACCESS_TOKEN_LIFETIME': timedelta(hours=24),
+    'REFRESH_TOKEN_LIFETIME': timedelta(hours=24),
+}
+
 # Swagger UI에 표시될 기본 정보 설정
 SPECTACULAR_SETTINGS = {
     'TITLE': '프로젝트 관리 시스템 API 명세서',
@@ -197,16 +266,26 @@ SPECTACULAR_SETTINGS = {
 
 # React, Vite 등 프론트엔드 개발 서버 주소 허용
 # 개발 모드에서 허용할 프론트엔드 도메인/포트 목록
-CORS_ALLOWED_ORIGINS = env.list(
-    'CORS_ALLOWED_ORIGINS', 
-    default=[
-        "http://localhost:3000",
-        "http://127.0.0.1:3000",
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-        "http://localhost:8080",
-    ]
-)
+CORS_ALLOWED_ORIGINS = [
+"http://localhost:3000",   # React (Create React App, Next.js 등)
+"http://127.0.0.1:3000",
+"http://localhost:5173",   # Vite (React / Vue 등)
+"http://127.0.0.1:5173",
+"http://localhost:8080",   # Vue CLI 등
+"https://heyzzabi.vercel.app",  # 2026-09-17: 프로젝트 이름을 heyzzabi로 바꾼 뒤의 정식 주소 — 실제로 쓰는 주소는 이것
+"https://heyzzabi-heyzzabi.vercel.app",  # 2026-09-17: Vercel이 프로젝트/팀 이름으로 자동 생성한 별칭 주소(브라우저가 실제로 이 주소에서 요청을 보냄)
+"https://frontend-chi-eight-58.vercel.app",  # 2026-09-17: 개명 전 임시 고정 주소(안전망으로 남겨둠)
+"https://frontend-r8mfpyon4-heyzzabi.vercel.app",  # 2026-09-17: 첫 배포 시점의 "Deployment"별 주소(배포마다 바뀜, 안전망으로 남겨둠)
+]
+
+# 2026-09-17: `vercel --prod`로 재배포할 때마다 배포별 URL(위 r8mfpyon4 같은 부분)이 매번
+# 새로 생긴다 — 매번 위 CORS_ALLOWED_ORIGINS를 손으로 고치지 않도록, 같은 프로젝트(frontend-*)의
+# heyzzabi 팀/계정 아래 vercel.app 주소는 전부 허용하는 정규식을 추가한다. 다른 사람의
+# vercel.app 사이트까지 열어주는 *.vercel.app 전체 허용보다 좁게 잡아둔다. (실제 사용자에게
+# 노출되는 "Domains" 고정 주소는 위 CORS_ALLOWED_ORIGINS에 이미 정확히 등록해뒀다.)
+CORS_ALLOWED_ORIGIN_REGEXES = [
+    r"^https://frontend-[a-zA-Z0-9]+-heyzzabi\.vercel\.app$",
+]
 
 # 인증 정보(Cookie, Authorization 헤더 등)를 포함한 요청 허용
 CORS_ALLOW_CREDENTIALS = True
@@ -214,13 +293,27 @@ CORS_ALLOW_CREDENTIALS = True
 # 2026-08-31: 쿠키 기반 인증으로 옮기면서 CSRF 검증이 다시 필요해졌다(위 CookieJWTAuthentication
 # 참고). Django의 CSRF 미들웨어는 Origin/Referer가 다른 포트(localhost:3000 → :8000)로 온
 # 요청을 기본적으로 신뢰하지 않으므로, 프론트 개발 서버 주소를 명시적으로 허용해야 한다.
-CSRF_TRUSTED_ORIGINS = env.list(
-    'CSRF_TRUSTED_ORIGINS', 
-    default=[
-        "http://localhost:3000",
-        "http://127.0.0.1:3000",
-    ]
-)
+# 2026-09-17: Vercel 배포 주소도 추가. 와일드카드(*.)는 Django 4.0+부터 CSRF_TRUSTED_ORIGINS에서
+# 지원되는데, 정규식이 아니라 서브도메인 한 자리만 통째로 치환하는 방식이라(위 CORS처럼
+# "frontend-*-heyzzabi"로 좁게는 못 잡음) *.vercel.app 전체를 허용하는 셈이다 — 이 프로젝트
+# 규모에서는 감내 가능한 절충으로 판단(실제 요청 자체는 위 CORS 정규식이 먼저 좁게 막아준다).
+CSRF_TRUSTED_ORIGINS = [
+"http://localhost:3000",
+"http://127.0.0.1:3000",
+"https://heyzzabi.vercel.app",
+"https://frontend-chi-eight-58.vercel.app",
+"https://frontend-r8mfpyon4-heyzzabi.vercel.app",
+"https://*.vercel.app",
+]
+
+# 2026-09-17: 위 access_token/refresh_token 쿠키(jwt_cookies.py)와 같은 이유로 csrftoken
+# 쿠키도 SameSite=Lax(기본값)면 크로스도메인(vercel.app ↔ duckdns.org) 요청에 브라우저가
+# 안 실어 보내 "CSRF cookie not set" 에러가 난다. None은 Secure(HTTPS)가 있어야만 허용되므로
+# 로컬 개발(DEBUG=True, http)에서는 그대로 Lax를 쓴다.
+CSRF_COOKIE_SAMESITE = 'None' if not DEBUG else 'Lax'
+CSRF_COOKIE_SECURE = not DEBUG
+SESSION_COOKIE_SAMESITE = 'None' if not DEBUG else 'Lax'
+SESSION_COOKIE_SECURE = not DEBUG
 
 CORS_ALLOW_HEADERS = [
 'accept',

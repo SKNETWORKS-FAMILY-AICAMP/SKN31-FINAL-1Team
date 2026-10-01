@@ -2,6 +2,7 @@
 
 import { useState, useEffect, use } from "react";
 import { useRouter } from "next/navigation";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   FolderKanban, CalendarDays, Settings, Clock, CheckCircle2, PlayCircle, ShieldAlert, XCircle, Lock,
   Loader2, Search,
@@ -10,28 +11,43 @@ import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth";
 import { apiFetch } from "@/lib/api/client";
 import { KanbanBoard } from "@/components/layout/KanbanBoard";
+import { Toast } from "@/components/ui/Toast";
 
 type User = { id: string; name: string; email: string; role: string };
-// Django TaskAssignmentSerializer 응답 그대로 — heyzzabi2 시절 Task와 필드명이 다르다
-// (title -> task_title, assigneeId -> assigned_user, wbsStart/wbsEnd -> start_date/due_date).
+// Django TaskAssignmentSerializer 응답 그대로 — 2026-09-07 컬럼 재설계로 필드명이 또 바뀌었다
+// (task_title -> title, task_description -> description, due_date -> end_date, status ->
+// status_code).
 type Task = {
-  id: number; task_title: string; task_description: string | null;
+  id: number; title: string; description: string | null;
   req_code: string; req_name: string;
-  status: string; progress: number;
-  start_date: string | null; due_date: string | null;
+  status_code: string; status_info: { code_id: string; code_name: string } | null; progress: number;
+  start_date: string | null; end_date: string | null;
   assigned_user: number | null; assigned_user_name: string | null;
   reject_reason: string | null;
 };
 type Project = { id: string; name: string; description: string | null };
 
-// Django TaskAssignment.Status 실제 값 — 예전 BACKLOG/DONE은 없고 REJECTED가 추가됐다.
+// 2026-09-15: id는 실제 common_code.code_id(TASK_STATUS 그룹)와 정확히 일치해야
+// PATCH 요청이 통과한다(backend/tasks/models.py TaskStatusCode 참고) — 예전엔
+// "APPROVED"/"COMPLETED"/"REJECTED"를 그대로 썼는데, 그 문자열들은 common_code
+// 테이블에서 전부 다른 그룹(REQSPEC_STATUS/PROJECT_STATUS)이 선점하고 있어
+// TASK_STATUS엔 존재한 적이 없었다 — 이 드롭다운으로 상태를 바꾸면 항상 400
+// (INVALID_STATUS)이 났을 것이다. 실제 TASK_STATUS 값(TASK_APPROVED/DONE/
+// CANCELLED)으로 맞춘다.
 const STATUSES = [
   { id: "PENDING_APPROVAL", label: "승인 대기", icon: ShieldAlert, color: "text-orange-400" },
-  { id: "APPROVED", label: "승인됨", icon: CheckCircle2, color: "text-sky-400" },
+  { id: "TASK_APPROVED", label: "승인됨", icon: CheckCircle2, color: "text-sky-400" },
   { id: "IN_PROGRESS", label: "진행 중", icon: PlayCircle, color: "text-amber-400" },
-  { id: "COMPLETED", label: "완료", icon: CheckCircle2, color: "text-emerald-400" },
-  { id: "REJECTED", label: "반려됨", icon: XCircle, color: "text-red-400" },
+  { id: "DONE", label: "완료", icon: CheckCircle2, color: "text-emerald-400" },
+  { id: "CANCELLED", label: "반려됨", icon: XCircle, color: "text-red-400" },
 ];
+
+// 2026-09-28 (사용자 요청): WBS 표의 상태 드롭다운(승인됨/진행중/완료 3개뿐 — 승인대기/
+// 반려는 칸반 버튼으로만 바뀜)과 진행률 슬라이더가 서로 반대로 놀아서 헷갈린다는 지적 —
+// 어느 쪽을 바꾸든 다른 쪽이 항상 같이 맞춰지게 양방향으로 동기화한다.
+const STATUS_TO_PROGRESS: Record<string, number> = { TASK_APPROVED: 0, IN_PROGRESS: 5, DONE: 100 };
+const progressToStatus = (progress: number): string =>
+  progress <= 0 ? "TASK_APPROVED" : progress >= 100 ? "DONE" : "IN_PROGRESS";
 
 export default function ProjectPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
@@ -41,47 +57,53 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   // 담당자 재배정/일정 조율은 PM의 권한이고, 상태·진행률은 "내 업무면 내가 갱신"이 자연스럽다.
   const canEditTask = (task: Task) => isPM || String(task.assigned_user) === String(user?.id);
 
-  const [project, setProject] = useState<Project | null>(null);
-  const [tasks, setTasks] = useState<Task[]>([]);
-  const [users, setUsers] = useState<User[]>([]);
-  const [loading, setLoading] = useState(true);
+  const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState<"KANBAN" | "WBS" | "SETTINGS">("KANBAN");
   const [search, setSearch] = useState("");
 
-  // Project Settings form
+  // 프로젝트 설정(이름/설명 수정) 폼 상태
   const [settingsName, setSettingsName] = useState("");
   const [settingsDescription, setSettingsDescription] = useState("");
   const [savingSettings, setSavingSettings] = useState(false);
   const [settingsSaved, setSettingsSaved] = useState(false);
+  const [toast, setToast] = useState<{ message: string; variant: "success" | "error" } | null>(null);
 
-  useEffect(() => {
+  // TanStack Query로 전환 — 업무관리(/tasks) 화면과 캐시를 공유한다("users" 키가 같으면
+  // 두 화면 사이를 오갈 때 다시 안 부른다). 업무 목록도 같은 30초 폴링을 적용해 다른
+  // 화면(예: 승인 처리)에서 바뀐 내용이 이 화면에도 반영되게 한다.
+  const { data: projectData, isLoading: projectLoading, isError: projectError } = useQuery({
+    queryKey: ["project", id],
+    queryFn: () => apiFetch<any>(`/api/projects/${id}/`),
+  });
+  const project: Project | null = projectData
+    ? { id: String(projectData.id), name: projectData.name, description: projectData.description }
+    : null;
+
+  const { data: usersData } = useQuery({
+    queryKey: ["users"],
+    queryFn: () => apiFetch<any[]>("/api/users/"),
+  });
+  // 칸반의 담당자 드롭다운에는 실제로 업무를 받을 수 있는 사람만 나와야 한다 — PM(is_staff)은
+  // 배정 대상이 아니고, 온보딩 전이라 이름이 비어있는 계정도 빈 옵션으로 보이니 제외한다.
+  const users: User[] = (usersData ?? [])
+    .filter((u: any) => !u.is_staff && (u.first_name || u.last_name))
+    .map((u: any) => ({
+      id: String(u.id),
+      name: `${u.last_name ?? ""}${u.first_name ?? ""}`.trim() || u.username,
+      email: u.email,
+      role: u.is_staff ? "PM" : "MEMBER",
+    }));
+
+  const { data: tasks = [], isLoading: tasksLoading } = useQuery({
+    queryKey: ["tasks", "project", id],
     // TaskAssignment는 project를 직접 참조하지 않아서(req_item->req_def->spec->meeting->project
     // 체인을 탐) 백엔드가 ?project= 쿼리 파라미터로 필터링을 지원한다(tasks/views.py 참고).
-    Promise.all([
-      apiFetch<any>(`/api/projects/${id}/`),
-      apiFetch<any[]>("/api/users/"),
-      apiFetch<Task[]>(`/api/tasks/assignments/?project=${id}`),
-    ]).then(([proj, allUsers, taskList]) => {
-      setProject({ id: String(proj.id), name: proj.name, description: proj.description });
-      setTasks(taskList);
-      // 칸반의 담당자 드롭다운에는 실제로 업무를 받을 수 있는 사람만 나와야 한다 —
-      // PM(is_staff)은 배정 대상이 아니고, 온보딩 전이라 이름이 비어있는 계정도 빈 옵션으로 보이니 제외한다.
-      setUsers(
-        allUsers
-          .filter((u: any) => !u.is_staff && (u.first_name || u.last_name))
-          .map((u: any) => ({
-            id: String(u.id),
-            name: `${u.last_name ?? ""}${u.first_name ?? ""}`.trim() || u.username,
-            email: u.email,
-            role: u.is_staff ? "PM" : "MEMBER",
-          }))
-      );
-      setLoading(false);
-    }).catch(e => {
-      console.error(e);
-      setLoading(false);
-    });
-  }, [id]);
+    queryFn: () => apiFetch<Task[]>(`/api/tasks/assignments/?project=${id}`),
+    refetchInterval: 30_000,
+  });
+  const setTasks = (next: Task[]) => queryClient.setQueryData<Task[]>(["tasks", "project", id], next);
+
+  const loading = projectLoading || tasksLoading;
 
   useEffect(() => {
     if (project) {
@@ -89,6 +111,13 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
       setSettingsDescription(project.description || "");
     }
   }, [project?.id]);
+
+  // DEV 역할전환 패널로 재로그인 없이 PM -> 일반유저로 바뀌는 경우, 설정 탭을 보고
+  // 있었다면 탭 버튼은 숨겨져도 activeTab 상태는 그대로 남는다 — 안 보이는 탭에
+  // 머물러 있지 않도록 접근 가능한 탭으로 되돌린다.
+  useEffect(() => {
+    if (!isPM && activeTab === "SETTINGS") setActiveTab("KANBAN");
+  }, [isPM, activeTab]);
 
   const handleSaveSettings = async () => {
     if (!project || !settingsName.trim()) return;
@@ -99,11 +128,11 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
         method: "PATCH",
         body: JSON.stringify({ name: settingsName.trim(), description: settingsDescription }),
       });
-      setProject({ ...project, name: updated.name, description: updated.description });
+      queryClient.setQueryData(["project", id], (prev: any) => ({ ...prev, name: updated.name, description: updated.description }));
       setSettingsSaved(true);
       setTimeout(() => setSettingsSaved(false), 2000);
     } catch (err: any) {
-      alert(err.message || "저장에 실패했습니다.");
+      setToast({ message: err.message || "저장에 실패했습니다.", variant: "error" });
     } finally {
       setSavingSettings(false);
     }
@@ -111,15 +140,39 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
 
   const handleStatusChange = async (taskId: number, newStatus: string) => {
     const oldTasks = tasks;
-    setTasks(tasks.map(t => t.id === taskId ? { ...t, status: newStatus } : t));
+    const newProgress = STATUS_TO_PROGRESS[newStatus] ?? tasks.find(t => t.id === taskId)?.progress ?? 0;
+    setTasks(tasks.map(t => t.id === taskId ? { ...t, status_code: newStatus, progress: newProgress } : t));
     try {
       await apiFetch(`/api/tasks/assignments/${taskId}/status/`, {
         method: "PATCH",
-        body: JSON.stringify({ status: newStatus }),
+        body: JSON.stringify({ status_code: newStatus }),
+      });
+      await apiFetch(`/api/tasks/assignments/${taskId}/`, {
+        method: "PATCH",
+        body: JSON.stringify({ progress: newProgress }),
       });
     } catch (err: any) {
       setTasks(oldTasks);
-      alert(err.message || "상태 변경에 실패했습니다.");
+      setToast({ message: err.message || "상태 변경에 실패했습니다.", variant: "error" });
+    }
+  };
+
+  const handleProgressChange = async (taskId: number, newProgress: number) => {
+    const oldTasks = tasks;
+    const newStatus = progressToStatus(newProgress);
+    setTasks(tasks.map(t => t.id === taskId ? { ...t, progress: newProgress, status_code: newStatus } : t));
+    try {
+      await apiFetch(`/api/tasks/assignments/${taskId}/`, {
+        method: "PATCH",
+        body: JSON.stringify({ progress: newProgress }),
+      });
+      await apiFetch(`/api/tasks/assignments/${taskId}/status/`, {
+        method: "PATCH",
+        body: JSON.stringify({ status_code: newStatus }),
+      });
+    } catch (err: any) {
+      setTasks(oldTasks);
+      setToast({ message: err.message || "진행률 변경에 실패했습니다.", variant: "error" });
     }
   };
 
@@ -133,7 +186,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
       });
     } catch (err: any) {
       setTasks(oldTasks);
-      alert(err.message || "저장에 실패했습니다.");
+      setToast({ message: err.message || "저장에 실패했습니다.", variant: "error" });
     }
   };
 
@@ -141,6 +194,16 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
     return (
       <div className="flex h-[50vh] items-center justify-center">
         <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  if (projectError) {
+    return (
+      <div className="text-center py-20">
+        <h2 className="text-2xl font-bold mb-2">프로젝트를 불러오지 못했습니다.</h2>
+        <p className="text-muted-foreground text-sm mb-4">네트워크 오류일 수 있습니다. 잠시 후 다시 시도해주세요.</p>
+        <button onClick={() => router.push("/")} className="text-primary hover:underline">대시보드로 돌아가기</button>
       </div>
     );
   }
@@ -155,11 +218,11 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   }
 
   const filteredTasks = tasks.filter(t =>
-    !search || t.task_title.toLowerCase().includes(search.toLowerCase()) ||
+    !search || t.title.toLowerCase().includes(search.toLowerCase()) ||
     (t.assigned_user_name || "").toLowerCase().includes(search.toLowerCase())
   );
 
-  const doneTasks = tasks.filter(t => t.status === "COMPLETED").length;
+  const doneTasks = tasks.filter(t => t.status_code === "DONE").length;
   const totalTasks = tasks.length;
   const progressPct = totalTasks > 0 ? Math.round((doneTasks / totalTasks) * 100) : 0;
 
@@ -208,12 +271,16 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
           >
             <CalendarDays className="w-4 h-4" /> WBS (목록)
           </button>
-          <button
-            onClick={() => setActiveTab("SETTINGS")}
-            className={cn("px-4 py-2.5 rounded-lg text-sm font-bold flex items-center gap-2 transition-all", activeTab === "SETTINGS" ? "bg-white dark:bg-white/10 text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground hover:bg-black/5 dark:hover:bg-white/5")}
-          >
-            <Settings className="w-4 h-4" /> 설정
-          </button>
+          {/* 2026-09-28 (사용자 요청): 프로젝트 설정(이름/설명 수정)은 PM 권한 —
+              일반유저는 어차피 읽기 전용으로 막혀있었지만 탭 자체를 안 보이게 한다. */}
+          {isPM && (
+            <button
+              onClick={() => setActiveTab("SETTINGS")}
+              className={cn("px-4 py-2.5 rounded-lg text-sm font-bold flex items-center gap-2 transition-all", activeTab === "SETTINGS" ? "bg-white dark:bg-white/10 text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground hover:bg-black/5 dark:hover:bg-white/5")}
+            >
+              <Settings className="w-4 h-4" /> 설정
+            </button>
+          )}
         </div>
 
         <div className="relative group">
@@ -238,7 +305,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
             <KanbanBoard
               initialTasks={filteredTasks}
               members={users}
-              onTaskChange={(taskId, patch) => setTasks(prev => prev.map(t => t.id === taskId ? { ...t, ...patch } : t))}
+              onTaskChange={(taskId, patch) => setTasks(tasks.map(t => t.id === taskId ? { ...t, ...patch } : t))}
             />
           </div>
         )}
@@ -259,21 +326,23 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                 </thead>
                 <tbody className="divide-y divide-border">
                   {filteredTasks.map(task => {
-                    const statusMeta = STATUSES.find(s => s.id === task.status);
+                    const statusMeta = STATUSES.find(s => s.id === task.status_code);
                     const SIcon = statusMeta?.icon || Clock;
                     // 승인대기/반려는 칸반의 승인·반려 버튼으로만 바뀐다 — 여기 드롭다운으로는 못 바꾼다.
-                    const statusLocked = task.status === "PENDING_APPROVAL" || task.status === "REJECTED" || !canEditTask(task);
+                    const statusLocked = task.status_code === "PENDING_APPROVAL" || task.status_code === "CANCELLED" || !canEditTask(task);
                     return (
                       <tr key={task.id} className="hover:bg-black/5 dark:hover:bg-white/5 transition-colors group">
-                        <td className="px-4 py-3 font-medium min-w-[200px]">{task.task_title}</td>
+                        <td className="px-4 py-3 font-medium min-w-[200px]">{task.title}</td>
                         <td className="px-4 py-3">
                           {statusLocked ? (
                             <span className={cn("inline-flex items-center gap-1 text-xs font-semibold px-2 py-1 rounded border", statusMeta?.color, "border-orange-400/30")}>
-                              <SIcon className="w-3.5 h-3.5" /> {statusMeta?.label}
+                              {/* 2026-09-16: 화면 문구는 항상 서버 code_name 그대로 — STATUSES.label은
+                                  색상/아이콘 매칭용일 뿐 표시 문구의 소스가 아니다. */}
+                              <SIcon className="w-3.5 h-3.5" /> {task.status_info?.code_name ?? statusMeta?.label}
                             </span>
                           ) : (
                             <select
-                              value={task.status}
+                              value={task.status_code}
                               onChange={e => handleStatusChange(task.id, e.target.value)}
                               className={cn(
                                 "appearance-none bg-transparent border rounded px-2 py-1 text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-primary cursor-pointer",
@@ -281,7 +350,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                                 statusMeta?.color
                               )}
                             >
-                              {STATUSES.filter(s => s.id === "APPROVED" || s.id === "IN_PROGRESS" || s.id === "COMPLETED").map(s => <option key={s.id} value={s.id} className="text-foreground">{s.label}</option>)}
+                              {STATUSES.filter(s => s.id === "TASK_APPROVED" || s.id === "IN_PROGRESS" || s.id === "DONE").map(s => <option key={s.id} value={s.id} className="text-foreground">{s.label}</option>)}
                             </select>
                           )}
                         </td>
@@ -321,13 +390,13 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                           {isPM ? (
                             <input
                               type="date"
-                              value={task.due_date ? task.due_date.slice(0, 10) : ""}
-                              onChange={e => handleTaskUpdate(task.id, { due_date: e.target.value || null })}
+                              value={task.end_date ? task.end_date.slice(0, 10) : ""}
+                              onChange={e => handleTaskUpdate(task.id, { end_date: e.target.value || null })}
                               className="bg-transparent border border-transparent hover:border-black/10 dark:hover:border-white/10 rounded px-1 py-1 text-xs focus:outline-none text-muted-foreground"
                             />
                           ) : (
                             <span title="일정 조율은 PM만 할 수 있습니다" className="inline-flex items-center gap-1 px-1 py-1 text-xs text-muted-foreground">
-                              <Lock className="w-3 h-3 opacity-50" /> {task.due_date ? task.due_date.slice(0, 10) : "-"}
+                              <Lock className="w-3 h-3 opacity-50" /> {task.end_date ? task.end_date.slice(0, 10) : "-"}
                             </span>
                           )}
                         </td>
@@ -339,7 +408,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                                 type="range"
                                 min="0" max="100" step="5"
                                 value={task.progress || 0}
-                                onChange={e => handleTaskUpdate(task.id, { progress: parseInt(e.target.value) })}
+                                onChange={e => handleProgressChange(task.id, parseInt(e.target.value))}
                                 className="w-24 accent-primary"
                               />
                               <span className="text-xs w-8 text-right text-muted-foreground">{task.progress || 0}%</span>
@@ -412,6 +481,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
           </div>
         )}
       </div>
+      <Toast message={toast?.message ?? null} variant={toast?.variant} onDismiss={() => setToast(null)} />
     </div>
   );
 }

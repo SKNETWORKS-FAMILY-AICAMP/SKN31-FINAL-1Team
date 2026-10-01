@@ -15,12 +15,16 @@ REFRESH_COOKIE_PATH = '/api/users/'
 
 
 def _cookie_kwargs(max_age: int, path: str = '/'):
+    # 로컬 개발(DEBUG=True, http)에서는 secure=True면 쿠키가 아예 안 실린다 — 배포(https)
+    # 에서만 secure를 켠다.
+    secure = not settings.DEBUG
     return dict(
         httponly=True,
-        # 로컬 개발(DEBUG=True, http)에서는 secure=True면 쿠키가 아예 안 실린다 — 배포(https)
-        # 에서만 secure를 켠다.
-        secure=not settings.DEBUG,
-        samesite='Lax',
+        secure=secure,
+        # 프론트(vercel.app)와 백엔드(duckdns.org)가 서로 다른 도메인이라 크로스사이트
+        # 요청으로 취급된다 — SameSite=Lax는 이런 요청에 쿠키를 안 실어 보내 로그인 후에도
+        # "인증 정보 없음" 에러가 났다. None은 Secure(HTTPS)가 있어야만 허용되므로 배포에서만 쓴다.
+        samesite='None' if secure else 'Lax',
         max_age=max_age,
         path=path,
     )

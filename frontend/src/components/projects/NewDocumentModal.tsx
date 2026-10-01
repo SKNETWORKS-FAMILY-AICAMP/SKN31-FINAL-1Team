@@ -2,14 +2,30 @@
 
 import { useState, useEffect, useRef } from "react";
 import { X, Loader2, FileText, Users, CalendarIcon, FolderKanban, Paperclip } from "lucide-react";
-import { apiFetch } from "@/lib/api/client";
+import { apiFetch, directUploadFetch } from "@/lib/api/client";
+import { formatTranscriptSentences } from "@/lib/transcript";
 import TagAutocomplete from "@/components/ui/TagAutocomplete";
 
 type ProjectOption = { id: number; name: string };
-const NEW_PROJECT_VALUE = "__new__";
 
 // 2026-09-01: /api/meetings/notes/parse-file/ (.docx/.pdf/.txt/.hwp 지원 — .hwp는 hwp5txt
 // CLI를 서브프로세스로 호출) 로 파일을 올리면 텍스트를 추출해 "원본 내용" 칸을 채운다.
+// gpt-transcribe 전사문은 표현을 수정하지 않고 문장 사이에 줄바꿈만 넣어 표시한다.
+const AUDIO_EXTENSIONS = [".mp3", ".mp4", ".mpeg", ".mpga", ".m4a", ".wav", ".webm"];
+const isAudioFile = (filename: string) => AUDIO_EXTENSIONS.some(ext => filename.toLowerCase().endsWith(ext));
+
+// 이 도구는 개발 회의록 전문 서비스라, 개발과 무관한 회의록/음성이 섞여 들어오면 안 된다는
+// 요청(팀원)에 따라 첨부 파일명이 "개발_"로 시작하는지를 서버 호출 전에 먼저 막는다 — 파일
+// 내용을 읽고 나서 걸러내면 이미 Whisper/파일 파싱 API를 호출해 비용이 든 뒤라, 파일명만
+// 보고 바로 거부하는 게 가장 저렴하고 빠르다.
+const REQUIRED_FILENAME_PREFIX = "개발_";
+const hasRequiredPrefix = (filename: string) => filename.startsWith(REQUIRED_FILENAME_PREFIX);
+
+type AudioStage = "transcribing" | null;
+// 서버의 중간 진행 이벤트가 없어 응답 전까지 표시하는 진행률은 추정값이다.
+const STAGE_RANGE: Record<Exclude<AudioStage, null>, { from: number; to: number; label: string }> = {
+  transcribing: { from: 5, to: 95, label: "음성 처리 중 (대용량은 자동 분할되며 시간이 걸릴 수 있습니다)" },
+};
 const SAMPLE_NOTES = [
   `[신규 쇼핑몰 프로젝트 킥오프 회의록]
 일자: 2026-08-19
@@ -46,11 +62,8 @@ const SAMPLE_NOTES = [
 ];
 
 export function NewDocumentModal({
-  defaultProjectId,
   onClose,
 }: {
-  // 문서생성 페이지가 현재 보고 있는 프로젝트가 있으면 기본 선택값으로 넘겨준다
-  defaultProjectId?: number;
   onClose: (projectId?: number, createdNoteId?: number) => void;
 }) {
   const [title, setTitle] = useState("");
@@ -61,24 +74,13 @@ export function NewDocumentModal({
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
   const [uploadingFile, setUploadingFile] = useState(false);
+  const [audioStage, setAudioStage] = useState<AudioStage>(null);
+  const [audioProgress, setAudioProgress] = useState(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const [projects, setProjects] = useState<ProjectOption[]>([]);
-  const [loadingProjects, setLoadingProjects] = useState(true);
-  const [selectedProjectId, setSelectedProjectId] = useState<string>(defaultProjectId ? String(defaultProjectId) : "");
+  // 2026-09-21 (사용자 요청): 기존 프로젝트에 붙이는 선택지(드롭다운) 자체를 없애고,
+  // 새 회의록/문서는 항상 새 프로젝트를 만든다 — 입력창 하나로 단순화.
   const [newProjectName, setNewProjectName] = useState("");
-
-  useEffect(() => {
-    apiFetch<ProjectOption[]>("/api/projects/")
-      .then(list => {
-        setProjects(list);
-        if (!defaultProjectId) {
-          setSelectedProjectId(list.length > 0 ? String(list[0].id) : NEW_PROJECT_VALUE);
-        }
-      })
-      .catch(() => setSelectedProjectId(NEW_PROJECT_VALUE))
-      .finally(() => setLoadingProjects(false));
-  }, [defaultProjectId]);
 
   // 참석자 드롭박스 후보 — DB에 등록된 사람 이름. 목록에 없는 사람은 TagAutocomplete에서 직접 입력해 추가할 수 있다.
   useEffect(() => {
@@ -93,6 +95,12 @@ export function NewDocumentModal({
     const base = (bracketMatch ? bracketMatch[1] : firstLine).slice(0, 40);
     return base || `새 문서 ${new Date().toLocaleTimeString()}`;
   };
+
+  // 파일을 첨부하면 그 파일명을 제목 기본값으로 쓴다 — 내용에서 제목을 뽑는 방식
+  // (deriveTitleFromContent)은 원본이 "# 회의록" 같은 마크다운 헤더나 표로 시작하면
+  // 엉뚱한 제목이 되는 문제가 있었다(실제로 겪음). 파일명은 보통 이미 "개발_기획회의_0911"
+  // 처럼 회의를 식별할 수 있게 지어져 있어 확장자만 떼면 바로 쓸 만한 제목이 된다.
+  const filenameToTitle = (filename: string) => filename.replace(/\.[^./\\]+$/, "");
 
   const extractMeetingDate = (text: string): string | null => {
     const keywordLine = text.split("\n").find(l => /(일자|날짜|회의일시|작성일)/.test(l));
@@ -131,50 +139,91 @@ export function NewDocumentModal({
     if (!title.trim()) setTitle(deriveTitleFromContent(sample));
   };
 
+  // 요청 중에는 추정 진행률을 상한까지 올리고, 전사가 완료되면 100%로 표시한다.
+  const runAudioStage = async <T,>(stage: Exclude<AudioStage, null>, task: () => Promise<T>): Promise<T> => {
+    const range = STAGE_RANGE[stage];
+    setAudioStage(stage);
+    setAudioProgress(range.from);
+    const interval = setInterval(() => {
+      setAudioProgress(p => {
+        const remaining = range.to - p;
+        return remaining <= 1 ? p : p + Math.max(1, remaining * 0.12);
+      });
+    }, 350);
+    try {
+      const result = await task();
+      setAudioProgress(100);
+      return result;
+    } finally {
+      clearInterval(interval);
+    }
+  };
+
   const handleFileSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     e.target.value = ""; // 같은 파일을 다시 선택해도 onChange가 다시 뜨도록 초기화
     if (!file) return;
 
+    const audio = isAudioFile(file.name);
+    if (audio && (file.size === 0 || file.size > 200 * 1024 * 1024)) {
+      setError("음성 파일은 0바이트 초과, 200MB 이하여야 합니다.");
+      return;
+    }
     setError("");
+
+    if (!hasRequiredPrefix(file.name)) {
+      setError(
+        `회의록 제목이 개발과 관련되어 있지 않습니다. 파일명이 "${REQUIRED_FILENAME_PREFIX}"로 시작해야 합니다. (예: 개발_기획회의_0911)`
+      );
+      return;
+    }
+
+    if (!title.trim()) setTitle(filenameToTitle(file.name));
+
     setUploadingFile(true);
     try {
-      const formData = new FormData();
-      formData.append("file", file);
-      const result = await apiFetch<{ content: string; filename: string }>(
-        "/api/meetings/notes/parse-file/",
-        { method: "POST", body: formData }
-      );
-      setContent(result.content);
-      if (!title.trim()) setTitle(deriveTitleFromContent(result.content));
+      if (audio) {
+        const formData = new FormData();
+        formData.append("file", file);
+        const { transcript } = await runAudioStage("transcribing", () =>
+          directUploadFetch<{ transcript: string }>("/api/meetings/notes/transcribe-audio/", formData)
+        );
+        setContent(formatTranscriptSentences(transcript));
+      } else {
+        const formData = new FormData();
+        formData.append("file", file);
+        // 문서 파일(최대 10MB)도 Vercel 프록시의 4.5MB 본문 제한에 걸려 6MB PDF가 413이었다 —
+        // 음성 파일과 같은 방식으로 프록시를 거치지 않고 백엔드로 직접 올린다.
+        const result = await directUploadFetch<{ content: string; filename: string }>(
+          "/api/meetings/notes/parse-file/",
+          formData
+        );
+        setContent(result.content);
+      }
     } catch (err: any) {
-      setError(err.message || "파일에서 텍스트를 추출하지 못했습니다.");
+      setError(err.message || (audio ? "음성 파일을 텍스트로 변환하지 못했습니다." : "파일에서 텍스트를 추출하지 못했습니다."));
     } finally {
       setUploadingFile(false);
+      setAudioStage(null);
+      setAudioProgress(0);
     }
   };
-
-  const isCreatingNewProject = selectedProjectId === NEW_PROJECT_VALUE;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
     if (!content.trim()) return;
-    if (isCreatingNewProject && !newProjectName.trim()) return;
+    if (!newProjectName.trim()) return;
 
     const finalTitle = title.trim() || deriveTitleFromContent(content);
 
     setIsLoading(true);
     try {
-      let targetProjectId = Number(selectedProjectId);
-
-      if (isCreatingNewProject) {
-        const newProject = await apiFetch<ProjectOption>("/api/projects/", {
-          method: "POST",
-          body: JSON.stringify({ name: newProjectName.trim() }),
-        });
-        targetProjectId = newProject.id;
-      }
+      const newProject = await apiFetch<ProjectOption>("/api/projects/", {
+        method: "POST",
+        body: JSON.stringify({ name: newProjectName.trim() }),
+      });
+      const targetProjectId = newProject.id;
 
       const note = await apiFetch<any>("/api/meetings/notes/", {
         method: "POST",
@@ -196,7 +245,10 @@ export function NewDocumentModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
+    // 2026-09-22 (사용자 리포트): 우측 근거 패널(EvidencePanel, z-[120])이 열려있는
+    // 상태에서 "새 회의록 / 문서"를 열면 이 모달이 z-50이라 패널 뒤/위에 어색하게
+    // 겹쳐 보였다 — 이 모달은 항상 최상단이어야 하므로 그보다 높은 z-index를 준다.
+    <div className="fixed inset-0 z-[130] flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
       <div className="bg-background rounded-2xl shadow-2xl w-full max-w-3xl border border-border flex flex-col max-h-[95vh]">
         <div className="flex justify-between items-center p-5 border-b border-border shrink-0">
           <div>
@@ -220,46 +272,28 @@ export function NewDocumentModal({
           )}
 
           <form id="doc-form" onSubmit={handleSubmit} className="space-y-3">
-            <div className="grid grid-cols-[3fr_2fr] gap-4">
-              <div>
-                <label className="block text-sm font-medium mb-1">문서 제목 (선택)</label>
-                <input
-                  type="text"
-                  value={title}
-                  onChange={(e) => setTitle(e.target.value)}
-                  placeholder="비워두면 내용에서 자동으로 생성됩니다"
-                  className="w-full bg-black/5 dark:bg-white/5 border border-border rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-primary/50 font-medium"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-1 flex items-center gap-1.5"><FolderKanban className="w-3.5 h-3.5" /> 프로젝트</label>
-                <select
-                  value={selectedProjectId}
-                  onChange={(e) => setSelectedProjectId(e.target.value)}
-                  disabled={loadingProjects}
-                  className="w-full bg-black/5 dark:bg-white/5 border border-border rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-primary/50 text-sm disabled:opacity-60"
-                >
-                  {projects.map((p) => (
-                    <option key={p.id} value={p.id}>{p.name}</option>
-                  ))}
-                  <option value={NEW_PROJECT_VALUE}>+ 새 프로젝트</option>
-                </select>
-              </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">문서 제목 (선택)</label>
+              <input
+                type="text"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                placeholder="비워두면 내용에서 자동으로 생성됩니다"
+                className="w-full bg-black/5 dark:bg-white/5 border border-border rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-primary/50 font-medium"
+              />
             </div>
 
-            {isCreatingNewProject && (
-              <div>
-                <label className="block text-sm font-medium mb-1">새 프로젝트 이름</label>
-                <input
-                  type="text"
-                  required
-                  value={newProjectName}
-                  onChange={(e) => setNewProjectName(e.target.value)}
-                  placeholder="예: 사내 인트라넷 고도화"
-                  className="w-full bg-black/5 dark:bg-white/5 border border-border rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-primary/50 text-sm"
-                />
-              </div>
-            )}
+            <div>
+              <label className="block text-sm font-medium mb-1 flex items-center gap-1.5"><FolderKanban className="w-3.5 h-3.5" /> 새 프로젝트 이름</label>
+              <input
+                type="text"
+                required
+                value={newProjectName}
+                onChange={(e) => setNewProjectName(e.target.value)}
+                placeholder="예: 사내 인트라넷 고도화"
+                className="w-full bg-black/5 dark:bg-white/5 border border-border rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-primary/50 text-sm"
+              />
+            </div>
 
             <div className="grid grid-cols-2 gap-4">
               <div>
@@ -290,7 +324,7 @@ export function NewDocumentModal({
                   <input
                     ref={fileInputRef}
                     type="file"
-                    accept=".docx,.pdf,.txt,.hwp,.md"
+                    accept=".docx,.pdf,.txt,.hwp,.md,.mp3,.mp4,.mpeg,.mpga,.m4a,.wav,.webm"
                     onChange={handleFileSelected}
                     className="hidden"
                   />
@@ -299,10 +333,10 @@ export function NewDocumentModal({
                     onClick={() => fileInputRef.current?.click()}
                     disabled={uploadingFile}
                     className="flex items-center gap-1 text-xs font-semibold text-primary hover:text-primary/80 bg-primary/10 px-3 py-1 rounded-full transition-colors disabled:opacity-50"
-                    title="지원 형식: .docx, .pdf, .txt, .hwp, .md"
+                    title="지원 형식: .docx, .pdf, .txt, .hwp, .md / 음성: .mp3, .mp4, .wav, .m4a, .webm (최대 200MB, 대용량 자동 분할)"
                   >
                     {uploadingFile ? <Loader2 className="w-3 h-3 animate-spin" /> : <Paperclip className="w-3 h-3" />}
-                    {uploadingFile ? "추출 중..." : "파일에서 불러오기"}
+                    {uploadingFile ? (audioStage ? `${STAGE_RANGE[audioStage].label}...` : "추출 중...") : "파일/음성에서 불러오기"}
                   </button>
                   <button
                     type="button"
@@ -313,6 +347,22 @@ export function NewDocumentModal({
                   </button>
                 </div>
               </div>
+              {audioStage && (
+                <div className="mb-2">
+                  <div className="flex justify-between items-center mb-1">
+                    <span className="text-xs text-muted-foreground">
+                      {STAGE_RANGE[audioStage].label}
+                    </span>
+                    <span className="text-xs font-semibold text-primary">{Math.round(audioProgress)}%</span>
+                  </div>
+                  <div className="h-1.5 w-full bg-black/10 dark:bg-white/10 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-primary rounded-full transition-all duration-300 ease-out"
+                      style={{ width: `${audioProgress}%` }}
+                    />
+                  </div>
+                </div>
+              )}
               <textarea
                 required
                 value={content}
@@ -335,7 +385,7 @@ export function NewDocumentModal({
           <button
             form="doc-form"
             type="submit"
-            disabled={isLoading || !content.trim() || (isCreatingNewProject && !newProjectName.trim())}
+            disabled={isLoading || !content.trim() || !newProjectName.trim()}
             className="flex items-center gap-2 bg-primary text-primary-foreground hover:bg-primary/90 px-8 py-2.5 rounded-lg transition-colors text-sm font-medium shadow-lg shadow-primary/20 disabled:opacity-50"
           >
             {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : null}

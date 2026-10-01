@@ -10,7 +10,6 @@ import {
 import {
   GitPullRequest, AlertTriangle, CheckCircle2, Clock,
   Activity, Users, FolderKanban, Loader2, ArrowUpRight,
-  PlusCircle
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { formatDistanceToNow } from "date-fns";
@@ -27,6 +26,7 @@ type ProjectStat = {
 };
 
 type ActivityLog = {
+  taskId: number;
   projectId: string;
   projectName: string;
   taskTitle: string;
@@ -36,17 +36,14 @@ type ActivityLog = {
   updatedAt: string;
 };
 
-type TaskDto = {
-  id: number;
-  project: number | null;
-  assigned_user_name: string | null;
-  task_title: string;
-  status: string;
-  status_display: string;
-  updated_at: string;
+// /api/dashboard/overview/ 응답 shape (backend/dashboard/serializers.py 참고).
+type OverviewDto = {
+  summary: { totalTasks: number; inProgress: number; pendingApproval: number; done: number; completionRate: number };
+  statusChart: { code_id: string; code_name: string; value: number }[];
+  workload: { userId: number; name: string; taskCount: number }[];
+  activityLog: { taskId: number; projectId: number | null; projectName: string; taskTitle: string; status: string; statusLabel: string; assigneeName: string; updatedAt: string | null }[];
+  projectList: { id: number; name: string; totalTasks: number; doneTasks: number; progress: number }[];
 };
-
-type ProjectDto = { id: number; name: string };
 
 const STATUS_COLORS: Record<string, string> = {
   PENDING_APPROVAL: "bg-orange-500",
@@ -64,93 +61,56 @@ const STATUS_CHART_COLOR: Record<string, string> = {
   REJECTED: "#ef4444",
 };
 
-// statusChart를 그릴 때 한글 라벨(status_display)로 이름을 쓰는데, 클릭 시 /tasks로 보내려면
-// 원래 상태 코드가 필요해서 여기서 역매핑한다.
-const STATUS_CODE_BY_LABEL: Record<string, string> = {
-  "승인 대기": "PENDING_APPROVAL",
-  "승인 및 알림 완료": "APPROVED",
-  "진행 중": "IN_PROGRESS",
-  "완료": "COMPLETED",
-  "반려": "REJECTED",
-};
-
-// 백엔드엔 대시보드 요약 API가 따로 없다 — 업무/프로젝트 원본 목록을 받아 화면에서 직접 집계한다
-// (다른 화면들과 동일한 패턴: KanbanBoard/projects 페이지도 원본을 받아 클라이언트에서 가공).
-function buildStats(tasks: TaskDto[], projects: ProjectDto[], isPM: boolean) {
-  const projectNameById = new Map(projects.map(p => [p.id, p.name]));
-
-  const totalTasks = tasks.length;
-  const inProgress = tasks.filter(t => t.status === "IN_PROGRESS").length;
-  const pendingApproval = tasks.filter(t => t.status === "PENDING_APPROVAL").length;
-  const done = tasks.filter(t => t.status === "COMPLETED").length;
-  const completionRate = totalTasks ? Math.round((done / totalTasks) * 100) : 0;
-
-  const statusOrder = ["PENDING_APPROVAL", "APPROVED", "IN_PROGRESS", "COMPLETED", "REJECTED"];
-  const statusChart = statusOrder
-    .map(code => ({
-      name: tasks.find(t => t.status === code)?.status_display ?? code,
-      value: tasks.filter(t => t.status === code).length,
-      color: STATUS_CHART_COLOR[code],
-    }))
-    .filter(d => d.value > 0);
-
-  const workloadMap = new Map<string, number>();
-  tasks.forEach(t => {
-    const name = t.assigned_user_name ?? "미배정";
-    workloadMap.set(name, (workloadMap.get(name) ?? 0) + 1);
-  });
-  const workload = Array.from(workloadMap.entries()).map(([name, taskCount]) => ({ name, taskCount }));
-
-  const activityLog: ActivityLog[] = [...tasks]
-    .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())
-    .slice(0, 8)
-    .map(t => ({
-      projectId: String(t.project ?? ""),
-      projectName: (t.project != null ? projectNameById.get(t.project) : undefined) ?? "",
-      taskTitle: t.task_title,
-      status: t.status,
-      statusLabel: t.status_display,
-      assigneeName: t.assigned_user_name,
-      updatedAt: t.updated_at,
-    }));
-
-  // 참여 중인 프로젝트 = PM은 전체, 팀원은 자기 업무가 걸린 프로젝트만
-  const relevantProjectIds = isPM ? new Set(projects.map(p => p.id)) : new Set(tasks.map(t => t.project).filter((id): id is number => id != null));
-  const projectList: ProjectStat[] = projects
-    .filter(p => relevantProjectIds.has(p.id))
-    .map(p => {
-      const projectTasks = tasks.filter(t => t.project === p.id);
-      const totalTasks = projectTasks.length;
-      const doneTasks = projectTasks.filter(t => t.status === "COMPLETED").length;
-      return {
-        id: String(p.id),
-        name: p.name,
-        totalTasks,
-        doneTasks,
-        progress: totalTasks ? Math.round((doneTasks / totalTasks) * 100) : 0,
-      };
-    });
-
-  return { summary: { totalTasks, inProgress, pendingApproval, done, completionRate }, statusChart, workload, activityLog, projectList };
+// 백엔드 statusChart는 code_id/code_name/value만 준다 — 화면에 쓰는 색상(color)과
+// 클릭 시 이동할 상태 필터(code_id)는 여기서 붙인다. projectId/assigneeName처럼
+// null/빈 문자열일 수 있는 필드도 화면이 기대하던 모양(string | null)으로 맞춘다.
+function mapOverview(raw: OverviewDto): {
+  summary: OverviewDto["summary"];
+  statusChart: { name: string; value: number; color: string; code_id: string }[];
+  workload: OverviewDto["workload"];
+  activityLog: ActivityLog[];
+  projectList: ProjectStat[];
+} {
+  return {
+    summary: raw.summary,
+    statusChart: raw.statusChart.map(s => ({
+      name: s.code_name,
+      value: s.value,
+      color: STATUS_CHART_COLOR[s.code_id] ?? "#888888",
+      code_id: s.code_id,
+    })),
+    workload: raw.workload,
+    activityLog: raw.activityLog.map(a => ({
+      taskId: a.taskId,
+      projectId: String(a.projectId ?? ""),
+      projectName: a.projectName,
+      taskTitle: a.taskTitle,
+      status: a.status,
+      statusLabel: a.statusLabel,
+      assigneeName: a.assigneeName || null,
+      updatedAt: a.updatedAt ?? "",
+    })),
+    projectList: raw.projectList.map(p => ({
+      id: String(p.id), name: p.name, totalTasks: p.totalTasks, doneTasks: p.doneTasks, progress: p.progress,
+    })),
+  };
 }
 
 export default function OverviewView() {
   const { user } = useAuth();
   const router = useRouter();
   const isPM = user?.role === "PM";
-  const [stats, setStats] = useState<any>(null);
+  const [stats, setStats] = useState<ReturnType<typeof mapOverview> | null>(null);
   const [loading, setLoading] = useState(true);
 
+  // 예전엔 /api/tasks/assignments/ + /api/projects/ 원본 전체를 받아 화면에서 직접
+  // 집계했다(#11 — 데이터 늘어나면 느려짐, 팀원 요청으로 백엔드에 집계 API 추가됨).
+  // 백엔드가 PM/팀원 범위를 이미 구분해서 내려주므로(dashboard/views.py) 프론트는
+  // isPM에 따라 URL을 나눌 필요 없이 그대로 받아 쓴다.
   useEffect(() => {
     if (!user) return;
-    const tasksUrl = isPM ? "/api/tasks/assignments/" : `/api/tasks/assignments/?assigneeId=${user.id}`;
-    Promise.all([
-      apiFetch<TaskDto[]>(tasksUrl),
-      apiFetch<ProjectDto[]>("/api/projects/"),
-    ])
-      .then(([tasks, projects]) => {
-        setStats(buildStats(tasks, projects, isPM));
-      })
+    apiFetch<OverviewDto>("/api/dashboard/overview/")
+      .then(raw => setStats(mapOverview(raw)))
       .catch((err) => console.error(err))
       .finally(() => setLoading(false));
   }, [user, isPM]);
@@ -229,7 +189,10 @@ export default function OverviewView() {
                 <p className="text-sm text-muted-foreground text-center py-8">아직 활동 내역이 없습니다.</p>
               ) : (
                 activityLog.slice(0, 5).map((log: ActivityLog, i: number) => (
-                  <Link key={i} href={`/projects/${log.projectId}`} className="flex items-start gap-3 pb-3 border-b border-foreground/5 last:border-0 last:pb-0 group">
+                  // 프로젝트 상세(/projects/{id})는 사이드바 "업무관리"(/tasks)와 별개 화면이라
+                  // 건수·필터가 서로 달라 헷갈린다는 지적(2026-09-28) — 상세 창은 열지 않고
+                  // 업무관리 탭에서 이 업무가 있는 목록 페이지로 바로 이동한다(?task=).
+                  <Link key={i} href={`/tasks?task=${log.taskId}`} className="flex items-start gap-3 pb-3 border-b border-foreground/5 last:border-0 last:pb-0 group">
                     <div className={cn("w-2 h-2 rounded-full mt-1.5 shrink-0", STATUS_COLORS[log.status] ?? "bg-gray-500")} />
                     <div className="flex-1 min-w-0">
                       {/* 단일 프로젝트 운영 전제라 프로젝트명 배지는 중복 정보 — 업무 제목만 표시 */}
@@ -242,7 +205,7 @@ export default function OverviewView() {
                       </p>
                     </div>
                     <span className="text-xs text-muted-foreground shrink-0">
-                      {formatDistanceToNow(new Date(log.updatedAt), { addSuffix: true, locale: ko })}
+                      {log.updatedAt ? formatDistanceToNow(new Date(log.updatedAt), { addSuffix: true, locale: ko }) : ""}
                     </span>
                   </Link>
                 ))
@@ -268,7 +231,7 @@ export default function OverviewView() {
                             key={`cell-${index}`}
                             fill={entry.color}
                             cursor="pointer"
-                            onClick={() => router.push(`/tasks?status=${STATUS_CODE_BY_LABEL[entry.name] ?? ""}`)}
+                            onClick={() => router.push(`/tasks?status=${entry.code_id}`)}
                           />
                         ))}
                       </Pie>
@@ -283,7 +246,7 @@ export default function OverviewView() {
                   {statusChart.map((d: any) => (
                     <Link
                       key={d.name}
-                      href={`/tasks?status=${STATUS_CODE_BY_LABEL[d.name] ?? ""}`}
+                      href={`/tasks?status=${d.code_id}`}
                       className="flex justify-between text-xs font-medium hover:text-primary transition-colors group"
                     >
                       <span className="flex items-center gap-2">
@@ -311,29 +274,28 @@ export default function OverviewView() {
                   <span className="text-muted-foreground font-medium">({projectList.length}건)</span>
                 )}
               </h3>
-              {isPM && (
-                <Link
-                  href="/project/new"
-                  className="flex items-center gap-1.5 px-3 py-1.5 bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 rounded-lg text-xs font-semibold transition-colors"
-                >
-                  <PlusCircle className="w-4 h-4" /> 새 프로젝트
-                </Link>
-              )}
             </div>
             {projectList.length === 0 ? (
               <div className="py-10 text-center text-muted-foreground space-y-2">
                 <FolderKanban className="w-10 h-10 mx-auto opacity-20" />
                 <p className="text-sm">{isPM ? "아직 프로젝트가 없습니다." : "아직 참여 중인 프로젝트가 없습니다."}</p>
-                {isPM && (
+                {/* 2026-09-21 (사용자 재확인): 프로젝트 생성은 PM이 아니라 일반유저 권한 —
+                    PM은 회의록을 등록할 수 없으니 프로젝트도 직접 만들 필요가 없다. */}
+                {!isPM && (
                   <Link href="/project/new" className="inline-block mt-2 px-4 py-2 bg-primary text-white rounded-lg text-sm font-bold">
                     첫 프로젝트 만들기
                   </Link>
                 )}
               </div>
             ) : (
-              <div className="space-y-3">
+              <div className="space-y-3 max-h-[420px] overflow-y-auto pr-1 -mr-1">
+                {/* 2026-09-28 (사용자 요청): 별도의 프로젝트 상세 페이지(/projects/{id})는
+                    업무관리(/tasks)와 건수·필터 기준이 달라 헷갈린다는 지적 — 최근 업무
+                    활동과 같은 방식으로 업무관리 탭 안에서 이 프로젝트로 필터링해서 보여준다.
+                    filterScope는 그대로 둬서, 일반유저는 이 프로젝트 안에서도 본인에게
+                    배정된 업무만(PM은 전체) 보이게 한다. */}
                 {projectList.map((p: ProjectStat) => (
-                  <Link key={p.id} href={`/projects/${p.id}`} className="block group">
+                  <Link key={p.id} href={`/tasks?project=${p.id}`} className="block group">
                     <div className="flex items-center justify-between mb-1">
                       <span className="text-sm font-semibold group-hover:text-primary transition-colors flex items-center gap-1">
                         {p.name}
@@ -357,9 +319,12 @@ export default function OverviewView() {
         </div>
 
         {/* Workload (1 column) — team-wide, PM only */}
+        {/* self-start: 옆의 "진행 중인 프로젝트" 목록이 프로젝트 수만큼 길어져도
+            그리드 기본 stretch 정렬 때문에 이 카드까지 같이 늘어나던 문제
+            (2026-09-14) — Status Chart 카드(위)와 같은 방식으로 늘어남을 막는다. */}
         {isPM && (
-          <div className="lg:col-span-1">
-            <div className="glass p-6 rounded-xl h-full">
+          <div className="lg:col-span-1 self-start">
+            <div className="glass p-6 rounded-xl">
               <h3 className="text-sm font-bold flex items-center gap-2 mb-4">
                 <Users className="w-4 h-4 text-blue-500" /> 팀원별 업무량
               </h3>

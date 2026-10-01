@@ -1,0 +1,3823 @@
+openapi: 3.0.3
+info:
+  title: 프로젝트 관리 시스템 API 명세서
+  version: 1.0.0
+  description: 회의록, 기획서, 요구사항 정의, 업무 배정 파이프라인 관리 API
+paths:
+  /api/common/codes/:
+    get:
+      operationId: common_codes_list
+      description: 시스템 전체에서 사용되는 공통 코드(부서, 직급, 상태 등) 목록을 조회합니다. `group_code` 쿼리 파라미터를
+        통해 특정 그룹 코드만 필터링할 수 있습니다.
+      summary: 공통 코드 목록 조회
+      parameters:
+      - in: query
+        name: group_code
+        schema:
+          type: string
+        description: '필터링할 공통 코드 그룹 (예: DEPT, POSITION, STATUS)'
+      tags:
+      - 0단계 - 공통 메타데이터
+      security:
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/CommonCode'
+          description: ''
+  /api/dashboard/analytics/:
+    get:
+      operationId: dashboard_analytics_retrieve
+      description: 최근 7일 완료 추이, 팀원별 기여도, 평균 처리 시간, 승인 통과율, 프로젝트 번다운 현황을 집계합니다.
+      summary: 대시보드 성과 통계 조회 (PM 전용)
+      tags:
+      - 0단계 - 대시보드
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DashboardAnalyticsResponse'
+          description: ''
+  /api/dashboard/overview/:
+    get:
+      operationId: dashboard_overview_retrieve
+      description: 유저 권한(PM/일반)에 따라 대시보드 요약, 상태 차트, 업무량, 활동 로그, 프로젝트 목록을 집계하여 반환합니다.
+      summary: 대시보드 개요 집계 조회
+      tags:
+      - 0단계 - 대시보드
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DashboardOverviewResponse'
+          description: ''
+  /api/meetings/notes/:
+    get:
+      operationId: meetings_notes_list
+      description: 등록된 회의록 전체 목록을 조회합니다.
+      summary: 회의록 목록 조회
+      tags:
+      - 1단계 - 회의록
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/MeetingNote'
+          description: ''
+    post:
+      operationId: meetings_notes_create
+      description: 새로운 회의록을 작성 및 등록합니다.
+      summary: 회의록 신규 작성
+      tags:
+      - 1단계 - 회의록
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MeetingNoteCreate'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/MeetingNoteCreate'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/MeetingNoteCreate'
+        required: true
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MeetingNote'
+          description: ''
+  /api/meetings/notes/{meeting_id}/:
+    get:
+      operationId: meetings_notes_retrieve
+      description: 특정 회의록의 상세 정보를 조회합니다.
+      summary: 회의록 상세 조회
+      parameters:
+      - in: path
+        name: meeting_id
+        schema:
+          type: integer
+          title: 회의록 ID
+        description: 회의록을 식별하는 고유한 정수 값.
+        required: true
+      tags:
+      - 1단계 - 회의록
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MeetingNote'
+          description: ''
+    put:
+      operationId: meetings_notes_update
+      description: 특정 회의록 정보(전체 수정)를 갱신합니다.
+      summary: 회의록 수정
+      parameters:
+      - in: path
+        name: meeting_id
+        schema:
+          type: integer
+          title: 회의록 ID
+        description: 회의록을 식별하는 고유한 정수 값.
+        required: true
+      tags:
+      - 1단계 - 회의록
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MeetingNote'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/MeetingNote'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/MeetingNote'
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MeetingNote'
+          description: ''
+    patch:
+      operationId: meetings_notes_partial_update
+      description: 특정 회의록 정보(부분 수정)를 갱신합니다.
+      summary: 회의록 부분 수정
+      parameters:
+      - in: path
+        name: meeting_id
+        schema:
+          type: integer
+          title: 회의록 ID
+        description: 회의록을 식별하는 고유한 정수 값.
+        required: true
+      tags:
+      - 1단계 - 회의록
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedMeetingNote'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedMeetingNote'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedMeetingNote'
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MeetingNote'
+          description: ''
+    delete:
+      operationId: meetings_notes_destroy
+      description: 특정 회의록을 삭제합니다.
+      summary: 회의록 삭제
+      parameters:
+      - in: path
+        name: meeting_id
+        schema:
+          type: integer
+          title: 회의록 ID
+        description: 회의록을 식별하는 고유한 정수 값.
+        required: true
+      tags:
+      - 1단계 - 회의록
+      responses:
+        '204':
+          description: No response body
+  /api/meetings/notes/{id}/analyze/:
+    post:
+      operationId: meetings_notes_analyze_create
+      description: 순차 LLM 호출 2번(노드①이 실측 ~100초)이라 동기로 기다리지 않는다. 이 호출은 즉시 job_id만 반환하고,
+        실제 결과는 GET /api/meetings/notes/analyze-jobs/{job_id}/ 를 폴링해서 받는다.
+      summary: 회의록 AI 분석 및 기획서 자동 생성 — 백그라운드 작업 시작
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - 1단계 - 회의록
+      responses:
+        '202':
+          description: 작업 시작됨 (job_id)
+        '403':
+          description: 작성자 본인이 아님
+  /api/meetings/notes/analyze-jobs/{job_id}/:
+    get:
+      operationId: meetings_notes_analyze_jobs_retrieve
+      description: 기획서 생성 작업 진행 상태 조회(폴링) — GET /api/meetings/notes/analyze-jobs/{job_id}/
+      summary: 기획서 생성 작업 진행 상태 조회(폴링)
+      parameters:
+      - in: path
+        name: job_id
+        schema:
+          type: string
+        description: MeetingNoteAnalyzeView가 반환한 job_id
+        required: true
+      tags:
+      - 1단계 - 회의록
+      responses:
+        '200':
+          description: 작업 상태(진행 중/완료/실패)
+  /api/meetings/notes/cleanup-transcript/:
+    post:
+      operationId: meetings_notes_cleanup_transcript_create
+      description: Whisper 받아쓰기 원문을 GPT로 필러 단어 제거·문장 정리해서 돌려준다. DB에 저장하지 않는다.
+      summary: 받아쓰기 원문 정리 (2/2단계)
+      tags:
+      - 1단계 - 회의록
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                text:
+                  type: string
+      responses:
+        '200':
+          description: 정리된 텍스트
+  /api/meetings/notes/parse-file/:
+    post:
+      operationId: meetings_notes_parse_file_create
+      description: .docx/.pdf/.txt/.md/.hwp 파일을 업로드하면 텍스트를 추출해서 돌려준다. DB에 저장하지 않는다.
+      summary: 회의록 첨부 파일 텍스트 추출
+      tags:
+      - 1단계 - 회의록
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+      responses:
+        '200':
+          description: 추출된 텍스트
+  /api/meetings/notes/transcribe-audio/:
+    post:
+      operationId: meetings_notes_transcribe_audio_create
+      description: .mp3/.mp4/.wav/.m4a/.webm 등 음성 파일을 OpenAI Whisper로 받아쓰기해서 원문 텍스트를
+        돌려준다. DB에 저장하지 않는다.
+      summary: 음성 파일 받아쓰기 (1/2단계)
+      tags:
+      - 1단계 - 회의록
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+      responses:
+        '200':
+          description: 받아쓰기 원문
+  /api/meetings/specs/:
+    get:
+      operationId: meetings_specs_list
+      description: 등록된 전체 기획서 목록을 조회합니다.
+      summary: 기획서 목록 조회
+      tags:
+      - 2단계 - 기획서
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/SpecDocument'
+          description: ''
+    post:
+      operationId: meetings_specs_create
+      description: 새로운 기획서를 수동으로 작성 및 생성합니다.
+      summary: 기획서 생성
+      tags:
+      - 2단계 - 기획서
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SpecDocument'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/SpecDocument'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/SpecDocument'
+        required: true
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SpecDocument'
+          description: ''
+  /api/meetings/specs/{spec_id}/:
+    get:
+      operationId: meetings_specs_retrieve
+      description: 특정 기획서의 상세 정보를 조회합니다.
+      summary: 기획서 상세 조회
+      parameters:
+      - in: path
+        name: spec_id
+        schema:
+          type: integer
+          title: 기획서 ID
+        description: 기획서을 식별하는 고유한 정수 값.
+        required: true
+      tags:
+      - 2단계 - 기획서
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SpecDocument'
+          description: ''
+    put:
+      operationId: meetings_specs_update
+      description: 특정 기획서의 모든 정보를 수정합니다.
+      summary: 기획서 전체 수정
+      parameters:
+      - in: path
+        name: spec_id
+        schema:
+          type: integer
+          title: 기획서 ID
+        description: 기획서을 식별하는 고유한 정수 값.
+        required: true
+      tags:
+      - 2단계 - 기획서
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SpecDocument'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/SpecDocument'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/SpecDocument'
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SpecDocument'
+          description: ''
+    patch:
+      operationId: meetings_specs_partial_update
+      description: 특정 기획서의 일부 정보를 수정합니다.
+      summary: 기획서 부분 수정
+      parameters:
+      - in: path
+        name: spec_id
+        schema:
+          type: integer
+          title: 기획서 ID
+        description: 기획서을 식별하는 고유한 정수 값.
+        required: true
+      tags:
+      - 2단계 - 기획서
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedSpecDocument'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedSpecDocument'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedSpecDocument'
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SpecDocument'
+          description: ''
+    delete:
+      operationId: meetings_specs_destroy
+      description: 특정 기획서를 삭제합니다.
+      summary: 기획서 삭제
+      parameters:
+      - in: path
+        name: spec_id
+        schema:
+          type: integer
+          title: 기획서 ID
+        description: 기획서을 식별하는 고유한 정수 값.
+        required: true
+      tags:
+      - 2단계 - 기획서
+      responses:
+        '204':
+          description: No response body
+  /api/meetings/specs/{id}/approve/:
+    post:
+      operationId: meetings_specs_approve_create
+      description: PM이 기획서를 승인 처리합니다.
+      summary: 기획서 승인
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - 2단계 - 기획서
+      responses:
+        '200':
+          description: 승인 완료
+  /api/meetings/specs/{id}/reject/:
+    post:
+      operationId: meetings_specs_reject_create
+      description: PM이 기획서를 반려 처리하고 이유를 남기며 작성자에게 알림을 발송합니다.
+      summary: 기획서 반려
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - 2단계 - 기획서
+      responses:
+        '200':
+          description: 반려 완료
+  /api/meetings/specs/{id}/review/:
+    post:
+      operationId: meetings_specs_review_create
+      description: 기획서에 검토 코멘트(review_comment)를 작성하고 검토자를 지정합니다.
+      summary: 기획서 검토 코멘트 남기기
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - 2단계 - 기획서
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SpecDocument'
+          description: ''
+  /api/meetings/specs/{id}/submit-review/:
+    post:
+      operationId: meetings_specs_submit_review_create
+      description: 기획서 작성자 본인이 PM에게 검토 요청을 제출합니다.
+      summary: 기획서 검토 요청 제출
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - 2단계 - 기획서
+      responses:
+        '200':
+          description: 검토 요청 완료
+        '403':
+          description: 작성자 본인만 검토 요청을 할 수 있습니다.
+    patch:
+      operationId: meetings_specs_submit_review_partial_update
+      description: 기획서 작성자 본인이 PM에게 검토 요청을 제출합니다.
+      summary: 기획서 검토 요청 제출
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - 2단계 - 기획서
+      responses:
+        '200':
+          description: 검토 요청 완료
+        '403':
+          description: 작성자 본인만 검토 요청을 할 수 있습니다.
+  /api/notifications/:
+    get:
+      operationId: notifications_list
+      description: 로그인한 사용자의 알림 목록을 조회합니다.
+      summary: 내 알림 목록 조회
+      tags:
+      - 알림
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Notification'
+          description: ''
+  /api/notifications/{id}/read/:
+    patch:
+      operationId: notifications_read_partial_update
+      description: 특정 알림 단건을 읽음 상태로 변경합니다.
+      summary: 알림 읽음 처리
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - 알림
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Notification'
+          description: ''
+  /api/notifications/read-all/:
+    patch:
+      operationId: notifications_read_all_partial_update
+      description: 로그인한 사용자의 미읽음 알림을 모두 읽음 상태로 일괄 변경합니다.
+      summary: 알림 전체 읽음 처리
+      tags:
+      - 알림
+      responses:
+        '200':
+          description: 모든 알림 읽음 처리 완료
+  /api/projects/:
+    get:
+      operationId: projects_list
+      description: 등록된 전체 프로젝트 목록을 조회합니다.
+      summary: 프로젝트 목록 조회
+      tags:
+      - 0단계 - 프로젝트 관리
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Project'
+          description: ''
+    post:
+      operationId: projects_create
+      description: 새로운 프로젝트를 생성합니다. 작성자(`owner`)는 요청을 보낸 유저로 자동 지정됩니다.
+      summary: 신규 프로젝트 생성
+      tags:
+      - 0단계 - 프로젝트 관리
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Project'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/Project'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/Project'
+        required: true
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Project'
+          description: ''
+  /api/projects/{id}/:
+    get:
+      operationId: projects_retrieve
+      description: 특정 프로젝트의 상세 정보를 조회합니다.
+      summary: 프로젝트 상세 조회
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - 0단계 - 프로젝트 관리
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Project'
+          description: ''
+    put:
+      operationId: projects_update
+      description: 특정 프로젝트의 정보를 전체 수정합니다.
+      summary: 프로젝트 전체 수정
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - 0단계 - 프로젝트 관리
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Project'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/Project'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/Project'
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Project'
+          description: ''
+    patch:
+      operationId: projects_partial_update
+      description: 특정 프로젝트의 정보 일부를 수정합니다.
+      summary: 프로젝트 부분 수정
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - 0단계 - 프로젝트 관리
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedProject'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedProject'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedProject'
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Project'
+          description: ''
+    delete:
+      operationId: projects_destroy
+      description: 특정 프로젝트를 삭제합니다.
+      summary: 프로젝트 삭제
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - 0단계 - 프로젝트 관리
+      responses:
+        '204':
+          description: No response body
+  /api/projects/{project_id}/history/:
+    get:
+      operationId: projects_history_list
+      description: 특정 프로젝트의 전체 파이프라인 흐름(회의록 → 기획서 → 요구사항 → 업무 배정) 이력 로그를 시간순으로 조회합니다.
+        프론트엔드의 `/history` 타임라인 페이지에서 사용됩니다.
+      summary: 프로젝트 파이프라인 타임라인 이력 조회
+      parameters:
+      - in: path
+        name: project_id
+        schema:
+          type: integer
+        description: 타임라인 이력을 조회할 프로젝트 ID
+        required: true
+      tags:
+      - 4단계 - 파이프라인 이력
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PipelineHistory'
+          description: ''
+  /api/requirements/:
+    get:
+      operationId: requirements_list
+      description: 등록된 전체 요구사항 정의서 목록을 조회합니다. `spec` 또는 `project` ID 쿼리 파라미터를 이용해
+        특정 기획서/프로젝트별 필터링이 가능합니다.
+      summary: 요구사항 정의서 목록 조회
+      parameters:
+      - in: query
+        name: project
+        schema:
+          type: integer
+        description: 프로젝트 ID (Project ID)로 필터링
+      - in: query
+        name: spec
+        schema:
+          type: integer
+        description: 기획서 ID (SpecDocument ID)로 필터링
+      tags:
+      - 2단계 - 요구사항 정의서
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/RequirementDefinition'
+          description: ''
+    post:
+      operationId: requirements_create
+      description: 기획서 ID(`spec`)를 전달받아 백그라운드로 AI 세부 항목(RequirementItem) 자동 추출을 시작한다.
+        이 호출은 즉시 job_id만 반환하고, 실제 결과는 GET /api/requirements/extraction-jobs/{job_id}/
+        를 폴링해서 받는다.
+      summary: 요구사항 정의서 생성 (AI 세부항목 자동 추출) — 백그라운드 작업 시작
+      tags:
+      - 2단계 - 요구사항 정의서
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RequirementDefinitionCreate'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/RequirementDefinitionCreate'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/RequirementDefinitionCreate'
+        required: true
+      responses:
+        '202':
+          description: 작업 시작됨 (job_id)
+        '400':
+          description: 잘못된 파라미터 또는 기획서 데이터
+  /api/requirements/{spec_id}/:
+    get:
+      operationId: requirements_retrieve
+      summary: 요구사항 정의서 상세 조회
+      parameters:
+      - in: path
+        name: spec_id
+        schema:
+          type: integer
+        description: 조회할 기획서 ID
+        required: true
+      tags:
+      - 2단계 - 요구사항 정의서
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RequirementDefinition'
+          description: ''
+    put:
+      operationId: requirements_update
+      summary: 요구사항 정의서 전체 수정
+      parameters:
+      - in: path
+        name: spec_id
+        schema:
+          type: integer
+        description: 수정할 기획서 ID
+        required: true
+      tags:
+      - 2단계 - 요구사항 정의서
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RequirementDefinition'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/RequirementDefinition'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/RequirementDefinition'
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RequirementDefinition'
+          description: ''
+    patch:
+      operationId: requirements_partial_update
+      summary: 요구사항 정의서 부분 수정
+      parameters:
+      - in: path
+        name: spec_id
+        schema:
+          type: integer
+        description: 수정할 기획서 ID
+        required: true
+      tags:
+      - 2단계 - 요구사항 정의서
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedRequirementDefinition'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedRequirementDefinition'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedRequirementDefinition'
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RequirementDefinition'
+          description: ''
+    delete:
+      operationId: requirements_destroy
+      summary: 요구사항 정의서 삭제
+      parameters:
+      - in: path
+        name: spec_id
+        schema:
+          type: integer
+        description: 삭제할 기획서 ID
+        required: true
+      tags:
+      - 2단계 - 요구사항 정의서
+      responses:
+        '204':
+          description: No response body
+  /api/requirements/{spec_id}/approve/:
+    post:
+      operationId: requirements_approve_create
+      description: PM이 요구사항 정의서를 승인(APPROVED 상태 변경) 처리합니다.
+      summary: 요구사항 정의서 승인
+      parameters:
+      - in: path
+        name: spec_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - 2단계 - 요구사항 정의서
+      responses:
+        '200':
+          description: 승인 완료
+  /api/requirements/{spec_id}/confirm-tasks/:
+    post:
+      operationId: requirements_confirm_tasks_create
+      summary: 업무 배분 제안 확정(DB 저장)
+      parameters:
+      - in: path
+        name: spec_id
+        schema:
+          type: integer
+        description: 업무 배정을 확정할 기획서 ID
+        required: true
+      tags:
+      - 3단계 - 업무 배정
+      responses:
+        '200':
+          description: 업무 배정 확정 결과
+        '400':
+          description: 업무 배정 확정 실패
+  /api/requirements/{spec_id}/extract/:
+    post:
+      operationId: requirements_extract_create
+      summary: 기획서 기반 AI 요구사항 재추출 — 백그라운드 작업 시작
+      parameters:
+      - in: path
+        name: spec_id
+        schema:
+          type: integer
+        description: AI 세부 항목을 재추출할 기획서 ID
+        required: true
+      tags:
+      - 2단계 - 요구사항 정의서
+      responses:
+        '202':
+          description: 작업 시작됨 (job_id)
+        '400':
+          description: 잘못된 기획서 구조
+  /api/requirements/{spec_id}/generate-tasks/:
+    post:
+      operationId: requirements_generate_tasks_create
+      description: 순차 LLM 호출 여러 개라 1~수 분 걸릴 수 있어 동기로 기다리지 않는다. 이 호출은 즉시 job_id만 반환하고,
+        실제 결과는 GET /api/requirements/generate-tasks-jobs/{job_id}/ 를 폴링해서 받는다.
+      summary: 요구사항정의서 기반 업무 배분 제안 생성(AI, 미리보기) — 백그라운드 작업 시작
+      parameters:
+      - in: path
+        name: spec_id
+        schema:
+          type: integer
+        description: 업무 배분 제안을 생성할 기획서 ID
+        required: true
+      tags:
+      - 3단계 - 업무 배정
+      responses:
+        '202':
+          description: 작업 시작됨 (job_id)
+        '404':
+          description: 기획서를 찾을 수 없음
+  /api/requirements/{spec_id}/reject/:
+    post:
+      operationId: requirements_reject_create
+      description: PM이 요구사항 정의서를 반려(REJECTED 상태 변경) 처리합니다.
+      summary: 요구사항 정의서 반려
+      parameters:
+      - in: path
+        name: spec_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - 2단계 - 요구사항 정의서
+      responses:
+        '200':
+          description: 반려 완료
+  /api/requirements/{spec_id}/submit-review/:
+    post:
+      operationId: requirements_submit_review_create
+      description: 작성자 본인이 PM에게 요구사항 정의서 검토 요청(PENDING_REVIEW 상태 변경)을 제출합니다.
+      summary: 요구사항 정의서 검토 요청 제출
+      parameters:
+      - in: path
+        name: spec_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - 2단계 - 요구사항 정의서
+      responses:
+        '200':
+          description: 검토 요청 완료
+        '403':
+          description: 작성자 본인만 검토 요청을 제출할 수 있습니다.
+  /api/requirements/extraction-jobs/{job_id}/:
+    get:
+      operationId: requirements_extraction_jobs_retrieve
+      description: 요구사항정의서 생성 작업 진행 상태 조회(폴링) — GET /api/requirements/extraction-jobs/{job_id}/
+      summary: 요구사항정의서 생성 작업 진행 상태 조회(폴링)
+      parameters:
+      - in: path
+        name: job_id
+        schema:
+          type: string
+        description: RequirementDefinitionListCreateView/RequirementExtractView가 반환한
+          job_id
+        required: true
+      tags:
+      - 2단계 - 요구사항 정의서
+      responses:
+        '200':
+          description: 작업 상태(진행 중/완료/실패)
+  /api/requirements/generate-tasks-jobs/{job_id}/:
+    get:
+      operationId: requirements_generate_tasks_jobs_retrieve
+      summary: 업무 배분 실행 작업 진행 상태 조회(폴링)
+      parameters:
+      - in: path
+        name: job_id
+        schema:
+          type: string
+        description: RequirementGenerateTasksView가 반환한 job_id
+        required: true
+      tags:
+      - 3단계 - 업무 배정
+      responses:
+        '200':
+          description: 작업 상태(진행 중/완료/실패)
+  /api/requirements/items/:
+    get:
+      operationId: requirements_items_list
+      summary: 세부 요구사항 항목 목록 조회
+      tags:
+      - 2단계 - 요구사항 정의서
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/RequirementItem'
+          description: ''
+    post:
+      operationId: requirements_items_create
+      summary: 세부 요구사항 항목 직접 추가
+      tags:
+      - 2단계 - 요구사항 정의서
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RequirementItem'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/RequirementItem'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/RequirementItem'
+        required: true
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RequirementItem'
+          description: ''
+        '403':
+          description: 승인/검토 중인 요구사항 정의서 잠금으로 추가 불가
+  /api/requirements/items/{id}/:
+    get:
+      operationId: requirements_items_retrieve
+      summary: 세부 요구사항 항목 단건 조회
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - 2단계 - 요구사항 정의서
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RequirementItem'
+          description: ''
+    put:
+      operationId: requirements_items_update
+      summary: 세부 요구사항 항목 전체 수정
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - 2단계 - 요구사항 정의서
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RequirementItem'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/RequirementItem'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/RequirementItem'
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RequirementItem'
+          description: ''
+        '403':
+          description: 승인/검토 중인 요구사항 정의서 잠금으로 수정 불가
+    patch:
+      operationId: requirements_items_partial_update
+      summary: 세부 요구사항 항목 부분 수정
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - 2단계 - 요구사항 정의서
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedRequirementItem'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedRequirementItem'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedRequirementItem'
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RequirementItem'
+          description: ''
+        '403':
+          description: 승인/검토 중인 요구사항 정의서 잠금으로 수정 불가
+    delete:
+      operationId: requirements_items_destroy
+      summary: 세부 요구사항 항목 삭제
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - 2단계 - 요구사항 정의서
+      responses:
+        '204':
+          description: No response body
+        '403':
+          description: 승인/검토 중인 요구사항 정의서 잠금으로 삭제 불가
+  /api/tasks/ai/assignee-mapping/:
+    post:
+      operationId: tasks_ai_assignee_mapping_create
+      description: AI 알고리즘을 활용하여 업무 요구사항에 가장 적합한 담당자 매핑 결과를 추천받습니다.
+      summary: AI 담당자 매핑 추천
+      tags:
+      - 3단계 - 업무 배정
+      responses:
+        '200':
+          description: AI 담당자 매핑 성공
+  /api/tasks/ai/task-generation/:
+    post:
+      operationId: tasks_ai_task_generation_create
+      description: 요구사항 명세서를 바탕으로 AI가 구체적인 업무 목록을 자동 생성합니다.
+      summary: AI 업무 자동 생성
+      tags:
+      - 3단계 - 업무 배정
+      responses:
+        '200':
+          description: AI 업무 생성 성공
+  /api/tasks/assignments/:
+    get:
+      operationId: tasks_assignments_list
+      description: 등록된 전체 배정 업무 목록을 조회합니다. 프로젝트 ID, 담당자 ID, 상태 코드를 통한 필터링이 가능합니다.
+      summary: 배정 업무 목록 조회
+      parameters:
+      - in: query
+        name: assigneeId
+        schema:
+          type: integer
+        description: 담당자 유저 ID (User ID)로 필터링
+      - in: query
+        name: project
+        schema:
+          type: integer
+        description: 프로젝트 ID (Project ID)로 필터링
+      - in: query
+        name: status
+        schema:
+          type: string
+        description: 업무 상태 코드 (TaskStatusCode)로 필터링
+      tags:
+      - 3단계 - 업무 배정
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/TaskAssignment'
+          description: ''
+    post:
+      operationId: tasks_assignments_create
+      description: 요구사항 항목에 대해 특정 개발자에게 업무를 수동으로 배정합니다.
+      summary: 업무 수동 배정
+      tags:
+      - 3단계 - 업무 배정
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TaskAssignmentCreate'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/TaskAssignmentCreate'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/TaskAssignmentCreate'
+        required: true
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskAssignmentCreate'
+          description: ''
+  /api/tasks/assignments/{id}/:
+    get:
+      operationId: tasks_assignments_retrieve
+      description: 특정 배정 업무의 상세 정보를 조회합니다.
+      summary: 배정 업무 상세 조회
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: 조회할 배정 업무 ID
+        required: true
+      tags:
+      - 3단계 - 업무 배정
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskAssignment'
+          description: ''
+    put:
+      operationId: tasks_assignments_update
+      description: 특정 배정 업무의 전체 정보를 수정합니다.
+      summary: 배정 업무 전체 수정
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: 수정할 배정 업무 ID
+        required: true
+      tags:
+      - 3단계 - 업무 배정
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TaskAssignment'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/TaskAssignment'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/TaskAssignment'
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskAssignment'
+          description: ''
+    patch:
+      operationId: tasks_assignments_partial_update
+      description: 특정 배정 업무의 일부 정보를 수정합니다.
+      summary: 배정 업무 부분 수정
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: 수정할 배정 업무 ID
+        required: true
+      tags:
+      - 3단계 - 업무 배정
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedTaskAssignment'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedTaskAssignment'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedTaskAssignment'
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskAssignment'
+          description: ''
+    delete:
+      operationId: tasks_assignments_destroy
+      description: 특정 배정 업무를 삭제합니다.
+      summary: 배정 업무 삭제
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: 삭제할 배정 업무 ID
+        required: true
+      tags:
+      - 3단계 - 업무 배정
+      responses:
+        '204':
+          description: No response body
+  /api/tasks/assignments/{id}/status/:
+    patch:
+      operationId: tasks_assignments_status_partial_update
+      description: |-
+        배정된 업무의 진행 상태(`status_code`) 및 담당자(`assigned_user_id`)를 변경합니다.
+        - **담당자 변경**: PM만 수행할 수 있습니다.
+        - **배분 승인(`TASK_APPROVED`)/반려(`CANCELLED`)**: 해당 업무의 담당자 본인만 수행할 수 있습니다(PM이 배정한 업무를 받아들일지 정하는 것이라 PM도 예외 없음).
+        - **그 외 상태 변경**(`IN_PROGRESS`, `DONE` 등): PM 또는 해당 업무의 담당자 본인(`assigned_user`)만 수행할 수 있습니다.
+        - 상태가 `DONE`으로 변경되면 담당 개발자의 `is_busy` 상태가 `False`로 해제됩니다.
+      summary: 업무 승인, 상태 변경 및 담당자 변경
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: 상태를 변경할 배정 업무 ID
+        required: true
+      tags:
+      - 3단계 - 업무 배정
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedTaskStatusUpdate'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedTaskStatusUpdate'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedTaskStatusUpdate'
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskAssignment'
+          description: 업무 상태/담당자 변경 완료
+        '400':
+          description: 유효하지 않은 요청 파라미터
+        '403':
+          description: 권한 없음 (PM이 아니거나 본인 업무가 아님)
+        '404':
+          description: 존재하지 않는 배정 업무
+  /api/tasks/auto-assign/:
+    post:
+      operationId: tasks_auto_assign_create
+      description: 요구사항 항목(`req_item_id`)을 확인하여 가용한 개발자(`is_busy=False`)에게 업무를 자동
+        배정합니다. 배정 시 해당 개발자의 `is_busy` 상태가 `True`로 변경되며, `project_id` 포함 시 `PipelineHistory`
+        타임라인 이력이 기록됩니다.
+      summary: 업무 AI 자동 배정
+      tags:
+      - 3단계 - 업무 배정
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskAssignment'
+          description: 업무 자동 배정 완료
+        '400':
+          description: 가용한 유저가 없거나 요청 값이 잘못됨
+        '404':
+          description: 요구사항 항목 또는 프로젝트를 찾을 수 없음
+  /api/users/:
+    get:
+      operationId: users_list
+      description: 시스템 내 활성화된 사용자 목록을 조회합니다. 업무 자동 배정을 위해 현재 작업 가능 상태(`is_busy=false`)인
+        유저를 필터링하거나 간략 정보(`simple=true`)만 조회할 수 있습니다.
+      summary: 사용자/개발자 목록 조회
+      parameters:
+      - in: query
+        name: is_busy
+        schema:
+          type: boolean
+        description: '작업 진행 중 여부 필터 (true: 작업 중, false: 작업 가능)'
+      - in: query
+        name: simple
+        schema:
+          type: boolean
+        description: 간단 정보(ID, 이름, 사번)만 반환 여부 (true/false)
+      tags:
+      - 0단계 - 사용자 관리
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/UserDetail'
+          description: ''
+    post:
+      operationId: users_create
+      description: 새 직원 계정을 생성합니다. 비밀번호를 안 보내면 기본값 1111로 생성됩니다.
+      summary: 직원 계정 생성 (PM 전용)
+      tags:
+      - 0단계 - 사용자 관리
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserCreate'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/UserCreate'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/UserCreate'
+        required: true
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserDetail'
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
+  /api/users/{id}/impersonate/:
+    post:
+      operationId: users_impersonate_create
+      description: 재로그인 없이 대상 계정의 JWT를 발급받아 쿠키로 바꿔치기합니다. 운영 배포(DEBUG=False)에서는 항상
+        403을 반환합니다.
+      summary: '[DEV] 다른 계정으로 세션 미리보기 (PM 전용, DEBUG 환경 한정)'
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - 0단계 - 사용자 관리
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
+  /api/users/{id}/password-reset/:
+    post:
+      operationId: users_password_reset_create
+      description: 해당 직원의 비밀번호를 1111로 초기화합니다. 비밀번호 변경 시 온보딩을 새로 진행해야 하므로 is_onboarded=False로
+        리셋합니다.
+      summary: 비밀번호 초기화 (PM 전용)
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - 0단계 - 사용자 관리
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserPasswordResetResponse'
+          description: ''
+  /api/users/{id}/:
+    get:
+      operationId: users_retrieve
+      description: |-
+        직원 상세 조회/수정/삭제 API (PM 전용, 2026-08-31 추가)
+        GET/PATCH/DELETE /api/users/<id>/
+        직원관리 화면의 "정보 수정"·"역할 변경"·"계정 상태 변경"·"계정 삭제"가 전부 이 엔드포인트
+        하나로 처리된다 — role_code/status_code도 다른 필드와 마찬가지로 그냥 PATCH 바디에 실어
+        보내면 되는 일반 필드라 굳이 별도 엔드포인트로 안 쪼갰다.
+      summary: 직원 상세 조회 (PM 전용)
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - 0단계 - 사용자 관리
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserDetail'
+          description: ''
+    put:
+      operationId: users_update
+      description: |-
+        직원 상세 조회/수정/삭제 API (PM 전용, 2026-08-31 추가)
+        GET/PATCH/DELETE /api/users/<id>/
+        직원관리 화면의 "정보 수정"·"역할 변경"·"계정 상태 변경"·"계정 삭제"가 전부 이 엔드포인트
+        하나로 처리된다 — role_code/status_code도 다른 필드와 마찬가지로 그냥 PATCH 바디에 실어
+        보내면 되는 일반 필드라 굳이 별도 엔드포인트로 안 쪼갰다.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - users
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserDetail'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/UserDetail'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/UserDetail'
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserDetail'
+          description: ''
+    patch:
+      operationId: users_partial_update
+      description: 이름/부서/직급/직무/권한(role_code)/상태(status_code)/연락처/입사일/퇴사일/참여 프로젝트/온보딩
+        상태 등을 수정합니다.
+      summary: 직원 정보 수정 (PM 전용)
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - 0단계 - 사용자 관리
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedUserDetail'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedUserDetail'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedUserDetail'
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserDetail'
+          description: ''
+    delete:
+      operationId: users_destroy
+      description: 실제로는 하드 삭제가 아니라 비활성화 처리합니다. TaskAssignment.assigned_user가 on_delete=CASCADE라
+        진짜로 삭제하면 그 직원이 배정받았던 업무 기록이 전부 함께 지워지기 때문입니다 — 대신 is_active=False로 바꾸고 status_code를
+        RESIGNED로, resign_date를 오늘 날짜로 채웁니다. 목록 조회(GET /api/users/)는 is_active=True만
+        보여주므로 화면에서는 즉시 사라집니다.
+      summary: 계정 삭제 (PM 전용)
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - 0단계 - 사용자 관리
+      responses:
+        '204':
+          description: No response body
+  /api/users/csrf/:
+    get:
+      operationId: users_csrf_retrieve
+      description: csrftoken 쿠키를 발급합니다. 로그인 등 쓰기 요청 전에 먼저 호출해야 합니다.
+      summary: CSRF 쿠키 발급
+      tags:
+      - 0단계 - 사용자 관리
+      security:
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
+  /api/users/dev-stop-impersonate/:
+    post:
+      operationId: users_dev_stop_impersonate_create
+      description: dev_original_* 쿠키에 저장해둔 원래 access/refresh 토큰으로 되돌립니다.
+      summary: '[DEV] 원래 계정으로 복귀'
+      tags:
+      - 0단계 - 사용자 관리
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
+  /api/users/login/:
+    post:
+      operationId: users_login_create
+      description: 아이디와 비밀번호를 검증하고, access/refresh JWT를 HttpOnly 쿠키로 내려줍니다.
+      summary: 사용자 로그인
+      tags:
+      - 0단계 - 사용자 관리
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+        required: true
+      security:
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
+  /api/users/logout/:
+    post:
+      operationId: users_logout_create
+      description: refresh 토큰 쿠키를 블랙리스트 처리하고, access/refresh 쿠키를 지웁니다.
+      summary: 사용자 로그아웃
+      tags:
+      - 0단계 - 사용자 관리
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
+  /api/users/me/:
+    get:
+      operationId: users_me_retrieve
+      description: 현재 요청을 보낸 인증된 사용자의 상세 프로필 정보(부서, 직급, 기술 스택, 자격증 등)를 조회합니다.
+      summary: 현재 로그인 유저 프로필 조회
+      tags:
+      - 0단계 - 사용자 관리
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserDetail'
+          description: ''
+    patch:
+      operationId: users_me_partial_update
+      description: 본인의 상세 프로필 정보 및 온보딩 완료 상태(`is_onboarded=True`)를 업데이트합니다.
+      summary: 현재 로그인 유저 프로필 수정 / 온보딩 완료
+      tags:
+      - 0단계 - 사용자 관리
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedUserDetail'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedUserDetail'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedUserDetail'
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserDetail'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
+  /api/users/me/change-password/:
+    patch:
+      operationId: users_me_change_password_partial_update
+      description: 현재 비밀번호 확인 후 새 비밀번호로 변경합니다. (온보딩 과정에서 변경 시 is_onboarded=True 전환)
+      summary: 본인 비밀번호 변경
+      tags:
+      - 0단계 - 사용자 관리
+      responses:
+        '200':
+          description: No response body
+        '400':
+          description: No response body
+  /api/users/token-refresh/:
+    post:
+      operationId: users_token_refresh_create
+      description: refresh_token 쿠키로 새 access 토큰을 발급해 쿠키로 내려줍니다. 활동이 있는 동안은 refresh
+        토큰도 매번 새로 발급해(슬라이딩) 세션이 계속 연장되게 합니다 — 그렇지 않으면 로그인 시점 기준 24시간 뒤 활동 중이어도 무조건
+        로그아웃됩니다.
+      summary: access 토큰 재발급
+      tags:
+      - 0단계 - 사용자 관리
+      security:
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
+        '401':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
+components:
+  schemas:
+    ActivityLogItem:
+      type: object
+      properties:
+        projectId:
+          type: integer
+          nullable: true
+        projectName:
+          type: string
+        taskTitle:
+          type: string
+        status:
+          type: string
+        statusLabel:
+          type: string
+        assigneeName:
+          type: string
+        updatedAt:
+          type: string
+          nullable: true
+      required:
+      - assigneeName
+      - projectId
+      - projectName
+      - status
+      - statusLabel
+      - taskTitle
+      - updatedAt
+    ApprovalCount:
+      type: object
+      properties:
+        approved:
+          type: integer
+        rejected:
+          type: integer
+      required:
+      - approved
+      - rejected
+    ApprovalPassRate:
+      type: object
+      properties:
+        proposal:
+          $ref: '#/components/schemas/ApprovalCount'
+        requirement:
+          $ref: '#/components/schemas/ApprovalCount'
+      required:
+      - proposal
+      - requirement
+    CommonCode:
+      type: object
+      description: 공통 코드 전체 필드 조회용 Serializer
+      properties:
+        code_id:
+          type: string
+          title: 코드 ID
+          maxLength: 50
+        group_code:
+          type: string
+          title: 코드 그룹 ID
+          readOnly: true
+        code_name:
+          type: string
+          title: 코드명
+          maxLength: 100
+        sort_order:
+          type: integer
+          maximum: 2147483647
+          minimum: -2147483648
+          title: 정렬 순서
+        is_active:
+          type: boolean
+          title: 사용 여부
+        description:
+          type: string
+          nullable: true
+          title: 설명
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+          title: 생성 일시
+      required:
+      - code_id
+      - code_name
+      - created_at
+      - group_code
+    CommonCodeSimple:
+      type: object
+      description: 상태/그룹 코드 단순 조회용 Serializer
+      properties:
+        code_id:
+          type: string
+          title: 코드 ID
+          maxLength: 50
+        code_name:
+          type: string
+          title: 코드명
+          maxLength: 100
+      required:
+      - code_id
+      - code_name
+    DashboardAnalyticsResponse:
+      type: object
+      properties:
+        weeklyCompletion:
+          type: array
+          items:
+            $ref: '#/components/schemas/WeeklyCompletionItem'
+        teamContribution:
+          type: array
+          items:
+            $ref: '#/components/schemas/TeamContributionItem'
+        averageProcessTime:
+          type: number
+          format: double
+        approvalPassRate:
+          $ref: '#/components/schemas/ApprovalPassRate'
+        projectBurndown:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProjectBurndownItem'
+      required:
+      - approvalPassRate
+      - averageProcessTime
+      - projectBurndown
+      - teamContribution
+      - weeklyCompletion
+    DashboardOverviewResponse:
+      type: object
+      properties:
+        summary:
+          $ref: '#/components/schemas/Summary'
+        statusChart:
+          type: array
+          items:
+            $ref: '#/components/schemas/StatusChartItem'
+        workload:
+          type: array
+          items:
+            $ref: '#/components/schemas/WorkloadItem'
+        activityLog:
+          type: array
+          items:
+            $ref: '#/components/schemas/ActivityLogItem'
+        projectList:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProjectListItem'
+      required:
+      - activityLog
+      - projectList
+      - statusChart
+      - summary
+      - workload
+    LoginRequest:
+      type: object
+      description: 로그인 요청 시 아이디/비밀번호 검증
+      properties:
+        username:
+          type: string
+          description: 사용자 아이디
+        password:
+          type: string
+          writeOnly: true
+          description: 비밀번호
+      required:
+      - password
+      - username
+    LoginResponse:
+      type: object
+      description: Swagger(drf-spectacular) 문서화를 위한 로그인 성공 응답 구조
+      properties:
+        message:
+          type: string
+          default: 로그인 성공
+        user:
+          $ref: '#/components/schemas/UserSimple'
+        access:
+          type: string
+          description: 'JWT Access Token — 이후 요청의 Authorization: Bearer 헤더에 사용'
+        refresh:
+          type: string
+          description: JWT Refresh Token — access 토큰 재발급 및 로그아웃 시 블랙리스트 처리에 사용
+      required:
+      - access
+      - refresh
+      - user
+    MeetingNote:
+      type: object
+      description: |-
+        회의록(MeetingNote) 목록 및 상세 조회용 Serializer
+        관련된 기획서(spec_documents) 목록을 포함합니다.
+      properties:
+        id:
+          type: string
+          readOnly: true
+        meeting_id:
+          type: integer
+          readOnly: true
+          title: 회의록 ID
+        project:
+          type: integer
+          nullable: true
+          title: 소속 프로젝트
+        title:
+          type: string
+          title: 회의 제목
+          maxLength: 200
+        content:
+          type: string
+          title: 회의록 원문/내용
+        summary_content:
+          type: string
+          nullable: true
+          title: AI 핵심 요약
+        meeting_date:
+          type: string
+          format: date-time
+          nullable: true
+          title: 회의 일시
+        attendees:
+          type: string
+          nullable: true
+          title: 참석자 목록
+        status:
+          allOf:
+          - $ref: '#/components/schemas/StatusEnum'
+          title: 상태
+        status_display:
+          type: string
+          readOnly: true
+        created_by:
+          type: integer
+          title: 작성자
+        created_by_name:
+          type: string
+          readOnly: true
+        spec_documents:
+          type: array
+          items:
+            $ref: '#/components/schemas/SpecDocument'
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+          title: 생성 일시
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+          title: 수정 일시
+      required:
+      - content
+      - created_at
+      - created_by
+      - created_by_name
+      - id
+      - meeting_id
+      - spec_documents
+      - status_display
+      - title
+      - updated_at
+    MeetingNoteCreate:
+      type: object
+      description: 회의록 신규 등록 전용 Serializer
+      properties:
+        project:
+          type: integer
+          nullable: true
+          title: 소속 프로젝트
+        title:
+          type: string
+          title: 회의 제목
+          maxLength: 200
+        content:
+          type: string
+          title: 회의록 원문/내용
+        meeting_date:
+          type: string
+          format: date-time
+          nullable: true
+          title: 회의 일시
+        attendees:
+          type: string
+          nullable: true
+          title: 참석자 목록
+      required:
+      - content
+      - title
+    Notification:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        message:
+          type: string
+          readOnly: true
+          title: 알림 메시지
+        type:
+          allOf:
+          - $ref: '#/components/schemas/TypeEnum'
+          readOnly: true
+          title: 알림 종류
+        link:
+          type: string
+          readOnly: true
+          nullable: true
+          title: 이동 링크
+        read:
+          type: boolean
+          readOnly: true
+          title: 읽음 여부
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+          title: 생성 일시
+      required:
+      - created_at
+      - id
+      - link
+      - message
+      - read
+      - type
+    PatchedMeetingNote:
+      type: object
+      description: |-
+        회의록(MeetingNote) 목록 및 상세 조회용 Serializer
+        관련된 기획서(spec_documents) 목록을 포함합니다.
+      properties:
+        id:
+          type: string
+          readOnly: true
+        meeting_id:
+          type: integer
+          readOnly: true
+          title: 회의록 ID
+        project:
+          type: integer
+          nullable: true
+          title: 소속 프로젝트
+        title:
+          type: string
+          title: 회의 제목
+          maxLength: 200
+        content:
+          type: string
+          title: 회의록 원문/내용
+        summary_content:
+          type: string
+          nullable: true
+          title: AI 핵심 요약
+        meeting_date:
+          type: string
+          format: date-time
+          nullable: true
+          title: 회의 일시
+        attendees:
+          type: string
+          nullable: true
+          title: 참석자 목록
+        status:
+          allOf:
+          - $ref: '#/components/schemas/StatusEnum'
+          title: 상태
+        status_display:
+          type: string
+          readOnly: true
+        created_by:
+          type: integer
+          title: 작성자
+        created_by_name:
+          type: string
+          readOnly: true
+        spec_documents:
+          type: array
+          items:
+            $ref: '#/components/schemas/SpecDocument'
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+          title: 생성 일시
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+          title: 수정 일시
+    PatchedProject:
+      type: object
+      description: 프로젝트 목록 및 상세 조회용 Serializer
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        name:
+          type: string
+          title: 프로젝트명
+          maxLength: 200
+        description:
+          type: string
+          nullable: true
+          title: 프로젝트 설명
+        owner:
+          type: integer
+          nullable: true
+          title: 프로젝트 관리자
+        owner_name:
+          type: string
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+          title: 생성 일시
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+          title: 수정 일시
+        period_start:
+          type: string
+          format: date
+          nullable: true
+          title: 프로젝트 시작일
+        period_end:
+          type: string
+          format: date
+          nullable: true
+          title: 프로젝트 종료일
+    PatchedRequirementDefinition:
+      type: object
+      description: |-
+        요구사항 정의서(RequirementDefinition) 상세 조회 및 수정용 Serializer
+        하위에 속한 모든 요구사항 상세 항목(items), spec_id, 승인/반려 상태(status) 포함.
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        spec:
+          type: integer
+          title: 관련 기획서
+        spec_id:
+          type: integer
+          readOnly: true
+        spec_title:
+          type: string
+          readOnly: true
+        project:
+          type: integer
+          nullable: true
+          title: 소속 프로젝트
+        project_name:
+          type: string
+          readOnly: true
+        title:
+          type: string
+          title: 요구사항 정의서 제목
+          maxLength: 200
+        version:
+          type: string
+          title: 버전
+          maxLength: 20
+        description:
+          type: string
+          nullable: true
+          title: 설명
+        status_code:
+          type: string
+          title: 승인 상태
+          nullable: true
+        status_info:
+          allOf:
+          - $ref: '#/components/schemas/CommonCodeSimple'
+          readOnly: true
+        reject_reason:
+          type: string
+          nullable: true
+          title: 반려 사유
+        created_by:
+          type: integer
+          nullable: true
+          title: 작성자
+        created_by_name:
+          type: string
+          readOnly: true
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/RequirementItem'
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+          title: 생성 일시
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+          title: 수정 일시
+    PatchedRequirementItem:
+      type: object
+      description: 요구사항 상세 항목(RequirementItem) 조회 및 생성/수정용 Serializer
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        req_def:
+          type: integer
+          title: 요구사항 정의서
+        req_code:
+          type: string
+          title: '요구사항 코드 (예: REQ-01)'
+          maxLength: 50
+        req_name:
+          type: string
+          title: 요구사항명
+          maxLength: 200
+        description:
+          type: string
+          title: 요구사항 상세 내용
+        related_feature:
+          type: string
+        input_output:
+          type: string
+        acceptance_criteria:
+          type: string
+        note:
+          type: string
+        source:
+          type: string
+        review_status:
+          type: string
+        priority_code:
+          type: string
+          title: 우선순위
+          nullable: true
+        priority_info:
+          allOf:
+          - $ref: '#/components/schemas/CommonCodeSimple'
+          readOnly: true
+        difficulty:
+          type: string
+          nullable: true
+          title: 난이도 (상/중/하)
+          maxLength: 20
+        category:
+          type: string
+          nullable: true
+          title: 기능 카테고리
+          maxLength: 50
+        category_2:
+          type: string
+          nullable: true
+          title: 기능 카테고리 2
+          maxLength: 50
+        order:
+          type: number
+          format: double
+          title: 표시 순서
+    PatchedSpecDocument:
+      type: object
+      description: 기획서(SpecDocument) 조회 및 작성용 Serializer
+      properties:
+        id:
+          type: string
+          readOnly: true
+        spec_id:
+          type: integer
+          readOnly: true
+          title: 기획서 ID
+        meeting:
+          type: integer
+          title: 관련 회의록
+        title:
+          type: string
+          title: 기획서 제목
+          maxLength: 200
+        overview:
+          type: string
+          nullable: true
+          title: 1. 프로젝트 개요
+        problem_definition:
+          type: string
+          nullable: true
+          title: 2. 핵심 목표
+        target_users:
+          type: string
+          nullable: true
+          title: 4. 대상 사용자
+        key_features:
+          type: string
+          nullable: true
+          title: 5. 주요 기능
+        goals:
+          type: string
+          nullable: true
+          title: 3. 세부 목표 및 문제 정의
+        user_scenarios:
+          type: string
+          nullable: true
+          title: 5. 사용자 시나리오
+        tech_stack:
+          type: string
+          nullable: true
+          title: 6. 기술 스택 및 제약사항
+        final_decisions:
+          type: string
+          nullable: true
+          title: 7. 최종 결정사항
+        evidence_data:
+          type: string
+          nullable: true
+          title: 섹션별 근거 데이터
+        period_start:
+          type: string
+          format: date
+          nullable: true
+          title: 프로젝트 시작일
+        period_end:
+          type: string
+          format: date
+          nullable: true
+          title: 프로젝트 종료일
+        background:
+          type: string
+          nullable: true
+          title: 추진 배경 (구 필드, 미사용)
+        target_scope:
+          type: string
+          nullable: true
+          title: 개발 및 추진 범위 (구 필드, 미사용)
+        status_code:
+          type: string
+          title: 검토 상태
+          nullable: true
+        status_info:
+          allOf:
+          - $ref: '#/components/schemas/CommonCodeSimple'
+          readOnly: true
+        reviewer:
+          type: integer
+          nullable: true
+          title: 검토자
+        reviewer_name:
+          type: string
+          readOnly: true
+        review_comment:
+          type: string
+          nullable: true
+          title: 검토 의견
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+          title: 생성 일시
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+          title: 수정 일시
+    PatchedTaskAssignment:
+      type: object
+      description: 배정된 업무(TaskAssignment) 목록 및 상세 조회용 Serializer
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        task_no:
+          type: string
+          nullable: true
+          title: '업무배분 번호 (예: TASK-001)'
+          maxLength: 20
+        req_item:
+          type: integer
+          title: 관련 요구사항 항목
+        req_code:
+          type: string
+          readOnly: true
+        req_name:
+          type: string
+          readOnly: true
+        project:
+          type: integer
+          nullable: true
+          title: 프로젝트
+        project_name:
+          type: string
+          readOnly: true
+        assigned_user:
+          type: integer
+          title: 담당자
+        assigned_user_name:
+          type: string
+          readOnly: true
+        original_assigned_user:
+          type: integer
+          readOnly: true
+          nullable: true
+          title: AI 최초 추천 담당자(확정 시점, 이후 안 바뀜)
+        original_assigned_user_name:
+          type: string
+          readOnly: true
+        title:
+          type: string
+          title: 업무명
+          maxLength: 200
+        description:
+          type: string
+          nullable: true
+          title: 업무 상세 설명
+        difficulty_reason:
+          type: string
+          nullable: true
+          title: 난이도 판단 근거
+        estimated_hours:
+          type: number
+          format: double
+          nullable: true
+          title: 예상 소요 시간
+        assignment_reason:
+          type: string
+          nullable: true
+          title: 배정 근거
+        assigned_workload:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,3}(?:\.\d{0,2})?$
+          nullable: true
+          title: 배정 시점 부하율
+        reject_reason:
+          type: string
+          nullable: true
+          title: 반려 사유
+          maxLength: 500
+        start_date:
+          type: string
+          format: date
+          nullable: true
+          title: 시작일
+        end_date:
+          type: string
+          format: date
+          nullable: true
+          title: 종료 예정일
+        progress:
+          type: integer
+          maximum: 2147483647
+          minimum: -2147483648
+          title: 진행률(%)
+        linked_branch:
+          type: string
+          nullable: true
+          title: 연결 브랜치명
+          maxLength: 200
+        linked_pr_number:
+          type: integer
+          maximum: 2147483647
+          minimum: -2147483648
+          nullable: true
+          title: 연결 PR 번호
+        linked_pr_url:
+          type: string
+          nullable: true
+          title: 연결 PR 링크
+          maxLength: 300
+        status_code:
+          type: string
+          title: 업무 상태 코드
+          nullable: true
+        status_info:
+          allOf:
+          - $ref: '#/components/schemas/_CodeSimple'
+          readOnly: true
+        difficulty_code:
+          type: string
+          title: 난이도 코드
+          nullable: true
+        difficulty_info:
+          allOf:
+          - $ref: '#/components/schemas/_CodeSimple'
+          readOnly: true
+        git_status_code:
+          type: string
+          title: Git 연동 상태 코드
+          nullable: true
+        git_status_info:
+          allOf:
+          - $ref: '#/components/schemas/_CodeSimple'
+          readOnly: true
+        parent_task:
+          type: string
+          nullable: true
+          title: 부모 업무 번호
+          maxLength: 20
+        epic_no:
+          type: string
+          title: Epic ID
+          maxLength: 20
+        epic_title:
+          type: string
+          title: Epic 제목
+          maxLength: 200
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+          title: 생성 일시
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+          title: 수정 일시
+    PatchedTaskStatusUpdate:
+      type: object
+      description: |-
+        업무 상태 변경 전용 Serializer (예: 승인 완료, 진행 중, 완료 처리, 반려)
+        status_code 는 common_code(group_code='TASK_STATUS')의 code_id 를 받는다.
+      properties:
+        status_code:
+          type: string
+          title: 업무 상태 코드
+          nullable: true
+        reject_reason:
+          type: string
+          nullable: true
+          title: 반려 사유
+          maxLength: 500
+    PatchedUserDetail:
+      type: object
+      description: 사용자 상세 프로필 및 보유 스택/자격증 포함 Serializer
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        username:
+          type: string
+          title: 사용자 이름
+          description: 150자 이하 문자, 숫자 그리고 @/./+/-/_만 가능합니다.
+          pattern: ^[\w.@+-]+$
+          maxLength: 150
+        email:
+          title: 이메일 주소
+          oneOf:
+          - type: string
+            format: email
+            maxLength: 254
+          - type: string
+            maxLength: 0
+        emp_no:
+          type: string
+          nullable: true
+          title: 사원번호
+          maxLength: 20
+        phone:
+          type: string
+          nullable: true
+          title: 전화번호
+          maxLength: 20
+        first_name:
+          type: string
+          title: 이름
+          maxLength: 150
+        last_name:
+          type: string
+          title: 성
+          maxLength: 150
+        dept_code:
+          type: string
+          title: 부서 코드
+          nullable: true
+        dept_info:
+          allOf:
+          - $ref: '#/components/schemas/CommonCodeSimple'
+          readOnly: true
+        job_role_code:
+          type: string
+          title: 직무 코드
+          nullable: true
+        job_role_info:
+          allOf:
+          - $ref: '#/components/schemas/CommonCodeSimple'
+          readOnly: true
+        position_code:
+          type: string
+          title: 직급 코드
+          nullable: true
+        position_info:
+          allOf:
+          - $ref: '#/components/schemas/CommonCodeSimple'
+          readOnly: true
+        role_code:
+          type: string
+          title: 권한 코드
+          nullable: true
+        role_info:
+          allOf:
+          - $ref: '#/components/schemas/CommonCodeSimple'
+          readOnly: true
+        status_code:
+          type: string
+          title: 상태 코드
+          nullable: true
+        status_info:
+          allOf:
+          - $ref: '#/components/schemas/CommonCodeSimple'
+          readOnly: true
+        is_staff:
+          type: boolean
+          readOnly: true
+          title: 스태프 권한
+          description: 사용자가 관리사이트에 로그인이 가능한지를 나타냅니다.
+        is_busy:
+          type: boolean
+          title: 현재 작업 중 여부
+          description: 현재 업무가 진행 중인지 여부
+        is_onboarded:
+          type: boolean
+          title: 온보딩 완료 여부
+          description: 최초 프로필 설정/온보딩 완료 여부
+        hire_date:
+          type: string
+          format: date
+          nullable: true
+          title: 입사일
+        resign_date:
+          type: string
+          format: date
+          nullable: true
+          title: 퇴사일
+        past_projects:
+          type: string
+          nullable: true
+          title: 참여 프로젝트 이력(콤마 구분)
+        skills:
+          type: array
+          items:
+            $ref: '#/components/schemas/UserSkill'
+          readOnly: true
+        certifications:
+          type: array
+          items:
+            $ref: '#/components/schemas/UserCertification'
+          readOnly: true
+    PipelineHistory:
+      type: object
+      description: /history 페이지 타임라인 및 로그 조회용 Serializer
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        project:
+          type: integer
+          title: 프로젝트
+        project_name:
+          type: string
+          readOnly: true
+        meeting:
+          type: integer
+          title: 관련 회의록
+          nullable: true
+        spec:
+          type: integer
+          title: 관련 기획서
+          nullable: true
+        requirement:
+          type: integer
+          nullable: true
+          title: 관련 요구사항정의서
+        task:
+          type: integer
+          nullable: true
+          title: 관련 업무
+        step_type:
+          allOf:
+          - $ref: '#/components/schemas/StepTypeEnum'
+          title: 파이프라인 단계
+        step_type_display:
+          type: string
+          readOnly: true
+        title:
+          type: string
+          title: 이력 요약 타이틀
+          maxLength: 200
+        description:
+          type: string
+          nullable: true
+          title: 상세 변경 내용/로그
+        actor:
+          type: integer
+          nullable: true
+          title: 작업자/진행자
+        actor_info:
+          allOf:
+          - $ref: '#/components/schemas/UserSimple'
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+          title: 발생 일시
+      required:
+      - actor_info
+      - created_at
+      - id
+      - project
+      - project_name
+      - step_type
+      - step_type_display
+      - title
+    Project:
+      type: object
+      description: 프로젝트 목록 및 상세 조회용 Serializer
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        name:
+          type: string
+          title: 프로젝트명
+          maxLength: 200
+        description:
+          type: string
+          nullable: true
+          title: 프로젝트 설명
+        owner:
+          type: integer
+          nullable: true
+          title: 프로젝트 관리자
+        owner_name:
+          type: string
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+          title: 생성 일시
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+          title: 수정 일시
+        period_start:
+          type: string
+          format: date
+          nullable: true
+          title: 프로젝트 시작일
+        period_end:
+          type: string
+          format: date
+          nullable: true
+          title: 프로젝트 종료일
+      required:
+      - created_at
+      - id
+      - name
+      - owner_name
+      - updated_at
+    ProjectBurndownItem:
+      type: object
+      properties:
+        name:
+          type: string
+        remaining:
+          type: integer
+      required:
+      - name
+      - remaining
+    ProjectListItem:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        totalTasks:
+          type: integer
+        doneTasks:
+          type: integer
+        progress:
+          type: integer
+      required:
+      - doneTasks
+      - id
+      - name
+      - progress
+      - totalTasks
+    RequirementDefinition:
+      type: object
+      description: |-
+        요구사항 정의서(RequirementDefinition) 상세 조회 및 수정용 Serializer
+        하위에 속한 모든 요구사항 상세 항목(items), spec_id, 승인/반려 상태(status) 포함.
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        spec:
+          type: integer
+          title: 관련 기획서
+        spec_id:
+          type: integer
+          readOnly: true
+        spec_title:
+          type: string
+          readOnly: true
+        project:
+          type: integer
+          nullable: true
+          title: 소속 프로젝트
+        project_name:
+          type: string
+          readOnly: true
+        title:
+          type: string
+          title: 요구사항 정의서 제목
+          maxLength: 200
+        version:
+          type: string
+          title: 버전
+          maxLength: 20
+        description:
+          type: string
+          nullable: true
+          title: 설명
+        status_code:
+          type: string
+          title: 승인 상태
+          nullable: true
+        status_info:
+          allOf:
+          - $ref: '#/components/schemas/CommonCodeSimple'
+          readOnly: true
+        reject_reason:
+          type: string
+          nullable: true
+          title: 반려 사유
+        created_by:
+          type: integer
+          nullable: true
+          title: 작성자
+        created_by_name:
+          type: string
+          readOnly: true
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/RequirementItem'
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+          title: 생성 일시
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+          title: 수정 일시
+      required:
+      - created_at
+      - created_by_name
+      - id
+      - items
+      - project_name
+      - spec
+      - spec_id
+      - spec_title
+      - status_info
+      - title
+      - updated_at
+    RequirementDefinitionCreate:
+      type: object
+      description: 요구사항 정의서 신규 생성용 Serializer (spec_id를 통한 FK 매핑 보장)
+      properties:
+        spec:
+          type: integer
+          title: 관련 기획서
+        spec_id:
+          type: integer
+          title: 기획서 ID
+          writeOnly: true
+        project:
+          type: integer
+          nullable: true
+          title: 소속 프로젝트
+        title:
+          type: string
+          title: 요구사항 정의서 제목
+          maxLength: 200
+        version:
+          type: string
+          title: 버전
+          maxLength: 20
+        description:
+          type: string
+          nullable: true
+          title: 설명
+        status_code:
+          type: string
+          title: 승인 상태
+          nullable: true
+      required:
+      - spec
+      - title
+    RequirementItem:
+      type: object
+      description: 요구사항 상세 항목(RequirementItem) 조회 및 생성/수정용 Serializer
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        req_def:
+          type: integer
+          title: 요구사항 정의서
+        req_code:
+          type: string
+          title: '요구사항 코드 (예: REQ-01)'
+          maxLength: 50
+        req_name:
+          type: string
+          title: 요구사항명
+          maxLength: 200
+        description:
+          type: string
+          title: 요구사항 상세 내용
+        related_feature:
+          type: string
+        input_output:
+          type: string
+        acceptance_criteria:
+          type: string
+        note:
+          type: string
+        source:
+          type: string
+        review_status:
+          type: string
+        priority_code:
+          type: string
+          title: 우선순위
+          nullable: true
+        priority_info:
+          allOf:
+          - $ref: '#/components/schemas/CommonCodeSimple'
+          readOnly: true
+        difficulty:
+          type: string
+          nullable: true
+          title: 난이도 (상/중/하)
+          maxLength: 20
+        category:
+          type: string
+          nullable: true
+          title: 기능 카테고리
+          maxLength: 50
+        category_2:
+          type: string
+          nullable: true
+          title: 기능 카테고리 2
+          maxLength: 50
+        order:
+          type: number
+          format: double
+          title: 표시 순서
+      required:
+      - description
+      - id
+      - priority_info
+      - req_code
+      - req_def
+      - req_name
+    SpecDocument:
+      type: object
+      description: 기획서(SpecDocument) 조회 및 작성용 Serializer
+      properties:
+        id:
+          type: string
+          readOnly: true
+        spec_id:
+          type: integer
+          readOnly: true
+          title: 기획서 ID
+        meeting:
+          type: integer
+          title: 관련 회의록
+        title:
+          type: string
+          title: 기획서 제목
+          maxLength: 200
+        overview:
+          type: string
+          nullable: true
+          title: 1. 프로젝트 개요
+        problem_definition:
+          type: string
+          nullable: true
+          title: 2. 핵심 목표
+        target_users:
+          type: string
+          nullable: true
+          title: 4. 대상 사용자
+        key_features:
+          type: string
+          nullable: true
+          title: 5. 주요 기능
+        goals:
+          type: string
+          nullable: true
+          title: 3. 세부 목표 및 문제 정의
+        user_scenarios:
+          type: string
+          nullable: true
+          title: 5. 사용자 시나리오
+        tech_stack:
+          type: string
+          nullable: true
+          title: 6. 기술 스택 및 제약사항
+        final_decisions:
+          type: string
+          nullable: true
+          title: 7. 최종 결정사항
+        evidence_data:
+          type: string
+          nullable: true
+          title: 섹션별 근거 데이터
+        period_start:
+          type: string
+          format: date
+          nullable: true
+          title: 프로젝트 시작일
+        period_end:
+          type: string
+          format: date
+          nullable: true
+          title: 프로젝트 종료일
+        background:
+          type: string
+          nullable: true
+          title: 추진 배경 (구 필드, 미사용)
+        target_scope:
+          type: string
+          nullable: true
+          title: 개발 및 추진 범위 (구 필드, 미사용)
+        status_code:
+          type: string
+          title: 검토 상태
+          nullable: true
+        status_info:
+          allOf:
+          - $ref: '#/components/schemas/CommonCodeSimple'
+          readOnly: true
+        reviewer:
+          type: integer
+          nullable: true
+          title: 검토자
+        reviewer_name:
+          type: string
+          readOnly: true
+        review_comment:
+          type: string
+          nullable: true
+          title: 검토 의견
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+          title: 생성 일시
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+          title: 수정 일시
+      required:
+      - created_at
+      - id
+      - meeting
+      - reviewer_name
+      - spec_id
+      - status_info
+      - title
+      - updated_at
+    StatusChartItem:
+      type: object
+      properties:
+        code_id:
+          type: string
+        code_name:
+          type: string
+        value:
+          type: integer
+      required:
+      - code_id
+      - code_name
+      - value
+    StatusEnum:
+      enum:
+      - DRAFT
+      - PROCESSING
+      - REVIEWED
+      type: string
+      description: |-
+        * `DRAFT` - 작성 중
+        * `PROCESSING` - AI 분석 중
+        * `REVIEWED` - 검토 완료
+    StepTypeEnum:
+      enum:
+      - MEETING_REGISTERED
+      - SPEC_AI_GENERATED
+      - SPEC_GENERATED
+      - REQ_AI_GENERATED
+      - REQ_DEFINED
+      - TASK_AI_SUGGESTED
+      - TASK_ASSIGNED
+      - TASK_IN_PROGRESS
+      - COMPLETED
+      type: string
+      description: |-
+        * `MEETING_REGISTERED` - 회의록 등록
+        * `SPEC_AI_GENERATED` - 기획서 AI 생성
+        * `SPEC_GENERATED` - 기획서 생성/검토
+        * `REQ_AI_GENERATED` - 요구사항정의서 AI 생성
+        * `REQ_DEFINED` - 요구사항정의서 확정
+        * `TASK_AI_SUGGESTED` - 업무 배분 AI 추천
+        * `TASK_ASSIGNED` - 업무 자동 배정
+        * `TASK_IN_PROGRESS` - 업무 진행 중
+        * `COMPLETED` - 파이프라인 완료
+    Summary:
+      type: object
+      properties:
+        totalTasks:
+          type: integer
+        inProgress:
+          type: integer
+        pendingApproval:
+          type: integer
+        done:
+          type: integer
+        completionRate:
+          type: integer
+      required:
+      - completionRate
+      - done
+      - inProgress
+      - pendingApproval
+      - totalTasks
+    TaskAssignment:
+      type: object
+      description: 배정된 업무(TaskAssignment) 목록 및 상세 조회용 Serializer
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        task_no:
+          type: string
+          nullable: true
+          title: '업무배분 번호 (예: TASK-001)'
+          maxLength: 20
+        req_item:
+          type: integer
+          title: 관련 요구사항 항목
+        req_code:
+          type: string
+          readOnly: true
+        req_name:
+          type: string
+          readOnly: true
+        project:
+          type: integer
+          nullable: true
+          title: 프로젝트
+        project_name:
+          type: string
+          readOnly: true
+        assigned_user:
+          type: integer
+          title: 담당자
+        assigned_user_name:
+          type: string
+          readOnly: true
+        original_assigned_user:
+          type: integer
+          readOnly: true
+          nullable: true
+          title: AI 최초 추천 담당자(확정 시점, 이후 안 바뀜)
+        original_assigned_user_name:
+          type: string
+          readOnly: true
+        title:
+          type: string
+          title: 업무명
+          maxLength: 200
+        description:
+          type: string
+          nullable: true
+          title: 업무 상세 설명
+        difficulty_reason:
+          type: string
+          nullable: true
+          title: 난이도 판단 근거
+        estimated_hours:
+          type: number
+          format: double
+          nullable: true
+          title: 예상 소요 시간
+        assignment_reason:
+          type: string
+          nullable: true
+          title: 배정 근거
+        assigned_workload:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,3}(?:\.\d{0,2})?$
+          nullable: true
+          title: 배정 시점 부하율
+        reject_reason:
+          type: string
+          nullable: true
+          title: 반려 사유
+          maxLength: 500
+        start_date:
+          type: string
+          format: date
+          nullable: true
+          title: 시작일
+        end_date:
+          type: string
+          format: date
+          nullable: true
+          title: 종료 예정일
+        progress:
+          type: integer
+          maximum: 2147483647
+          minimum: -2147483648
+          title: 진행률(%)
+        linked_branch:
+          type: string
+          nullable: true
+          title: 연결 브랜치명
+          maxLength: 200
+        linked_pr_number:
+          type: integer
+          maximum: 2147483647
+          minimum: -2147483648
+          nullable: true
+          title: 연결 PR 번호
+        linked_pr_url:
+          type: string
+          nullable: true
+          title: 연결 PR 링크
+          maxLength: 300
+        status_code:
+          type: string
+          title: 업무 상태 코드
+          nullable: true
+        status_info:
+          allOf:
+          - $ref: '#/components/schemas/_CodeSimple'
+          readOnly: true
+        difficulty_code:
+          type: string
+          title: 난이도 코드
+          nullable: true
+        difficulty_info:
+          allOf:
+          - $ref: '#/components/schemas/_CodeSimple'
+          readOnly: true
+        git_status_code:
+          type: string
+          title: Git 연동 상태 코드
+          nullable: true
+        git_status_info:
+          allOf:
+          - $ref: '#/components/schemas/_CodeSimple'
+          readOnly: true
+        parent_task:
+          type: string
+          nullable: true
+          title: 부모 업무 번호
+          maxLength: 20
+        epic_no:
+          type: string
+          title: Epic ID
+          maxLength: 20
+        epic_title:
+          type: string
+          title: Epic 제목
+          maxLength: 200
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+          title: 생성 일시
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+          title: 수정 일시
+      required:
+      - assigned_user
+      - assigned_user_name
+      - created_at
+      - difficulty_info
+      - git_status_info
+      - id
+      - original_assigned_user
+      - original_assigned_user_name
+      - project_name
+      - req_code
+      - req_item
+      - req_name
+      - status_info
+      - updated_at
+    TaskAssignmentCreate:
+      type: object
+      description: 업무 배정 신규 등록/생성용 Serializer
+      properties:
+        task_no:
+          type: string
+          nullable: true
+          title: '업무배분 번호 (예: TASK-001)'
+          maxLength: 20
+        req_item:
+          type: integer
+          title: 관련 요구사항 항목
+        assigned_user:
+          type: integer
+          title: 담당자
+        project:
+          type: integer
+          nullable: true
+          title: 프로젝트
+        title:
+          type: string
+          title: 업무명
+          maxLength: 200
+        description:
+          type: string
+          nullable: true
+          title: 업무 상세 설명
+        difficulty_reason:
+          type: string
+          nullable: true
+          title: 난이도 판단 근거
+        estimated_hours:
+          type: number
+          format: double
+          nullable: true
+          title: 예상 소요 시간
+        assignment_reason:
+          type: string
+          nullable: true
+          title: 배정 근거
+        assigned_workload:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,3}(?:\.\d{0,2})?$
+          nullable: true
+          title: 배정 시점 부하율
+        start_date:
+          type: string
+          format: date
+          nullable: true
+          title: 시작일
+        end_date:
+          type: string
+          format: date
+          nullable: true
+          title: 종료 예정일
+        status_code:
+          type: string
+          title: 업무 상태 코드
+          nullable: true
+        difficulty_code:
+          type: string
+          title: 난이도 코드
+          nullable: true
+        parent_task:
+          type: string
+          nullable: true
+          title: 부모 업무 번호
+          maxLength: 20
+        epic_no:
+          type: string
+          title: Epic ID
+          maxLength: 20
+        epic_title:
+          type: string
+          title: Epic 제목
+          maxLength: 200
+      required:
+      - assigned_user
+      - req_item
+    TeamContributionItem:
+      type: object
+      properties:
+        name:
+          type: string
+        done:
+          type: integer
+        inProgress:
+          type: integer
+      required:
+      - done
+      - inProgress
+      - name
+    TypeEnum:
+      enum:
+      - info
+      - success
+      - warning
+      - error
+      type: string
+      description: |-
+        * `info` - 정보
+        * `success` - 성공
+        * `warning` - 경고
+        * `error` - 오류
+    UserCertification:
+      type: object
+      properties:
+        cert_id:
+          type: integer
+          readOnly: true
+          title: 자격증 ID
+        cert_code:
+          type: string
+          title: 자격증 코드
+        cert_name:
+          type: string
+          readOnly: true
+        acquired_date:
+          type: string
+          format: date
+          nullable: true
+          title: 취득일
+      required:
+      - cert_code
+      - cert_id
+      - cert_name
+    UserCreate:
+      type: object
+      description: |-
+        신규 직원 계정 생성 전용 Serializer.
+        비밀번호를 안 보내면 화면 안내 문구("초기 비밀번호: 1111")와 맞춰 기본값 1111을 쓴다 —
+        반드시 온보딩/최초 로그인 시 변경하도록 운영 절차로 강제해야 한다(이 API 자체는 강제 안 함).
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        username:
+          type: string
+          title: 사용자 이름
+          description: 150자 이하 문자, 숫자 그리고 @/./+/-/_만 가능합니다.
+          pattern: ^[\w.@+-]+$
+          maxLength: 150
+        password:
+          type: string
+          writeOnly: true
+        first_name:
+          type: string
+          title: 이름
+          maxLength: 150
+        last_name:
+          type: string
+          title: 성
+          maxLength: 150
+        emp_no:
+          type: string
+          nullable: true
+          title: 사원번호
+          maxLength: 20
+        phone:
+          type: string
+          nullable: true
+          title: 전화번호
+          maxLength: 20
+        dept_code:
+          type: string
+          title: 부서 코드
+          nullable: true
+        position_code:
+          type: string
+          title: 직급 코드
+          nullable: true
+        job_role_code:
+          type: string
+          title: 직무 코드
+          nullable: true
+        hire_date:
+          type: string
+          format: date
+          nullable: true
+          title: 입사일
+      required:
+      - id
+      - username
+    UserDetail:
+      type: object
+      description: 사용자 상세 프로필 및 보유 스택/자격증 포함 Serializer
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        username:
+          type: string
+          title: 사용자 이름
+          description: 150자 이하 문자, 숫자 그리고 @/./+/-/_만 가능합니다.
+          pattern: ^[\w.@+-]+$
+          maxLength: 150
+        email:
+          title: 이메일 주소
+          oneOf:
+          - type: string
+            format: email
+            maxLength: 254
+          - type: string
+            maxLength: 0
+        emp_no:
+          type: string
+          nullable: true
+          title: 사원번호
+          maxLength: 20
+        phone:
+          type: string
+          nullable: true
+          title: 전화번호
+          maxLength: 20
+        first_name:
+          type: string
+          title: 이름
+          maxLength: 150
+        last_name:
+          type: string
+          title: 성
+          maxLength: 150
+        dept_code:
+          type: string
+          title: 부서 코드
+          nullable: true
+        dept_info:
+          allOf:
+          - $ref: '#/components/schemas/CommonCodeSimple'
+          readOnly: true
+        job_role_code:
+          type: string
+          title: 직무 코드
+          nullable: true
+        job_role_info:
+          allOf:
+          - $ref: '#/components/schemas/CommonCodeSimple'
+          readOnly: true
+        position_code:
+          type: string
+          title: 직급 코드
+          nullable: true
+        position_info:
+          allOf:
+          - $ref: '#/components/schemas/CommonCodeSimple'
+          readOnly: true
+        role_code:
+          type: string
+          title: 권한 코드
+          nullable: true
+        role_info:
+          allOf:
+          - $ref: '#/components/schemas/CommonCodeSimple'
+          readOnly: true
+        status_code:
+          type: string
+          title: 상태 코드
+          nullable: true
+        status_info:
+          allOf:
+          - $ref: '#/components/schemas/CommonCodeSimple'
+          readOnly: true
+        is_staff:
+          type: boolean
+          readOnly: true
+          title: 스태프 권한
+          description: 사용자가 관리사이트에 로그인이 가능한지를 나타냅니다.
+        is_busy:
+          type: boolean
+          title: 현재 작업 중 여부
+          description: 현재 업무가 진행 중인지 여부
+        is_onboarded:
+          type: boolean
+          title: 온보딩 완료 여부
+          description: 최초 프로필 설정/온보딩 완료 여부
+        hire_date:
+          type: string
+          format: date
+          nullable: true
+          title: 입사일
+        resign_date:
+          type: string
+          format: date
+          nullable: true
+          title: 퇴사일
+        past_projects:
+          type: string
+          nullable: true
+          title: 참여 프로젝트 이력(콤마 구분)
+        skills:
+          type: array
+          items:
+            $ref: '#/components/schemas/UserSkill'
+          readOnly: true
+        certifications:
+          type: array
+          items:
+            $ref: '#/components/schemas/UserCertification'
+          readOnly: true
+      required:
+      - certifications
+      - dept_info
+      - id
+      - is_staff
+      - job_role_info
+      - position_info
+      - role_info
+      - skills
+      - status_info
+      - username
+    UserPasswordResetResponse:
+      type: object
+      properties:
+        message:
+          type: string
+          default: 비밀번호가 초기화되었습니다.
+    UserSimple:
+      type: object
+      description: 타 앱(tasks, meetings 등) 및 로그인 성공 응답에서 담당자/작성자/사용자 참조용 간단 Serializer
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        username:
+          type: string
+          title: 사용자 이름
+          description: 150자 이하 문자, 숫자 그리고 @/./+/-/_만 가능합니다.
+          pattern: ^[\w.@+-]+$
+          maxLength: 150
+        full_name:
+          type: string
+          readOnly: true
+        emp_no:
+          type: string
+          nullable: true
+          title: 사원번호
+          maxLength: 20
+        is_onboarded:
+          type: boolean
+          title: 온보딩 완료 여부
+          description: 최초 프로필 설정/온보딩 완료 여부
+      required:
+      - full_name
+      - id
+      - username
+    UserSkill:
+      type: object
+      properties:
+        skill_id:
+          type: integer
+          readOnly: true
+          title: 기술 ID
+        skill_code:
+          type: string
+          title: 기술 코드
+        skill_name:
+          type: string
+          readOnly: true
+        proficiency_level:
+          type: integer
+          maximum: 2147483647
+          minimum: -2147483648
+          title: 숙련도 (1~5)
+      required:
+      - skill_code
+      - skill_id
+      - skill_name
+    WeeklyCompletionItem:
+      type: object
+      properties:
+        date:
+          type: string
+        count:
+          type: integer
+      required:
+      - count
+      - date
+    WorkloadItem:
+      type: object
+      properties:
+        userId:
+          type: integer
+        name:
+          type: string
+        taskCount:
+          type: integer
+      required:
+      - name
+      - taskCount
+      - userId
+    _CodeSimple:
+      type: object
+      description: CommonCode 표시용(코드ID + 코드명).
+      properties:
+        code_id:
+          type: string
+          readOnly: true
+        code_name:
+          type: string
+          readOnly: true
+      required:
+      - code_id
+      - code_name

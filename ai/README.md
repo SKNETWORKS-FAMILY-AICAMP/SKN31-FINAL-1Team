@@ -19,10 +19,6 @@ agents_project/
 ├── retrieval/                  # 문서 임베딩·검색 (Qdrant)
 ├── qa_answer/                  # RAG 질의응답 + 근거출처
 │
-├── graph.py                       # Track A 전체 파이프라인 조립 (반려 루프 포함)
-├── graph_b.py                     # Track B 파이프라인 조립 (B1 -> B2)
-├── state.py                       # Track A 파이프라인 공유 State
-│
 └── tests/
     ├── fixtures/                  #   테스트용 더미 데이터
     └── test_a2_1.py               #   스키마·프롬프트 조립 테스트
@@ -32,7 +28,7 @@ agents_project/
 
 | 파일 | 역할 |
 |---|---|
-| `agent.py` | LangGraph 노드 진입점, 실행 로직 |
+| `agent.py` | 노드 진입점(Django 서비스 레이어가 직접 호출), 실행 로직 |
 | `schemas.py` | 입출력 계약 (Pydantic) |
 | `prompt_builder.py` | 고정 규칙(YAML) + 동적 데이터를 system prompt로 조립 |
 | `prompts/*.yaml` | 역할·제약사항·few-shot (정적 자산) |
@@ -40,9 +36,27 @@ agents_project/
 ## 실행 준비
 
 ```bash
-pip install instructor anthropic pydantic pyyaml langgraph pytest
+pip install instructor anthropic pydantic pyyaml pytest
 export OPEN_API_KEY=...
 python -m pytest tests/ -v
 ```
-test
+
+## AI 모델 교체 및 현재 설정된 모델 확인 방법
+
+
+## 0. 준비 (터미널 열 때마다)
+
+```bash
+cd ~/projects/SKN31-FINAL-1Team/ai
+source ../.venv/bin/activate
+```
+
+이후 `python` = 프로젝트 venv입니다. (activate 안 하려면 아래 모든 `python`을 `../.venv/bin/python`으로)
+
+## 1. 지금 설정된 모델 확인
+
+```bash
+python -m shared.retry_config
+```
+
 

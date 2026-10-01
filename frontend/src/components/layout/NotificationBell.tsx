@@ -6,6 +6,7 @@ import { Bell, CheckCircle2, AlertTriangle, XCircle, Info } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth";
 import { apiFetch } from "@/lib/api/client";
+import { Toast } from "@/components/ui/Toast";
 
 // Django NotificationSerializer가 내려주는 그대로(snake_case, {success,data} 래핑 없음) 받는다 —
 // 나머지 화면들(documents/members 등)도 전부 이 방식이라 일관성을 맞춘다.
@@ -49,8 +50,13 @@ export function NotificationBell() {
   const router = useRouter();
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [isOpen, setIsOpen] = useState(false);
+  const [errorToast, setErrorToast] = useState<string | null>(null);
   const ref = useRef<HTMLDivElement>(null);
 
+  // 30초마다 돌아가는 백그라운드 폴링이라, 일시적인 네트워크 오류 한 번에 토스트를 띄우면
+  // 사용자가 아무것도 안 했는데 계속 에러가 뜨는 것처럼 보인다(auth.tsx의 세션 체크와 같은
+  // 이유) — 폴링 실패는 조용히 넘기고 다음 주기에 다시 시도한다. 사용자가 직접 누른
+  // 액션(모두 읽음, 항목 클릭)이 실패했을 때만 토스트로 알린다.
   const fetchNotifications = useCallback(async () => {
     if (!user) return;
     try {
@@ -82,11 +88,13 @@ export function NotificationBell() {
 
   const markAllRead = async () => {
     if (!user || unreadCount === 0) return;
+    const prevNotifications = notifications;
     setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
     try {
       await apiFetch("/api/notifications/read-all/", { method: "PATCH" });
-    } catch (e) {
-      console.error(e);
+    } catch (e: any) {
+      setNotifications(prevNotifications);
+      setErrorToast(e.message || "모두 읽음 처리에 실패했습니다.");
     }
   };
 
@@ -96,7 +104,10 @@ export function NotificationBell() {
     setIsOpen(false);
     if (!n.read) {
       setNotifications((prev) => prev.map((x) => (x.id === n.id ? { ...x, read: true } : x)));
-      apiFetch(`/api/notifications/${n.id}/read/`, { method: "PATCH" }).catch((e) => console.error(e));
+      apiFetch(`/api/notifications/${n.id}/read/`, { method: "PATCH" }).catch((e: any) => {
+        setNotifications((prev) => prev.map((x) => (x.id === n.id ? { ...x, read: false } : x)));
+        setErrorToast(e.message || "읽음 처리에 실패했습니다.");
+      });
     }
     if (n.link) router.push(n.link);
   };
@@ -167,6 +178,8 @@ export function NotificationBell() {
           </div>
         </div>
       )}
+
+      <Toast message={errorToast} variant="error" onDismiss={() => setErrorToast(null)} />
     </div>
   );
 }

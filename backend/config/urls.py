@@ -30,4 +30,5 @@ urlpatterns = [
     # 2026-09-01: 팀원이 추가했던 DummyNotificationView(빈 배열만 반환)는 urlpatterns에
     # 연결도 안 돼있던 죽은 코드였다 — 실제 알림 앱(notifications)으로 교체.
     path('api/notifications/', include('notifications.urls')),
+    path('api/dashboard/', include('dashboard.urls')),
 ]
