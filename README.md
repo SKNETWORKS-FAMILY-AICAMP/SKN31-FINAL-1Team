@@ -6,19 +6,34 @@
 <br>
 
 ## 📌 목차
-1. [프로젝트 소개](#1-프로젝트-소개)
-2. [팀원 소개 및 역할](#2-팀원-소개-및-역할)
+1. [팀원 소개 및 역할](#1-팀원-소개-및-역할)
+2. [프로젝트 소개](#2-프로젝트-소개)
 3. [기술 스택 및 인프라](#3-기술-스택-및-인프라)
 4. [시스템 & AI 아키텍처](#4-시스템--ai-아키텍처)
 5. [핵심 기능 및 멀티 에이전트 파이프라인](#5-핵심-기능-및-멀티-에이전트-파이프라인)
 6. [핵심 설계 원칙 & 신뢰성 장치](#6-핵심-설계-원칙--신뢰성-장치)
-7. [프로젝트 디렉토리 구조](#7-프로젝트-디렉토리-구조)
-8. [회고](#8-회고)
-9. [실행 방법](#9-실행-방법)
+7. [데이터 수집 및 활용](#7-데이터-수집-및-활용)
+8. [화면설계](#8-화면설계)
+9. [프로젝트 디렉토리 구조](#9-프로젝트-디렉토리-구조)
+10. [회고](#10-회고)
+11. [실행 방법](#11-실행-방법)
 
 <br>
 
-## 1. 프로젝트 소개
+## 1. 팀원 소개 및 역할
+
+<div align="center">
+
+| **박연아** | **김가율** | **김재원** | **이재일** | **박하린** |
+| :---: | :---: | :---: | :---: | :---: |
+| <img src="산출물/images/2.png" width="100"> | <img src="산출물/images/3.png" width="100"> | <img src="산출물/images/1.png" width="100"> | <img src="산출물/images/5.png" width="100"> | <img src="산출물/images/4.png" width="100"> |
+| **PM & AI Agent** | **Backend** | **Frontend** | **DB & DevOps** | **AI Agent** |
+| [<img src="https://img.shields.io/badge/yeona9549-181717?style=flat&logo=github&logoColor=white">](https://github.com/yeona9549) | [<img src="https://img.shields.io/badge/Kim--gayul-181717?style=flat&logo=github&logoColor=white">](https://github.com/Kim-gayul) | [<img src="https://img.shields.io/badge/kimjae9360-181717?style=flat&logo=github&logoColor=white">](https://github.com/kimjae9360) | [<img src="https://img.shields.io/badge/qufdlfkd88-181717?style=flat&logo=github&logoColor=white">](https://github.com/qufdlfkd88) | [<img src="https://img.shields.io/badge/MintRinne-181717?style=flat&logo=github&logoColor=white">](https://github.com/MintRinne) |
+
+</div>
+<br>
+
+## 2. 프로젝트 소개
 
 ### 💡 기획 배경
 - **개발팀 PM의 업무 병목**: 회의 종료 후 회의록 정리, 기획서 작성, 요구사항 정의, 업무 분해, 담당자 배정, 일정 산정까지 수많은 후속 조율 작업이 PM 1명에게 집중되는 구조적 한계가 존재합니다.
@@ -34,20 +49,6 @@
 - **끊기지 않는 업무 흐름**: 회의 녹음 → 기획서 → 요구사항 정의서 → 업무 생성 → 담당자 배정/일정 산정까지 단계별 출처 추적 지원
 - **근거 있는 AI 결정**: 스킬·숙련도·가용일 데이터와 명확한 정량적 공식으로 담당자를 추천하고 이유를 설명
 - **단독형 및 승인 중심 구조**: 거대한 엔터프라이즈 라이선스(MS Copilot 등) 없이도 가볍게 도입 가능한 단독형 서비스
-
-<br>
-
-## 2. 팀원 소개 및 역할
-
-<div align="center">
-
-| **박연아** | **김가율** | **김재원** | **이재일** | **박하린** |
-| :---: | :---: | :---: | :---: | :---: |
-| <img src="산출물/images/2.png" width="100"> | <img src="산출물/images/3.png" width="100"> | <img src="산출물/images/1.png" width="100"> | <img src="산출물/images/5.png" width="100"> | <img src="산출물/images/4.png" width="100"> |
-| **PM & AI Agent** | **Backend** | **Frontend** | **DB & DevOps** | **AI Agent** |
-| [<img src="https://img.shields.io/badge/yeona9549-181717?style=flat&logo=github&logoColor=white">](https://github.com/yeona9549) | [<img src="https://img.shields.io/badge/Kim--gayul-181717?style=flat&logo=github&logoColor=white">](https://github.com/Kim-gayul) | [<img src="https://img.shields.io/badge/kimjae9360-181717?style=flat&logo=github&logoColor=white">](https://github.com/kimjae9360) | [<img src="https://img.shields.io/badge/qufdlfkd88-181717?style=flat&logo=github&logoColor=white">](https://github.com/qufdlfkd88) | [<img src="https://img.shields.io/badge/MintRinne-181717?style=flat&logo=github&logoColor=white">](https://github.com/MintRinne) |
-
-</div>
 
 <br>
 
@@ -80,6 +81,10 @@
 ## 5. 핵심 기능 및 멀티 에이전트 흐름도
 
 체계적인 3단계 10-Step 에이전트 흐름으로 구성됩니다.
+
+<div align="center">
+<img src="산출물/images/핵심기능.png" width="700">
+</div>
 
 <div align="center">
 <img src="산출물/images/에이전트.png" width="700">
@@ -122,7 +127,24 @@ AI의 환각(Hallucination) 및 오작동을 방지하고 서비스 신뢰성을
 
 <br>
 
-## 7. 프로젝트 디렉토리 구조
+## 7. 데이터 수집 및 활용
+
+| 데이터명 | 수집 대상 | 수집 목적 | 사용 예정 기능 | 출처 / 저작권 |
+|---|---|---|---|---|
+| 사원 정보 데이터 | 팀원 인적사항, 보유 기술, 자격증 | AI 담당자 추천 시 참조할 인력 프로필 구성 | 담당자 추천, 업무 배분 자동화 | Faker(`ko_KR`) 기반 자체 생성 |
+| 회의록 데이터 | 회의 내용 및 회의 기록 | 회의 내용을 근거로 한 기획서 자동 생성 시 참조 데이터 확보 | 회의록 자동 요약, 액션아이템 추출 | LLM API(Claude/GPT) 기반 합성 데이터 생성 |
+| 기획서, 요구사항정의서 데이터 | 프로젝트 기획 문서 및 요구사항 목록 | 문서 기반 AI 분석 및 추천 기능 검증 | 요구사항 분석, 산출물 검토 지원 | LLM API 기반 합성 데이터 생성 |
+<br>
+
+## 8. 화면설계
+
+<p align="center">
+  <img src="./산출물/images/heyzzabi_slides.gif" width="70%"/>
+</p>
+
+<br>
+
+## 9. 프로젝트 디렉토리 구조
 
 ```
 Heyzzabi/
@@ -142,7 +164,7 @@ Heyzzabi/
 
 <br>
 
-## 8. 회고
+## 10. 회고
 | 팀원 | 한 줄 회고 |
 | :---: | :--- |
 | **박연아** | |
@@ -153,7 +175,7 @@ Heyzzabi/
 
 <br>
 
-## 9. 실행 방법
+## 11. 실행 방법
 ### 💡프론트엔드
 ```
 1. 프론트엔드 폴더로 이동
