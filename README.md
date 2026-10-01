@@ -159,7 +159,7 @@ Heyzzabi/
 ├── frontend/               # Next.js App Router 프론트엔드
 │   ├── app/                # Route Handler (/api/*) 및 페이지 UI
 │   └── hooks/              # TanStack Query 기반 상태 관리 및 상태 폴링
-└── docs/                   # API 명세서 (API.yaml) 및 프로젝트 산출물
+└── 산출물/                 # 프로젝트 산출물
 ```
 
 <br>
