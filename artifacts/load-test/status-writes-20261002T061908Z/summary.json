@@ -1,0 +1,57 @@
+[
+  {
+    "stage": 3,
+    "role": "outsider",
+    "path": "/api/tasks/assignments/3851/status/",
+    "n": 1,
+    "errors": 0,
+    "mean_ms": 45.283,
+    "p50_ms": 45.283,
+    "p95_ms": 45.283,
+    "max_ms": 45.283
+  },
+  {
+    "stage": 3,
+    "role": "outsider",
+    "path": "/api/tasks/assignments/3851/",
+    "n": 1,
+    "errors": 0,
+    "mean_ms": 39.955,
+    "p50_ms": 39.955,
+    "p95_ms": 39.955,
+    "max_ms": 39.955
+  },
+  {
+    "stage": 3,
+    "role": "owner",
+    "path": "/api/tasks/assignments/3851/status/",
+    "n": 22,
+    "errors": 0,
+    "mean_ms": 74.007,
+    "p50_ms": 71.577,
+    "p95_ms": 99.734,
+    "max_ms": 111.155
+  },
+  {
+    "stage": 3,
+    "role": "pm",
+    "path": "/api/tasks/assignments/3851/",
+    "n": 20,
+    "errors": 0,
+    "mean_ms": 62.685,
+    "p50_ms": 58.709,
+    "p95_ms": 84.95,
+    "max_ms": 115.641
+  },
+  {
+    "stage": 3,
+    "role": "pm",
+    "path": "/api/tasks/assignments/3851/status/",
+    "n": 1,
+    "errors": 0,
+    "mean_ms": 64.137,
+    "p50_ms": 64.137,
+    "p95_ms": 64.137,
+    "max_ms": 64.137
+  }
+]

@@ -666,23 +666,19 @@ def confirm_task_assignments(req_def_id: int, assignments: list) -> dict:
     start_date / end_date는 PM이 편집했을 수 있는 최종 값으로 취급하고 그대로
     신뢰한다(재계산하지 않는다).
     """
-    try:
-        req_def = RequirementDefinition.objects.get(pk=req_def_id)
-    except RequirementDefinition.DoesNotExist:
-        return {"status": "error", "message": "요구사항 정의서를 찾을 수 없습니다."}
-
-    # 5단계 Business Validation: 요구사항정의서 승인(APPROVED) 상태 검증
-    if req_def.status_code_id != 'APPROVED':
-        return {
-            "status": "error",
-            "message": f"요구사항 정의서가 승인(APPROVED) 상태여야 업무를 확정할 수 있습니다. (현재 상태: {req_def.status_code_id})"
-        }
-
     if not any(item.get("assignee_id") is not None for item in assignments):
         return {"status": "error", "message": "담당자가 배정된 업무가 없습니다. 최소 1건 이상 담당자를 지정한 뒤 확정해주세요."}
 
     try:
         with transaction.atomic():
+            # 같은 정의서의 동시 확정을 직렬화한다. 그렇지 않으면 두 요청이 서로의
+            # delete/create 사이에 끼어 중복 행 또는 부분 결과를 남길 수 있다.
+            req_def = RequirementDefinition.objects.select_for_update().get(pk=req_def_id)
+            if req_def.status_code_id != 'APPROVED':
+                return {
+                    "status": "error",
+                    "message": f"요구사항 정의서가 승인(APPROVED) 상태여야 업무를 확정할 수 있습니다. (현재 상태: {req_def.status_code_id})"
+                }
             # 2026-09-15: 여기 있던 행은 대부분 generate_task_suggestions()가 이미
             # BACKLOG(초안)로 저장해둔 것들이다 — PM이 확정을 누르면 그 초안을 전부
             # 지우고 최종(편집 반영) 내용으로 PENDING_APPROVAL 다시 만든다. 프론트가

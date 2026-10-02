@@ -1,0 +1,156 @@
+[
+  {
+    "stage": 20,
+    "role": "member",
+    "path": "/api/meetings/notes/",
+    "n": 115,
+    "errors": 0,
+    "mean_ms": 244.608,
+    "p50_ms": 200.99,
+    "p95_ms": 582.514,
+    "max_ms": 765.689
+  },
+  {
+    "stage": 20,
+    "role": "member",
+    "path": "/api/projects/",
+    "n": 267,
+    "errors": 0,
+    "mean_ms": 116.123,
+    "p50_ms": 74.584,
+    "p95_ms": 343.548,
+    "max_ms": 737.398
+  },
+  {
+    "stage": 20,
+    "role": "member",
+    "path": "/api/dashboard/overview/",
+    "n": 324,
+    "errors": 0,
+    "mean_ms": 155.307,
+    "p50_ms": 107.817,
+    "p95_ms": 361.205,
+    "max_ms": 772.539
+  },
+  {
+    "stage": 20,
+    "role": "pm",
+    "path": "/api/tasks/assignments/",
+    "n": 69,
+    "errors": 0,
+    "mean_ms": 356.286,
+    "p50_ms": 332.091,
+    "p95_ms": 639.3,
+    "max_ms": 793.992
+  },
+  {
+    "stage": 20,
+    "role": "member",
+    "path": "/api/meetings/specs/",
+    "n": 141,
+    "errors": 0,
+    "mean_ms": 56.65,
+    "p50_ms": 24.021,
+    "p95_ms": 216.177,
+    "max_ms": 331.236
+  },
+  {
+    "stage": 20,
+    "role": "pm",
+    "path": "/api/projects/",
+    "n": 56,
+    "errors": 0,
+    "mean_ms": 133.088,
+    "p50_ms": 84.727,
+    "p95_ms": 573.472,
+    "max_ms": 705.326
+  },
+  {
+    "stage": 20,
+    "role": "member",
+    "path": "/api/tasks/assignments/",
+    "n": 255,
+    "errors": 0,
+    "mean_ms": 81.409,
+    "p50_ms": 43.429,
+    "p95_ms": 282.222,
+    "max_ms": 686.805
+  },
+  {
+    "stage": 20,
+    "role": "pm",
+    "path": "/api/dashboard/overview/",
+    "n": 78,
+    "errors": 0,
+    "mean_ms": 163.906,
+    "p50_ms": 106.718,
+    "p95_ms": 433.397,
+    "max_ms": 749.43
+  },
+  {
+    "stage": 20,
+    "role": "pm",
+    "path": "/api/notifications/",
+    "n": 18,
+    "errors": 0,
+    "mean_ms": 56.508,
+    "p50_ms": 20.334,
+    "p95_ms": 228.947,
+    "max_ms": 228.947
+  },
+  {
+    "stage": 20,
+    "role": "member",
+    "path": "/api/requirements/",
+    "n": 146,
+    "errors": 0,
+    "mean_ms": 419.841,
+    "p50_ms": 397.328,
+    "p95_ms": 669.031,
+    "max_ms": 777.372
+  },
+  {
+    "stage": 20,
+    "role": "member",
+    "path": "/api/notifications/",
+    "n": 66,
+    "errors": 0,
+    "mean_ms": 54.611,
+    "p50_ms": 18.861,
+    "p95_ms": 244.052,
+    "max_ms": 537.822
+  },
+  {
+    "stage": 20,
+    "role": "pm",
+    "path": "/api/meetings/specs/",
+    "n": 29,
+    "errors": 0,
+    "mean_ms": 40.301,
+    "p50_ms": 22.681,
+    "p95_ms": 214.197,
+    "max_ms": 222.652
+  },
+  {
+    "stage": 20,
+    "role": "pm",
+    "path": "/api/requirements/",
+    "n": 37,
+    "errors": 0,
+    "mean_ms": 430.4,
+    "p50_ms": 426.794,
+    "p95_ms": 645.468,
+    "max_ms": 654.222
+  },
+  {
+    "stage": 20,
+    "role": "pm",
+    "path": "/api/meetings/notes/",
+    "n": 37,
+    "errors": 0,
+    "mean_ms": 201.624,
+    "p50_ms": 181.488,
+    "p95_ms": 313.768,
+    "max_ms": 394.663
+  }
+]

@@ -1,0 +1,46 @@
+[
+  {
+    "stage": 3,
+    "role": "retired_reassign",
+    "path": "/api/tasks/assignments/3863/status/",
+    "n": 1,
+    "errors": 0,
+    "mean_ms": 28.42,
+    "p50_ms": 28.42,
+    "p95_ms": 28.42,
+    "max_ms": 28.42
+  },
+  {
+    "stage": 3,
+    "role": "concurrent_complete",
+    "path": "/api/tasks/assignments/3864/status/",
+    "n": 1,
+    "errors": 0,
+    "mean_ms": 42.964,
+    "p50_ms": 42.964,
+    "p95_ms": 42.964,
+    "max_ms": 42.964
+  },
+  {
+    "stage": 3,
+    "role": "concurrent_complete",
+    "path": "/api/tasks/assignments/3865/status/",
+    "n": 1,
+    "errors": 0,
+    "mean_ms": 42.196,
+    "p50_ms": 42.196,
+    "p95_ms": 42.196,
+    "max_ms": 42.196
+  },
+  {
+    "stage": 3,
+    "role": "concurrent_confirm",
+    "path": "/api/requirements/340/confirm-tasks/",
+    "n": 2,
+    "errors": 0,
+    "mean_ms": 88.551,
+    "p50_ms": 88.181,
+    "p95_ms": 88.921,
+    "max_ms": 88.921
+  }
+]

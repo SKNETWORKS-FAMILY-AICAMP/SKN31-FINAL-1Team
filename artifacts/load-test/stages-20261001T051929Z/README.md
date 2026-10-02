@@ -2,7 +2,7 @@
 
 실행 ID: 20261001T051929Z
 
-- 로컬 MySQL 8.4.11, 프로젝트 10개·업무 200개·사용자 총 123명.
+- 로컬 MySQL 8.4.11, 프로젝트 50개·업무 2,000개·사용자 총 123명.
 - Gunicorn 1 worker / gthread 2 threads, DEBUG=False, 직접 HTTPS. AWS·Vercel·nginx 제외.
 - 단계: 20명, 각 60초. 단계별 PM 20%·일반 80%, 계정/쿠키 개별 사용.
 - 사용자별 요청 간 2~5초 대기, 시작 지연 0~2초. 폐쇄형 사용자 모델이며 동시 사용자 수가 동시 요청 수를 뜻하지 않음.
@@ -46,5 +46,5 @@
 ## 재현
 
 ```bash
-/home/playdata/my-project/.venv/bin/python artifacts/load-test/http_baseline.py --staged
+LOADTEST_STAGES=20 LOADTEST_STAGE_SECONDS=60 /home/playdata/my-project/.venv/bin/python artifacts/load-test/http_baseline.py --staged
 ```

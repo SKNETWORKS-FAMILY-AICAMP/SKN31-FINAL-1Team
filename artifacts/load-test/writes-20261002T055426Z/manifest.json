@@ -1,0 +1,60 @@
+{
+  "run_id": "20261002T055426Z",
+  "status": "complete",
+  "base_url": "https://127.0.0.1:18084",
+  "commit": "aa7315638808def644e6584d535ea20a7fe42d8a",
+  "python": "3.14.4",
+  "mysql": "8.4.11",
+  "database": "heyzzabi_test",
+  "counts": {
+    "all_users": 123,
+    "test_users": 20,
+    "projects": 50,
+    "tasks": 2000
+  },
+  "debug": false,
+  "web_server": "Gunicorn: 1 worker, gthread, 2 threads",
+  "warmup_requests_per_endpoint": "one per role before stages",
+  "concurrency": [
+    5,
+    10,
+    20
+  ],
+  "limitations": [
+    "Local HTTPS; same host server and generator",
+    "Task progress/description updates only; no AI or confirmations"
+  ],
+  "duration_per_stage_seconds": 60,
+  "think_time_seconds": [
+    2,
+    5
+  ],
+  "model": "bounded concurrent task PATCH",
+  "role_ratio": "20% PM, 80% member",
+  "seed": 20261001,
+  "endpoint_weights": {
+    "overview": 25,
+    "projects": 20,
+    "tasks": 20,
+    "notes": 10,
+    "specs": 10,
+    "requirements": 10,
+    "notifications": 5
+  },
+  "scenario": "20 isolated task edits; 20 paired same-task edits",
+  "restoration": "Selected synthetic task fields restored in finally",
+  "stages": [
+    {
+      "users": 20,
+      "started_unix": 1790920470.5613804,
+      "elapsed_seconds_including_drain": 3.622794793000139,
+      "requests": 240,
+      "errors": 0,
+      "stopped_early": false,
+      "integrity_mismatches": [],
+      "isolated_rounds": 10,
+      "collision_rounds": 20
+    }
+  ],
+  "finished_utc": "2026-10-02T05:54:34.848976+00:00"
+}

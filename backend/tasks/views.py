@@ -83,6 +83,10 @@ class TaskAssignmentListCreateView(generics.ListCreateAPIView):
         qs = TaskAssignment.objects.select_related(
             'req_item',
             'assigned_user',
+            'original_assigned_user',
+            'project',
+            'difficulty_code',
+            'git_status_code',
             'status_code'
         ).all()
         project_id = self.request.query_params.get('project')
@@ -187,13 +191,22 @@ class TaskAssignmentDetailView(generics.RetrieveUpdateDestroyAPIView):
     serializer_class = TaskAssignmentSerializer
     permission_classes = [permissions.IsAuthenticated]
 
+    @transaction.atomic
+    def update(self, request, *args, **kwargs):
+        # Serialize edits of the same task before the serializer reads fields
+        # and saves the model, preventing disjoint PATCHes from overwriting.
+        return super().update(request, *args, **kwargs)
+
     def get_queryset(self):
         # 2026-09-16: id를 직접 안다고 해도 BACKLOG(초안)는 상세 조회/수정/삭제로
         # 못 보게 막는다 — 목록 API와 동일하게 PM도 예외 없이 막는다(TaskAssignmentListCreateView
         # 참고: PM이 초안을 검토/수정하는 화면은 이 REST 엔드포인트를 아예 안 쓴다).
         qs = TaskAssignment.objects.select_related(
-            'req_item', 'assigned_user', 'status_code'
+            'req_item', 'assigned_user', 'original_assigned_user',
+            'project', 'difficulty_code', 'git_status_code', 'status_code'
         ).exclude(status_code_id=TaskStatusCode.BACKLOG)
+        if self.request.method in ('PUT', 'PATCH'):
+            qs = qs.select_for_update()
         # 목록 API와 동일하게 일반유저는 본인에게 배정된 업무만 상세 조회/수정/삭제할 수 있다.
         user = self.request.user
         is_pm = getattr(user, 'is_staff', False) or user.groups.filter(name='PM').exists()
@@ -238,7 +251,7 @@ class TaskStatusUpdateView(APIView):
     )
     @transaction.atomic
     def patch(self, request, pk):
-        task = get_object_or_404(TaskAssignment, pk=pk)
+        task = get_object_or_404(TaskAssignment.objects.select_for_update(), pk=pk)
         user = request.user
         is_pm = getattr(user, 'is_staff', False) or user.groups.filter(name='PM').exists()
 
@@ -336,9 +349,22 @@ class TaskStatusUpdateView(APIView):
 
             task.status_code_id = new_status
 
+            # Keep the status/progress invariant in this transaction. The UI
+            # may send a follow-up progress PATCH, but other concurrent detail
+            # edits must not observe IN_PROGRESS with 0% or DONE below 100%.
+            if new_status == TaskStatusCode.IN_PROGRESS and task.progress <= 0:
+                task.progress = 1
+            elif new_status == TaskStatusCode.COMPLETED:
+                task.progress = 100
+            elif new_status == TaskStatusCode.APPROVED and task.progress >= 100:
+                task.progress = 0
+
             # 업무 완료(COMPLETED) 시 담당 개발자 is_busy 해제
             if new_status == TaskStatusCode.COMPLETED:
-                assigned_dev = task.assigned_user
+                assigned_dev = (
+                    User.objects.select_for_update().get(pk=task.assigned_user_id)
+                    if task.assigned_user_id else None
+                )
                 if assigned_dev:
                     other_busy_tasks = TaskAssignment.objects.filter(
                         assigned_user=assigned_dev
@@ -348,11 +374,11 @@ class TaskStatusUpdateView(APIView):
                         assigned_dev.save()
 
             # 알림 발송
-            if new_status == TaskStatusCode.APPROVED and task.assigned_user:
+            if new_status != old_status and new_status == TaskStatusCode.APPROVED and task.assigned_user:
                 notify_user(task.assigned_user, f"'{task.title}' 업무가 승인되었습니다.", type='success', link='/tasks')
-            elif new_status == TaskStatusCode.COMPLETED and task.assigned_user:
+            elif new_status != old_status and new_status == TaskStatusCode.COMPLETED and task.assigned_user:
                 notify_user(task.assigned_user, f"'{task.title}' 업무가 완료되었습니다.", type='success', link='/tasks')
-            elif new_status == TaskStatusCode.REJECTED and task.assigned_user:
+            elif new_status != old_status and new_status == TaskStatusCode.REJECTED and task.assigned_user:
                 notify_user(task.assigned_user, f"'{task.title}' 업무가 반려되었습니다: {task.reject_reason}", type='error', link='/tasks')
 
             # 파이프라인 히스토리 기록 (실제 상태가 변경된 경우)

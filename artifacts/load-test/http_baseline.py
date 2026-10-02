@@ -29,7 +29,12 @@ PAUSE = 0.1
 
 
 def main():
-    staged = '--staged' in sys.argv
+    mixed = '--mixed' in sys.argv
+    remaining_conflicts = '--remaining-conflicts' in sys.argv
+    assignment_effects = '--assignment-effects' in sys.argv
+    status_writes = '--status-writes' in sys.argv
+    writes = '--writes' in sys.argv or status_writes or assignment_effects or remaining_conflicts or mixed
+    staged = '--staged' in sys.argv or writes
     os.environ.update(DJANGO_SETTINGS_MODULE='config.settings', DEBUG='False',
                       ALLOWED_HOSTS='127.0.0.1,localhost')
     sys.path.insert(0, str(BACKEND))
@@ -56,10 +61,13 @@ def main():
     assert counts['test_users'] == 20 and counts['tasks'] >= 200
     connection.close()
     with socket.socket() as check:
+        # Match Gunicorn's reuse policy so TIME_WAIT from a completed run
+        # does not block the next run; an active listener still fails bind.
+        check.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         check.bind(('127.0.0.1', PORT))
 
     run_id = datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')
-    out = ROOT / 'artifacts/load-test' / f'{"stages" if staged else "baseline"}-{run_id}'
+    out = ROOT / 'artifacts/load-test' / f'{"mixed" if mixed else "remaining-conflicts" if remaining_conflicts else "assignment-effects" if assignment_effects else "status-writes" if status_writes else "writes" if writes else "stages" if staged else "baseline"}-{run_id}'
     out.mkdir()
     env = os.environ.copy()
     password = env.get('LOADTEST_PASSWORD', 'LocalLoad2026!')
@@ -135,7 +143,42 @@ def main():
             watcher = threading.Thread(target=monitor, daemon=True)
             watcher.start()
             if staged:
-                from staged_reads import run_stages
+                if writes:
+                    if mixed:
+                        from staged_mixed import run_stages
+                        manifest.update(model='20-user closed mixed read/write model', role_ratio='20% PM, 80% member',
+                                        endpoint_weights={'reads':80,'task_description_patch':20},
+                                        limitations=['Local HTTPS; server and generator share host; no AI calls'],
+                                        restoration='Twenty temporary tasks removed after final-value verification')
+                    elif remaining_conflicts:
+                        from staged_remaining_conflicts import run_stages
+                        manifest.update(model='bounded remaining conflict probe',
+                                        limitations=['Local HTTPS; temporary records; no AI calls'],
+                                        scenario='retired reassignment, concurrent completion, concurrent confirmation',
+                                        restoration='Temporary tasks/definition removed; resign and busy fields restored')
+                    elif assignment_effects:
+                        from staged_assignment_effects import run_stages
+                        manifest.update(model='bounded assignment/completion side-effect probe',
+                                        limitations=['Local HTTPS; synthetic temporary tasks; no AI or confirmations'],
+                                        scenario='permission, reassignment, locked reassignment, completion, notification and busy state',
+                                        restoration='Temporary tasks and related notifications/histories removed; user busy flags restored')
+                    elif status_writes:
+                        from staged_status_writes import run_stages
+                        manifest.update(
+                            model='bounded task status/detail concurrency probe',
+                            limitations=['Local HTTPS; same host server and generator',
+                                         'One synthetic task and three accounts; no AI or confirmations'],
+                            scenario='20 status/detail collisions; duplicate transition; permission and validation',
+                            restoration='Task, user busy flags, notifications and pipeline history restored in finally')
+                    else:
+                        from staged_writes import run_stages
+                        manifest.update(model='bounded concurrent task PATCH',
+                                        limitations=['Local HTTPS; same host server and generator',
+                                                     'Task progress/description updates only; no AI or confirmations'],
+                                        scenario='20 isolated task edits; 20 paired same-task edits',
+                                        restoration='Selected synthetic task fields restored in finally')
+                else:
+                    from staged_reads import run_stages
                 manifest['stages'] = run_stages(
                     BASE, context, password, rows, logins,
                     stage_users=stage_users, stage_duration=stage_duration,

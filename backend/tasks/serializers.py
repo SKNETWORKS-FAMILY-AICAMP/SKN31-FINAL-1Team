@@ -8,7 +8,10 @@
 ###############################################################
 
 from rest_framework import serializers
+from django.contrib.auth import get_user_model
 from tasks.models import TaskAssignment, TaskStatusCode
+
+User = get_user_model()
 
 
 class _CodeSimpleSerializer(serializers.Serializer):
@@ -121,7 +124,10 @@ class TaskAssignmentSerializer(serializers.ModelSerializer):
             # 여기서 이어서 완료 처리되도록, elif로 안 묶고 별도 if로 다시 검사한다.
             if instance.status_code_id == TaskStatusCode.IN_PROGRESS and new_progress >= 100:
                 instance.status_code_id = TaskStatusCode.COMPLETED
-                assigned_dev = instance.assigned_user
+                assigned_dev = (
+                    User.objects.select_for_update().get(pk=instance.assigned_user_id)
+                    if instance.assigned_user_id else None
+                )
                 if assigned_dev:
                     # TaskStatusUpdateView.patch()의 COMPLETED 처리와 동일한 규칙 —
                     # 다른 미완료 업무가 없을 때만 담당자의 is_busy를 해제한다.

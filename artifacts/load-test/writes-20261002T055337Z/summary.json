@@ -1,0 +1,222 @@
+[
+  {
+    "stage": 20,
+    "role": "member",
+    "path": "/api/tasks/assignments/3850/",
+    "n": 10,
+    "errors": 0,
+    "mean_ms": 27.099,
+    "p50_ms": 25.01,
+    "p95_ms": 36.407,
+    "max_ms": 36.407
+  },
+  {
+    "stage": 20,
+    "role": "member",
+    "path": "/api/tasks/assignments/3842/",
+    "n": 10,
+    "errors": 0,
+    "mean_ms": 139.441,
+    "p50_ms": 151.598,
+    "p95_ms": 222.958,
+    "max_ms": 222.958
+  },
+  {
+    "stage": 20,
+    "role": "member",
+    "path": "/api/tasks/assignments/3845/",
+    "n": 10,
+    "errors": 0,
+    "mean_ms": 146.892,
+    "p50_ms": 118.559,
+    "p95_ms": 246.273,
+    "max_ms": 246.273
+  },
+  {
+    "stage": 20,
+    "role": "member",
+    "path": "/api/tasks/assignments/3839/",
+    "n": 10,
+    "errors": 0,
+    "mean_ms": 136.794,
+    "p50_ms": 138.672,
+    "p95_ms": 230.559,
+    "max_ms": 230.559
+  },
+  {
+    "stage": 20,
+    "role": "member",
+    "path": "/api/tasks/assignments/3841/",
+    "n": 10,
+    "errors": 0,
+    "mean_ms": 161.729,
+    "p50_ms": 136.372,
+    "p95_ms": 274.065,
+    "max_ms": 274.065
+  },
+  {
+    "stage": 20,
+    "role": "member",
+    "path": "/api/tasks/assignments/3844/",
+    "n": 10,
+    "errors": 0,
+    "mean_ms": 104.108,
+    "p50_ms": 74.317,
+    "p95_ms": 228.284,
+    "max_ms": 228.284
+  },
+  {
+    "stage": 20,
+    "role": "member",
+    "path": "/api/tasks/assignments/3849/",
+    "n": 10,
+    "errors": 0,
+    "mean_ms": 152.654,
+    "p50_ms": 152.023,
+    "p95_ms": 240.698,
+    "max_ms": 240.698
+  },
+  {
+    "stage": 20,
+    "role": "member",
+    "path": "/api/tasks/assignments/3840/",
+    "n": 10,
+    "errors": 0,
+    "mean_ms": 113.046,
+    "p50_ms": 87.89,
+    "p95_ms": 228.357,
+    "max_ms": 228.357
+  },
+  {
+    "stage": 20,
+    "role": "pm",
+    "path": "/api/tasks/assignments/3857/",
+    "n": 10,
+    "errors": 0,
+    "mean_ms": 99.269,
+    "p50_ms": 71.459,
+    "p95_ms": 220.908,
+    "max_ms": 220.908
+  },
+  {
+    "stage": 20,
+    "role": "member",
+    "path": "/api/tasks/assignments/3853/",
+    "n": 10,
+    "errors": 0,
+    "mean_ms": 133.942,
+    "p50_ms": 133.814,
+    "p95_ms": 237.207,
+    "max_ms": 237.207
+  },
+  {
+    "stage": 20,
+    "role": "member",
+    "path": "/api/tasks/assignments/3843/",
+    "n": 10,
+    "errors": 0,
+    "mean_ms": 150.7,
+    "p50_ms": 144.191,
+    "p95_ms": 211.881,
+    "max_ms": 211.881
+  },
+  {
+    "stage": 20,
+    "role": "member",
+    "path": "/api/tasks/assignments/3847/",
+    "n": 10,
+    "errors": 0,
+    "mean_ms": 182.996,
+    "p50_ms": 168.7,
+    "p95_ms": 271.016,
+    "max_ms": 271.016
+  },
+  {
+    "stage": 20,
+    "role": "member",
+    "path": "/api/tasks/assignments/3851/",
+    "n": 10,
+    "errors": 0,
+    "mean_ms": 144.228,
+    "p50_ms": 139.975,
+    "p95_ms": 224.6,
+    "max_ms": 224.6
+  },
+  {
+    "stage": 20,
+    "role": "pm",
+    "path": "/api/tasks/assignments/3855/",
+    "n": 10,
+    "errors": 0,
+    "mean_ms": 125.715,
+    "p50_ms": 120.099,
+    "p95_ms": 243.542,
+    "max_ms": 243.542
+  },
+  {
+    "stage": 20,
+    "role": "member",
+    "path": "/api/tasks/assignments/3854/",
+    "n": 10,
+    "errors": 0,
+    "mean_ms": 143.276,
+    "p50_ms": 127.972,
+    "p95_ms": 236.338,
+    "max_ms": 236.338
+  },
+  {
+    "stage": 20,
+    "role": "member",
+    "path": "/api/tasks/assignments/3846/",
+    "n": 10,
+    "errors": 0,
+    "mean_ms": 155.241,
+    "p50_ms": 149.536,
+    "p95_ms": 250.812,
+    "max_ms": 250.812
+  },
+  {
+    "stage": 20,
+    "role": "pm",
+    "path": "/api/tasks/assignments/3858/",
+    "n": 50,
+    "errors": 0,
+    "mean_ms": 54.411,
+    "p50_ms": 26.707,
+    "p95_ms": 231.788,
+    "max_ms": 248.752
+  },
+  {
+    "stage": 20,
+    "role": "member",
+    "path": "/api/tasks/assignments/3848/",
+    "n": 10,
+    "errors": 0,
+    "mean_ms": 133.059,
+    "p50_ms": 98.137,
+    "p95_ms": 231.826,
+    "max_ms": 231.826
+  },
+  {
+    "stage": 20,
+    "role": "member",
+    "path": "/api/tasks/assignments/3852/",
+    "n": 10,
+    "errors": 0,
+    "mean_ms": 171.948,
+    "p50_ms": 151.796,
+    "p95_ms": 253.007,
+    "max_ms": 253.007
+  },
+  {
+    "stage": 20,
+    "role": "pm",
+    "path": "/api/tasks/assignments/3856/",
+    "n": 10,
+    "errors": 0,
+    "mean_ms": 148.957,
+    "p50_ms": 124.309,
+    "p95_ms": 250.305,
+    "max_ms": 250.305
+  }
+]

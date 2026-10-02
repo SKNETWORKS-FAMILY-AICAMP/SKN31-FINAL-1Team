@@ -1,0 +1,8 @@
+[2026-10-02 15:30:59 +0900] [30415] [INFO] Starting gunicorn 26.1.0
+[2026-10-02 15:30:59 +0900] [30415] [INFO] Listening at: https://127.0.0.1:18084 (30415)
+[2026-10-02 15:30:59 +0900] [30415] [INFO] Using worker: gthread
+[2026-10-02 15:30:59 +0900] [30416] [INFO] Booting worker with pid: 30416
+[2026-10-02 15:30:59 +0900] [30415] [INFO] Control socket listening at /run/user/1000/gunicorn.ctl
+[2026-10-02 15:31:00 +0900] [30415] [INFO] Handling signal: term
+[2026-10-02 15:31:00 +0900] [30416] [INFO] Worker exiting (pid: 30416)
+[2026-10-02 15:31:01 +0900] [30415] [INFO] Shutting down: Master

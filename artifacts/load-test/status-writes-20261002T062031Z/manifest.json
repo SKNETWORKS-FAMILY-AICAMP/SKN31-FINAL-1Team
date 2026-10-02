@@ -1,0 +1,60 @@
+{
+  "run_id": "20261002T062031Z",
+  "status": "complete",
+  "base_url": "https://127.0.0.1:18084",
+  "commit": "aa7315638808def644e6584d535ea20a7fe42d8a",
+  "python": "3.14.4",
+  "mysql": "8.4.11",
+  "database": "heyzzabi_test",
+  "counts": {
+    "all_users": 123,
+    "test_users": 20,
+    "projects": 50,
+    "tasks": 2000
+  },
+  "debug": false,
+  "web_server": "Gunicorn: 1 worker, gthread, 2 threads",
+  "warmup_requests_per_endpoint": "one per role before stages",
+  "concurrency": [
+    5,
+    10,
+    20
+  ],
+  "limitations": [
+    "Local HTTPS; same host server and generator",
+    "One synthetic task and three accounts; no AI or confirmations"
+  ],
+  "duration_per_stage_seconds": 60,
+  "think_time_seconds": [
+    2,
+    5
+  ],
+  "model": "bounded task status/detail concurrency probe",
+  "role_ratio": "20% PM, 80% member",
+  "seed": 20261001,
+  "endpoint_weights": {
+    "overview": 25,
+    "projects": 20,
+    "tasks": 20,
+    "notes": 10,
+    "specs": 10,
+    "requirements": 10,
+    "notifications": 5
+  },
+  "scenario": "20 status/detail collisions; duplicate transition; permission and validation",
+  "restoration": "Task, user busy flags, notifications and pipeline history restored in finally",
+  "stages": [
+    {
+      "users": 3,
+      "started_unix": 1790922033.6863804,
+      "elapsed_seconds_including_drain": 1.3338331429995378,
+      "requests": 45,
+      "errors": 0,
+      "stopped_early": false,
+      "integrity_mismatches": [],
+      "cross_endpoint_rounds": 20,
+      "duplicate_transition_rounds": 1
+    }
+  ],
+  "finished_utc": "2026-10-02T06:20:34.272019+00:00"
+}
