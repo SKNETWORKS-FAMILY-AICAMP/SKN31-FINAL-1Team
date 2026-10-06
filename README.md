@@ -1,3 +1,5 @@
+> **Full Auto 브랜치:** 회의록을 등록하면 기획서·요구사항 자동 승인부터 업무 배분 확정까지 이어집니다. 실행 전에 마이그레이션과 별도 워커가 필요합니다. [실행 및 재시도 안내](docs/full_auto.md)
+
 ## SKN31 Final 1Team
 <div align="center">
 <img src="산출물/images/main.png" width="700">

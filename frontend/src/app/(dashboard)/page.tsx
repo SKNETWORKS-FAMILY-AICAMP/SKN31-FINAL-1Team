@@ -3,14 +3,15 @@
 import { useState } from "react";
 import OverviewView from "@/components/dashboard/OverviewView";
 import AnalyticsView from "@/components/dashboard/AnalyticsView";
+import SystemLogsView from "@/components/dashboard/SystemLogsView";
 import { cn } from "@/lib/utils";
-import { LayoutDashboard, TrendingUp } from "lucide-react";
+import { LayoutDashboard, TrendingUp, ScrollText } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 
 export default function DashboardContainer() {
   const { user } = useAuth();
   const isPM = user?.role === "PM";
-  const [activeTab, setActiveTab] = useState<"overview" | "analytics">("overview");
+  const [activeTab, setActiveTab] = useState<"overview" | "analytics" | "logs">("overview");
 
   return (
     <div className="space-y-6">
@@ -35,11 +36,20 @@ export default function DashboardContainer() {
           >
             <TrendingUp className="w-5 h-5" /> 성과 통계
           </button>
+          <button
+            onClick={() => setActiveTab("logs")}
+            className={cn(
+              "flex items-center gap-2 px-6 py-3 font-bold transition-colors border-b-2",
+              activeTab === "logs" ? "border-primary text-primary" : "border-transparent text-muted-foreground hover:text-foreground hover:bg-black/5 dark:hover:bg-white/5"
+            )}
+          >
+            <ScrollText className="w-5 h-5" /> 시스템 로그
+          </button>
         </div>
       ) : null}
 
       <div className="mt-4">
-        {activeTab === "overview" || !isPM ? <OverviewView /> : <AnalyticsView />}
+        {activeTab === "overview" || !isPM ? <OverviewView /> : activeTab === "analytics" ? <AnalyticsView /> : <SystemLogsView />}
       </div>
     </div>
   );

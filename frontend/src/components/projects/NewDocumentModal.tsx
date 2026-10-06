@@ -66,6 +66,7 @@ export function NewDocumentModal({
 }: {
   onClose: (projectId?: number, createdNoteId?: number) => void;
 }) {
+  const [autoRun, setAutoRun] = useState(true);
   const [title, setTitle] = useState("");
   const [meetingDate, setMeetingDate] = useState("");
   const [attendees, setAttendees] = useState<string[]>([]);
@@ -229,6 +230,7 @@ export function NewDocumentModal({
         method: "POST",
         body: JSON.stringify({
           project: targetProjectId,
+          auto_run: autoRun,
           title: finalTitle,
           content,
           meeting_date: meetingDate || null,
@@ -371,6 +373,14 @@ export function NewDocumentModal({
                 className="w-full min-h-[220px] bg-black/5 dark:bg-white/5 border border-border rounded-lg px-4 py-3 resize-none focus:outline-none focus:ring-2 focus:ring-primary/50 text-sm leading-relaxed"
               />
             </div>
+            {(
+              <label className="flex items-start gap-3 rounded-lg border border-primary/30 bg-primary/5 p-4 text-sm">
+                <input type="checkbox" checked={autoRun} onChange={e => setAutoRun(e.target.checked)} className="mt-1" />
+                <span><strong>등록 후 업무 배분까지 자동 실행</strong><br />
+                  기획서와 요구사항을 자동 승인하고 담당자·일정을 저장합니다. 단계별 검토를 원하면 해제하세요.
+                </span>
+              </label>
+            )}
           </form>
         </div>
 
@@ -389,7 +399,7 @@ export function NewDocumentModal({
             className="flex items-center gap-2 bg-primary text-primary-foreground hover:bg-primary/90 px-8 py-2.5 rounded-lg transition-colors text-sm font-medium shadow-lg shadow-primary/20 disabled:opacity-50"
           >
             {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
-            문서 저장 및 시작하기
+            {autoRun ? "저장하고 자동 업무 배분 시작" : "문서 저장 및 시작하기"}
           </button>
         </div>
       </div>

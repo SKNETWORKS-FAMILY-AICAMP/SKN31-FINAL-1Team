@@ -1,3 +1,4 @@
+from meetings.full_auto_guard import FullAutoProtectedMixin
 # requirements/views.py
 import logging
 import threading
@@ -399,7 +400,7 @@ def process_ai_requirement_extraction(spec_document, user, on_stage=None):
         }
     )
 )
-class RequirementDefinitionListCreateView(generics.ListCreateAPIView):
+class RequirementDefinitionListCreateView(FullAutoProtectedMixin, generics.ListCreateAPIView):
     queryset = RequirementDefinition.objects.all().order_by('-created_at', '-id')
     permission_classes = [permissions.IsAuthenticated]
 
@@ -471,7 +472,7 @@ class RequirementDefinitionListCreateView(generics.ListCreateAPIView):
         responses={204: None}
     )
 )
-class RequirementDefinitionDetailView(generics.RetrieveUpdateDestroyAPIView):
+class RequirementDefinitionDetailView(FullAutoProtectedMixin, generics.RetrieveUpdateDestroyAPIView):
     queryset = RequirementDefinition.objects.all().select_related(
         'spec', 'project', 'status_code', 'created_by'
     ).prefetch_related('items__priority_code')
@@ -521,7 +522,7 @@ class RequirementDefinitionDetailView(generics.RetrieveUpdateDestroyAPIView):
             )
 
 
-class RequirementDefinitionSubmitReviewView(APIView):
+class RequirementDefinitionSubmitReviewView(FullAutoProtectedMixin, APIView):
     """요구사항 정의서 검토 요청 제출 (작성자 본인 검증)"""
     permission_classes = [permissions.IsAuthenticated]
 
@@ -558,7 +559,7 @@ class RequirementDefinitionSubmitReviewView(APIView):
         return Response({"message": "검토 요청이 완료되었습니다.", "data": RequirementDefinitionSerializer(req_def).data})
 
 
-class RequirementDefinitionApproveView(APIView):
+class RequirementDefinitionApproveView(FullAutoProtectedMixin, APIView):
     """요구사항 정의서 승인 처리 (PM 전용)"""
     permission_classes = [permissions.IsAuthenticated, IsPMUser]
 
@@ -600,7 +601,7 @@ class RequirementDefinitionApproveView(APIView):
         return Response({"message": "요구사항 정의서가 승인되었습니다.", "data": RequirementDefinitionSerializer(req_def).data})
 
 
-class RequirementDefinitionRejectView(APIView):
+class RequirementDefinitionRejectView(FullAutoProtectedMixin, APIView):
     """요구사항 정의서 반려 처리 (PM 전용)"""
     permission_classes = [permissions.IsAuthenticated, IsPMUser]
 
@@ -630,7 +631,7 @@ class RequirementDefinitionRejectView(APIView):
         return Response({"message": "요구사항 정의서가 반려되었습니다.", "data": RequirementDefinitionSerializer(req_def).data})
 
 
-class RequirementExtractView(APIView):
+class RequirementExtractView(FullAutoProtectedMixin, APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     @extend_schema(
@@ -811,7 +812,7 @@ def _run_generate_tasks_job(job_id, actor_user_id):
     close_old_connections()
 
 
-class RequirementGenerateTasksView(APIView):
+class RequirementGenerateTasksView(FullAutoProtectedMixin, APIView):
     permission_classes = [permissions.IsAuthenticated, IsPMUser]
 
     @extend_schema(
@@ -866,7 +867,7 @@ class RequirementGenerateTasksJobStatusView(APIView):
         return Response(payload)
 
 
-class RequirementConfirmTasksView(APIView):
+class RequirementConfirmTasksView(FullAutoProtectedMixin, APIView):
     permission_classes = [permissions.IsAuthenticated, IsPMUser]
 
     @extend_schema(
@@ -943,7 +944,8 @@ LOCKED_REQDEF_STATUSES = ('APPROVED', 'PENDING_REVIEW')
     get=extend_schema(tags=['2단계 - 요구사항 정의서'], summary='세부 요구사항 항목 목록 조회', responses={200: RequirementItemSerializer(many=True)}),
     post=extend_schema(tags=['2단계 - 요구사항 정의서'], summary='세부 요구사항 항목 직접 추가', responses={201: RequirementItemSerializer, 403: OpenApiResponse(description="승인/검토 중인 요구사항 정의서 잠금으로 추가 불가")})
 )
-class RequirementItemViewSet(generics.ListCreateAPIView):
+class RequirementItemViewSet(FullAutoProtectedMixin, generics.ListCreateAPIView):
+    full_auto_target = 'item'
     queryset = RequirementItem.objects.all().select_related('priority_code', 'req_def')
     serializer_class = RequirementItemSerializer
     permission_classes = [permissions.IsAuthenticated]
@@ -966,7 +968,8 @@ class RequirementItemViewSet(generics.ListCreateAPIView):
     patch=extend_schema(tags=['2단계 - 요구사항 정의서'], summary='세부 요구사항 항목 부분 수정', responses={200: RequirementItemSerializer, 403: OpenApiResponse(description="승인/검토 중인 요구사항 정의서 잠금으로 수정 불가")}),
     delete=extend_schema(tags=['2단계 - 요구사항 정의서'], summary='세부 요구사항 항목 삭제', responses={204: None, 403: OpenApiResponse(description="승인/검토 중인 요구사항 정의서 잠금으로 삭제 불가")})
 )
-class RequirementItemDetailView(generics.RetrieveUpdateDestroyAPIView):
+class RequirementItemDetailView(FullAutoProtectedMixin, generics.RetrieveUpdateDestroyAPIView):
+    full_auto_target = 'item'
     queryset = RequirementItem.objects.all().select_related('priority_code', 'req_def')
     serializer_class = RequirementItemSerializer
     permission_classes = [permissions.IsAuthenticated]

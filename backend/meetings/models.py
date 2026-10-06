@@ -177,6 +177,25 @@ class SpecDocument(models.Model):
         return f"[{self.spec_id}] {self.title}"
 
 
+class FullAutoJob(models.Model):
+    """Durable queue and checkpoints for registration-to-assignment automation."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    note = models.OneToOneField(MeetingNote, on_delete=models.CASCADE, related_name='full_auto_job')
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True)
+    status = models.CharField(max_length=10, default='PENDING', choices=[
+        ('PENDING', '대기'), ('RUNNING', '진행 중'), ('SUCCESS', '완료'), ('ERROR', '실패'),
+    ])
+    stage = models.CharField(max_length=100, default='자동 실행 대기')
+    spec = models.ForeignKey(SpecDocument, on_delete=models.SET_NULL, null=True, blank=True)
+    requirement = models.ForeignKey('requirements.RequirementDefinition', on_delete=models.SET_NULL, null=True, blank=True)
+    task_result = models.JSONField(null=True, blank=True)
+    result = models.JSONField(null=True, blank=True)
+    error_message = models.TextField(blank=True, default='')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+
 class MeetingAnalysisJob(models.Model):
     """
     "기획서 생성"(회의록 AI 분석 → 기획서 초안 생성)이 순차 LLM 호출 2번(노드①
@@ -222,3 +241,17 @@ class MeetingAnalysisJob(models.Model):
 
     def __str__(self):
         return f"[{self.status}] note={self.note_id} ({self.stage})"
+
+
+class MeetingWatchSetting(models.Model):
+    """One independent local-folder watcher per employee."""
+    id = models.AutoField(primary_key=True)
+    user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='meeting_watch')
+    folder = models.CharField(max_length=1000, blank=True, default='')
+    enabled = models.BooleanField(default=False)
+    project = models.ForeignKey('projects.Project', on_delete=models.SET_NULL, null=True, blank=True)
+    process_id = models.PositiveIntegerField(null=True, blank=True)
+    process_token = models.UUIDField(null=True, blank=True)
+    heartbeat_at = models.DateTimeField(null=True, blank=True)
+    last_error = models.TextField(blank=True, default='')
+    updated_at = models.DateTimeField(auto_now=True)

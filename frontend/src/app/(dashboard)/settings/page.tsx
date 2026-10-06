@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Settings as SettingsIcon, HelpCircle, Mail, ChevronDown, FileText, ShieldCheck } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { MeetingWatchSettings } from "@/components/projects/MeetingWatchSettings";
 import { TERMS_ARTICLES, TERMS_EFFECTIVE_DATE, PRIVACY_SECTIONS, PRIVACY_EFFECTIVE_DATE } from "@/lib/legalContent";
 
 const SUPPORT_EMAIL = "kimjae9360@gmail.com";
@@ -124,6 +125,8 @@ export default function SettingsPage() {
           </div>
         </div>
       </section>
+
+      <MeetingWatchSettings />
     </div>
   );
 }

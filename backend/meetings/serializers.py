@@ -122,6 +122,8 @@ class MeetingNoteCreateSerializer(serializers.ModelSerializer):
     """
     회의록 신규 등록 전용 Serializer
     """
+    auto_run = serializers.BooleanField(required=False, write_only=True)
+
     class Meta:
         model = MeetingNote
-        fields = ['project', 'title', 'content', 'meeting_date', 'attendees']
+        fields = ['auto_run', 'project', 'title', 'content', 'meeting_date', 'attendees']

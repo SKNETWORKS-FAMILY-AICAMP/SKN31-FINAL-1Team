@@ -1,7 +1,9 @@
 #meetings/urls.py
 from django.urls import path
+from meetings.watch_views import MeetingWatchControlView
 from meetings.views import (
     MeetingNoteListCreateView,
+    FullAutoJobView,
     MeetingNoteDetailView,
     MeetingNoteAnalyzeView,
     MeetingNoteAnalyzeJobStatusView,
@@ -17,7 +19,9 @@ from meetings.views import (
 )
 
 urlpatterns = [
+    path('watch-control/', MeetingWatchControlView.as_view(), name='meeting-watch-control'),
     # 회의록 엔드포인트
+    path('notes/<int:pk>/full-auto/', FullAutoJobView.as_view(), name='full-auto-job'),
     path('notes/', MeetingNoteListCreateView.as_view(), name='meeting-note-list'),
     path('notes/<int:pk>/', MeetingNoteDetailView.as_view(), name='meeting-note-detail'),
     path('notes/<int:pk>/analyze/', MeetingNoteAnalyzeView.as_view(), name='meeting-note-analyze'),

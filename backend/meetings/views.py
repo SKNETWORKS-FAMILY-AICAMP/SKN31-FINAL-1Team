@@ -1,7 +1,7 @@
 #meetings/views.py
 import threading
 from django.shortcuts import get_object_or_404
-from django.db import close_old_connections
+from django.db import close_old_connections, transaction
 from django.utils import timezone
 from rest_framework import status, permissions, generics, parsers
 from rest_framework.views import APIView
@@ -14,13 +14,14 @@ from docx.text.paragraph import Paragraph
 
 from pypdf import PdfReader
 
-from meetings.models import MeetingNote, SpecDocument, MeetingAnalysisJob
+from meetings.models import MeetingNote, SpecDocument, MeetingAnalysisJob, FullAutoJob
 from meetings.serializers import (
     MeetingNoteSerializer,
     MeetingNoteCreateSerializer,
     SpecDocumentSerializer,
 )
 from meetings.services import run_meeting_analysis
+from meetings.full_auto_guard import FullAutoProtectedMixin
 from common.models import CommonCode
 from users.permissions import IsPMUser, IsOwnerOrPM  # IsOwnerOrPM 추가
 from notifications.services import notify_user, notify_all_pms
@@ -66,10 +67,16 @@ class MeetingNoteListCreateView(generics.ListCreateAPIView):
     def perform_create(self, serializer):
         serializer.save(created_by=self.request.user)
 
+    @transaction.atomic
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
+        auto_run = serializer.validated_data.pop('auto_run', True)
+        if auto_run and not serializer.validated_data.get('project'):
+            return Response({'error': '자동 실행에는 프로젝트가 필요합니다.'}, status=400)
         instance = serializer.save(created_by=request.user)
+        if auto_run:
+            FullAutoJob.objects.create(note=instance, created_by=request.user)
 
         # 파이프라인 이력 로그 생성
         if instance.project_id:
@@ -83,10 +90,14 @@ class MeetingNoteListCreateView(generics.ListCreateAPIView):
             )
 
         response_serializer = MeetingNoteSerializer(instance)
-        return Response(response_serializer.data, status=status.HTTP_201_CREATED)
+        payload = dict(response_serializer.data)
+        if auto_run:
+            payload['full_auto'] = {'job_id': str(instance.full_auto_job.pk), 'status': 'PENDING'}
+        return Response(payload, status=status.HTTP_201_CREATED)
 
 
-class MeetingNoteDetailView(generics.RetrieveUpdateDestroyAPIView):
+class MeetingNoteDetailView(FullAutoProtectedMixin, generics.RetrieveUpdateDestroyAPIView):
+    full_auto_target = 'note'
     """회의록 상세 조회, 수정, 삭제 (작성자 본인 또는 PM만 수정/삭제 가능)"""
     queryset = MeetingNote.objects.all()
     serializer_class = MeetingNoteSerializer
@@ -168,7 +179,8 @@ def _run_analyze_job(job_id, actor_user_id):
     close_old_connections()
 
 
-class MeetingNoteAnalyzeView(APIView):
+class MeetingNoteAnalyzeView(FullAutoProtectedMixin, APIView):
+    full_auto_target = 'note'
     """
     회의록 AI 분석 및 기획 초안 자동 생성 API
     POST /api/meetings/notes/{id}/analyze/ — 백그라운드 작업 시작(job_id만 즉시 반환).
@@ -232,7 +244,7 @@ class MeetingNoteAnalyzeJobStatusView(APIView):
 # 2. 기획서(SpecDocument) API Views
 # ==========================================
 
-class SpecDocumentListCreateView(generics.ListCreateAPIView):
+class SpecDocumentListCreateView(FullAutoProtectedMixin, generics.ListCreateAPIView):
     """기획서 목록 조회 및 생성"""
     queryset = SpecDocument.objects.all()
     serializer_class = SpecDocumentSerializer
@@ -260,7 +272,7 @@ class SpecDocumentListCreateView(generics.ListCreateAPIView):
         serializer.save(created_by=self.request.user)
 
 
-class SpecDocumentDetailView(generics.RetrieveUpdateDestroyAPIView):
+class SpecDocumentDetailView(FullAutoProtectedMixin, generics.RetrieveUpdateDestroyAPIView):
     """기획서 상세 조회, 수정, 삭제 (작성자 본인 또는 PM만 가능)"""
     queryset = SpecDocument.objects.all()
     serializer_class = SpecDocumentSerializer
@@ -304,7 +316,7 @@ class SpecDocumentDetailView(generics.RetrieveUpdateDestroyAPIView):
         return super().delete(request, *args, **kwargs)
 
 
-class SpecDocumentReviewView(APIView):
+class SpecDocumentReviewView(FullAutoProtectedMixin, APIView):
     """기획서 검토 의견 작성/수정 (PM 권한)"""
     # [수정] 코멘트 남기기 및 리뷰어 지정은 PM 전용
     permission_classes = [permissions.IsAuthenticated, IsPMUser]
@@ -326,7 +338,7 @@ class SpecDocumentReviewView(APIView):
         return Response(SpecDocumentSerializer(spec).data, status=status.HTTP_200_OK)
 
 
-class SpecDocumentSubmitReviewView(APIView):
+class SpecDocumentSubmitReviewView(FullAutoProtectedMixin, APIView):
     """기획서 검토 요청 전송 (pk 기준 - 작성자 검증 적용)"""
     permission_classes = [permissions.IsAuthenticated]
 
@@ -368,7 +380,7 @@ class SpecDocumentSubmitReviewView(APIView):
     patch = post
 
 
-class SubmitReviewView(APIView):
+class SubmitReviewView(FullAutoProtectedMixin, APIView):
     """
     POST /api/meetings/specs/{spec_id}/submit-review/
     기획서 검토 요청 API (spec_id 기준 - 작성자 본인만 가능)
@@ -426,7 +438,7 @@ class SubmitReviewView(APIView):
         return Response(serializer.data, status=status.HTTP_200_OK)
 
 
-class SpecDocumentApproveView(APIView):
+class SpecDocumentApproveView(FullAutoProtectedMixin, APIView):
     """기획서 승인 처리 (PM 전용)"""
     permission_classes = [permissions.IsAuthenticated, IsPMUser]
 
@@ -472,7 +484,7 @@ class SpecDocumentApproveView(APIView):
         return Response({"message": "기획서가 승인되었습니다.", "spec": SpecDocumentSerializer(spec).data})
 
 
-class SpecDocumentRejectView(APIView):
+class SpecDocumentRejectView(FullAutoProtectedMixin, APIView):
     """기획서 반려 처리 (PM 전용)"""
     permission_classes = [permissions.IsAuthenticated, IsPMUser]
 
@@ -771,3 +783,47 @@ class MeetingNoteParseFileView(APIView):
             return result.stdout.decode('utf-8', errors='ignore')
         finally:
             os.unlink(tmp_path)
+
+
+class FullAutoJobView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request, pk):
+        note = get_object_or_404(MeetingNote, pk=pk)
+        if not request.user.is_staff and note.created_by_id != request.user.pk:
+            return Response({'error': '조회 권한이 없습니다.'}, status=403)
+        job = FullAutoJob.objects.filter(note=note).first()
+        if not job:
+            return Response({'job': None})
+        return Response({'job': {
+            'id': str(job.pk), 'status': job.status, 'stage': job.stage,
+            'message': job.error_message if job.status == 'ERROR' else '',
+            'result': job.result, 'updated_at': job.updated_at,
+        }})
+
+    @transaction.atomic
+    def post(self, request, pk):
+        note = get_object_or_404(MeetingNote.objects.select_for_update(), pk=pk)
+        if not request.user.is_staff and note.created_by_id != request.user.pk:
+            return Response({'error': '작성자 또는 PM만 실행할 수 있습니다.'}, status=403)
+        job = FullAutoJob.objects.select_for_update().filter(note=note).first()
+        if job is None:
+            if not note.project_id:
+                return Response({'error': '자동 실행에는 프로젝트가 필요합니다.'}, status=400)
+            if note.analysis_jobs.filter(status__in=['PENDING', 'RUNNING']).exists():
+                return Response({'error': '기획서 생성이 완료된 뒤 자동 실행을 시작해주세요.'}, status=409)
+            spec = note.spec_documents.order_by('-version', '-created_at', '-pk').first()
+            if spec and spec.requirement_definitions.exists():
+                return Response({'error': '이미 요구사항이 있는 회의록은 기존 단계별 흐름을 이용해주세요.'}, status=409)
+            job = FullAutoJob.objects.create(note=note, spec=spec, created_by=request.user)
+            return Response({'status': 'PENDING', 'job_id': str(job.pk)}, status=202)
+        if job.status != 'ERROR':
+            return Response({'error': '실패한 작업만 재시도할 수 있습니다.'}, status=409)
+        job.status = 'PENDING'
+        job.stage = '재시도 대기'
+        job.error_message = ''
+        job.created_by = request.user
+        # Regenerate suggestions using corrected staffing information.
+        job.task_result = None
+        job.save(update_fields=['status', 'stage', 'error_message', 'created_by', 'task_result', 'updated_at'])
+        return Response({'status': 'PENDING', 'job_id': str(job.pk)}, status=202)

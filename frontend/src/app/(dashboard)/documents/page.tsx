@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useSidebar } from "@/components/layout/SidebarContext";
+import { FullAutoPanel } from "@/components/projects/FullAutoPanel";
 import { NewDocumentModal } from "@/components/projects/NewDocumentModal";
 import { ProposalTemplate, type ProposalEvidence, type ProposalEvidenceEntries, type ProposalEvidenceItem } from "@/components/documents/ProposalTemplate";
 import { EvidencePanel } from "@/components/documents/EvidencePanel";
@@ -1519,6 +1520,18 @@ export default function DocumentsPage() {
               왼쪽에서 문서를 선택하거나 새로 등록해주세요.
             </div>
           ) : (
+            <FullAutoPanel key={selectedNote.id} noteId={selectedNote.id}
+              canView={isPM || String(selectedNote.created_by) === String(user?.id)}
+              onCompleted={async () => {
+                const [note, definitions, assignments] = await Promise.all([
+                  apiFetch<NoteDto>(`/api/meetings/notes/${selectedNote.id}/`),
+                  apiFetch<ReqDefDto[]>("/api/requirements/"),
+                  apiFetch<TaskAssignmentDto[]>("/api/tasks/assignments/"),
+                ]);
+                setNotes(previous => previous.map(item => item.id === note.id ? note : item));
+                setReqDefs(definitions);
+                setTaskAssignments(assignments);
+              }}>
             <NoteDetail
               note={selectedNote}
               spec={activeSpec}
@@ -1566,6 +1579,7 @@ export default function DocumentsPage() {
               reassigningTaskId={reassigningTaskId}
               onReassignTask={(taskId, assigneeId) => handleReassignTask(selectedNote, taskId, assigneeId)}
             />
+            </FullAutoPanel>
           )}
         </div>
       </div>
