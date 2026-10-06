@@ -8,8 +8,10 @@
 
 ```bash
 cd backend
-python -m pip install -r requirements.txt -r ../ai/requirements.txt
+python -m pip install -r requirements.txt
 ```
+
+`.hwp` 회의록을 읽으려면 Python 패키지 설치와 별도로 `hwp5txt` 명령이 실행 환경에 있어야 합니다. `.docx/.pdf/.txt/.md`에는 필요하지 않습니다.
 
 `backend/.env.example`을 `backend/.env`로 복사하고 `SECRET_KEY`, `OPENAI_API_KEY`, DB 설정을 각자 채웁니다. 로컬 SQLite를 쓰면 `MYSQL_HOST`를 비웁니다. 팀 DB를 쓸 경우 접속 정보와 기존 직원·프로젝트·스킬 데이터가 필요합니다. `MEETING_SUMMARY_MODEL` 기본값은 `gpt-5`입니다.
 
